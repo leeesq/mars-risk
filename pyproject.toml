@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-risk"  # PyPI上的名字，先去搜一下有没有被占用！
-version = "0.1.0"      # 语义化版本号
+version = "0.1.1"      # 语义化版本号
 description = "High-performance Risk Modeling Toolkit powered by Polars"
 readme = "README.md"
 requires-python = ">=3.10"
