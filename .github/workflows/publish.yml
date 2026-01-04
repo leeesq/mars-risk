@@ -1,0 +1,41 @@
+name: Publish to PyPI 🚀
+
+# 触发机制：只有当你在 GitHub 页面点击 "Create a Release" 发布新版本时才触发
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  # 重要：这是为了使用 OIDC 认证，必须开启 id-token 写权限
+  id-token: write 
+
+jobs:
+  build-and-publish:
+    name: Build and Publish to PyPI
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 拉取代码
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. 设置 Python 环境
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    # 3. 安装构建工具
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+
+    # 4. 打包代码 (生成 .whl 和 .tar.gz)
+    - name: Build package
+      run: python -m build
+
+    # 5. 发布到 PyPI (使用官方 Action)
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1

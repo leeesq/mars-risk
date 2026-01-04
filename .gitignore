@@ -1,0 +1,30 @@
+# --- Python 垃圾文件 ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- 虚拟环境 (不要上传你的环境库) ---
+venv/
+.venv/
+mars_env/
+
+# --- IDE 配置 (不要上传你的个人编辑器设置) ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- 构建打包文件 ---
+dist/
+build/
+*.egg-info/
+
+# --- [重点] 风控数据与隐私 (绝对屏蔽!) ---
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.pkl
+data/
+output/
+secret_config.py
+.env
