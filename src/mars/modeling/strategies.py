@@ -5,3 +5,6 @@ class MarsXGBStrategy(MarsBaseModelTuner):
 
 class MarsLGBStrategy(MarsBaseModelTuner):
     pass
+
+class MarsCatBoostStrategy(MarsBaseModelTuner):
+    pass

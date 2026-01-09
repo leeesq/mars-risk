@@ -1,0 +1,33 @@
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class MarsProfileConfig:
+    """
+    [配置类] Mars 全局配置管理对象。
+    
+    Attributes
+    ----------
+    stat_metrics : List[str]
+        需要计算的数值统计指标列表。
+    dq_metrics : List[str]
+        需要计算的数据质量(DQ)指标列表。
+    enable_sparkline : bool
+        是否生成迷你分布图。默认 True。
+    sparkline_bins : int
+        分布图的分箱数量 (字符画的精度)。默认 8 (对应  ▂▃▄▅▆▇█)。
+    """
+    
+    # --- 计算范围 ---
+    stat_metrics: List[str] = field(default_factory=lambda: ["mean", "std", "min", "max", "median"])
+    dq_metrics: List[str] = field(default_factory=lambda: ["missing", "zeros", "unique", "top1"])
+
+    # --- 阈值 (红绿灯) ---
+    threshold_missing_danger: float = 0.50
+    threshold_top1_danger: float = 0.90
+    threshold_psi_danger: float = 0.25
+
+    # --- 可视化 ---
+    enable_sparkline: bool = True
+    sparkline_bins: int = 8  # 对应 8 个 Unicode 字符等级
+    sparkline_sample_size: int = 200_000 # 采样上限
