@@ -3,12 +3,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# --- 虚拟环境 (不要上传你的环境库) ---
+# --- 虚拟环境 (不要上传环境库) ---
 venv/
 .venv/
 mars_env/
 
-# --- IDE 配置 (不要上传你的个人编辑器设置) ---
+# --- IDE 配置 (不要上传编辑器设置) ---
 .idea/
 .vscode/
 .DS_Store
@@ -18,7 +18,7 @@ dist/
 build/
 *.egg-info/
 
-# --- [重点] 风控数据与隐私 (绝对屏蔽!) ---
+# --- 数据与隐私 ---
 *.csv
 *.xlsx
 *.xls

@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mars-risk"      # 记得去 PyPI 查重，如果只是内部使用则无所谓
-version = "0.1.1"       # 语义化版本号
+name = "mars-risk"      
+version = "0.1.1"       
 description = "High-performance Risk Modeling Toolkit powered by Polars"
 readme = "README.md"
 requires-python = ">=3.10" # 推荐 3.10 或 3.11 以获得最佳性能
@@ -17,7 +17,7 @@ authors = [
 # 核心依赖列表 (The Golden Standard)
 dependencies = [
     # --- Core Engine ---
-    "polars>=1.0.0",       # ⚠️ 关键升级：使用 1.0+ 稳定版 API
+    "polars>=1.0.0",       # 使用 1.0+ 稳定版 API
     "numpy>=1.24.0",       # 基础科学计算
     "pandas>=2.0.0",       # 兼容性支持
     "pyarrow>=14.0.0",     # 零拷贝数据交换核心库
@@ -28,7 +28,7 @@ dependencies = [
     "catboost>=1.2.0",     # 类别特征处理神器
 
     # --- Mathematics & Stats ---
-    "scipy>=1.10.0",       # 统计计算 (Spearman/Pearson)
+    "scipy>=1.10.0",       # 统计计算
     "scikit-learn>=1.3.0", # 决策树分箱
 
     # --- Utilities ---
@@ -38,7 +38,6 @@ dependencies = [
     "psutil>=5.9.0"        # 内存监控
 ]
 
-# 可选依赖 (开发与测试环境)
 # 安装命令: pip install -e ".[dev]"
 [project.optional-dependencies]
 dev = [
