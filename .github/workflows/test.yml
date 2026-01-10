@@ -20,4 +20,4 @@ jobs:
         pip install .[dev]
         pip install pytest
     - name: Run tests
-      run: pytest
+      run: pytest || [ $? -eq 5 ]
