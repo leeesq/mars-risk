@@ -1,5 +1,6 @@
 import polars as pl
 import pandas as pd
+import numpy as np
 from typing import Dict, Tuple, Optional, Union, List, Any
 from mars.utils.logger import logger
 
@@ -10,7 +11,7 @@ except ImportError:
 
 class MarsProfileReport:
     """
-    [报告容器] MarsProfileReport - 统一管理数据分析结果的展示与导出。
+    [报告容器] MarsProfileReport - 统一管理数据画像结果的展示与导出。
     
     该类作为 MarsDataProfiler 的输出容器，负责将原始的统计数据 (DataFrame)
     转换为适合人类阅读的格式。它支持两种主要的输出渠道：
@@ -39,11 +40,11 @@ class MarsProfileReport:
         Parameters
         ----------
         overview : Union[pl.DataFrame, pd.DataFrame]
-            全量概览表。
+            全量概览表，包含特征名、类型、分布图及各类统计指标。
         dq_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-            DQ 指标趋势表字典。
+            数据质量 (DQ) 指标趋势表字典，包含缺失率、零值率等随分组维度的变化。
         stats_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-            统计指标趋势表字典。
+            统计指标趋势表字典，包含均值、标准差等随分组维度的变化。
         """
         self.overview_table: Union[pl.DataFrame, pd.DataFrame] = overview
         self.dq_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]] = dq_tables
@@ -61,55 +62,61 @@ class MarsProfileReport:
 
         Returns
         -------
-        Tuple
-            包含三个元素的元组: (overview_df, dq_tables_dict, stats_tables_dict)。
+        overview_df : Union[pl.DataFrame, pd.DataFrame]
+            全量概览大宽表。
+        dq_tables_dict : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
+            DQ 指标趋势字典。
+        stats_tables_dict : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
+            统计指标趋势字典。
         """
         return self.overview_table, self.dq_tables, self.stats_tables
 
     def _repr_html_(self) -> str:
         """
-        [Magic Method] Jupyter Notebook 的富文本展示接口。
+        [Internal] Jupyter Notebook 的富文本展示接口。
         
-        当在 Jupyter 中直接打印该对象时，会显示一个包含概览信息和快捷方法的 HTML 面板。
+        当在 Jupyter 环境中直接打印此对象时，生成一个交互式的 HTML 控制面板。
+
+        Returns
+        -------
+        str
+            包含概览统计信息和操作指南的 HTML 字符串。
         """
-        df_ov = self.overview_table
-        # 兼容 Polars/Pandas 获取行数
-        n_feats = len(df_ov) if hasattr(df_ov, "__len__") else df_ov.height
+        df_ov: Union[pl.DataFrame, pd.DataFrame] = self.overview_table
         
-        # 简单推断分组数量 (通过检查 missing 指标表的列数)
-        sample_dq = self.dq_tables.get('missing')
+        # 统计特征总数
+        n_feats: int = len(df_ov) if hasattr(df_ov, "__len__") else df_ov.height
+        
+        # 推断分组数量
+        sample_dq: Optional[Union[pl.DataFrame, pd.DataFrame]] = self.dq_tables.get('missing')
+        n_groups: int = 0
         if sample_dq is not None:
-            cols = sample_dq.columns
-            n_cols = len(cols)
+            n_cols: int = len(sample_dq.columns)
             # 减去固定列: feature, dtype, total
             n_groups = max(0, n_cols - 3)
-        else:
-            n_groups = 0
 
-        # 构建面板 HTML 内容
-        lines = []
-        lines.append('<code>.show_overview()</code> 👈 <b>Start Here (Full Stats)</b>')
+        # 构建控制面板内容
+        lines: List[str] = []
+        lines.append('<code>.show_overview()</code> 👈 <b>全量指标看板 (推荐起点)</b>')
         
-        dq_keys = list(self.dq_tables.keys())
-        dq_links = [f"<code>.show_dq('{k}')</code>" for k in dq_keys]
-        lines.append(f'DQ Trends: {", ".join(dq_links)}')
+        dq_keys: List[str] = list(self.dq_tables.keys())
+        dq_links: List[str] = [f"<code>.show_dq('{k}')</code>" for k in dq_keys]
+        lines.append(f'数据质量趋势: {", ".join(dq_links)}')
         
-        stats_keys = list(self.stats_tables.keys())
+        stats_keys: List[str] = list(self.stats_tables.keys())
         if stats_keys:
-            display_keys = stats_keys
-            suffix = ""
-            stat_links = [f"<code>.show_trend('{k}')</code>" for k in display_keys]
-            lines.append(f'Stat Trends: {", ".join(stat_links)}{suffix}')
+            stat_links: List[str] = [f"<code>.show_trend('{k}')</code>" for k in stats_keys]
+            lines.append(f'统计指标趋势: {", ".join(stat_links)}')
         
-        lines.append('<code>.write_excel()</code>')
-        lines.append('<code>.get_profile_data()</code> <i>(For Feature Selection)</i>')
+        lines.append('<code>.write_excel()</code> 导出带格式的报表')
+        lines.append('<code>.get_profile_data()</code> 获取原始数据用于特征筛选')
 
         return f"""
         <div style="border-left: 5px solid #2980b9; background-color: #f4f6f7; padding: 15px; border-radius: 0 5px 5px 0;">
-            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📊 Mars Profile Report</h3>
+            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📊 Mars 数据画像报告</h3>
             <div style="display: flex; gap: 20px; margin-bottom: 10px; color: #555;">
-                <div><strong>🏷️ Features:</strong> {n_feats}</div>
-                <div><strong>📅 Groups:</strong> {n_groups}</div>
+                <div><strong>🏷️ 特征总数:</strong> {n_feats}</div>
+                <div><strong>📅 分组粒度:</strong> {n_groups}</div>
             </div>
             <div style="font-size:0.9em; line-height:1.8; color:#7f8c8d; border-top: 1px solid #e0e0e0; padding-top: 8px;">
                 { "<br>".join(lines) }
@@ -121,129 +128,157 @@ class MarsProfileReport:
         """
         展示全量概览大宽表。
         
-        采用 'RdYlGn_r' (红-黄-绿 反转) 色系：
-        - 高缺失率/高单一值率 -> 红色 (警示)
-        - 低缺失率 -> 绿色 (健康)
+        采用 'RdYlGn_r' (红-黄-绿 反转) 色系展示数据质量指标：
+        - 高缺失率/高单一值率 -> 红色 (警示风险)
+        - 低缺失率 -> 绿色 (健康状态)
 
         Returns
         -------
         pd.io.formats.style.Styler
-            应用了热力图、Sparkline 字体样式的 Pandas Styler 对象。
+            配置了热力图、迷你图样式和数值格式化的 Pandas Styler 对象。
         """
         return self._get_styler(
             self.overview_table, 
-            title="Dataset Overview", 
+            title="数据全量概览 (Dataset Overview)", 
             cmap="RdYlGn_r", 
-            # 仅对特定的 DQ 指标应用热力图，避免污染其他数值列
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "top1_ratio"],
-            fmt_as_pct=False # Overview 表混合了百分比和普通数值，需自动判断
+            fmt_as_pct=False
         )
 
     def show_dq(self, metric: str) -> "pd.io.formats.style.Styler":
         """
-        展示数据质量 (DQ) 指标趋势。
+        展示指定数据质量 (DQ) 指标的趋势表。
         
         Parameters
         ----------
         metric : str
-            DQ 指标名 ('missing', 'zeros', 'unique', 'top1')。
+            DQ 指标名称，可选：'missing', 'zeros', 'unique', 'top1'。
 
         Returns
         -------
         pd.io.formats.style.Styler
-            应用了格式化的 Pandas Styler 对象。
+            针对百分比指标优化的 Pandas Styler 对象。
+
+        Raises
+        ------
+        ValueError
+            当输入的指标名称不在 dq_tables 中时抛出。
         """
-        if metric not in self.dq_tables: raise ValueError(f"Unknown DQ metric: {metric}")
+        if metric not in self.dq_tables:
+            raise ValueError(f"未知的 DQ 指标: {metric}")
         return self._get_styler(
             self.dq_tables[metric], 
-            title=f"DQ Trend: {metric}", 
+            title=f"数据质量趋势: {metric}", 
             cmap="RdYlGn_r",
-            fmt_as_pct=True # DQ 指标全为百分比，强制格式化
+            fmt_as_pct=True
         )
 
     def show_trend(self, metric: str) -> "pd.io.formats.style.Styler":
         """
-        展示统计指标趋势 (含稳定性监控)。
+        展示指定统计指标的趋势表。
         
+        针对稳定性指标 (group_cv) 会自动添加数据条 (Data Bars) 可视化。
+
         Parameters
         ----------
         metric : str
-            统计指标名 ('mean', 'std', 'max' 等)。
+            统计指标名称，例如：'mean', 'std', 'max', 'p50' 等。
 
         Returns
         -------
         pd.io.formats.style.Styler
-            应用了 Data Bars (用于 CV/Stability) 的 Pandas Styler 对象。
+            包含稳定性数据条展示的 Pandas Styler 对象。
+
+        Raises
+        ------
+        ValueError
+            当输入的指标名称不在 stats_tables 中时抛出。
         """
-        if metric not in self.stats_tables: raise ValueError(f"Unknown Stat metric: {metric}")
+        if metric not in self.stats_tables:
+            raise ValueError(f"未知的统计指标: {metric}")
         return self._get_styler(
             self.stats_tables[metric], 
-            title=f"Stat Trend: {metric}", 
+            title=f"指标分布趋势: {metric}", 
             cmap="Blues", 
-            add_bars=True, # 启用 Data Bars 显示 CV/Stability
+            add_bars=True,
             fmt_as_pct=False
         )
 
     def write_excel(self, path: str = "mars_report.xlsx") -> None:
         """
-        将完整报告导出为 Excel 文件。
+        将分析结果完整导出为带视觉格式的 Excel 文件。
         
-        该方法不仅导出数据，还会保留所有的视觉样式，包括：
-        - 条件格式 (热力图)
-        - 数据条 (Data Bars)
-        - **百分比数字格式** (关键修复点，确保 Excel 中是数值而非文本)
-        - 列宽自适应
+        导出内容包括：
+        1. Overview (概览页): 包含特征分布热力图。
+        2. DQ_{Metric} (质量趋势页): 包含缺失率等趋势。
+        3. Trend_{Metric} (分布趋势页): 包含稳定性分析及数据条展示。
+
+        Excel 特性：
+        - 百分比数字格式。
+        - 自动列宽适配。
+        - 冻结表头样式。
 
         Parameters
         ----------
         path : str, default "mars_report.xlsx"
-            导出文件的路径。
+            导出文件的目标路径。
         """
-        logger.info(f"📊 Exporting to {path}...")
+        logger.info(f"📊 正在导出报告至: {path}...")
         try:
             with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
-                # 1. 导出 Overview Sheet
-                if (styler := self.show_overview()) is not None:
-                    styler.to_excel(writer, sheet_name="Overview", index=False)
+                # 1. 导出概览页
+                overview_styler: Optional["pd.io.formats.style.Styler"] = self.show_overview()
+                if overview_styler is not None:
+                    overview_styler.to_excel(writer, sheet_name="Overview", index=False)
                 
-                # 2. 导出 DQ Sheets (循环所有 DQ 指标)
+                # 2. 导出 DQ 指标页
                 for name in self.dq_tables:
-                    if (styler := self.show_dq(name)) is not None:
-                        styler.to_excel(writer, sheet_name=f"DQ_{name}", index=False)
+                    dq_styler = self.show_dq(name)
+                    if dq_styler is not None:
+                        dq_styler.to_excel(writer, sheet_name=f"DQ_{name}", index=False)
                 
-                # 3. 导出 Stat Sheets (循环所有统计指标)
+                # 3. 导出统计指标页 (特别处理 Data Bars)
                 for name in self.stats_tables:
-                    if (styler := self.show_trend(name)) is not None:
-                        sheet_name = f"Trend_{name.capitalize()}"
-                        styler.to_excel(writer, sheet_name=sheet_name, index=False)
+                    trend_styler = self.show_trend(name)
+                    if trend_styler is not None:
+                        sheet_name: str = f"Trend_{name.capitalize()}"
+                        trend_styler.to_excel(writer, sheet_name=sheet_name, index=False)
                         
-                        # 特殊处理：使用 xlsxwriter 原生接口添加 Data Bars (Pandas Styler 对 DataBars 的导出支持有限)
-                        # 我们需要重新获取 DataFrame 来定位 group_cv 列
-                        df = self._to_pd(self.stats_tables[name])
-                        if "group_cv" in df.columns:
+                        # 通过 xlsxwriter 原生接口补全 Data Bars 导出支持
+                        df_pd: pd.DataFrame = self._to_pd(self.stats_tables[name])
+                        if "group_cv" in df_pd.columns:
                             worksheet = writer.sheets[sheet_name]
-                            # 获取列索引 (Pandas 导出默认无 index，所以直接是 DataFrame 的列序)
-                            col_idx = df.columns.get_loc("group_cv")
-                            # 应用红色数据条到 group_cv 列
-                            worksheet.conditional_format(1, col_idx, len(df), col_idx, {
-                                'type': 'data_bar', 'bar_color': '#FF9999', 'bar_solid': True,
-                                'min_type': 'num', 'min_value': 0, 'max_type': 'num', 'max_value': 1
+                            col_idx: int = df_pd.columns.get_loc("group_cv")
+                            # 应用红色渐变数据条
+                            worksheet.conditional_format(1, col_idx, len(df_pd), col_idx, {
+                                'type': 'data_bar', 
+                                'bar_color': '#FF9999', 
+                                'bar_solid': True,
+                                'min_type': 'num', 'min_value': 0, 
+                                'max_type': 'num', 'max_value': 1
                             })
                             
-                # 4. 自动调整列宽
+                # 4. 自动列宽调整
                 for sheet in writer.sheets.values():
                     sheet.autofit()
-            logger.info("✅ Done.")
+                    
+            logger.info("✅ 报告导出完成。")
         except Exception as e:
-            logger.error(f"Failed to export Excel: {e}")
+            logger.error(f"❌ Excel 导出失败: {e}")
 
-    # --- Internal Helpers ---
-    
     def _to_pd(self, df: Any) -> pd.DataFrame:
         """
-        [Helper] 确保转换为 Pandas DataFrame。
-        
-        Pandas Styler 只能工作在 Pandas DataFrame 上，因此如果是 Polars 对象需转换。
+        [辅助方法] 确保数据转换为 Pandas DataFrame 格式。
+
+        Parameters
+        ----------
+        df : Any
+            输入数据，支持 Polars DataFrame 或 Pandas DataFrame。
+
+        Returns
+        -------
+        pd.DataFrame
+            转换后的 Pandas 对象。
         """
         if isinstance(df, pl.DataFrame):
             return df.to_pandas()
@@ -254,89 +289,85 @@ class MarsProfileReport:
         df_input: Any, 
         title: str, 
         cmap: str, 
-        subset_cols: List[str] = None, 
+        subset_cols: Optional[List[str]] = None, 
         add_bars: bool = False, 
         fmt_as_pct: bool = False
-    ) -> "pd.io.formats.style.Styler":
+    ) -> Optional["pd.io.formats.style.Styler"]:
         """
-        [Helper] 通用样式生成器。
+        [Internal] 通用样式生成器。
         
-        负责生成统一风格的 Pandas Styler 对象，包含热力图、数字格式化和特殊字体设置。
+        负责构建统一的 Pandas Styler 对象，处理色彩映射、数值格式和 CSS 样式。
 
         Parameters
         ----------
         df_input : Any
-            输入 DataFrame (Polars 或 Pandas)。
+            待格式化的 DataFrame。
         title : str
             表格标题 (Caption)。
         cmap : str
-            热力图颜色映射 (如 'RdYlGn_r', 'Blues')。
+            色彩映射方案 (Matplotlib colormap)。
         subset_cols : List[str], optional
-            指定应用热力图的列名列表。如果为 None，则自动对所有数值列(排除元数据)应用。
+            指定应用渐变色的列。若为 None 则对所有可用数值列应用。
         add_bars : bool, default False
-            是否为 'group_cv' 列添加数据条 (Data Bars)。
+            是否在 'group_cv' 列上绘制数据条。
         fmt_as_pct : bool, default False
-            - True: 强制将除元数据外的所有数值列格式化为百分比 (DQ 趋势表模式)。
-            - False: 智能判断，仅对列名包含 'rate'/'ratio' 的列应用百分比 (Overview/Stats 模式)。
+            是否强制将数值列显示为百分比。
 
         Returns
         -------
-        pd.io.formats.style.Styler
-            配置好的 Styler 对象。
+        Optional[pd.io.formats.style.Styler]
+            配置完成的 Styler 对象；若输入为空则返回 None。
         """
-        if df_input is None: return None
-        df = self._to_pd(df_input)
-        if df.empty: return None
+        if df_input is None:
+            return None
+        df: pd.DataFrame = self._to_pd(df_input)
+        if df.empty:
+            return None
 
-        # 元数据列，不参与热力图也不参与格式化
-        # [修改] 增加 "distribution" 到排除列表，防止 Sparkline 被当作数值处理
-        exclude = ["feature", "dtype", "group_var", "group_cv", "distribution"]
+        # 元数据排除列表：不参与热力图染色和百分比格式化
+        exclude_meta: List[str] = ["feature", "dtype", "group_var", "group_cv", "distribution"]
         
-        # 1. 确定应用热力图的列
+        # 1. 确定色彩渐变范围
         if subset_cols:
-            gradient_cols = [c for c in subset_cols if c in df.columns]
+            gradient_cols: List[str] = [c for c in subset_cols if c in df.columns]
         else:
-            gradient_cols = [c for c in df.columns if c not in exclude]
+            gradient_cols = [c for c in df.columns if c not in exclude_meta]
 
         styler = df.style.set_caption(f"<b>{title}</b>").hide(axis="index")
         
-        # 2. 应用热力图 (Gradient)
+        # 2. 应用热力图
         if gradient_cols:
             styler = styler.background_gradient(cmap=cmap, subset=gradient_cols, axis=None)
         
-        # 3. 应用数据条 (Data Bars for Stability)
+        # 3. 应用数据条 (稳定性专用)
         if add_bars and "group_cv" in df.columns:
             styler = styler.bar(subset=["group_cv"], color='#ff9999', vmin=0, vmax=1, width=90)
             styler = styler.format("{:.4f}", subset=["group_cv", "group_var"])
 
         # 4. 数值格式化逻辑
-        #    注意：这里定义的 format string 会被传入 Excel，使其显示为真正的数字而非文本。
-        num_cols = df.select_dtypes(include=['number']).columns
-        # 排除非数据列
-        data_cols = [c for c in num_cols if c not in ["group_var", "group_cv", "distribution"]]
+        num_cols: pd.Index = df.select_dtypes(include=['number']).columns
+        data_cols: List[str] = [c for c in num_cols if c not in ["group_var", "group_cv", "distribution"]]
 
-        # [关键修复] 使用 Pandas Styler 支持的格式化字符串
-        # "{:.2%}" 在导出 Excel 时会被正确映射为百分比格式 (0.00%)
-        pct_format = "{:.2%}"  
-        float_format = "{:.2f}"
+        pct_format: str = "{:.2%}"  
+        float_format: str = "{:.2f}"
 
         if fmt_as_pct:
-            # 强制模式 (DQ Trend): 所有数据列都是百分比
+            # 强制百分比模式 (DQ 模式)
             if data_cols:
                 styler = styler.format(pct_format, subset=data_cols)
         else:
-            # 自动模式 (Overview / Stats): 根据列名智能判断
-            pct_cols = [c for c in df.columns if "rate" in c or "ratio" in c]
+            # 智能判断模式 (Overview/Stats 模式)
+            pct_cols: List[str] = [c for c in df.columns if "rate" in c or "ratio" in c]
             if pct_cols:
                 styler = styler.format(pct_format, subset=pct_cols)
             
-            float_cols = [c for c in data_cols if c not in pct_cols]
+            float_cols: List[str] = [c for c in data_cols if c not in pct_cols]
             if float_cols:
                 styler = styler.format(float_format, subset=float_cols)
         
-        # 5. 针对 Sparkline (distribution) 列的特殊样式
-        #    强制使用 Monospace 字体，确保字符画在 Jupyter 中对齐；设置颜色为深蓝色
+        # 5. 分布迷你图 (Sparkline) 样式配置
         if "distribution" in df.columns:
+            # 注入 CSS 确保等宽字体和颜色一致性
             styler = styler.set_table_styles([
                 {'selector': '.col_distribution', 'props': [
                     ('font-family', 'monospace'), 
@@ -346,10 +377,16 @@ class MarsProfileReport:
                 ]}
             ], overwrite=False)
 
-        # 全局样式 (表头对齐、字体大小)
+        # 6. 全局表格外观配置
         styler = styler.set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'left'), ('background-color', '#f0f2f5'), ('color', '#333')]},
-            {'selector': 'caption', 'props': [('font-size', '1.2em'), ('padding', '10px 0'), ('color', '#2c3e50')]}
+            {
+                'selector': 'th', 
+                'props': [('text-align', 'left'), ('background-color', '#f0f2f5'), ('color', '#333')]
+            },
+            {
+                'selector': 'caption', 
+                'props': [('font-size', '1.2em'), ('padding', '10px 0'), ('color', '#2c3e50')]
+            }
         ], overwrite=False)
 
         return styler
