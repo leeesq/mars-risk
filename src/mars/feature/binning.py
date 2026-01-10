@@ -88,7 +88,7 @@ class MarsNativeBinner(MarsTransformer):
             return
 
         # ========================================================
-        # [优化] 极速预过滤 (修正版)
+        # [优化] 极速预过滤 
         # ========================================================
         valid_cols = []
         n_rows = X.height
@@ -101,7 +101,6 @@ class MarsNativeBinner(MarsTransformer):
             stats_exprs.append(pl.col(c).max().alias(f"{c}_max"))
             
         # 2. 触发并行计算 (One-Shot)
-        # 速度极快，20万行x2000列通常在 50ms 以内
         stats_row = X.select(stats_exprs).row(0)
         
         # 3. 解析结果
@@ -112,15 +111,15 @@ class MarsNativeBinner(MarsTransformer):
             max_val = stats_row[base_idx + 2]
             
             # Case A: 全空列 -> 跳过
-            # 这种列没有任何信息，分箱没有意义
+            #   这种列没有任何信息，分箱没有意义
             if null_cnt == n_rows:
                 logger.warning(f"Feature '{c}' is all null. Skipped.")
                 self.bin_cuts_[c] = [float('-inf'), float('inf')]
                 continue
             
             # Case B: 单一值检查 (Constant Value)
-            # 修正逻辑：只有当 min == max 且 没有空值 时，才是真正的"单一值"。
-            # 如果 min == max 但有空值 (如 [1, 1, null])，它实际上是二值特征 (1 vs Missing)，必须保留！
+            #   只有当 min == max 且 没有空值 时，才是真正的"单一值"。
+            #   如果 min == max 但有空值 (如 [1, 1, null])，它实际上是二值特征 (1 vs Missing)，必须保留！
             if min_val == max_val and null_cnt == 0:
                 logger.warning(f"Feature '{c}' has constant value ({min_val}) and no nulls. Skipped.")
                 self.bin_cuts_[c] = [float('-inf'), float('inf')]

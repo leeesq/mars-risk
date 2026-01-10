@@ -157,7 +157,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         if config_overrides:
             run_config = dataclasses.replace(self.config, **config_overrides)
 
-        logger.info(f"Starting profiling (Group: {profile_by}, Sparkline: {run_config.enable_sparkline})...")
+        logger.info(f"Starting profiling (Profile by: {profile_by}, Sparkline: {run_config.enable_sparkline})...")
         
         # 2. 计算全量概览 (Overview) - 核心基础表
         #    包含: Sparkline, DQ, Stats

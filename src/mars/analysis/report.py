@@ -97,26 +97,26 @@ class MarsProfileReport:
 
         # 构建控制面板内容
         lines: List[str] = []
-        lines.append('<code>.show_overview()</code> 👈 <b>全量指标看板 (推荐起点)</b>')
+        lines.append('<code>.show_overview()</code> 👈 <b>Full Overview (Recommended)</b>')
         
         dq_keys: List[str] = list(self.dq_tables.keys())
         dq_links: List[str] = [f"<code>.show_dq('{k}')</code>" for k in dq_keys]
-        lines.append(f'数据质量趋势: {", ".join(dq_links)}')
+        lines.append(f'DQ Trends: {", ".join(dq_links)}')
         
         stats_keys: List[str] = list(self.stats_tables.keys())
         if stats_keys:
             stat_links: List[str] = [f"<code>.show_trend('{k}')</code>" for k in stats_keys]
-            lines.append(f'统计指标趋势: {", ".join(stat_links)}')
+            lines.append(f'Stats Trends: {", ".join(stat_links)}')
         
-        lines.append('<code>.write_excel()</code> 导出带格式的报表')
-        lines.append('<code>.get_profile_data()</code> 获取原始数据用于特征筛选')
+        lines.append('<code>.write_excel()</code> Export formatted report')
+        lines.append('<code>.get_profile_data()</code> Get raw data for feature selection')
 
         return f"""
         <div style="border-left: 5px solid #2980b9; background-color: #f4f6f7; padding: 15px; border-radius: 0 5px 5px 0;">
-            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📊 Mars 数据画像报告</h3>
+            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📊 Mars Data Profile Report</h3>
             <div style="display: flex; gap: 20px; margin-bottom: 10px; color: #555;">
-                <div><strong>🏷️ 特征总数:</strong> {n_feats}</div>
-                <div><strong>📅 分组粒度:</strong> {n_groups}</div>
+                <div><strong>🏷️ Features:</strong> {n_feats}</div>
+                <div><strong>📅 Groups:</strong> {n_groups}</div>
             </div>
             <div style="font-size:0.9em; line-height:1.8; color:#7f8c8d; border-top: 1px solid #e0e0e0; padding-top: 8px;">
                 { "<br>".join(lines) }
@@ -139,7 +139,7 @@ class MarsProfileReport:
         """
         return self._get_styler(
             self.overview_table, 
-            title="数据全量概览 (Dataset Overview)", 
+            title="Dataset Overview", 
             cmap="RdYlGn_r", 
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "top1_ratio"],
             fmt_as_pct=False
@@ -165,10 +165,10 @@ class MarsProfileReport:
             当输入的指标名称不在 dq_tables 中时抛出。
         """
         if metric not in self.dq_tables:
-            raise ValueError(f"未知的 DQ 指标: {metric}")
+            raise ValueError(f"Unknown DQ metric: {metric}")
         return self._get_styler(
             self.dq_tables[metric], 
-            title=f"数据质量趋势: {metric}", 
+            title=f"DQ Trends: {metric}", 
             cmap="RdYlGn_r",
             fmt_as_pct=True
         )
@@ -195,10 +195,10 @@ class MarsProfileReport:
             当输入的指标名称不在 stats_tables 中时抛出。
         """
         if metric not in self.stats_tables:
-            raise ValueError(f"未知的统计指标: {metric}")
+            raise ValueError(f"Unknown stats metric: {metric}")
         return self._get_styler(
             self.stats_tables[metric], 
-            title=f"指标分布趋势: {metric}", 
+            title=f"Stats Trend: {metric}", 
             cmap="Blues", 
             add_bars=True,
             fmt_as_pct=False
@@ -223,7 +223,7 @@ class MarsProfileReport:
         path : str, default "mars_report.xlsx"
             导出文件的目标路径。
         """
-        logger.info(f"📊 正在导出报告至: {path}...")
+        logger.info(f"📊 Exporting report to: {path}...")
         try:
             with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
                 # 1. 导出概览页
@@ -262,9 +262,9 @@ class MarsProfileReport:
                 for sheet in writer.sheets.values():
                     sheet.autofit()
                     
-            logger.info("✅ 报告导出完成。")
+            logger.info("✅ Report exported successfully.")
         except Exception as e:
-            logger.error(f"❌ Excel 导出失败: {e}")
+            logger.error(f"❌ Failed to export Excel: {e}")
 
     def _to_pd(self, df: Any) -> pd.DataFrame:
         """
