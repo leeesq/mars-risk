@@ -7,24 +7,54 @@ from mars.utils.logger import logger
 from mars.utils.decorators import time_it
 from mars.core.base import MarsBaseEstimator
 from mars.analysis.report import MarsProfileReport
-from mars.core.config import MarsProfileConfig
+from mars.analysis.config import MarsProfileConfig
 
 class MarsDataProfiler(MarsBaseEstimator):
     """
-    [全能版] MarsDataProfiler - 基于 Polars 的高性能多维数据体检工具。
+    MarsDataProfiler - 基于 Polars 的高性能多维数据画像工具。
+
+    专为大规模风控建模数据集设计。它作为分析流程的入口，封装了从
+    数据质量诊断、统计值计算到可视化生成的全链路逻辑。
+
+    主要功能 (Key Features)
+    -----------------------
+    1. **全量指标概览 (Overview)**:
+       - 计算 Missing/Zero/Unique 等基础 DQ 指标。
+       - 自动识别并计算数值列的统计分布 (Mean, Std, Quantiles)。
     
-    专为大规模风控建模数据集设计。它利用 Polars 的高性能计算引擎，
-    不仅能进行基础的数据质量 (DQ) 体检，还能对特征的统计分布进行
-    跨时间/跨客群的稳定性监控，并提供字符画形式的迷你分布图可视化。
+    2. **迷你分布图 (Sparklines)**:
+       - 在报告中生成 Unicode 字符画 (如  ▂▅▇█)。
+       - **可视化逻辑**: 自动采样 (默认20w行) -> 剔除异常值 -> 等宽分箱 -> 字符映射。
+       - 支持通过 Config 调整分箱精度和采样率。
+
+    3. **多维趋势分析 (Trend Analysis)**:
+       - 支持按时间 (Month/Vintage) 或客群 (Segment) 进行分组分析。
+       - 自动计算组间稳定性指标 (Variance/CV)。
 
     Attributes
     ----------
     df : pl.DataFrame
         内部存储的 Polars DataFrame。
     config : MarsProfileConfig
-        全局配置对象，包含指标列表、报警阈值和可视化参数。
+        全局配置对象。控制计算哪些指标、是否画图、报警阈值等。
+        详见 `mars.analysis.config.MarsProfileConfig`。
     custom_missing : List[Any]
-        自定义缺失值列表 (如 -999, 'null')，在计算 missing_rate 时会被视为 Null。
+        自定义缺失值列表 (如 -999, 'null')。在计算 missing_rate 和画分布图时，
+        这些值会被自动识别并剔除，确保统计准确性。
+
+    Examples
+    --------
+    >>> # 1. 基础用法
+    >>> profiler = MarsDataProfiler(df)
+    >>> report = profiler.generate_profile()
+    >>> report.show_overview()
+
+    >>> # 2. 高级用法：自定义缺失值 + 按月分组 + 关闭画图(提速)
+    >>> profiler = MarsDataProfiler(df, custom_missing_values=[-999, "unknown"])
+    >>> report = profiler.generate_profile(
+    ...     profile_by="month",
+    ...     config_overrides={"enable_sparkline": False}
+    ... )
     """
 
     def __init__(
@@ -41,7 +71,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         df : Union[pl.DataFrame, pd.DataFrame]
             输入数据集。会自动转换为 Polars 格式以利用其向量化计算优势。
         config : MarsProfileConfig, optional
-            配置对象。如果为 None，则使用默认配置 (包含默认指标和阈值)。
+            配置对象。如果为 None，则使用默认配置。
         custom_missing_values : List[Union[int, float, str]], optional
             指定自定义缺失值列表。例如: [-999, "unknown", "\\N"]。
         """
@@ -57,7 +87,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         config_overrides: Optional[Dict[str, Any]] = None
     ) -> MarsProfileReport:
         """
-        [核心接口] 执行数据体检管道，生成完整分析报告。
+        [核心接口] 执行数据画像分析管道，生成完整分析报告。
 
         该方法会自动计算两类指标：
         1. **Overview (全量概览)**: 包含数据分布(Sparkline)、DQ指标、统计指标。不涉及分组。
@@ -84,7 +114,6 @@ class MarsDataProfiler(MarsBaseEstimator):
             **2. 可视化 (Visualization)**
             
             * ``enable_sparkline`` (bool): 是否计算字符画形式的迷你分布图 (默认 True)。
-              (建议在极大数据量或追求极致性能时设为 False)。
             * ``sparkline_sample_size`` (int): 计算分布图时的采样行数。
             * ``sparkline_bins`` (int): 分布图的分箱精度。
 
@@ -100,16 +129,28 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Examples
         --------
-        >>> # 场景 1: 仅计算均值和最大值，并关闭 Sparkline 以加速
-        >>> profiler.generate_profile(
-        ...     config_overrides={
-        ...         "stat_metrics": ["mean", "max"], 
-        ...         "enable_sparkline": False
-        ...     }
-        ... )
+        >>> # 1. 基础用法：生成并查看报告
+        >>> profiler = MarsDataProfiler(df)
+        >>> report = profiler.generate_profile()
         
-        >>> # 场景 2: 按月份分组分析
+        >>> # 拿到 report 后怎么用？
+        >>> report # 在 Jupyter 中显示报告的用法
+        >>> report.show_overview()  # 在 Jupyter 中显示数据概览
+        >>> report.write_excel("my_analysis.xlsx")  # 导出 Excel
+
+        >>> # 2. 高级用法：按月分组分析
         >>> report = profiler.generate_profile(profile_by="month")
+        >>> report.show_trend("mean") # 查看均值随月份的变化趋势
+        
+        >>> # 3. 获取底层数据 (可以用于自动化特征筛选)
+        >>> # 返回值结构:
+        >>> # overview: DataFrame (全量概览)
+        >>> # dq_tables: Dict[str, DataFrame] (DQ 指标趋势表字典)
+        >>> # stat_tables: Dict[str, DataFrame] (统计指标趋势表字典)
+        >>> overview, dq_tables, stat_tables = report.get_profile_data()
+        
+        >>> # 示例: 筛选出缺失率 > 90% 的特征列表
+        >>> high_missing_cols = overview.filter(pl.col("missing_rate") > 0.9)["feature"].to_list()
         """
         # 1. 动态配置合并 (只影响本次运行，不污染 self.config)
         run_config: MarsProfileConfig = self.config
@@ -143,8 +184,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         logger.info("Profile generated successfully.")
 
         # 4. 统一封装 
-        #    利用基类的 _format_output，如果我们被 set_output("pandas")，
-        #    这里的 Polars DF 会被自动转为 Pandas DF 存入 Report 对象
+        #    利用基类的 _format_output 自动处理格式转换
         return MarsProfileReport(
             overview=self._format_output(overview_df),
             dq_tables=self._format_output(dq_tables),
@@ -152,14 +192,14 @@ class MarsDataProfiler(MarsBaseEstimator):
         )
 
     # =========================================================================
-    # 核心实现逻辑 (Internal Core Logic)
+    # Internal Core Logic (核心实现)
     # =========================================================================
 
     def _calculate_overview(self, config: MarsProfileConfig) -> pl.DataFrame:
         """
         [Internal] 计算全量概览大宽表 (不分组)。
         
-        流程:
+        Pipeline:
         1. 向量化计算所有基础指标 (DQ + Stats)。
         2. 拼接特征元数据 (Dtype)。
         3. (可选) 计算并合并迷你分布图 (Sparkline)。
@@ -173,33 +213,31 @@ class MarsDataProfiler(MarsBaseEstimator):
         Returns
         -------
         pl.DataFrame
-            包含 feature, dtype, distribution, missing_rate, mean... 等所有指标的宽表。
+            包含 feature, dtype, distribution, missing_rate... 等所有指标的宽表。
         """
         cols = self.df.columns
         
-        # 1. 向量化计算所有基础指标
+        # 1. 向量化计算所有基础指标 (One-Pass)
         stats: pl.DataFrame = self._analyze_cols_vectorized(cols, config)
         
-        # 2. 拼上 dtype 信息
+        # 2. 拼接 dtype 信息
         dtype_df: pl.DataFrame = self._get_feature_dtypes()
         stats = stats.join(dtype_df, on="feature", how="left")
         
         # 3. [Feature] 计算迷你分布图 (Sparklines)
-        #    为了不影响性能，这里只对数值列计算，且内部包含采样逻辑
         if config.enable_sparkline:
-            sparkline_df: pl.DataFrame = self._compute_all_sparklines_polars(cols, config)
+            sparkline_df: pl.DataFrame = self._compute_all_sparklines(cols, config)
             if not sparkline_df.is_empty():
                 stats = stats.join(sparkline_df, on="feature", how="left")
         
         # 4. 显式指定列顺序：Feature -> Dtype -> Distribution -> DQ -> Stats
         ideal_order: List[str] = [
             "feature", "dtype", 
-            "distribution",  # <--- 新增列放在这里
-            # DQ Rates (优先展示)
+            "distribution",  
             "missing_rate", "zeros_rate", "unique_rate", "top1_ratio"
-        ] + config.stat_metrics # Mean, Std, etc.
+        ] + config.stat_metrics
         
-        # 容错：只选择实际存在的列 (final_cols) 并保持 ideal_order 的顺序
+        # 容错：只选择实际存在的列并保持 ideal_order 的顺序
         final_cols: List[str] = []
         seen = set()
         for c in ideal_order:
@@ -212,35 +250,43 @@ class MarsDataProfiler(MarsBaseEstimator):
         
         return stats.select(final_cols + remaining_cols).sort(["dtype", "feature"])
 
-    def _compute_all_sparklines_polars(self, cols: List[str], config: MarsProfileConfig) -> pl.DataFrame:
+    def _compute_all_sparklines(self, cols: List[str], config: MarsProfileConfig) -> pl.DataFrame:
         """
-        [Internal] 批量计算数值列的迷你分布图 (Polars Native V2)。
+        [Internal] 批量计算数值列的迷你分布图 (Polars Native V3)。
 
-        该方法使用 Polars 原生 API (`series.hist`) 进行直方图统计，并映射为 Unicode 字符画。
-        相比 Numpy 方案，它减少了数据在 Python 和 Rust 内存间的拷贝，并在处理缺失值和
-        边缘情况（如常量列、全空列）时更加鲁棒。
+        使用 Polars 原生 API (`series.hist`) 进行直方图统计，并映射为 Unicode 字符画。
+        相比 Numpy 方案，减少了数据拷贝，并在处理缺失值和边缘情况时更加鲁棒。
+
+        **分布图符号说明 (Visual Representation)**:
+        -----------------------------------------
+        * **正常分布**: 使用 Unicode 方块字符表示频率高低 (如 ``_ ▂▅▇█``)。
+          - **0 值**: 强制使用下划线 ``_`` 作为基准线，确保视觉占位。
+          - **非 0 值**: 使用 2/8 到 8/8 高度的方块 (``▂`` 到 ``█``)，跳过 1/8 块以增强可视性。
+        
+        * **无有效数据**: 显示全下划线 ``________``。
+          - 场景: 原始列全为 Null/NaN，或者所有值都在 `custom_missing` 列表中。
+        
+        * **逻辑无分布**: 显示全下划线 ``________`` (并记录 Debug 日志)。
+          - 场景: 数据存在 (len>0) 但无法构建直方图 (如全为无穷大 Inf)。
+        
+        * **单一值 (Constant)**: 显示居中方块 ``____█____``。
+          - 场景: 方差为 0，所有有效值都相等。
+        
+        * **计算异常**: 显示 ``ERR``。
 
         Parameters
         ----------
         cols : List[str]
             待计算的列名列表。方法内部会自动筛选出数值型列。
         config : MarsProfileConfig
-            配置对象。使用其中的 `sparkline_sample_size` 控制采样行数，
-            `sparkline_bins` 控制直方图的分箱数量（即字符画长度）。
+            包含 `sparkline_sample_size` (采样数) 和 `sparkline_bins` (字符画长度/分箱数) 配置。
 
         Returns
         -------
         pl.DataFrame
-            包含两列的 DataFrame：
-            - feature (str): 特征名称。
-            - distribution (str): 分布图字符串 (如 "  ▂▅▇█ ")。
-              特殊状态说明:
-              - "-": 无有效数据。
-              - "ERR": 计算过程发生异常。
-              - "    █    ": 数据为常量（方差为0）。
+            包含 [feature, distribution] 的两列 DataFrame。
         """
         # 1. 筛选数值列 (非数值列无法画分布图)
-        # -------------------------------------------------------------------------
         num_cols: List[str] = [c for c in cols if self._is_numeric(c)]
         if not num_cols:
             return pl.DataFrame(
@@ -248,82 +294,76 @@ class MarsDataProfiler(MarsBaseEstimator):
                 schema={"feature": pl.String, "distribution": pl.String}
             )
 
-        # 2. 采样 (Sampling) - 性能关键点
-        # -------------------------------------------------------------------------
-        # 如果数据量超过配置上限 (默认20w)，则进行不放回采样以加速直方图计算。
-        # 对于分布概览而言，大样本采样足以拟合整体形态。
+        # 2. 采样 (Sampling) - 性能优化
+        #    如果数据量超过上限，则进行不放回采样以加速直方图计算
         sample_n: int = min(self.df.height, config.sparkline_sample_size)
         sample_df: pl.DataFrame = self.df.select(num_cols)
         
         if sample_df.height > sample_n:
             sample_df = sample_df.sample(sample_n, with_replacement=False)
 
-        # 3. 准备计算参数
-        # -------------------------------------------------------------------------
+        # 3. 准备字符集
+        #    0值使用下划线，非0值使用 Block Elements，确保视觉对比度和可见性
         sparkline_data: List[Dict[str, str]] = []
-        # Unicode 方块字符集: 0/8 到 8/8 高度
-        # bars: List[str] = list(" ▂▃▄▅▆▇█") 
         bars = ['_', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588']
         n_bins: int = config.sparkline_bins
         
-        # 4. 逐列计算
-        # -------------------------------------------------------------------------
         for col in num_cols:
             dist_str: str = "-" # 默认显示短横线，代表无数据
             try:
                 valid_missing: List[Any] = self._get_valid_missing(col)
-                
-                # [A] 数据清洗 (Data Cleaning)
-                # 获取 Series 引用 (Polars 是 Lazy/Copy-on-Write 的，此处开销很小)
                 target_s: pl.Series = sample_df[col]
                 
-                # A.1 过滤自定义缺失值 (如 -999, -1 等)
+                # --- A. 数据清洗 ---
                 if valid_missing:
-                    # 对于浮点数，先剔除 NaN，因为 Polars 的 is_in 无法匹配 NaN
+                    # 对于浮点数，先剔除 NaN (Polars is_in 不处理 NaN)
                     if target_s.dtype in [pl.Float32, pl.Float64]:
                          target_s = target_s.filter(target_s.is_not_nan())
-                    
-                    # 剔除配置中定义的缺失值
                     target_s = target_s.filter(~target_s.is_in(valid_missing))
 
-                # A.2 过滤 Null (物理缺失)
                 s: pl.Series = target_s.drop_nulls()
                 
-                # [B] 边界情况检查 (Edge Cases)
+                # --- B. 边界检查 ---
                 if s.len() == 0:
-                    dist_str = "-" # 清洗后无数据
+                    # [Case 1] 物理无数据: 清洗后什么都不剩了
+                    dist_str = "_" * n_bins 
+                    logger.debug(f"ℹ️ Sparkline skipped for '{col}': No valid data after cleaning (All Null/NaN or in custom_missing).")
                 elif s.len() == 1 or s.min() == s.max():
-                     dist_str = "    █    " # 常量 (居中显示)
+                     # 常量: 居中显示
+                     dist_str = "____█____" 
+                     logger.debug(f"ℹ️ Sparkline constant for '{col}': All values are {s.min()}.")
                 else:
-                    # [C] 核心计算: Polars 原生直方图
-                    # s.hist() 返回一个小型的 DataFrame
-                    # 列结构通常为: [break_point, category, count]
-                    # 注意: 不同 Polars 版本的 count 列名可能不同 (count, bin_count 等)
+                    # --- C. 核心计算 (Polars Hist) ---
+                    # hist 返回 [break_point, category, count]，最后一列是 count
                     hist_df: pl.DataFrame = s.hist(bin_count=n_bins)
-                    
-                    # 鲁棒性获取: 永远取最后一列作为计数列，规避列名变更问题
                     counts: List[int] = hist_df.get_column(hist_df.columns[-1]).to_list()
                     
-                    # [D] 字符映射 (Visualization Mapping)
+                    # --- D. 字符映射 ---
                     max_count = max(counts)
+                    
                     if max_count == 0:
-                        dist_str = "-"
+                        # [Case 2] 逻辑无分布: 有数据，但直方图没算出来 (如全 Inf)
+                        dist_str = "_" * n_bins
+                        # [Log] 记录特殊情况，方便排查为什么有数据却没图
+                        logger.debug(f"⚠️ Sparkline empty for '{col}': Data len={s.len()}, but histogram counts are 0. (Possible cause: all values are Infinite)")
                     else:
-                        # 归一化公式: count / max * 7 (索引 0-7)
-                        # 使用 int() 向下取整，确保索引不越界
-                        indices = [int(c / max_count * (len(bars) - 1)) for c in counts]
-                        dist_str = "".join([bars[i] for i in indices])
+                        chars = []
+                        for c in counts:
+                            if c == 0:
+                                chars.append(bars[0]) # 0 -> 下划线
+                            else:
+                                # 非0值映射到 1~7 范围 (跳过索引0)
+                                idx = int(c / max_count * (len(bars) - 2)) + 1
+                                idx = min(idx, len(bars) - 1)
+                                chars.append(bars[idx])
+                        dist_str = "".join(chars)
                         
             except Exception as e:
-                # 捕获单列计算异常，防止拖累整个报告生成
-                # 使用 error 级别日志以便在排查时可见
                 logger.error(f"Sparkline calculation failed for feature '{col}': {str(e)}")
                 dist_str = "ERR" 
             
             sparkline_data.append({"feature": col, "distribution": dist_str})
 
-        # 5. 返回结果表
-        # -------------------------------------------------------------------------
         return pl.DataFrame(
             sparkline_data, 
             schema={"feature": pl.String, "distribution": pl.String}
@@ -368,7 +408,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         agg_exprs = [self._get_single_metric_expr(c, metric).alias(c) for c in target_cols]
         # GroupBy -> Agg -> Sort
         grouped = self.df.group_by(group_col).agg(agg_exprs).sort(group_col)
-        # Transpose
+        # Transpose (Wide to Long to Wide) is handled implicitly or via helper if needed
+        # Polars transpose supports header_name since recent versions
         pivot_df = grouped.transpose(include_header=True, header_name="feature", column_names=group_col)
 
         # 3. Join Together
@@ -403,10 +444,10 @@ class MarsDataProfiler(MarsBaseEstimator):
                 metric_name = expr.meta.output_name()
                 all_exprs.append(expr.alias(f"{col}:::{metric_name}"))
 
-        # 执行计算
+        # 1. 执行计算 (One-Shot)
         raw_row = self.df.select(all_exprs)
         
-        # Reshape: Wide -> Long -> Wide
+        # 2. Reshape: Wide -> Long -> Wide
         # unpivot 是 Polars > 1.0 的新 API (旧版本为 melt)
         long_df = raw_row.unpivot(variable_name="temp_id", value_name="value")
         
@@ -464,21 +505,21 @@ class MarsDataProfiler(MarsBaseEstimator):
             .select(["feature", "dtype"] + calc_cols + ["total", "group_var", "group_cv"])
         )
 
-    # --- Expression Factories (表达式工厂) ---
+    # =========================================================================
+    # Expression Factories (表达式工厂)
+    # =========================================================================
     
     def _build_expressions(self, col: str) -> List[pl.Expr]:
-        """
-        [Factory] 为单个列生成所有 Overview 指标的计算表达式。
-        """
+        """[Factory] 为单个列生成所有 Overview 指标的计算表达式。"""
         return self._get_full_stats_exprs(col)
 
     def _get_single_metric_expr(self, col: str, metric_type: str) -> pl.Expr:
-        """
-        [Factory] 为单个列生成指定指标的计算表达式 (用于 Pivot)。
-        """
+        """[Factory] 为单个列生成指定指标的计算表达式 (用于 Pivot)。"""
         return self._get_metric_expr(col, metric_type)
 
-    # --- Helpers (辅助方法) ---
+    # =========================================================================
+    # Helpers (辅助方法)
+    # =========================================================================
     
     def _get_feature_dtypes(self) -> pl.DataFrame:
         """获取 Schema 信息表"""
@@ -511,6 +552,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         native_null = pl.col(col).null_count()
         total_len = pl.len()
         valid_missing = self._get_valid_missing(col)
+        
         # 总缺失 = 原生 Null + 自定义 Null
         total_missing = native_null + pl.col(col).is_in(valid_missing).sum() if valid_missing else native_null
         is_num = self._is_numeric(col)

@@ -22,12 +22,11 @@ class MarsProfileConfig:
     stat_metrics: List[str] = field(default_factory=lambda: ["mean", "std", "min", "max", "median"])
     dq_metrics: List[str] = field(default_factory=lambda: ["missing", "zeros", "unique", "top1"])
 
-    # --- 阈值 (红绿灯) ---
+    # --- 阈值 ---
     threshold_missing_danger: float = 0.50
     threshold_top1_danger: float = 0.90
-    threshold_psi_danger: float = 0.25
 
     # --- 可视化 ---
-    enable_sparkline: bool = True
-    sparkline_bins: int = 8  # 对应 8 个 Unicode 字符等级
+    enable_sparkline: bool = True # 是否启用迷你分布图
+    sparkline_bins: int = 8  # 分布图分箱数
     sparkline_sample_size: int = 200_000 # 采样上限
