@@ -104,13 +104,15 @@ mars/
 ├── feature/            # 特征工程模块
 │   ├── binning.py      # NativeBinner & OptimalBinner
 │   ├── encoding.py     # TODO
+│		├── selector.py     # TODO
 │   └── imputer.py      # TODO
 ├── risk/               # TODO
 ├── metrics/            # 指标计算
-│   └── calculation.py  # KS, AUC, PSI, WOE 
-├── modeling/           # TODO
+│   └── calculation.py  # TODO
+├── modeling/           # 自动建模流水线（最终幻想）TODO
 │   ├── base.py					# TODO
 │   └── tuner.py        # TODO
+├── scoring/            # 评分量化 TODO
 ├── core/               # 核心基类
 │   ├── base.py         # 兼容 Sklearn
 │   └── exceptions.py   # 自定义异常
