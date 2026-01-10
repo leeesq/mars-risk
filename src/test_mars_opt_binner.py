@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 
 from mars.feature.binning import MarsOptimalBinner
 
-
 class TestMarsOptimalBinner(unittest.TestCase):
     
     def setUp(self):
