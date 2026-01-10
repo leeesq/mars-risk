@@ -14,7 +14,7 @@ class MarsProfileReport:
     [报告容器] MarsProfileReport - 统一管理数据画像结果的展示与导出。
     
     该类作为 MarsDataProfiler 的输出容器，负责将原始的统计数据 (DataFrame)
-    转换为适合人类阅读的格式。它支持两种主要的输出渠道：
+    转换为适合阅读分析的格式。它支持两种主要的输出渠道：
     1. **Jupyter Notebook**: 生成富文本 HTML，包含交互式表格、热力图和迷你分布图。
     2. **Excel 文件**: 导出带格式 (条件格式、数据条、百分比) 的 Excel 报表。
 
