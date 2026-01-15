@@ -4,7 +4,7 @@ from typing import List
 @dataclass
 class MarsProfileConfig:
     """
-    [配置类] Mars 全局配置管理对象。
+    [配置类] Mars analysis profiler 的全局配置对象。
     
     Attributes
     ----------
@@ -15,16 +15,13 @@ class MarsProfileConfig:
     enable_sparkline : bool
         是否生成迷你分布图。默认 True。
     sparkline_bins : int
-        分布图的分箱数量 (字符画的精度)。默认 8 (对应  ▂▃▄▅▆▇█)。
+        分布图的分箱数量 (字符画的精度)。默认 8 (对应 _▂▃▄▅▆▇█)。
     """
     
     # --- 计算范围 ---
-    stat_metrics: List[str] = field(default_factory=lambda: ["mean", "std", "min", "max", "median"])
+    # "psi", "mean", "std", "min", "max", "p25", "median", "p75", "skew", "kurtosis"
+    stat_metrics: List[str] = field(default_factory=lambda: ["psi", "mean", "std", "min", "max", "p25", "median", "p75", "skew", "kurtosis"])
     dq_metrics: List[str] = field(default_factory=lambda: ["missing", "zeros", "unique", "top1"])
-
-    # --- 阈值 ---
-    threshold_missing_danger: float = 0.50
-    threshold_top1_danger: float = 0.90
 
     # --- 可视化 ---
     enable_sparkline: bool = True # 是否启用迷你分布图

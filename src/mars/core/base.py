@@ -44,41 +44,107 @@ class MarsBaseEstimator(BaseEstimator):
             self._return_pandas = False
         return self
 
-    def _ensure_polars(self, X: Any) -> pl.DataFrame:
+    def _ensure_polars(self, X: Any) -> Union[pl.DataFrame, pl.LazyFrame]:
         """
-        [类型守卫] 确保输入数据转换为 Polars DataFrame，并记录原始类型。
-
-        Parameters
-        ----------
-        X : Any
-            输入数据，通常为 Pandas 或 Polars 的 DataFrame。
-
-        Returns
-        -------
-        pl.DataFrame
-            转换后的 Polars DataFrame。
-
-        Raises
-        ------
-        DataTypeError
-            当输入不是 DataFrame 类型时抛出。
+        [类型守卫] 确保输入数据转换为 Polars DataFrame/LazyFrame，并执行严格校验。
         """
-        # Case 1: 已经是 Polars
+        # Case 1: 已经是 Polars Eager
         if isinstance(X, pl.DataFrame):
             return X
             
-        # Case 2: 是 Pandas
+        # Case 2: 是 Polars Lazy
+        elif isinstance(X, pl.LazyFrame):
+            return X
+
+        # Case 3: 是 Pandas (重点修改区域)
         elif isinstance(X, pd.DataFrame):
-            # 自动嗅探：如果输入是 Pandas，输出默认也应该是 Pandas (除非用户手动 set_output 改过)
             self._return_pandas = True
-            # Zero-Copy Conversion (尽可能零拷贝)
-            return pl.from_pandas(X)
             
-        # Case 3: 错误类型
-        elif isinstance(X, (pl.LazyFrame, pd.Series, pl.Series)):
-            raise DataTypeError(f"Input must be a generic DataFrame, got {type(X)}")
+            # 1. 执行转换 (尽可能 Zero-Copy)
+            try:
+                X_pl = pl.from_pandas(X)
+            except Exception as e:
+                raise DataTypeError(f"Failed to convert Pandas DataFrame to Polars: {e}")
+            
+            # 2. 🛡️【新增】执行转换后的类型一致性检查
+            self._validate_conversion(X, X_pl)
+            
+            return X_pl
+            
+        elif isinstance(X, (pd.Series, pl.Series)):
+            raise DataTypeError(f"Input must be a generic DataFrame (2D), got Series (1D): {type(X)}")
         else:
             raise DataTypeError(f"Mars expects Polars/Pandas DataFrame, got {type(X)}")
+
+    def _validate_conversion(self, df_pd: pd.DataFrame, df_pl: pl.DataFrame):
+        """
+        [安全检查] 对比 Pandas 和 Polars 的 Schema，防止数值类型意外崩坏为字符串。
+        """
+        # Polars 的数值类型集合
+        PL_NUMERIC_TYPES = {
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64, 
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, 
+            pl.Float32, pl.Float64
+        }
+        
+        for col in df_pd.columns:
+            pd_dtype = df_pd[col].dtype
+            pl_dtype = df_pl[col].dtype
+            
+            # ------------------------------------------------------------------
+            # 检查 1: 严格拦截 (Pandas 明确是数值 -> Polars 变成了非数值)
+            # ------------------------------------------------------------------
+            is_pd_numeric = pd.api.types.is_numeric_dtype(pd_dtype)
+            is_pl_numeric = pl_dtype in PL_NUMERIC_TYPES
+            
+            if is_pd_numeric and not is_pl_numeric:
+                # 允许例外: Pandas Int -> Polars Null (全空列可能发生)
+                if pl_dtype == pl.Null:
+                    continue
+                    
+                raise DataTypeError(
+                    f"❌ Critical Type Mismatch for column '{col}'! \n"
+                    f"   Pandas (Numeric): {pd_dtype} \n"
+                    f"   Polars (Non-Numeric): {pl_dtype}\n"
+                    "   This usually implies data corruption during conversion (e.g. overflow or encoding issues)."
+                )
+
+            # ------------------------------------------------------------------
+            # 检查 2: 脏数据陷阱预警 (Pandas Object -> Polars Utf8)
+            # ------------------------------------------------------------------
+            if pd_dtype == "object" and pl_dtype == pl.Utf8:
+                # 策略: 取前 10 个非空值进行嗅探
+                # 这是一个极低开销的操作 (Zero-Copy Slice)
+                sample_series = df_pl[col].drop_nulls().head(10)
+                
+                if sample_series.len() == 0:
+                    continue
+                
+                # 获取样本数据
+                samples = sample_series.to_list()
+                
+                # 启发式检查: 尝试看样本是否都能转为 float
+                # 如果样本里全是数字字符串 (如 "1.5", "20", "NaN")，说明这很可能是被脏数据污染的数值列
+                looks_like_numeric = True
+                try:
+                    for s in samples:
+                        # 尝试转换，如果含有 "unknown" 等非数字字符，float() 会抛出 ValueError
+                        float(s)
+                except ValueError:
+                    looks_like_numeric = False
+                
+                if looks_like_numeric:
+                    import warnings
+                    warnings.warn(
+                        f"\n⚠️  [Potential Dirty Data] Column '{col}' looks numeric but is treated as String.\n"
+                        f"   - Input (Pandas): object (mixed types)\n"
+                        f"   - Output (Polars): Utf8\n"
+                        f"   - Sample Values: {samples[:5]}...\n"
+                        f"   -> Risk: This column will be handled as Categorical. If it contains dirty strings "
+                        f"(e.g. 'null', 'unknown'), please clean them upstream or add them to 'missing_values'.",
+                        UserWarning,
+                        stacklevel=2
+                    )
 
     def _format_output(self, data: Any) -> Any:
         """

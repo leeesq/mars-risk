@@ -178,6 +178,7 @@ class MarsProfileReport:
         展示指定统计指标的趋势表。
         
         针对稳定性指标 (group_cv) 会自动添加数据条 (Data Bars) 可视化。
+        [新增] 针对 PSI 指标，使用红绿灯色系 (Red-Yellow-Green) 警示风险。
 
         Parameters
         ----------
@@ -196,12 +197,28 @@ class MarsProfileReport:
         """
         if metric not in self.stats_tables:
             raise ValueError(f"Unknown stats metric: {metric}")
+        
+        # [修改] 针对 PSI 的特殊可视化逻辑
+        cmap = "Blues"
+        vmin, vmax = None, None
+        
+        if metric == "psi":
+            # 使用红黄绿反转色系: 低(绿) -> 中(黄) -> 高(红)
+            cmap = "RdYlGn_r"
+            # [关键] 锚定 PSI 的绝对值范围，确保 0.25 以上呈现明显的红色
+            # 0.0 (Green) --- 0.1 (Yellow) --- 0.25 (Red) --- 0.5 (Dark Red)
+            vmin = 0.0
+            vmax = 0.5 
+        
         return self._get_styler(
             self.stats_tables[metric], 
             title=f"Stats Trend: {metric}", 
-            cmap="Blues", 
+            cmap=cmap, 
             add_bars=True,
-            fmt_as_pct=False
+            fmt_as_pct=False,
+            # [新增] 传入范围参数
+            vmin=vmin,
+            vmax=vmax
         )
 
     def write_excel(self, path: str = "mars_report.xlsx") -> None:
@@ -237,17 +254,33 @@ class MarsProfileReport:
                     if dq_styler is not None:
                         dq_styler.to_excel(writer, sheet_name=f"DQ_{name}", index=False)
                 
-                # 3. 导出统计指标页 (特别处理 Data Bars)
+                # 3. 导出统计指标页 (特别处理 Data Bars 和 PSI Colors)
                 for name in self.stats_tables:
                     trend_styler = self.show_trend(name)
                     if trend_styler is not None:
                         sheet_name: str = f"Trend_{name.capitalize()}"
                         trend_styler.to_excel(writer, sheet_name=sheet_name, index=False)
                         
-                        # 通过 xlsxwriter 原生接口补全 Data Bars 导出支持
                         df_pd: pd.DataFrame = self._to_pd(self.stats_tables[name])
+                        worksheet = writer.sheets[sheet_name]
+                        
+                        # [新增] 针对 PSI 的 Excel 条件格式 (3色阶)
+                        # 规则: 0(绿) -> 0.1(黄) -> 0.25(红)
+                        if name == "psi":
+                            # 确定应用范围: 除去 feature, dtype, total, group_var, group_cv 之外的数据列
+                            # 或者简单点，对所有数值格应用 (Excel 会自动忽略文本)
+                            start_col_idx = 0
+                            end_col_idx = len(df_pd.columns) - 1
+                            
+                            worksheet.conditional_format(1, start_col_idx, len(df_pd), end_col_idx, {
+                                'type': '3_color_scale',
+                                'min_type': 'num', 'min_value': 0,    'min_color': '#63BE7B', # Green
+                                'mid_type': 'num', 'mid_value': 0.1,  'mid_color': '#FFEB84', # Yellow
+                                'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # Red
+                            })
+
+                        # 通过 xlsxwriter 原生接口补全 Data Bars 导出支持 (针对 group_cv)
                         if "group_cv" in df_pd.columns:
-                            worksheet = writer.sheets[sheet_name]
                             col_idx: int = df_pd.columns.get_loc("group_cv")
                             # 应用红色渐变数据条
                             worksheet.conditional_format(1, col_idx, len(df_pd), col_idx, {
@@ -291,7 +324,9 @@ class MarsProfileReport:
         cmap: str, 
         subset_cols: Optional[List[str]] = None, 
         add_bars: bool = False, 
-        fmt_as_pct: bool = False
+        fmt_as_pct: bool = False,
+        vmin: Optional[float] = None, # [新增] 支持自定义最小值
+        vmax: Optional[float] = None  # [新增] 支持自定义最大值
     ) -> Optional["pd.io.formats.style.Styler"]:
         """
         [Internal] 通用样式生成器。
@@ -312,6 +347,10 @@ class MarsProfileReport:
             是否在 'group_cv' 列上绘制数据条。
         fmt_as_pct : bool, default False
             是否强制将数值列显示为百分比。
+        vmin : float, optional
+            渐变色的下限值。
+        vmax : float, optional
+            渐变色的上限值。
 
         Returns
         -------
@@ -325,7 +364,7 @@ class MarsProfileReport:
             return None
 
         # 元数据排除列表：不参与热力图染色和百分比格式化
-        exclude_meta: List[str] = ["feature", "dtype", "group_var", "group_cv", "distribution"]
+        exclude_meta: List[str] = ["feature", "dtype", "group_mean", "group_var", "group_cv", "distribution"]
         
         # 1. 确定色彩渐变范围
         if subset_cols:
@@ -335,9 +374,16 @@ class MarsProfileReport:
 
         styler = df.style.set_caption(f"<b>{title}</b>").hide(axis="index")
         
-        # 2. 应用热力图
+        # 2. 应用热力图 (支持 vmin/vmax)
         if gradient_cols:
-            styler = styler.background_gradient(cmap=cmap, subset=gradient_cols, axis=None)
+            # [修改] 传递 vmin/vmax 到 background_gradient
+            styler = styler.background_gradient(
+                cmap=cmap, 
+                subset=gradient_cols, 
+                axis=None,
+                vmin=vmin,
+                vmax=vmax
+            )
         
         # 3. 应用数据条 (稳定性专用)
         if add_bars and "group_cv" in df.columns:
