@@ -3,6 +3,10 @@ import functools
 import time
 import warnings
 from typing import Callable, Any, Union, Optional, Tuple, TypeVar, cast
+import os
+import psutil
+# import resource
+import platform
 
 import pandas as pd
 import polars as pl
@@ -226,62 +230,57 @@ def safe_run(default_return: Any = None) -> Callable[[F], F]:
         return cast(F, wrapper)
     return decorator
 
-import functools
-import os
-import psutil
-import resource
-import platform
 
-def monitor_os_memory(func):
-    """
-    装饰器：监控操作系统层面的内存变化及峰值 (支持 Linux/macOS)。
+# def monitor_os_memory(func):
+#     """
+#     装饰器：监控操作系统层面的内存变化及峰值 (支持 Linux/macOS)。
     
-    Metrics:
-    - Change: 执行前后的内存差异 (可能为负，代表 GC 回收了)
-    - Peak:   该进程启动至今的历史最高内存峰值 (由 OS 内核记录)
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        process = psutil.Process(os.getpid())
+#     Metrics:
+#     - Change: 执行前后的内存差异 (可能为负，代表 GC 回收了)
+#     - Peak:   该进程启动至今的历史最高内存峰值 (由 OS 内核记录)
+#     """
+#     @functools.wraps(func)
+#     def wrapper(*args, **kwargs):
+#         process = psutil.Process(os.getpid())
         
-        # 1. 记录执行前状态
-        mem_before = process.memory_info().rss / 1024 / 1024  # MB
+#         # 1. 记录执行前状态
+#         mem_before = process.memory_info().rss / 1024 / 1024  # MB
         
-        # 获取当前的 maxrss (作为基准)
-        # 注意：resource.getrusage 返回的是“进程启动至今”的峰值
-        # 如果 func 之前已经有过更高的峰值，这里 capture 不到 func 内部的新峰值
-        # 除非 func 内部突破了历史高点。
-        rusage_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+#         # 获取当前的 maxrss (作为基准)
+#         # 注意：resource.getrusage 返回的是“进程启动至今”的峰值
+#         # 如果 func 之前已经有过更高的峰值，这里 capture 不到 func 内部的新峰值
+#         # 除非 func 内部突破了历史高点。
+#         rusage_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         
-        # 2. 执行函数
-        result = func(*args, **kwargs)
+#         # 2. 执行函数
+#         result = func(*args, **kwargs)
         
-        # 3. 记录执行后状态
-        mem_after = process.memory_info().rss / 1024 / 1024   # MB
-        rusage_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+#         # 3. 记录执行后状态
+#         mem_after = process.memory_info().rss / 1024 / 1024   # MB
+#         rusage_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         
-        # 4. 处理单位差异 (macOS 是字节, Linux 是 KB)
-        system_platform = platform.system()
-        factor_mb = 1 / 1024 / 1024 if system_platform == 'Darwin' else 1 / 1024
+#         # 4. 处理单位差异 (macOS 是字节, Linux 是 KB)
+#         system_platform = platform.system()
+#         factor_mb = 1 / 1024 / 1024 if system_platform == 'Darwin' else 1 / 1024
         
-        peak_mb = rusage_after * factor_mb
+#         peak_mb = rusage_after * factor_mb
         
-        # 计算增量
-        mem_diff = mem_after - mem_before
+#         # 计算增量
+#         mem_diff = mem_after - mem_before
         
-        # 判断本次执行是否推高了历史峰值
-        peak_delta = (rusage_after - rusage_before) * factor_mb
-        peak_msg = f"{peak_mb:.2f} MB"
-        if peak_delta > 0:
-            peak_msg += f" (🔺 New Record: +{peak_delta:.2f} MB)"
-        else:
-            peak_msg += " (No new peak)"
+#         # 判断本次执行是否推高了历史峰值
+#         peak_delta = (rusage_after - rusage_before) * factor_mb
+#         peak_msg = f"{peak_mb:.2f} MB"
+#         if peak_delta > 0:
+#             peak_msg += f" (🔺 New Record: +{peak_delta:.2f} MB)"
+#         else:
+#             peak_msg += " (No new peak)"
 
-        print(f"[{func.__name__}] Memory Metrics:")
-        print(f"  Before: {mem_before:.2f} MB")
-        print(f"  After:  {mem_after:.2f} MB")
-        print(f"  Diff:   {mem_diff:+.2f} MB")
-        print(f"  Peak:   {peak_msg}")
+#         print(f"[{func.__name__}] Memory Metrics:")
+#         print(f"  Before: {mem_before:.2f} MB")
+#         print(f"  After:  {mem_after:.2f} MB")
+#         print(f"  Diff:   {mem_diff:+.2f} MB")
+#         print(f"  Peak:   {peak_msg}")
         
-        return result
-    return wrapper
+#         return result
+#     return wrapper

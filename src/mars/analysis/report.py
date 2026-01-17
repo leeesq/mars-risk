@@ -364,7 +364,12 @@ class MarsProfileReport:
             return None
 
         # 元数据排除列表：不参与热力图染色和百分比格式化
-        exclude_meta: List[str] = ["feature", "dtype", "group_mean", "group_var", "group_cv", "distribution"]
+        exclude_meta: List[str] = [
+            "feature", "dtype", 
+            "group_mean", "group_var", "group_cv",
+            "distribution",
+            "top1_value"
+            ]
         
         # 1. 确定色彩渐变范围
         if subset_cols:
@@ -402,11 +407,15 @@ class MarsProfileReport:
             if data_cols:
                 styler = styler.format(pct_format, subset=data_cols)
         else:
-            # 智能判断模式 (Overview/Stats 模式)
-            pct_cols: List[str] = [c for c in df.columns if "rate" in c or "ratio" in c]
+            pct_cols: List[str] = [
+                c for c in df.columns 
+                if ("rate" in c or "ratio" in c) and (c in num_cols)
+            ]
+            
             if pct_cols:
                 styler = styler.format(pct_format, subset=pct_cols)
             
+            # 对剩余的数值列应用浮点格式
             float_cols: List[str] = [c for c in data_cols if c not in pct_cols]
             if float_cols:
                 styler = styler.format(float_format, subset=float_cols)

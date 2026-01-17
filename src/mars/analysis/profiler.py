@@ -1,14 +1,17 @@
+import dataclasses
+from typing import List, Union, Optional, Any, Dict, Literal
+
 import numpy as np
 import polars as pl
 import pandas as pd
-import dataclasses
-from typing import List, Union, Optional, Any, Dict, Literal
-from mars.utils.logger import logger
-from mars.utils.decorators import time_it, monitor_os_memory
+
 from mars.core.base import MarsBaseEstimator
 from mars.analysis.report import MarsProfileReport
 from mars.analysis.config import MarsProfileConfig
 from mars.feature.binning import MarsNativeBinner
+from mars.utils.logger import logger
+from mars.utils.decorators import time_it # , monitor_os_memory
+from mars.utils.date import MarsDate
 
 class MarsDataProfiler(MarsBaseEstimator):
     """
@@ -20,7 +23,7 @@ class MarsDataProfiler(MarsBaseEstimator):
     主要功能 (Key Features)
     -----------------------
     1. **全量指标概览 (Overview)**:
-       - 计算 Missing/Zero/Unique 等基础 DQ 指标。
+       - 计算 Missing/Zero/Unique/Top1 等基础 DQ 指标。
        - 自动识别并计算数值列的统计分布 (Mean, Std, Quantiles)。
     
     2. **迷你分布图 (Sparklines)**:
@@ -35,13 +38,22 @@ class MarsDataProfiler(MarsBaseEstimator):
     Attributes
     ----------
     df : pl.DataFrame
-        内部存储的 Polars DataFrame。
+        内部存储的 Polars DataFrame (已转换为 Polars 格式)。
+    features : List[str]
+        最终确定的待分析特征列表 (经过 exclude_features 和 include_dtypes 筛选后)。
     config : MarsProfileConfig
         全局配置对象。控制计算哪些指标、是否画图等。
         详见 `mars.analysis.config.MarsProfileConfig`。
     custom_missing : List[Any]
-        自定义缺失值列表 (如 -999, 'null')。在计算 missing_rate 和画分布图时，
-        这些值会被自动识别并剔除，确保统计准确性。
+        自定义缺失值列表 (如 -999, 'null')。在计算 missing_rate 时计入分子，
+        在计算统计分布 (Mean/Std) 时被剔除。
+    special_values : List[Any]
+        自定义特殊值列表。这些值被视为有效值参与 DQ 统计 (如 Top1)，
+        但在计算数值分布 (Sparkline/Mean/PSI) 时会被剔除。
+    psi_cv_ignore_threshold : float
+        PSI 稳定性计算的门控阈值 (默认 0.05)。
+        用于解决 "小基数陷阱"：若某特征在所有分组下的 PSI 最大值仍小于该阈值，
+        则认为其处于绝对稳定区，强制将 Group CV 置为 0，避免微小波动触发误报。
 
     Examples
     --------
@@ -72,14 +84,13 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_batch_size: int = 50, 
         psi_n_bins: int = 10,           
         psi_bin_method: Literal["quantile", "uniform"] = "quantile", 
+        psi_cv_ignore_threshold: float = 0.05,
         
         sample_frac: Optional[float] = None, 
         
         config: Optional[MarsProfileConfig] = None,
     ) -> None:
         """
-        初始化数据分析器。
-
         Parameters
         ----------
         df : Union[pl.DataFrame, pd.DataFrame]
@@ -91,7 +102,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             逻辑优先级: final_features = (features or all_cols) - exclude_features
         include_dtypes : List[pl.DataType], optional
             [类型白名单] 仅包含指定数据类型的列进行分析。
-            例如: [pl.Int64, pl.Float64] 只分析数值列。
+            支持 Python 原生类型和 Polars 类型。例如: [int, pl.Int64, pl.Float64] 只分析数值列。
         custom_missing_values : List[Union[int, float, str]], optional
             指定自定义缺失值列表。例如: [-999, "unknown", "\\N"]。
         custom_special_values : List[Any], optional
@@ -102,6 +113,12 @@ class MarsDataProfiler(MarsBaseEstimator):
             计算 PSI 时的分箱数量。默认为 10。
         psi_bin_method : str, optional
             计算 PSI 时的分箱方法。支持 "quantile" 或 "uniform"。默认为 "quantile"。
+        psi_cv_ignore_threshold : float, optional
+            PSI 稳定性计算的门控阈值。默认 0.01。
+            当某特征的平均 PSI 小于该值时，强制将 group_cv 置为 0，避免"小基数陷阱"。
+        sample_frac : float, optional
+            如果指定，则对输入数据进行随机采样，采样比例为该值 (0~1之间)。
+            数据量非常大时可用以提升分析速度，但会牺牲一定精度。
         config : MarsProfileConfig, optional
             配置对象。如果为 None，则使用默认配置。
         
@@ -123,8 +140,9 @@ class MarsDataProfiler(MarsBaseEstimator):
         self.psi_batch_size = psi_batch_size
         self.psi_n_bins = psi_n_bins
         self.psi_bin_method = psi_bin_method
+        self.psi_cv_ignore_threshold = psi_cv_ignore_threshold
 
-        # 4. 特征筛选逻辑 (核心漏斗)
+        # 4. 特征筛选逻辑 
         # Step A: 初始范围
         candidates = features if features else self.df.columns
             
@@ -179,27 +197,37 @@ class MarsDataProfiler(MarsBaseEstimator):
             raise ValueError("No features selected after filtering.")
             
         self.features = candidates
+        
     @time_it
     def generate_profile(
         self, 
         profile_by: Optional[str] = None, 
         *,
+        dt_col: Optional[str] = None,
         config_overrides: Optional[Dict[str, Any]] = None
     ) -> MarsProfileReport:
         """
-        [核心接口] 执行数据画像分析管道，生成完整分析报告。
+        [Core] 执行数据画像分析管道，生成完整分析报告。
 
         该方法会自动计算两类指标：
         1. **Overview (全量概览)**: 包含数据分布(Sparkline)、DQ指标、统计指标。不涉及分组。
         2. **Trends (分组趋势)**: 如果指定了 `profile_by`，会计算各项指标随该维度的变化。
+        
+        **日期聚合功能 (New)**:
+        如果指定了 `dt_col`，`profile_by` 可直接传入 "day", "week", "month"。
+        程序会自动基于 `dt_col` 生成对应的时间粒度列进行分组分析。
 
         Parameters
         ----------
         profile_by : str, optional
-            分组维度字段名 (如 'month', 'vintage')。
-            
-            * ``None``: 仅生成 Overview 和 Total 趋势列。
-            * ``Str``: 生成分组透视表 (Pivot Table)。
+            分组维度。
+            - 若提供 `dt_col`: 可选 "day", "week", "month"。
+            - 若未提供 `dt_col`: 必须是数据中已存在的列名。
+            - None: 仅生成 Overview 和 Total 趋势列。
+            - 如果是自动聚合，Overview 表中不会包含这个临时的日期分组列，只会在 Trends 表中体现。
+        
+        dt_col : str, optional
+            指定日期/时间列名。用于配合 `profile_by` 进行自动时间聚合。
 
         config_overrides : Dict[str, Any], optional
             临时覆盖 `MarsProfileConfig` 中的默认配置。支持以下配置项：
@@ -247,363 +275,112 @@ class MarsDataProfiler(MarsBaseEstimator):
         >>> # 示例: 筛选出缺失率 > 90% 的特征列表
         >>> high_missing_cols = overview.filter(pl.col("missing_rate") > 0.9)["feature"].to_list()
         """
-        # 1. 动态配置合并 (只影响本次运行，不污染 self.config)
+        # 1. 动态配置合并
         run_config: MarsProfileConfig = self.config
         if config_overrides:
             run_config = dataclasses.replace(self.config, **config_overrides)
 
-        logger.info(f"Starting profiling (Profile by: {profile_by}, Sparkline: {run_config.enable_sparkline})...")
+        # ---------------------------------------------------------------------
+        # 2. 构建分析上下文 (Context Setup)
+        #    决定本次运行使用的数据集 (working_df) 和 分组列 (group_col)
+        # ---------------------------------------------------------------------
+        working_df = self.df
+        group_col = profile_by
+
+        # 自动日期聚合
+        if dt_col and profile_by in ["day", "week", "month"]:
+            if dt_col not in self.df.columns:
+                raise ValueError(f"dt_col '{dt_col}' not found in DataFrame.")
+            
+            # 调用 MarsDate 工具类生成 Polars 表达式
+            # 无论 dt_col 是 "20230101"(str), 20230101(int) 还是 "2023/01/01"
+            # MarsDate 都能通过 smart_parse_expr 自动处理并截断
+            if profile_by == "day":
+                date_expr = MarsDate.dt2day(dt_col)
+            elif profile_by == "week":
+                date_expr = MarsDate.dt2week(dt_col)
+            elif profile_by == "month":
+                date_expr = MarsDate.dt2month(dt_col)
+            else:
+                raise ValueError(f"Unsupported time grain: {profile_by}")
+
+            # 生成临时分组列名, 避免与现有列冲突
+            temp_group_col = f"_mars_auto_{profile_by}"
+            
+            # 生成包含临时列的 working_df (Zero-Copy 机制下开销很小)
+            working_df = self.df.with_columns(date_expr.alias(temp_group_col))
+            group_col = temp_group_col
+            
+            logger.info(f"📅 Auto-aggregating '{dt_col}' by '{profile_by}' using MarsDate -> '{group_col}'")
+
+        elif dt_col is None and profile_by is not None:
+            # 常规模式：profile_by 必须是现有列
+            if profile_by not in self.df.columns:
+                raise ValueError(f"Column '{profile_by}' not found. Did you forget to set `dt_col`?")
+
+        logger.info(f"Starting profiling (Group: {group_col}, Sparkline: {run_config.enable_sparkline})...")
         
-        # 2. 计算全量概览 (Overview) - 核心基础表
-        #    包含: Sparkline, DQ, Stats
+        # 3. 计算全量概览 (Overview) 
+        #    Overview 总是基于原始 self.df (或 working_df，不影响结果)
         overview_df: pl.DataFrame = self._calculate_overview(run_config)
 
-        # 3. 计算趋势表 (Trend Tables)
-        #    利用 Polars 的表达式引擎进行 Pivot 操作
+        # 4. 计算趋势表 (Trend Tables)
+        #    必须传入 context_df=working_df，因为它包含了可能新生成的 group_col
         dq_tables: Dict[str, pl.DataFrame] = {}
-        # 3.1 计算 DQ 指标透视表
+        
+        # 4.1 DQ Trends
         for m in run_config.dq_metrics:
-            dq_tables[m] = self._generate_pivot_report(m, profile_by)
+            dq_tables[m] = self._generate_pivot_report(m, group_col, context_df=working_df)
 
-        # 3.2 计算 统计指标透视表
+        # 4.2 Stats Trends
         stat_tables: Dict[str, pl.DataFrame] = {}
         for m in run_config.stat_metrics:
-            # a. 基础透视 (Pivot)
-            pivot: pl.DataFrame = self._generate_pivot_report(m, profile_by)
-            
-            # b. 如果有分组 (且列数足够)，计算稳定性指标 (CV/Var)
-            #    exclude_cols 排除掉非数据列，剩下的即为分组列 (如 '202301', '202302')
-            if profile_by:
+            # a. Pivot
+            pivot: pl.DataFrame = self._generate_pivot_report(m, group_col, context_df=working_df)
+            # b. Stability (CV/Var) - 仅在有分组时计算
+            if group_col:
                 pivot = self._add_stability_metrics(pivot, exclude_cols=["feature", "dtype", "total"])
-            
             stat_tables[m] = pivot
-        # 3.2 计算 PSI (仅当有分组时)
-        if profile_by and ("psi" in run_config.stat_metrics):
+            
+        # 4.3 PSI Trend
+        if group_col and ("psi" in run_config.stat_metrics):
             try:
-                # 调用独立的 PSI 计算逻辑
-                psi_df = self._get_psi_trend(profile_by)
+                # 传入 working_df 以支持临时时间列
+                psi_df = self._get_psi_trend(group_col, context_df=working_df)
                 if not psi_df.is_empty():
-                    # 将结果作为 "psi" 指标加入 stat_tables
-                    # 这样在 Report 中就可以通过 report.show_trend("psi") 查看
                     stat_tables["psi"] = psi_df
             except Exception as e:
                 logger.warning(f"⚠️ PSI calculation skipped due to error: {e}")
 
         logger.info("Profile generated successfully.")
 
-        # 4. 统一封装 
-        #    利用基类的 _format_output 自动处理格式转换
         return MarsProfileReport(
             overview=self._format_output(overview_df),
             dq_tables=self._format_output(dq_tables),
             stats_tables=self._format_output(stat_tables)
         )
         
-    @time_it
-    @monitor_os_memory
-    def _get_psi_trend(self, group_col: str, features: Optional[List[str]] = None) -> pl.DataFrame:
-        """
-        计算分组 PSI 趋势。
-        
-        Fix: Binner.transform 输入改为 Eager Slice (Polars 列切片是零拷贝的)，
-             配合 lazy=True 参数实现流式计算，解决类型报错同时保持高性能。
-        Parameters
-        ----------
-        group_col : str
-            分组字段名 (如 'month', 'vintage')。
-        features : List[str], optional
-            指定计算 PSI 的列名列表。如果为 None，则使用初始化时的所有列。
-        """
-        # 1. 确定计算范围
-        candidates = features if features else self.features
-        candidates = [c for c in candidates if c != group_col]
-        
-        if not candidates:
-            return pl.DataFrame()
-
-        num_cols = [c for c in candidates if self._is_numeric(c)]
-        cat_cols = [c for c in candidates if c not in num_cols]
-        
-        logger.info(f"🚀 PSI Calc: {len(num_cols)} numeric + {len(cat_cols)} categorical.")
-
-        try:
-            baseline_group = self.df.select(pl.col(group_col).min()).item()
-        except Exception:
-            return pl.DataFrame()
-
-        psi_result_parts = []
-        common_schema_order = [group_col, "feature", "total", "psi"]
-        
-        BATCH_SIZE = self.psi_batch_size 
-        # ==============================================================================
-        # 🟢 路一：数值特征 PSI (分批 Int16 高速路)
-        # ==============================================================================
-        if num_cols:
-            try:
-                numeric_missing = [v for v in self.custom_missing if isinstance(v, (int, float)) and not isinstance(v, bool)]
-                numeric_special = [v for v in self.special_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
-                
-                # 1. Fit Global
-                binner = MarsNativeBinner(
-                    features=num_cols,
-                    method=self.psi_bin_method, 
-                    n_bins=self.psi_n_bins,          
-                    special_values=numeric_special,
-                    missing_values=numeric_missing,
-                    remove_empty_bins=False     
-                )
-                binner.fit(self.df)
-                
-                # 预构建骨架所需的 Bin IDs
-                possible_bins = list(range(self.psi_n_bins)) + [-1]
-                if numeric_special:
-                    possible_bins.extend([-3 - i for i in range(len(numeric_special))])
-                b_ids = pl.DataFrame({"bin_id": possible_bins}, schema={"bin_id": pl.Int16})
-
-                # 2. 分批处理 Loop
-                for i in range(0, len(num_cols), BATCH_SIZE):
-                    batch_cols = num_cols[i : i + BATCH_SIZE]
-                    
-                    # --- Local Scope Start ---
-                    
-                    # A. Transform (Input: Eager, Output: Lazy)
-                    cols_needed = batch_cols + [group_col]
-                    
-                    # 这里直接传入 Eager DataFrame Slice
-                    # Polars 的 select 是零拷贝的，不会复制数据，所以这里很快且内存安全
-                    df_batch_input = self.df.select(cols_needed)
-                    
-                    # 开启 lazy=True，让 transform 内部转为 lazy 模式执行逻辑，避免生成巨大的中间结果矩阵
-                    lf_binned: pl.LazyFrame = binner.transform(df_batch_input, return_type='index', lazy=True)
-                    
-                    # B. 构建当前批次的 Rename Map
-                    feat_map_batch = {idx: name for idx, name in enumerate(batch_cols)}
-                    bin_cols_batch = [f"{c}_bin" for c in batch_cols]
-                    rename_map = {old: str(idx) for idx, old in enumerate(bin_cols_batch)}
-                    
-                    # C. Streaming Unpivot & Aggregation
-                    agg_stats_batch = (
-                        lf_binned
-                        .rename(rename_map)
-                        .select([group_col] + list(rename_map.values()))
-                        .unpivot(
-                            index=[group_col],
-                            on=list(rename_map.values()),
-                            variable_name="feat_idx", 
-                            value_name="bin_id"
-                        )
-                        .with_columns([
-                            # ✅ [FIX] 双重保险：强制转为 Int16
-                            # 这行代码是 PSI 计算稳定性的“定海神针”
-                            pl.col("feat_idx").cast(pl.Int16),
-                            pl.col("bin_id").cast(pl.Int16) 
-                        ])
-                        .group_by([group_col, "feat_idx", "bin_id"])
-                        .len()
-                        .collect(streaming=True) 
-                    )
-                    
-                    # D. 构建当前批次的骨架
-                    f_ids = pl.DataFrame({"feat_idx": list(feat_map_batch.keys())}, schema={"feat_idx": pl.Int16})
-                    unique_bins_skel = f_ids.join(b_ids, how="cross")
-                    
-                    unique_groups = agg_stats_batch.select(group_col).unique()
-                    skeleton = unique_bins_skel.join(unique_groups, how="cross")
-                    
-                    # E. 计算 PSI
-                    psi_num_raw = self._calc_psi_from_stats(agg_stats_batch, skeleton, unique_bins_skel, group_col, baseline_group)
-                    
-                    # F. 还原特征名 & 格式化
-                    mapping_df = pl.DataFrame({
-                        "feat_idx": list(feat_map_batch.keys()),
-                        "feature": list(feat_map_batch.values())
-                    }, schema={"feat_idx": pl.Int16, "feature": pl.String})
-                    
-                    psi_num_final = (
-                        psi_num_raw
-                        .join(mapping_df, on="feat_idx", how="left")
-                        .select(common_schema_order)
-                    )
-                    
-                    psi_result_parts.append(psi_num_final)
-                    # --- Local Scope End ---
-
-            except Exception as e:
-                logger.error(f"Numeric PSI failed: {e}")
-
-        # ==============================================================================
-        # 🟡 路二：类别特征 PSI (常规 Lazy)
-        # ==============================================================================
-        if cat_cols:
-            try:
-                long_cat = (
-                    self.df.lazy()
-                    .select(cat_cols + [group_col])
-                    .unpivot(
-                        index=[group_col],
-                        on=cat_cols,
-                        variable_name="feature",
-                        value_name="bin_id_raw"
-                    )
-                    .with_columns(
-                        pl.col("bin_id_raw").fill_null("Missing").cast(pl.Utf8).alias("bin_id")
-                    )
-                    .group_by([group_col, "feature", "bin_id"])
-                    .len()
-                    .collect(streaming=True)
-                )
-
-                unique_bins_cat = long_cat.select(["feature", "bin_id"]).unique()
-                unique_groups_cat = long_cat.select(group_col).unique()
-                skeleton_cat = unique_bins_cat.join(unique_groups_cat, how="cross")
-
-                psi_cat_raw = self._calc_psi_from_stats(long_cat, skeleton_cat, unique_bins_cat, group_col, baseline_group)
-                psi_result_parts.append(psi_cat_raw.select(common_schema_order))
-
-            except Exception as e:
-                logger.error(f"Categorical PSI failed: {e}")
-
-        # ==============================================================================
-        # 🏁 合并与整形
-        # ==============================================================================
-        if not psi_result_parts:
-            return pl.DataFrame()
-
-        final_long_psi: pl.DataFrame = pl.concat(psi_result_parts)
-
-        # Pivot
-        pivot_df = (
-            final_long_psi
-            .pivot(on=group_col, index=["feature", "total"], values="psi")
-        )
-
-        dtype_df = self._get_feature_dtypes()
-        result = pivot_df.join(dtype_df, on="feature", how="left")
-        
-        raw_group_cols = [c for c in result.columns if c not in ["feature", "dtype", "total"]]
-        psi_data_cols = sorted(raw_group_cols)
-        
-        if psi_data_cols:
-            epsilon_stat = 1e-9
-            result = (
-                result
-                .with_columns(pl.concat_list(psi_data_cols).alias("_tmp_psi_list"))
-                .with_columns([
-                    pl.col("_tmp_psi_list").list.mean().alias("group_mean"),
-                    pl.col("_tmp_psi_list").list.var().fill_null(0).alias("group_var"),
-                    (pl.col("_tmp_psi_list").list.std() / (pl.col("_tmp_psi_list").list.mean() + epsilon_stat)).fill_null(0).alias("group_cv")
-                ])
-                .drop("_tmp_psi_list")
-            )
-            
-            final_order = ["feature", "dtype"] + psi_data_cols + ["total", "group_mean", "group_var", "group_cv"]
-            return result.select(final_order).sort("feature")
-        else:
-            return result.sort("feature")
-
-    def _calc_psi_from_stats(self, stats_df: pl.DataFrame, skeleton: pl.DataFrame, unique_bins_skel: pl.DataFrame, group_col: str, baseline_group: Any) -> pl.DataFrame:
-        """
-        [Helper] 基于聚合统计表 (Count Table) 计算 PSI。
-        不再处理原始明细数据，速度极快。
-        
-        Args:
-            stats_df: 聚合后的统计表 [group_col, feature(or idx), bin_id, len]
-            skeleton: 骨架表
-            unique_bins_skel: 特征-箱号对应表 (用于 Total 聚合)
-        """
-        # 识别特征列名 (可能是 "feature" 也可能是 "feat_idx")
-        feat_col = "feat_idx" if "feat_idx" in stats_df.columns else "feature"
-        
-        # 1. 计算基准分布 (Expected)
-        # 从统计表中直接 filter，无需再次 aggregation
-        base_stats = stats_df.filter(pl.col(group_col) == baseline_group)
-        
-        expected = (
-            base_stats
-            .with_columns((pl.col("len") / pl.col("len").sum().over(feat_col)).alias("E"))
-            .select([feat_col, "bin_id", "E"])
-        )
-
-        # 2. 计算实际分布 (Actual) - 分组统计
-        actual = (
-            stats_df
-            .with_columns((pl.col("len") / pl.col("len").sum().over([group_col, feat_col])).alias("A"))
-            .select([group_col, feat_col, "bin_id", "A"])
-        )
-
-        # 3. 计算全量实际分布 (Global Actual)
-        # 直接在统计表上再次 group_by 即可，无需回溯 9000万行数据
-        global_stats = (
-            stats_df
-            .group_by([feat_col, "bin_id"])
-            .agg(pl.col("len").sum().alias("total_len"))
-        )
-        
-        global_actual = (
-            global_stats
-            .with_columns((pl.col("total_len") / pl.col("total_len").sum().over(feat_col)).alias("A_global"))
-            .select([feat_col, "bin_id", "A_global"])
-        )
-
-        epsilon = 1e-6
-
-        # ==========================================
-        # 计算 PSI
-        # ==========================================
-        
-        # Part A: Group PSI
-        psi_group_df = (
-            skeleton
-            .join(actual, on=[group_col, feat_col, "bin_id"], how="left")
-            .with_columns(pl.col("A").fill_null(epsilon)) 
-            .join(expected, on=[feat_col, "bin_id"], how="left")
-            .with_columns(pl.col("E").fill_null(epsilon))
-            .with_columns([
-                ((pl.col("A") - pl.col("E")) * (pl.col("A") / pl.col("E")).log()).alias("psi_contrib")
-            ])
-            .group_by([group_col, feat_col])
-            .agg(pl.col("psi_contrib").sum().alias("psi"))
-        )
-
-        # Part B: Total PSI
-        psi_total_df = (
-            unique_bins_skel
-            .join(global_actual, on=[feat_col, "bin_id"], how="left")
-            .with_columns(pl.col("A_global").fill_null(epsilon))
-            .join(expected, on=[feat_col, "bin_id"], how="left")
-            .with_columns(pl.col("E").fill_null(epsilon))
-            .with_columns([
-                ((pl.col("A_global") - pl.col("E")) * (pl.col("A_global") / pl.col("E")).log()).alias("psi_contrib_total")
-            ])
-            .group_by(feat_col)
-            .agg(pl.col("psi_contrib_total").sum().alias("total"))
-        )
-
-        return psi_group_df.join(psi_total_df, on=feat_col, how="left")
-
-    # =========================================================================
-    # Internal Core Logic (核心实现)
-    # =========================================================================
-
+    # ==========================================================================
+    # Overview Pipeline 
+    # ==========================================================================
     def _calculate_overview(self, config: MarsProfileConfig) -> pl.DataFrame:
         """
-        [Internal] 计算全量概览大宽表 (不分组)。
-        
-        Pipeline:
-        1. 向量化计算所有基础指标 (DQ + Stats)。
-        2. 拼接特征元数据 (Dtype)。
-        3. (可选) 计算并合并迷你分布图 (Sparkline)。
-        4. 调整列顺序以符合阅读习惯。
+        [Internal] 计算全量概览大宽表 (Overview Table)。
+
+        该方法采用 **One-Pass (单次扫描)** 策略，通过构建向量化表达式一次性计算所有指标（DQ + Stats），
+        并自动拼接元数据、分布图 (Sparklines)，最后对列顺序和数据类型进行标准化整形。
 
         Parameters
         ----------
         config : MarsProfileConfig
-            当前运行的配置对象。
+            配置对象。控制计算哪些统计指标 (stat_metrics) 以及是否生成分布图 (enable_sparkline)。
 
         Returns
         -------
         pl.DataFrame
-            包含 feature, dtype, distribution, missing_rate... 等所有指标的宽表。
+            概览宽表。
+            - Index: feature (特征名)
+            - Columns: dtype, distribution, missing_rate, top1_value, mean, ...
         """
         cols = self.features
         
@@ -624,7 +401,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         ideal_order: List[str] = [
             "feature", "dtype", 
             "distribution",  
-            "missing_rate", "zeros_rate", "unique_rate", "top1_ratio"
+            "missing_rate", "zeros_rate", "unique_rate", 
+            "top1_ratio", "top1_value"
         ] + config.stat_metrics
         
         # 容错：只选择实际存在的列并保持 ideal_order 的顺序
@@ -639,7 +417,73 @@ class MarsDataProfiler(MarsBaseEstimator):
         remaining_cols = [c for c in stats.columns if c not in seen]
         
         return stats.select(final_cols + remaining_cols).sort(["dtype", "feature"])
+    
+    def _analyze_cols_vectorized(self, cols: List[str], config: Optional[MarsProfileConfig] = None) -> pl.DataFrame:
+        """
+        [Internal] 全量指标向量化计算引擎 (用于 Overview)。
+        
+        通过构建巨大的 Polars 表达式列表，实现 One-Pass (一次扫描) 计算所有特征的所有指标。
+        相比循环计算，这种方式在 Polars 中能获得显著的性能提升。
+        
+        Returns
+        -------
+        pl.DataFrame
+            统计结果宽表: [feature, metric1, metric2...]
+        """
+        if not cols: 
+            return pl.DataFrame()
+        all_exprs = []
+        
+        # 确保 config 存在
+        cfg = config if config else self.config
+        
+        # 1. 构建表达式列表
+        for col in cols:
+            # 获取该列需要计算的所有指标表达式 (Mean, Missing, Max...)
+            base_exprs = self._build_expressions(col, cfg)
+            for expr in base_exprs:
+                # 给表达式起个特殊名字，包含 特征名 和 指标名，中间用 ::: 分隔
+                # 比如: "age:::mean", "salary:::missing_rate"，后续通过 split 拆解
+                metric_name = expr.meta.output_name()
+                all_exprs.append(expr.alias(f"{col}:::{metric_name}"))
 
+        # 2. 执行计算 (One-Shot)
+        #    因为全是聚合表达式
+        #    于是，结果 raw_row 形状: 1 行, (N_features * N_metrics) 列
+        raw_row = self.df.select(all_exprs)
+        
+        # 3. 变形 (Reshape): 宽变长 (Wide -> Long)
+        #    unpivot 会把那几千列变成两列：
+        #    temp_id (原来的列名, 如 "age:::mean")
+        #    value   (计算出的值)
+        long_df = raw_row.unpivot(variable_name="temp_id", value_name="value")
+        
+        # 4. 解析 & 再次透视 (Pivot): 长变宽
+        pivoted = (
+            long_df
+            # 把 "age:::mean" 拆分成 "age" 和 "mean"
+            .with_columns(
+                pl.col("temp_id").str.split_exact(":::", 1)
+                .struct.rename_fields(["feature", "metric"])
+                .alias("meta")
+            )
+            .unnest("meta") # 把 struct 拆成两列 feature, metric
+            # pivot 操作：行索引是 feature，列名是 metric，值是 value
+            .pivot(on="metric", index="feature", values="value", aggregate_function="first")
+        )
+        
+        # 识别需要转回数值的列（除了 feature 和 top1_value 以外的所有列）
+        cols_to_cast = [c for c in pivoted.columns if c not in ["feature", "top1_value"]]
+        
+        # 使用 cast(pl.Float64, strict=False) 
+        # strict=False 保证万一有转换失败的也不会报错，而是变成 Null
+        if cols_to_cast:
+            pivoted = pivoted.with_columns([
+                pl.col(c).cast(pl.Float64, strict=False) for c in cols_to_cast
+            ])
+            
+        return pivoted
+    
     def _compute_all_sparklines(self, cols: List[str], config: MarsProfileConfig) -> pl.DataFrame:
         """
         [Internal] 批量计算数值列的迷你分布图 (Polars Native V3)。
@@ -767,32 +611,60 @@ class MarsDataProfiler(MarsBaseEstimator):
             sparkline_data, 
             schema={"feature": pl.String, "distribution": pl.String}
         )
-
-    def _generate_pivot_report(self, metric: str, group_col: Optional[str]) -> pl.DataFrame:
-        """
-        [Internal] 生成透视表 (Pivot Table)。
         
-        逻辑：先计算 Total 列 (全局聚合)，如果有分组字段，再计算 GroupBy 聚合，最后横向拼接。
+    # ==========================================================================
+    # Trends & Pivot Pipeline 
+    # ==========================================================================
+    def _generate_pivot_report(
+        self, metric: str, 
+        group_col: Optional[str], 
+        context_df: Optional[pl.DataFrame] = None
+    ) -> pl.DataFrame:
+        """
+        [Internal] 生成指定指标的分组趋势透视表 (Pivot Table)。
+
+        该方法负责计算单一指标（如 'mean'）在不同时间切片或客群下的变化趋势，
+        并将结果整形为 "特征 x 分组" 的矩阵格式。
+
+        Core Logic
+        ---------------------
+        由于 Polars 是列式存储 (Column-oriented)，统计计算通常产出 "1行 x N特征" 的结果。
+        为了生成可读的报告，需要进行 **转置 (Transpose)** 操作：
+        1. **Total 计算**: 对全量数据聚合 -> 转置 -> 得到 [feature, total] 列。
+        2. **Group 计算**: 按 `group_col` 聚合 -> 转置 -> 得到 [feature, group_val_1, group_val_2...] 列。
+        3. **合并**: 将 Total 列与 Group 列通过 feature JOIN，形成最终宽表。
 
         Parameters
         ----------
         metric : str
-            指标类型 ('missing', 'mean', 'max' 等)。
+            待计算的指标名称 (例如 'missing', 'mean', 'max')。
+            必须能够被 `_get_single_metric_expr` 解析。
         group_col : str, optional
-            分组列名。如果为 None，则只生成 Total 列。
+            分组列名 (例如 'month', 'vintage')。
+            - 如果为 None，则只计算并返回 Total 列。
+            - 如果存在，结果表将包含该分组下列的所有取值作为列名。
+        context_df : pl.DataFrame, optional
+            上下文数据集。
+            通常传入包含临时生成的自动聚合时间列（如 '_mars_auto_month'）的 DataFrame。
+            如果为 None，则默认使用 `self.df`。
 
         Returns
         -------
         pl.DataFrame
-            形状为 [Features x (Metadata + Groups + Total)] 的透视表。
+            透视后的趋势宽表。
+            - Index: feature (特征名)
+            - Columns: feature, dtype, [group_val_1, ...], total
         """
+        # 优先使用传入的上下文 DF，否则回退到 self.df
+        target_df = context_df if context_df is not None else self.df
+        
         target_cols = [c for c in self.features if c != group_col]
         if not target_cols: 
             return pl.DataFrame()
 
         # 1. 计算 Total 列 (全局聚合)
         total_exprs = [self._get_single_metric_expr(c, metric).alias(c) for c in target_cols]
-        total_row = self.df.select(total_exprs)
+        total_row = target_df.select(total_exprs)
         # Transpose: [1, n_feats] -> [n_feats, 1]
         total_df = total_row.transpose(include_header=True, header_name="feature", column_names=["total"])
 
@@ -808,7 +680,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         agg_exprs = [self._get_single_metric_expr(c, metric).alias(c) for c in target_cols]
         # GroupBy -> Agg -> Sort
         #   结果形状: M个分组 x N个特征
-        grouped = self.df.group_by(group_col).agg(agg_exprs).sort(group_col)
+        grouped =target_df.group_by(group_col).agg(agg_exprs).sort(group_col)
+        grouped = grouped.with_columns(pl.col(group_col).cast(pl.String))
         
         # 再次转置
         #   输入: 
@@ -831,60 +704,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         final_order = ["feature", "dtype"] + groups + ["total"]
         
         return result.select(final_order).sort(["dtype", "feature"])
-
-    def _analyze_cols_vectorized(self, cols: List[str], config: Optional[MarsProfileConfig] = None) -> pl.DataFrame:
-        """
-        [Internal] 全量指标向量化计算引擎 (用于 Overview)。
-        
-        通过构建巨大的 Polars 表达式列表，实现 One-Pass (一次扫描) 计算所有特征的所有指标。
-        相比循环计算，这种方式在 Polars 中能获得显著的性能提升。
-        
-        Returns
-        -------
-        pl.DataFrame
-            统计结果宽表: [feature, metric1, metric2...]
-        """
-        if not cols: return pl.DataFrame()
-        all_exprs = []
-        
-        # 确保 config 存在
-        cfg = config if config else self.config
-        
-        # 1. 构建表达式列表
-        for col in cols:
-            # 获取该列需要计算的所有指标表达式 (Mean, Missing, Max...)
-            base_exprs = self._build_expressions(col, cfg)
-            for expr in base_exprs:
-                # 给表达式起个特殊名字，包含 特征名 和 指标名，中间用 ::: 分隔
-                # 比如: "age:::mean", "salary:::missing_rate"，后续通过 split 拆解
-                metric_name = expr.meta.output_name()
-                all_exprs.append(expr.alias(f"{col}:::{metric_name}"))
-
-        # 2. 执行计算 (One-Shot)
-        #    因为全是聚合表达式
-        #    于是，结果 raw_row 形状: 1 行, (N_features * N_metrics) 列
-        raw_row = self.df.select(all_exprs)
-        
-        # 3. 变形 (Reshape): 宽变长 (Wide -> Long)
-        #    unpivot 会把那几千列变成两列：
-        #    temp_id (原来的列名, 如 "age:::mean")
-        #    value   (计算出的值)
-        long_df = raw_row.unpivot(variable_name="temp_id", value_name="value")
-        
-        # 4. 解析 & 再次透视 (Pivot): 长变宽
-        return (
-            long_df
-            # 把 "age:::mean" 拆分成 "age" 和 "mean"
-            .with_columns(
-                pl.col("temp_id").str.split_exact(":::", 1)
-                .struct.rename_fields(["feature", "metric"])
-                .alias("meta")
-            )
-            .unnest("meta") # 把 struct 拆成两列 feature, metric
-            # pivot 操作：行索引是 feature，列名是 metric，值是 value
-            .pivot(on="metric", index="feature", values="value", aggregate_function="first")
-        )
-
+    
     def _add_stability_metrics(self, df: pl.DataFrame, exclude_cols: List[str]) -> pl.DataFrame:
         """
         [Internal] 计算行级稳定性指标：方差 (Var) 和 变异系数 (CV)。
@@ -924,104 +744,406 @@ class MarsDataProfiler(MarsBaseEstimator):
             df
             .with_columns(pl.concat_list(calc_cols).alias("_tmp")) # 将分组列压缩为 List
             .with_columns([
-                # [新增] group_mean: 指标在不同分组间的平均值
                 pl.col("_tmp").list.mean().fill_null(0).alias("group_mean"),
-                # 计算方差
                 pl.col("_tmp").list.var().fill_null(0).alias("group_var"),
-                # 计算变异系数: Std / Mean
                 (pl.col("_tmp").list.std() / (pl.col("_tmp").list.mean().abs() + epsilon)).fill_null(0).alias("group_cv")
             ])
             .drop("_tmp")
             # 调整列顺序: feature, dtype, groups..., total, var, cv
             .select(["feature", "dtype"] + calc_cols + ["total", "group_mean", "group_var", "group_cv"])
         )
+        
+    # ==========================================================================
+    # PSI Pipeline
+    # ==========================================================================
+    @time_it
+    def _get_psi_trend(
+        self, 
+        group_col: str, 
+        features: Optional[List[str]] = None,
+        context_df: Optional[pl.DataFrame] = None
+    ) -> pl.DataFrame:
+        """
+        [Internal] 计算特征在分组维度上的 PSI (群体稳定性指标) 趋势及稳定性统计。
+
+        该方法利用 Polars 的 Streaming 引擎和 Lazy API，高效地计算数值型和类别型特征
+        随时间或客群的变化趋势。
+
+        Core Logic
+        ---------------------
+        1. **基准选择 (Baseline)**: 
+           自动选取 `group_col` 中值最小的分组（例如最早的月份）作为基准分布 (Expected)，
+           其他所有分组作为实际分布 (Actual) 进行对比计算。
+
+        2. **分箱策略 (Binning)**:
+           - 数值特征: 使用 `MarsNativeBinner` 进行分箱 (默认 Quantile)。
+           - 类别特征: 直接按类别值进行分布统计。
+
+        3. **稳定性指标与门控机制 (Stability & Gating)**:
+           计算 PSI 序列的均值 (Mean) 和变异系数 (CV)。
+           **注意**: 为了解决 "小基数陷阱" (即 PSI 数值极小时，微小的抖动导致 CV 虚高)，
+           引入了 `psi_cv_ignore_threshold` (在 __init__ 中定义):
+           - **逻辑**: 如果某特征在**所有分组**下的 PSI 最大值 (`group_max`) 都小于该阈值，
+             则认为该特征处于"绝对稳定区/噪声区"，强制将其 `group_cv` 置为 0。
+           - 只有当历史数据中至少有一次 PSI 突破阈值时，才计算并展示真实的 CV。
+
+        Parameters
+        ----------
+        group_col : str
+            分组列名。通常是时间列 (如 'month') 或 Vintage 列。
+        features : List[str], optional
+            指定需要计算 PSI 的特征子集。如果为 None，则计算 `self.features` 中的所有列。
+        context_df : pl.DataFrame, optional
+            上下文数据集。通常传入包含临时生成的自动聚合时间列的 DataFrame。
+            如果为 None，则使用实例内部的 `self.df`。
+
+        Returns
+        -------
+        pl.DataFrame
+            PSI 趋势宽表 (Pivot Table)。
+            结构: [feature, dtype, group_val_1, group_val_2, ..., total, group_mean, group_var, group_cv]
+        """
+        target_df: pl.DataFrame = context_df if context_df is not None else self.df
+        
+        # 1. 确定计算范围
+        candidates = features if features else self.features
+        candidates = [c for c in candidates if c != group_col]
+        
+        if not candidates:
+            return pl.DataFrame()
+
+        num_cols = [c for c in candidates if self._is_numeric(c)]
+        cat_cols = [c for c in candidates if c not in num_cols]
+        
+        logger.info(f"🚀 PSI Calc: {len(num_cols)} numeric + {len(cat_cols)} categorical.")
+
+        try:
+            baseline_group = target_df.select(pl.col(group_col).min()).item()
+        except Exception:
+            return pl.DataFrame()
+
+        psi_result_parts = []
+        common_schema_order = [group_col, "feature", "total", "psi"]
+        
+        BATCH_SIZE = self.psi_batch_size 
+        # ==============================================================================
+        # 🟢 路一：数值特征 PSI 
+        # ==============================================================================
+        if num_cols:
+            try:
+                numeric_missing = [v for v in self.custom_missing if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                numeric_special = [v for v in self.special_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                
+                # 1. Fit Global
+                binner = MarsNativeBinner(
+                    features=num_cols,
+                    method=self.psi_bin_method, 
+                    n_bins=self.psi_n_bins,          
+                    special_values=numeric_special,
+                    missing_values=numeric_missing,
+                    remove_empty_bins=False     
+                )
+                binner.fit(target_df)
+                
+                # 预构建骨架所需的 Bin IDs
+                possible_bins = list(range(self.psi_n_bins)) + [-1]
+                if numeric_special:
+                    possible_bins.extend([-3 - i for i in range(len(numeric_special))])
+                b_ids = pl.DataFrame({"bin_id": possible_bins}, schema={"bin_id": pl.Int16})
+
+                # 2. 分批处理 Loop
+                for i in range(0, len(num_cols), BATCH_SIZE):
+                    batch_cols = num_cols[i : i + BATCH_SIZE]
+                    
+                    # --- Local Scope Start ---
+                    
+                    # A. Transform (Input: Eager, Output: Lazy)
+                    cols_needed = batch_cols + [group_col]
+                    
+                    # 这里直接传入 Eager DataFrame Slice
+                    # Polars 的 select 是零拷贝的，不会复制数据，所以这里很快且内存安全
+                    df_batch_input = target_df.select(cols_needed)
+                    
+                    # 开启 lazy=True，让 transform 内部转为 lazy 模式执行逻辑，避免生成巨大的中间结果矩阵
+                    lf_binned: pl.LazyFrame = binner.transform(df_batch_input, return_type='index', lazy=True)
+                    
+                    # B. 构建当前批次的 Rename Map
+                    feat_map_batch = {idx: name for idx, name in enumerate(batch_cols)}
+                    bin_cols_batch = [f"{c}_bin" for c in batch_cols]
+                    rename_map = {old: str(idx) for idx, old in enumerate(bin_cols_batch)}
+                    
+                    # C. Streaming Unpivot & Aggregation
+                    agg_stats_batch = (
+                        lf_binned
+                        .rename(rename_map)
+                        .select([group_col] + list(rename_map.values()))
+                        .unpivot(
+                            index=[group_col],
+                            on=list(rename_map.values()),
+                            variable_name="feat_idx", 
+                            value_name="bin_id"
+                        )
+                        .with_columns([
+                            # [FIX] 双重保险：强制转为 Int16
+                            # 这行代码是 PSI 计算稳定性的“定海神针”
+                            pl.col("feat_idx").cast(pl.Int16),
+                            pl.col("bin_id").cast(pl.Int16) 
+                        ])
+                        .group_by([group_col, "feat_idx", "bin_id"])
+                        .len()
+                        .collect(streaming=True) 
+                    )
+                    
+                    # D. 构建当前批次的骨架
+                    f_ids = pl.DataFrame({"feat_idx": list(feat_map_batch.keys())}, schema={"feat_idx": pl.Int16})
+                    unique_bins_skel = f_ids.join(b_ids, how="cross")
+                    
+                    unique_groups = agg_stats_batch.select(group_col).unique()
+                    skeleton = unique_bins_skel.join(unique_groups, how="cross")
+                    
+                    # E. 计算 PSI
+                    psi_num_raw = self._calc_psi_from_stats(agg_stats_batch, skeleton, unique_bins_skel, group_col, baseline_group)
+                    
+                    # F. 还原特征名 & 格式化
+                    mapping_df = pl.DataFrame({
+                        "feat_idx": list(feat_map_batch.keys()),
+                        "feature": list(feat_map_batch.values())
+                    }, schema={"feat_idx": pl.Int16, "feature": pl.String})
+                    
+                    psi_num_final = (
+                        psi_num_raw
+                        .join(mapping_df, on="feat_idx", how="left")
+                        .select(common_schema_order)
+                    )
+                    
+                    psi_result_parts.append(psi_num_final)
+                    # --- Local Scope End ---
+
+            except Exception as e:
+                logger.error(f"Numeric PSI failed: {e}")
+
+        # ==============================================================================
+        # 🟡 路二：类别特征 PSI 
+        # ==============================================================================
+        if cat_cols:
+            try:
+                long_cat: pl.DataFrame = (
+                    target_df.lazy()
+                    .select(cat_cols + [group_col])
+                    .unpivot(
+                        index=[group_col],
+                        on=cat_cols,
+                        variable_name="feature",
+                        value_name="bin_id_raw"
+                    )
+                    .with_columns(
+                        pl.col("bin_id_raw").fill_null("Missing").cast(pl.Utf8).alias("bin_id")
+                    )
+                    .group_by([group_col, "feature", "bin_id"])
+                    .len()
+                    .collect(streaming=True)
+                )
+
+                unique_bins_cat = long_cat.select(["feature", "bin_id"]).unique()
+                unique_groups_cat = long_cat.select(group_col).unique()
+                skeleton_cat = unique_bins_cat.join(unique_groups_cat, how="cross")
+
+                psi_cat_raw = self._calc_psi_from_stats(long_cat, skeleton_cat, unique_bins_cat, group_col, baseline_group)
+                psi_result_parts.append(psi_cat_raw.select(common_schema_order))
+
+            except Exception as e:
+                logger.error(f"Categorical PSI failed: {e}")
+
+        # ==============================================================================
+        # 🏁 合并与整形
+        # ==============================================================================
+        if not psi_result_parts:
+            return pl.DataFrame()
+
+        final_long_psi: pl.DataFrame = pl.concat(psi_result_parts)
+
+        # Pivot
+        pivot_df = (
+            final_long_psi
+            .pivot(on=group_col, index=["feature", "total"], values="psi")
+        )
+
+        dtype_df = self._get_feature_dtypes()
+        result = pivot_df.join(dtype_df, on="feature", how="left")
+        
+        raw_group_cols = [c for c in result.columns if c not in ["feature", "dtype", "total"]]
+        psi_data_cols = sorted(raw_group_cols)
+        
+        if psi_data_cols:
+            epsilon_stat = 1e-9
+            result = (
+                result
+                .with_columns(pl.concat_list(psi_data_cols).alias("_tmp_psi_list"))
+                .with_columns([
+                    pl.col("_tmp_psi_list").list.mean().alias("group_mean"),
+                    pl.col("_tmp_psi_list").list.max().fill_null(0).alias("group_max"),
+                    
+                    pl.col("_tmp_psi_list").list.var().fill_null(0).alias("group_var"),
+                    pl.col("_tmp_psi_list").list.std().alias("_tmp_std") 
+                ])
+                .with_columns([
+                    # 只有当历史上出现过的最大 PSI 都小于阈值时，才忽略波动(CV=0)
+                    # 只要有一次 PSI 超过阈值，就老老实实计算 CV
+                    pl.when(pl.col("group_max") < self.psi_cv_ignore_threshold)
+                    .then(pl.lit(0.0))
+                    .otherwise(
+                        (pl.col("_tmp_std") / (pl.col("group_mean") + epsilon_stat))
+                    )
+                    .fill_null(0)
+                    .alias("group_cv")
+                ])
+                .drop(["_tmp_psi_list", "_tmp_std", "group_max"]) 
+            )
+            
+            final_order = ["feature", "dtype"] + psi_data_cols + ["total", "group_mean", "group_var", "group_cv"]
+            return result.select(final_order).sort("feature")
+        else:
+            return result.sort("feature")
+
+    def _calc_psi_from_stats(
+        self, stats_df: pl.DataFrame, 
+        skeleton: pl.DataFrame, 
+        unique_bins_skel: pl.DataFrame, 
+        group_col: str, 
+        baseline_group: Any
+    ) -> pl.DataFrame:
+        """
+        [Math Core] 基于聚合后的频次表 (Count Table) 计算 PSI。
+
+        此方法不接触原始明细数据，直接在聚合后的统计表上进行向量化运算，
+        是 PSI 计算高性能的核心所在。
+
+        Formula
+        --------
+        1. **Expected (E)**: 基准组 (Baseline) 中各箱的占比。
+        2. **Actual (A)**: 当前组 (Group) 中各箱的占比。
+        3. **PSI Contribution**: (A - E) * ln(A / E)
+        4. **Sum**: 对所有箱求和得到最终 PSI。
+
+        Parameters
+        ----------
+        stats_df : pl.DataFrame
+            聚合后的频次统计表。
+            结构必须包含: ``[group_col, feature (or feat_idx), bin_id, len]``。
+        skeleton : pl.DataFrame
+            (Group x Feature x Bin) 的全排列骨架表。
+            用于 Left Join 以确保计数为 0 的空箱不会丢失（会被填充 epsilon）。
+        unique_bins_skel : pl.DataFrame
+            (Feature x Bin) 的唯一组合骨架表。
+            用于计算全量数据 (Total) 的 PSI。
+        group_col : str
+            分组列的名称 (例如 'month', 'vintage')。
+        baseline_group : Any
+            基准组的具体取值 (例如 '2023-01')。
+            该组的数据分布将作为 Expected 分布。
+
+        Returns
+        -------
+        pl.DataFrame
+            计算结果宽表，包含 feature, group_psi, total_psi 等信息。
+        """
+        # 识别特征列名 (可能是 "feature" 也可能是 "feat_idx")
+        feat_col = "feat_idx" if "feat_idx" in stats_df.columns else "feature"
+        
+        # 1. 计算基准分布 (Expected)
+        # 从统计表中直接 filter，无需再次 aggregation
+        base_stats = stats_df.filter(pl.col(group_col) == baseline_group)
+        
+        expected = (
+            base_stats
+            .with_columns((pl.col("len") / pl.col("len").sum().over(feat_col)).alias("E"))
+            .select([feat_col, "bin_id", "E"])
+        )
+
+        # 2. 计算实际分布 (Actual) - 分组统计
+        actual = (
+            stats_df
+            .with_columns((pl.col("len") / pl.col("len").sum().over([group_col, feat_col])).alias("A"))
+            .select([group_col, feat_col, "bin_id", "A"])
+        )
+
+        # 3. 计算全量实际分布 (Global Actual)
+        # 直接在统计表上再次 group_by 即可，无需回溯原始数据
+        global_stats = (
+            stats_df
+            .group_by([feat_col, "bin_id"])
+            .agg(pl.col("len").sum().alias("total_len"))
+        )
+        
+        global_actual = (
+            global_stats
+            .with_columns((pl.col("total_len") / pl.col("total_len").sum().over(feat_col)).alias("A_global"))
+            .select([feat_col, "bin_id", "A_global"])
+        )
+
+        epsilon = 1e-6
+
+        # ==========================================
+        # 计算 PSI
+        # ==========================================
+        
+        # Part A: Group PSI
+        psi_group_df = (
+            skeleton
+            .join(actual, on=[group_col, feat_col, "bin_id"], how="left")
+            .with_columns(pl.col("A").fill_null(epsilon)) 
+            .join(expected, on=[feat_col, "bin_id"], how="left")
+            .with_columns(pl.col("E").fill_null(epsilon))
+            .with_columns([
+                ((pl.col("A") - pl.col("E")) * (pl.col("A") / pl.col("E")).log()).alias("psi_contrib")
+            ])
+            .group_by([group_col, feat_col])
+            .agg(pl.col("psi_contrib").sum().alias("psi"))
+        )
+
+        # Part B: Total PSI
+        psi_total_df = (
+            unique_bins_skel
+            .join(global_actual, on=[feat_col, "bin_id"], how="left")
+            .with_columns(pl.col("A_global").fill_null(epsilon))
+            .join(expected, on=[feat_col, "bin_id"], how="left")
+            .with_columns(pl.col("E").fill_null(epsilon))
+            .with_columns([
+                ((pl.col("A_global") - pl.col("E")) * (pl.col("A_global") / pl.col("E")).log()).alias("psi_contrib_total")
+            ])
+            .group_by(feat_col)
+            .agg(pl.col("psi_contrib_total").sum().alias("total"))
+        )
+
+        return psi_group_df.join(psi_total_df, on=feat_col, how="left")
+
 
     # =========================================================================
-    # Expression Factories (表达式工厂)
+    # Expression Factories 
     # =========================================================================
-    
     def _build_expressions(self, col: str, config: MarsProfileConfig) -> List[pl.Expr]:
         """[Factory] 为单个列生成所有 Overview 指标的计算表达式。"""
         return self._get_full_stats_exprs(col, config)
-
-    def _get_single_metric_expr(self, col: str, metric_type: str) -> pl.Expr:
-        """[Factory] 为单个列生成指定指标的计算表达式 (用于 Pivot)。"""
-        return self._get_metric_expr(col, metric_type)
-
-    # =========================================================================
-    # Helpers (辅助方法)
-    # =========================================================================
-    
-    def _get_feature_dtypes(self) -> pl.DataFrame:
-        """获取 Schema 信息表"""
-        schema = {"feature": [], "dtype": []}
-        for n, d in self.df.schema.items():
-            schema["feature"].append(n)
-            schema["dtype"].append(str(d))
-        return pl.DataFrame(schema)
-
-    def _is_numeric(self, col: str) -> bool:
-        """判断列是否为数值类型"""
-        # 兼容 Polars 这里的类型判断
-        return self.df[col].dtype in [
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64, 
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, 
-            pl.Float32, pl.Float64
-        ]
-
-    def _get_valid_missing(self, col: str) -> List[Any]:
-        """类型安全的缺失值匹配 (防止类型不匹配报错)"""
-        # Polars 很严格，如果你拿字符串 "unknown" 去过滤整数列，程序会崩。
-        # 这个函数会检查当前列的类型，只返回类型匹配的自定义缺失值。
-        if not self.custom_missing: 
-            return []
-        is_num = self._is_numeric(col)
-        is_str = self.df[col].dtype == pl.String
-        return [v for v in self.custom_missing if (is_num and isinstance(v, (int, float))) or (is_str and isinstance(v, str))]
-    
-    def _get_values_to_exclude(self, col: str) -> List[Any]:
-        """
-        [Helper] 获取当前列需要剔除的所有特定值 (类型安全)。
-        
-        逻辑：
-        1. 合并 custom_missing (视为缺失) 和 special_values (视为特殊)。
-        2. 根据当前列的类型 (Numeric/String) 过滤掉不匹配的值，防止 Polars 报错。
-           (例如：不能拿着字符串 'unknown' 去过滤整数类型的 age 列)
-        
-        Returns
-        -------
-        List[Any]
-            当前列中应当被视为“非正常数值”的列表。
-        """
-        # 1. 合并两个列表 (假设你在 __init__ 里已经定义了 self.special_values)
-        # 如果 self.special_values 还没定义，就用空列表代替
-        special_vals = getattr(self, "special_values", [])
-        candidates = self.custom_missing + special_vals
-        
-        if not candidates: 
-            return []
-
-        # 2. 获取列类型
-        is_num = self._is_numeric(col)
-        is_str = self.df[col].dtype == pl.String
-
-        # 3. 类型安全过滤 (Type-Safe Filtering)
-        valid_values = []
-        for v in candidates:
-            # 只有当 值类型 与 列类型 匹配时，才加入列表
-            if is_num and isinstance(v, (int, float)) and not isinstance(v, bool):
-                valid_values.append(v)
-            elif is_str and isinstance(v, str):
-                valid_values.append(v)
-                
-        return valid_values
-
-    # --- Detailed Expr Implementations (具体计算逻辑) ---
     
     def _get_full_stats_exprs(self, col: str, config: MarsProfileConfig) -> List[pl.Expr]:
         """
-        [Helper] 生成单个列的全量统计表达式列表
-        这里返回的是一堆 pl.Expr 对象，还没有真正执行计算。
+        [Factory] 为单个列构建全量统计指标的 Polars 表达式列表。
+
+        该方法封装了 Overview 计算的核心细节，包含以下关键逻辑：
+        1. **大基数优化 (High Cardinality Opt)**: 
+           对于超过 100w 行的数据集，自动将 `n_unique` 切换为 `approx_n_unique` (HyperLogLog)，
+           在保持精度的同时极大降低内存消耗。
+        2. **众数提取 (Mode Extraction)**:
+           预先计算 `value_counts` 并提取 Top1 的结构体，同时获取其 **Value** (转换类型为 String) 
+           和 **Ratio** (占比)，确保数据质量可见性。
+        3. **动态指标生成**:
+           根据 Config 中的 `stat_metrics` 动态生成均值、方差等统计表达式，
+           并自动应用 `_get_metric_expr` 中的缺失值剔除逻辑。
+
+        Returns
+        -------
+        List[pl.Expr]
+            包含该列所有待计算指标的表达式列表。
         """
         
         native_null = pl.col(col).null_count()
@@ -1033,11 +1155,20 @@ class MarsDataProfiler(MarsBaseEstimator):
         is_num = self._is_numeric(col)
         zeros_c = (pl.col(col) == 0).sum() if is_num else pl.lit(0, dtype=pl.UInt32)
         
+        if self.df.height > 1_000_000:
+            unique_count_expr = pl.col(col).approx_n_unique()
+        else:
+            unique_count_expr = pl.col(col).n_unique()
+            
+        # 预计算 Top1 结构体 (避免重复写 value_counts 逻辑)
+        # value_counts 返回 struct: {col_name: value, count: int}
+        top1_struct = pl.col(col).value_counts(sort=True).first()
+        
         # 基础 DQ 指标
         exprs = [
             (total_missing / total_len).alias("missing_rate"),
             (zeros_c / total_len).alias("zeros_rate"),
-            (pl.col(col).n_unique() / total_len).alias("unique_rate"),
+            (unique_count_expr / total_len).alias("unique_rate"),
             (
                 pl.col(col)                         # 1. 选中目标列 (假设列名叫 "city")
                 
@@ -1057,14 +1188,21 @@ class MarsDataProfiler(MarsBaseEstimator):
                 / total_len                         # 5. 除以总行数 (例如总共有 1000 行)
                                                     #    计算: 100 / 1000 = 0.1
 
-            ).alias("top1_ratio")                   # 6. 给这个计算结果起个名字叫 "top1_ratio"
+            ).alias("top1_ratio"),                   # 6. 给这个计算结果起个名字叫 "top1_ratio"
+            # 增加 Top1 Value (众数具体值)
+            # 强制转为 String，防止与 Mean/Std 等数值指标在 pivot 时发生类型冲突
+             top1_struct.struct.field(col).cast(pl.Utf8).alias("top1_value"),
+            
         ]
         
         # 动态统计指标 (基于 Config)
         # 数值统计指标
         if is_num:
-            # [修改] 遍历 config.stat_metrics 动态生成
+            # 遍历 config.stat_metrics 动态生成
             for metric in config.stat_metrics:
+                if metric.lower() == "psi":
+                    # PSI 需要特殊处理，跳过
+                    continue
                 expr = self._get_metric_expr(col, metric)
                 if expr is not None:
                     exprs.append(expr.alias(metric))
@@ -1072,12 +1210,19 @@ class MarsDataProfiler(MarsBaseEstimator):
         else:
             null_lit = pl.lit(None, dtype=pl.Float64)
             for metric in config.stat_metrics:
+                if metric.lower() == "psi":
+                    # PSI 需要特殊处理，跳过
+                    continue
                 exprs.append(null_lit.alias(metric))
         return exprs
 
+    def _get_single_metric_expr(self, col: str, metric_type: str) -> pl.Expr:
+        """[Factory] 为单个列生成指定指标的计算表达式 (用于 Pivot)。"""
+        return self._get_metric_expr(col, metric_type)
+    
     def _get_metric_expr(self, col: str, metric_type: str) -> pl.Expr:
         """
-        [Helper] 生成单个指标的计算表达式。
+        [Factory] 生成单个指标的计算表达式。
 
         **特殊值处理逻辑 (Special Values Handling)**:
         1. **DQ 指标 (Missing/Unique/Top1)**: 基于全量数据计算。特殊值会被视为“值”参与 Unique/Top1 统计，或被归为 Missing。
@@ -1160,3 +1305,78 @@ class MarsDataProfiler(MarsBaseEstimator):
         }
         
         return mapper.get(metric_type, pl.lit(None))
+
+    # ==========================================================================
+    # Helpers & Utilities
+    # ==========================================================================
+    def _get_feature_dtypes(self) -> pl.DataFrame:
+        """[Helper] 获取 Schema 信息表"""
+        schema = {"feature": [], "dtype": []}
+        for n, d in self.df.schema.items():
+            schema["feature"].append(n)
+            schema["dtype"].append(str(d))
+        return pl.DataFrame(schema)
+
+    def _is_numeric(self, col: str) -> bool:
+        """[Helper] 判断列是否为数值类型"""
+        # 兼容 Polars 这里的类型判断
+        return self.df[col].dtype in [
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64, 
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, 
+            pl.Float32, pl.Float64
+        ]
+
+    def _get_valid_missing(self, col: str) -> List[Any]:
+        """[Helper] 类型安全的缺失值匹配 (防止类型不匹配报错)"""
+        # Polars 很严格，如果拿字符串 "unknown" 去过滤整数列，会崩。
+        # 这个函数会检查当前列的类型，只返回类型匹配的自定义缺失值。
+        if not self.custom_missing: 
+            return []
+        is_num = self._is_numeric(col)
+        is_str = self.df[col].dtype == pl.String
+        return [v for v in self.custom_missing if (is_num and isinstance(v, (int, float))) or (is_str and isinstance(v, str))]
+    
+    def _get_values_to_exclude(self, col: str) -> List[Any]:
+        """
+        [Helper] 获取当前列需要剔除的所有特定值 (类型安全)。
+
+        该方法合并了实例的 `custom_missing` (自定义缺失值) 和 `special_values` (特殊值)，
+        并根据目标列的物理类型 (`dtype`) 对值进行严格过滤。
+
+        Polars 的比较算子 (`is_in`, `eq`) 是强类型的。如果尝试将字符串类型的值（如 "unknown"）
+        应用于数值类型的列（如 `Int64`），程序会抛出异常。本方法确保后续过滤操作的类型安全性。
+
+        Parameters
+        ----------
+        col : str
+            目标列的名称。
+
+        Returns
+        -------
+        List[Any]
+            当前列中应当被视为“非正常数值”的列表。
+            列表中的元素类型保证与 `col` 的数据类型兼容 (例如数值列只返回数值，字符串列只返回字符串)。
+        """
+        # 1. 合并两个列表 (假设你在 __init__ 里已经定义了 self.special_values)
+        # 如果 self.special_values 还没定义，就用空列表代替
+        special_vals = getattr(self, "special_values", [])
+        candidates = self.custom_missing + special_vals
+        
+        if not candidates: 
+            return []
+
+        # 2. 获取列类型
+        is_num = self._is_numeric(col)
+        is_str = self.df[col].dtype == pl.String
+
+        # 3. 类型安全过滤 (Type-Safe Filtering)
+        valid_values = []
+        for v in candidates:
+            # 只有当 值类型 与 列类型 匹配时，才加入列表
+            if is_num and isinstance(v, (int, float)) and not isinstance(v, bool):
+                valid_values.append(v)
+            elif is_str and isinstance(v, str):
+                valid_values.append(v)
+                
+        return valid_values
+
