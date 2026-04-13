@@ -19,39 +19,72 @@ from mars.utils.plotter import MarsPlotter
 
 class MarsBinEvaluator(MarsBaseEstimator):
     """
-    [Mars 分箱评估]
+    特征分箱评估器。
+
+    该组件负责对特征分箱规则进行多维度的质量检验。系统通过无缝集成底层离散化引擎
+    （原生分箱器或数学规划最优分箱器），在极速的单次扫描（One-Pass Scan）架构下，
+    完成信息值 (IV)、群体稳定性 (PSI)、ROC曲线下面积 (AUC) 及 KS 统计量等关键风控
+    度量指标的聚合计算。
+
+    支持单点截面评估，以及基于时间窗口的跨期分布漂移与逻辑单调性追踪分析。
+
+    Parameters
+    ----------
+    target : str, default "target"
+        目标变量列名。在纯分布监测场景（如缺乏标签的 OOT 监控集）下，若该列不存在，
+        引擎将自动降级为无标签模式（Label-Free Mode），仅执行 PSI 等分布指标的推演计算。
+        
+    binner : MarsBinnerBase, optional
+        预实例化的底层分箱器对象（如 `MarsNativeBinner` 或 `MarsOptimalBinner`）。
+        若提供此参数，评估器将直接复用该分箱器内部的区间边界与映射规则（`bin_cuts_` 等）；
+        若为 None，评估器将在执行 `evaluate` 时，依据后续配置自动实例化并拟合全新的分箱器。
+        
+    bining_type : {'native', 'opt'}, default 'native'
+        底层离散化引擎的动态路由选择。仅在 `binner` 为 None 时生效。
+        - 'native': 调用基于 Scikit-Learn 与 Polars 的原生分箱器 (`MarsNativeBinner`)。
+        - 'opt': 调用基于数学规划的最优分箱器 (`MarsOptimalBinner`)。
+        
+    **binner_kwargs
+        任意透传至底层分箱器初始化方法的超参数字典（例如 `n_bins`, `method`, `min_bin_size` 等）。
+        仅在 `binner` 为 None 且需要引擎内部动态构建分箱器时生效。系统会自动过滤目标
+        分箱器不支持的冗余参数。
 
     Attributes
     ----------
     target : str
-        目标变量列名 (0/1)。
+        实例绑定的目标变量列名。
     binner : MarsBinnerBase
-        分箱器实例。如果未提供，evaluate 时会自动拟合。
+        评估器当前持有的底层分箱器物理实体引用。
+    bining_type : str
+        初始化声明的底层离散化引擎类型。
     binner_kwargs : dict
-        传递给自动分箱器的额外参数。
-        
+        捕获的透传超参数映射字典。
+    has_target_ : bool
+        内部状态标识。指示在最近一次调用 `evaluate` 时，目标变量列是否实际存在并参与了
+        有监督指标（IV/AUC等）的计算。
+
     Examples
     --------
     >>> import polars as pl
     >>> from mars.analysis import MarsBinEvaluator
-
-    >>> # 1. 准备数据 (支持 Polars/Pandas)
     >>> df = pl.read_parquet("credit_risk_data.parquet")
-    >>> target = "is_default"
-
-    >>> # 2. 初始化评估器
-    >>> evaluator = MarsBinEvaluator(target=target)
-
-    >>> # 3. [最简模式] 一键评估 + 绘图
-    >>> # 自动拟合分箱 -> 计算 IV/PSI -> 绘制 Top 10 特征趋势图
-    >>> report = evaluator.evaluate_and_plot(df)
-
-    >>> # 4. 查看结果
-    >>> print(report.summary_table.head())  # 查看汇总表
-    >>> report.write_excel("risk_report.xlsx") # 导出 Excel
+    >>> 
+    >>> # 初始化评估器并透传原生分箱器参数
+    >>> evaluator = MarsBinEvaluator(
+    ...     target="is_default", 
+    ...     bining_type="native", 
+    ...     method="quantile", 
+    ...     n_bins=10
+    ... )
+    >>> 
+    >>> # 执行评估流水线并生成多维分析报告
+    >>> report = evaluator.evaluate(df, profile_by="month")
+    >>> 
+    >>> # 导出评估报告至电子表格
+    >>> report.write_excel("risk_evaluation_report.xlsx")
     """
 
-    MARS_GROUP_COL = "mars_group" # 内部统一的分组列名，避免与原表冲突
+    MARS_GROUP_COL = "mars_group" 
     
     def __init__(
         self, 
@@ -61,20 +94,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         bining_type: Literal["native", "opt"] = "native",
         **binner_kwargs
     ) -> None:
-        """
-        初始化评估引擎。
-
-        Parameters
-        ----------
-        target : str, default "target"
-            Label 列名。
-        binner : MarsBinnerBase, optional
-            预训练好的分箱器。若为 None，将在 evaluate 内部自动训练 MarsNativeBinner。
-        bining_type : Literal["native", "opt"], default "native"
-            分箱器类型选择。当 binner 为 None 时生效。
-        **binner_kwargs : dict
-            透传给自动分箱器的参数 (仅在 binner 为 None 时生效)，如 `n_bins`, `strategy` 等。
-        """
         super().__init__()
         self.target = target
         self.binner = binner
@@ -96,7 +115,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         batch_size: int = 100
     ) -> "MarsEvaluationReport":
         """
-        [Core] 执行特征评估。
+        执行特征评估。
 
         Parameters
         ----------
@@ -108,7 +127,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         profile_by : Optional[str]
             趋势分析的分组维度 (Group Key)。
             - 可以是具体的分类列 (e.g., 'city', 'vintage').
-            - 也可以是时间粒度指令 ('day', 'week', 'month')，需配合 `dt_col` 使用。
+            - 也可以是时间粒度指令 ('day', 'week', 'month', '3d', '14d'等)，需配合 `dt_col` 使用。
         dt_col : Optional[str]
             日期列名 (Date Column)。
             - 用于辅助 `profile_by` 生成时间切片。
@@ -1315,83 +1334,98 @@ def profile_risk(
     batch_size: int = 100
 ) -> Tuple[MarsEvaluationReport, MarsBinEvaluator]:
     """
-    [Mars Risk Profiler] 风险特征全景画像扫描。
-    
-    该函数提供一站式的特征评估服务，自动完成 "自动分箱 -> 指标计算 (IV/PSI/AUC) -> 趋势绘图" 全流程。
-    适用于快速评估特征的风险区分能力、跨期稳定性以及业务逻辑合理性。
+    自动化特征分箱与效能评估管线。
 
-    支持 **多目标 (Multi-Target)** 评估模式：
-    - 当传入 `target` 为列表时 (e.g., `['bad_30d', 'bad_90d']`)。
-    - 首个 Target 作为 **主目标 (Primary Target)**，用于训练分箱规则 (Fit)。
-    - 其余 Target 作为 **副目标 (Secondary Targets)**，复用主目标的分箱规则进行统计 (Transform)。
-    - 最终生成包含所有 Target 表现的汇总报表，便于对比同一特征在不同定义下的表现。
+    该函数封装了底层特征分箱、指标计算与趋势可视化的全流程逻辑。支持在给定的时间
+    或群体切片下，快速评估特征的风险区分度、逻辑单调性以及跨期分布稳定性。
+
+    系统原生支持多目标评估模式：在传入多个目标变量时，底层引擎将严格基于主目标
+    （Primary Target）训练分箱边界规则，并将该规则直接映射至全部副目标
+    （Secondary Targets）执行同步统计与报表汇总，以保障不同目标定义下的基准一致性。
 
     Parameters
     ----------
-    df : Union[pl.DataFrame, pd.DataFrame]
-        待评估的数据集 (Train/Test/OOT)。
-    target : Union[str, List[str]]
-        目标变量列名 (0/1)。
-        - 若为 `str`: 单目标模式。
-        - 若为 `List[str]`: 多目标模式。target[0] 为主目标，其余为副目标。
-    features : List[str], optional
-        指定评估特征白名单。若为 None，自动扫描除 Target/Weights 之外的所有可用特征。
-    
+    df : DataFrame (pl.DataFrame or pd.DataFrame)
+        待评估的数据集上下文环境。
+        
+    target : str or list of str, optional
+        目标变量列名。支持单目标与多目标数组。在多目标模式下，首个元素被视为主目标
+        参与分箱规则训练。若为 None，系统将激活无标签模式，强制采用无监督分箱引擎
+        并仅输出分布漂移类指标。
+        
+    features : list of str, optional
+        待评估的特征候选集合。若为 None，系统将自动扫描并剔除已知标识列后的全量特征。
+        
     profile_by : str, optional
-        趋势分析的分组维度 (如 'month', 'vintage')。
+        稳定性探查的分组聚合维度（如特定客群或时间切片标识）。
+        
     dt_col : str, optional
-        日期列名。若提供且 `profile_by` 为时间粒度指令 ('day'/'week'/'month')，则自动生成聚合列。
-
+        时间基准列名。配合 `profile_by` 中的时间粒度指令（如 'month', '7d'）生成动态截断窗口。
+        
     binning_type : {'native', 'opt'}, default 'native'
-        分箱算法策略。
-        - `'native'`: 极速原生分箱 (Quantile/Uniform/CART)。
-        - `'opt'`: 最优分箱 (OptBinning)，支持单调性约束。
+        底层分箱引擎策略。'native' 调用极速原生分箱，'opt' 调用支持约束规划的最优分箱。
+        
     n_bins : int, default 10
-        最大分箱数。
+        特征分箱的目标最大物理区间数。
+        
     min_bin_size : float, default 0.02
-        最小箱占比约束 (0.0 ~ 0.5)。
+        单一分箱的最小物理样本占比约束。
+        
     monotonic_trend : str, default 'auto_asc_desc'
-        单调性约束 (仅当 `binning_type='opt'` 时有效)。
-        可选值: 'ascending', 'descending', 'peak', 'valley', 'auto', 'auto_asc_desc'。
-    special_values : List[Any], optional
-        特殊值列表 (如 -999)。将强制独立成箱，不参与切分。
-    missing_values : List[Any], optional
-        自定义缺失值列表。默认仅识别 Null/NaN。
-    binner_kwargs : Dict, optional
-        透传给分箱器的其他高级参数。
+        分箱单调性约束方向，仅在使用最优分箱策略时生效。
+        
+    special_values : list of Any, optional
+        领域自定义特殊值集合。底部分箱引擎将对这些数值执行强制物理隔离。
+        
+    missing_values : list of Any, optional
+        领域自定义缺失值集合。
+        
+    binner_kwargs : dict, optional
+        透传至底层分箱器初始化方法的超参数映射字典。
         
     benchmark_df : DataFrame, optional
-        PSI 计算的基准数据集。若不提供，默认以 `df` 中时间最早的分组作为基准。
+        群体稳定性 (PSI) 计算的参照基准数据集。若未提供，默认提取数据分布中最靠前
+        的分组切片作为基准。
+        
     weights_col : str, optional
-        样本权重列名。若提供，所有指标（IV/AUC/PSI）均基于加权计算。
-
+        样本权重列名。配置后将激活加权频数聚合机制。
+        
     plot : bool, default True
-        是否自动绘制特征趋势图。
-    plot_target : Union[str, List[str], None], optional
-        多目标模式下，指定需要绘图的 Target。
-        - None (默认) / 'all': 绘制所有 Target 的趋势图。
-        - 'primary': 仅绘制主目标。
-        - List: 指定绘制列表，如 `['bad_30d']`。
+        控制是否在评估结束后自动触发特征分组风险趋势图的渲染。
+        
+    plot_target : str or list of str, optional
+        多目标模式下，指定需要执行图表渲染的目标名称集合。默认为渲染所有已知目标。
+        
     max_plots : int, default 10
-        [熔断机制] 最多绘制多少张图。根据 `sort_by` 排序取 Top N。
+        图表渲染的特征上限熔断值。系统将依 `sort_by` 条件选取头部特征进行截断渲染。
+        
     sort_by : str, default 'iv'
-        绘图排序依据。可选: `'iv'`, `'psi'`, `'auc'`, `'ks'`, `'risk_corr'`, `'rank'`。
+        评估图表可视化的排序依据指标。
+        
     ascending : bool, default False
-        排序方向。默认降序 (Descending)，即指标值高的排前面。
+        排序方向控制。
+        
     dpi : int, default 300
-        图像分辨率。
-
+        图表渲染的输出分辨率。
+        
     n_jobs : int, default -1
-        并行核心数。
+        并行计算引擎的并发核心数限制。
+        
     batch_size : int, default 100
-        批处理大小。降低此值可减少内存峰值，适合处理超宽表。
+        底层评估引擎在执行特征切片遍历时的并发分块大小。
 
     Returns
     -------
-    Tuple[MarsEvaluationReport, MarsBinEvaluator]
-        - final_report: 评估报告对象。包含汇总表、明细表和趋势宽表。
-        - primary_evaluator: 训练完成的评估器对象。其内部的 `.binner` 携带了本次拟合产出的
-          全部最优分箱规则，可直接用于对新数据的 `transform` 或调用 `.generate_sql()` 部署。
+    tuple of (MarsEvaluationReport, MarsBinEvaluator)
+        包含统计汇总报表与趋势透视表的报告容器对象，以及持有最终分箱规则实体
+        的评估器实例。
+
+    Notes
+    -----
+    当系统检测到 `target` 为空时，将自动关闭包含决策树与数学规划在内的有监督底层
+    算法，强制回退至基于等频策略的无监督原生分箱模式，以保障数据集探查的连续性。
+    在多目标评估场景中，鉴于主副目标的评价基准差异，报告对象内的趋势宽表（Trend Tables）
+    将默认仅保留对主目标维度的时序分析结果。
     """
     
     # [新增] 兼容 Target 为空的模式

@@ -157,7 +157,7 @@ class MarsPlotter:
             
         total_count = df_total['count'].sum() if 'total_count' not in df_total.columns else df_total['total_count'].iloc[0]
         
-        # ✅ 嗅探是否处于“无标签模式”
+        # 嗅探是否处于“无标签模式”
         has_target_global = 'bad_rate' in df_total.columns and df_total['bad_rate'].notna().any()
 
         # 根据模式计算全局指标

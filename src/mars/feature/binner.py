@@ -1132,74 +1132,89 @@ class MarsBinnerBase(MarsTransformer):
 
 class MarsNativeBinner(MarsBinnerBase):
     """
-    [Mars 极速原生分箱器]
-    
-    基于 Polars 与 Scikit-learn 构建的高性能特征分箱引擎。
-    
-    支持三种分箱策略: Quantile、Uniform 和 CART 分箱, 适用于数值型特征, 暂不支持分类特征, 类别分箱请使用 MarsOptimalBinner。
+    原生高性能特征分箱器。
+
+    基于 Polars 向量化计算与 Scikit-Learn 决策树算法构建。支持针对连续型变量的等频、
+    等宽与决策树（CART）离散化策略，以及针对类别型变量的头部频数保留策略。特殊值与
+    缺失值在执行核心分箱逻辑前会被强制物理隔离。
+
+    Parameters
+    ----------
+    features : list of str, optional
+        数值型特征列名列表。若为 None，系统将自动扫描并提取数据集中的所有连续型变量。
+        
+    cat_features : list of str, optional
+        类别型特征列名列表。类别特征将保留频率最高的 `n_bins` 个类别，
+        其余类别将折叠为单一的冗余组（Other）。
+        
+    method : {'cart', 'quantile', 'uniform'}, default 'cart'
+        连续型变量的底层切分策略。
+        - 'cart': 监督式决策树最优切分。
+        - 'quantile': 无监督等频切分。
+        - 'uniform': 无监督等宽切分。
+        
+    n_bins : int, default 10
+        最大分箱数量（不包含缺失值箱与特殊值箱）。
+        
+    special_values : list of Any, optional
+        领域自定义的特殊值集（如 -999）。底部分箱引擎将优先对这些数值执行提取，并分配独立的特殊值箱。
+        
+    missing_values : list of Any, optional
+        领域自定义的缺失值集。将被统一路由至标准的缺失值箱。系统原生的 Null 与 NaN 始终会被自动捕获。
+        
+    min_bin_size : float, default 0.02
+        单一分箱的最小物理样本占比约束。在 'cart' 模式下作为叶子节点的停止生长条件；
+        在激活 `merge_small_bins` 时作为前向贪心合并的触发阈值。
+        
+    merge_small_bins : bool, default False
+        控制是否在 'quantile' 或 'uniform' 策略执行完毕后，强制启动单趟前向贪心合并算法，
+        以消除样本占比低于 `min_bin_size` 的微型碎片箱。
+        
+    cart_params : dict, optional
+        透传至底层 `sklearn.tree.DecisionTreeClassifier` 估计器的初始化超参数字典。
+        
+    remove_empty_bins : bool, default False
+        控制是否自动合并样本绝对频数为 0 的空箱，仅当 `method='uniform'` 时有用。
+        
+    n_jobs : int, default -1
+        并行计算引擎的并发分配核心数限制。
 
     Attributes
     ----------
-    bin_cuts_: Dict[str, List[float]]
-        拟合后生成的数值型特征切点字典。格式: {特征名: [-inf, 切点1, ..., inf]}。
-    fit_failures_: Dict[str, str]
-        记录训练过程中发生异常的特征及其错误原因。
-    feature_names_in_: List[str]
-        训练时输入的特征名称列表。
-    _is_fitted: bool
-        标识分箱器是否已完成拟合。
+    bin_cuts_ : dict of str to list of float
+        针对连续型特征拟合生成的物理切点映射字典。数组形态为 `[-inf, cut_1, ..., cut_n, inf]`。
+        
+    cat_cuts_ : dict of str to list of str
+        针对类别型特征拟合生成的高频类别保留映射字典。
+        
+    fit_failures_ : dict of str to str
+        记录在拟合过程中触发严重计算异常的特征名称及其内部堆栈报错信息。
+        
+    feature_names_in_ : list of str
+        实际参与拟合管道的全局特征名称列表。
 
     Notes
     -----
-    1. 性能优化: 针对数千维特征的宽表场景进行了底层向量化与查询计划合并，大幅减少内存扫描次数。
-       在常规多核机型上，数十万行、数千列的数据分箱通常可在亚分钟级完成，显著优于传统 Python 循环方案。
-    2. 鲁棒性: 内置常量列识别、缺失值自动过滤及异常特征自动退化机制。
+    当数据集体量极大且连续变量呈严重长尾或零膨胀分布时，无监督的等频与等宽算法极易生成
+    绝对占比极低甚至频数为 0 的异常物理箱。开启 `merge_small_bins` 选项可在不显著增加
+    计算开销的前提下，强制修复连续区间的碎化问题，保障后续 WOE 映射的稳定性。
     """
 
     def __init__(
         self,
         features: Optional[List[str]] = None,
         *,
-        cat_features: Optional[List[str]] = None, # 新增 cat_features
+        cat_features: Optional[List[str]] = None, 
         method: Literal["cart", "quantile", "uniform"] = "cart",
         n_bins: int = 10,
         special_values: Optional[List[Union[int, float, str]]] = None,
         missing_values: Optional[List[Union[int, float, str]]] = None,
         min_bin_size: float = 0.02,
-        merge_small_bins: bool = False, # 新增：是否开启原生分箱的强制合并
+        merge_small_bins: bool = False, 
         cart_params: Optional[Dict[str, Any]] = None,
         remove_empty_bins: bool = False,
         n_jobs: int = -1,
-   ) -> None:
-        """
-        初始化 MarsNativeBinner。
-
-        Parameters
-        ----------
-        features: List[str], optional
-            指定需要进行分箱的数值特征列名。若为 None, 则自动识别 X 中的所有数值列。
-        method: {'cart', 'quantile', 'uniform'}, default='cart'
-            分箱策略: 
-            - 'cart': 基于决策树的最优分箱。
-            - 'quantile': 等频分箱。
-            - 'uniform': 等宽分箱。
-        n_bins: int, default=10
-            目标最大分箱数。
-        special_values: List[Union[int, float, str]], optional
-            特殊值列表。这些值将被强制独立成箱 (如: -999, -9999)。
-        missing_values: List[Union[int, float, str]], optional
-            自定义缺失值列表。默认 None, NaN 会自动识别并归为 Missing 箱。
-        min_bin_size: float, default=0.02
-            仅在 method='cart' 时有效。决策树叶子节点的最小样本占比。
-        merge_small_bins: bool, default=False
-            quantile/uniform 分箱时，是否在原生分箱后自动合并样本量小于 min_bin_size 的小箱。
-        cart_params: Dict, optional
-            透传给 sklearn.tree.DecisionTreeClassifier 的额外参数。
-        remove_empty_bins: bool, default=False
-            仅在 method='uniform' 时有效。是否自动剔除并合并样本量为 0 的空箱。
-        n_jobs: int, default=-1
-            并行计算的核心数。-1 表示使用所有可用核心。
-        """
+    ) -> None:
         super().__init__(
             features=features, n_bins=n_bins, 
             cat_features=cat_features, # 传递给父类
@@ -1281,23 +1296,38 @@ class MarsNativeBinner(MarsBinnerBase):
 
         # ---------------- 1. 处理数值型特征 ----------------
         if num_cols:
-            valid_num_cols = []
+            float_cols = [c for c in num_cols if X.schema[c] in [pl.Float32, pl.Float64]]
+            int_cols = [c for c in num_cols if X.schema[c] not in [pl.Float32, pl.Float64]]
+            
             stats_exprs = []
+            
+            #利用 fill_nan(None) 将 NaN 转为自动被忽略的 Null
+            if float_cols:
+                stats_exprs.extend([
+                    pl.col(float_cols).fill_nan(None).min().name.suffix("_min"),
+                    pl.col(float_cols).fill_nan(None).max().name.suffix("_max")
+                ])
+                
+            if int_cols:
+                stats_exprs.extend([
+                    pl.col(int_cols).min().name.suffix("_min"),
+                    pl.col(int_cols).max().name.suffix("_max")
+                ])
+            
+            # 使用 named=True 会返回类似 {'age_min': 18, 'age_max': 60} 的字典
+            stats_dict = X.select(stats_exprs).row(0, named=True)
+            
+            valid_num_cols = []
+            
             for c in num_cols:
-                col_dtype = X.schema[c]
-                target_expr = pl.col(c)
-                if col_dtype in [pl.Float32, pl.Float64]:
-                    target_expr = target_expr.filter(target_expr.is_not_nan())
-                stats_exprs.append(target_expr.min().alias(f"{c}_min"))
-                stats_exprs.append(target_expr.max().alias(f"{c}_max"))
-            
-            stats_row = X.select(stats_exprs).row(0)
-            
-            for i, c in enumerate(num_cols):
-                min_val, max_val = stats_row[i * 2], stats_row[i * 2 + 1]
-                if min_val == max_val:
+                min_val = stats_dict[f"{c}_min"]
+                max_val = stats_dict[f"{c}_max"]
+                
+                # 防御全空列或零方差常量列
+                if min_val is None or max_val is None or min_val == max_val:
                     self.bin_cuts_[c] = [float('-inf'), float('inf')]
                     continue
+                
                 valid_num_cols.append(c)
                 
             if valid_num_cols:
@@ -1874,30 +1904,99 @@ class MarsNativeBinner(MarsBinnerBase):
 
 class MarsOptimalBinner(MarsBinnerBase):
     """
-    [Mars 最优分箱]
+    基于数学规划的最优分箱器。
 
-    该类是 Mars 库的高级核心组件, 将极速预分箱技术 (Native Pre-binning) 与基于数学规划的
-    最优分箱算法 (OptBinning) 深度集成。它旨在为风控模型提供具备单调约束、最优 IV 分布和
-    极强鲁棒性的特征切点。
+    该组件集成了空间降维预分箱技术与 OptBinning 核心规划算法。通过在指定的目标事件率
+    （Event Rate）单调性约束、最小区间占比及最小事件数等边界条件下，求解信息值（IV）最大化
+    的混合整数规划或约束编程问题，生成具备极高鲁棒性与严格业务逻辑解释性的特征切点。
+
+    Parameters
+    ----------
+    features : list of str, optional
+        数值型特征列名列表。若为 None，系统将自动扫描数据集中的所有连续型变量。
+        
+    cat_features : list of str, optional
+        类别型特征列名列表。若为 None，系统将自动扫描数据集中的所有类别型变量。
+        
+    n_bins : int, default 10
+        最大分箱数量上限（不包含缺失值箱与特殊值箱）。
+        
+    min_n_bins : int, default 1
+        强制求解器切分的最小分箱数量约束。若特征分布的物理条件无法满足此约束阈值，底层
+        引擎将自动触发熔断并回退至预分箱结果。
+        
+    min_bin_size : float, default 0.02
+        单一分箱（非缺失/特殊箱）的最小物理样本占比约束。约束区间为 (0.0, 0.5]。
+        
+    min_bin_n_event : int, default 3
+        单一分箱（非缺失/特殊箱）内包含的正样本（事件）最小绝对数量约束。
+        
+    prebinning_method : {'cart', 'quantile', 'uniform'}, default 'cart'
+        求解规划问题前的空间降维预切分策略。
+        - 'cart': 监督式决策树最优切分。
+        - 'quantile': 无监督等频切分。
+        - 'uniform': 无监督等宽切分。
+        
+    n_prebins : int, default 50
+        预分箱阶段生成的初始区间数量上限。该参数决定了传递给求解器的可行切点搜索空间规模。
+        
+    min_prebin_size : float, default 0.01
+        预分箱区间的最小样本占比约束。仅当 `prebinning_method='cart'` 时，该参数作为
+        决策树叶子节点的最小样本比例生效。
+        
+    monotonic_trend : {'ascending', 'descending', 'auto', 'auto_asc_desc'}, default 'auto_asc_desc'
+        针对目标事件率的全局单调性约束方向。'auto_asc_desc' 将并发评估严格单调递增与递减
+        两种假设空间，并返回信息值更优的解。
+        
+    solver : {'cp', 'mip'}, default 'cp'
+        底层优化问题的数学规划求解引擎。
+        - 'cp': 约束编程 (Constraint Programming)，在处理复杂边界约束时具备较优的收敛速度。
+        - 'mip': 混合整数规划 (Mixed-Integer Programming)。
+        
+    time_limit : int, default 10
+        单个特征规划求解的超时时间界限（以秒为单位）。触发超时拦截后将安全回退至次优基准规则。
+        
+    max_cats_to_solver : int, default 100
+        类别型特征的高基数截断阈值。仅保留出现频率最高的前 K 个类别进入求解器组合搜索，
+        其余类别将被安全折叠为预处理冗余组。
+        
+    min_cat_fraction : float, default 0.05
+        类别型特征单一类别的最小物理样本占比约束。
+        
+    special_values : list of Any, optional
+        领域自定义的特殊值集。底部分箱引擎将对这些数值执行物理隔离并分配至独立的负数索引区间，
+        不参与规划求解运算。
+        
+    missing_values : list of Any, optional
+        领域自定义的缺失值集。将被统一路由至标准的缺失值箱（缺省索引 -1）。
+        
+    cart_params : dict, optional
+        透传至底层预分箱决策树估计器的初始化超参数字典。
+        
+    join_threshold : int, default 100
+        分箱映射阶段的执行引擎路由阈值。当类别基数超过此值时，底层计算引擎将自动从条件替换
+        模式切换为哈希关联模式 (Hash Join)，以保障超高基数特征转换时的吞吐量。
+        
+    n_jobs : int, default -1
+        并行计算引擎的并发分配核心数限制。
 
     Attributes
     ----------
-    bin_cuts_: Dict[str, List[float]]
-        数值型特征最终生成的切点字典。
-    cat_cuts_: Dict[str, List[List[Any]]]
-        类别型特征的分组规则字典。
-    fit_failures_: Dict[str, str]
-        记录求解器超时或计算失败的特征原因。
+    bin_cuts_ : dict of str to list of float
+        针对连续型特征求解生成的物理切点映射字典。
+        
+    cat_cuts_ : dict of str to list of list
+        针对类别型特征求解生成的离散组合分类映射字典。
+        
+    fit_failures_ : dict of str to str
+        记录在拟合过程中触发求解器异常、数据类型不支持或超时熔断的特征名称及其内部诊断原因。
 
     Notes
     -----
-    1. 双阶段启发式求解：
-    - Stage 1: Native 粗切: 利用 `MarsNativeBinner` 快速将连续变量离散化为 20-50 个初始区间 (Pre-bins)。这一步在主进程中通过 Polars 的 Rust 内核完成, 实现了数据的极大压缩。
-    - Stage 2: MIP/CP 精切: 将压缩后的统计量送入子进程, 利用数学规划求解器在满足单调性、最小箱占比等约束下, 寻找既定统计值最大化的最优解。
-
-    2. 混合并行策略：
-    - 数值型处理: 采用 `loky` 后端。由于最优求解涉及复杂的 Python 胶水逻辑和外部求解器调用, 通过多进程 (Loky) 彻底规避 GIL 锁, 释放多核 CPU 算力。
-    - PCR 优化: 在任务生成阶段完成“源头清洗”, 仅将 “入参即干净” 的高纯度 Numpy 数据传递给子进程, 最大限度降低跨进程序列化开销。
+    该离散化评估器在执行过程中高度依赖底层预分箱产生的搜索边界。在面临极度偏态的特征分布时，
+    求解器可能因无法在给定的 `min_bin_size` 与单调性约束下找到可行解 (Infeasible) 而崩溃。
+    为此，引擎内部构建了完备的异常隔离与降级回退机制，确保流水线在处理高噪超宽表时具备
+    绝对的稳定性。
     """
 
     def __init__(
@@ -1922,80 +2021,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         cart_params: Optional[Dict[str, Any]] = None,
         join_threshold: int = 100,
         n_jobs: int = -1
-   ) -> None:
-        """
-        初始化 MarsOptimalBinner。
-
-        Parameters
-        ----------
-        features: List[str], optional
-            数值型特征的列名白名单。若为 None, fit 时将自动识别所有数值列。
-        cat_features: List[str], optional
-            类别型特征的列名白名单。若为 None, fit 时将自动识别所有类别列。
-        n_bins: int, default=10
-            **最大分箱数**。最终生成的有效分箱数量不会超过此值。
-        min_n_bins: int, default=1
-            **最小分箱数**。强制求解器至少切分出多少个箱子。
-            若数据量不足以支撑此约束 (触发水位熔断), 将自动回退到预分箱结果。
-        min_bin_size: float, default=0.02
-            **最小箱占比约束**。
-            指定每个分箱 (不含缺失值和特殊值箱)包含的样本量占总样本量的最小比例 (0.0 ~ 0.5)。
-            例如 0.02 表示每箱至少包含 2% 的样本。
-        min_bin_n_event: int, default=3
-            **最小箱事件数约束**。
-            指定每个分箱 (不含缺失值和特殊值箱)包含的事件数 (正样本数) 的最小数量。
-            例如 3 表示每箱至少包含 3 个事件。
-        prebinning_method: {'cart', 'quantile', 'uniform'}, default='cart'
-            **预分箱策略**。
-            - 'cart': 使用决策树进行初始切分, 后续优化速度最快；
-            - 'quantile': 等频切分；
-            - 'uniform': 等宽切分。
-        n_prebins: int, default=50
-            **预分箱数量**。
-            在调用求解器前, 先将连续变量离散化为多少个初始区间。
-            值越大, 最终分箱越精细, 但求解速度越慢。建议值 20~50。
-        min_prebin_size: float, default=0.05
-            **预分箱的最小叶子节点占比**。
-            仅在 `prebinning_method='cart'` 时有效, 控制决策树生长的精细度。
-        monotonic_trend: str, default='auto_asc_desc'
-            **单调性约束**。控制分箱后 Event Rate 的趋势: 
-            - 'ascending': 单调递增；
-            - 'descending': 单调递减；
-            - 'auto': 自动选择 asc / desc / peak / vally, 速度较慢；
-            - 'auto_asc_desc': 尝试升序和降序, 速度比 auto 快很多。
-        solver: {'cp', 'mip'}, default='cp'
-            **数学规划求解引擎**。
-            - 'cp' (Constraint Programming): 约束编程, 通常处理复杂约束时速度更快 (推荐)；
-            - 'mip' (Mixed-Integer Programming): 混合整数规划。
-        time_limit: int, default=10
-            **求解超时时间** (秒)。
-            单个特征的最优分箱求解最大允许耗时。若超时, 将自动回退。
-        max_cats_to_solver: int, optional, default=100
-            **类别特征高基数截断阈值**。
-            对于类别型特征, 仅保留出现频率最高的 Top-K 个类别, 其余类别将被归并为 
-            `"__Mars_Other_Pre__"`, 以减少求解器的搜索空间。
-        min_cat_fraction: float, optional, default=0.05
-            **类别特征最小占比约束**。
-        special_values: List[Any], optional
-            **特殊值列表**。
-            这些值 (如 -999, -1)将被强制剥离, 分配到独立的负数索引分箱中 (-3, -4...), 
-            不参与最优分箱的切分计算。
-        missing_values: List[Any], optional
-            **自定义缺失值列表**。
-            除了标准的 Null/NaN 外, 额外视作缺失值的内容。会被归入 Missing 箱 (索引 -1)。
-        join_threshold: int, default=100
-            **Transform 性能调优阈值**。
-            在 `transform` 阶段, 若类别特征的基数超过此值, 将自动启用 `Hash Join` 模式
-            替代 `Replace` 模式, 以显著提升宽表转换性能。
-        cart_params: Dict[str, Any], optional
-            **传递给决策树分箱器的额外参数字典**。
-            仅在 `prebinning_method='cart'` 时有效。
-        n_jobs: int, default=-1
-            **并行核心数**。
-            - `-1`: 使用所有可用核心 (保留一个)。
-            - `1`: 单线程运行。
-            - `N`: 指定使用的核心数。
-        """
+    ) -> None:
         super().__init__(
             features=features, cat_features=cat_features, n_bins=n_bins,
             special_values=special_values, missing_values=missing_values,

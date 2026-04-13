@@ -22,32 +22,45 @@ class ProfileData(NamedTuple):
 
 class MarsProfileReport:
     """
-    由 MarsDataProfiler 生成的数据画像报告容器。
+    数据特征画像与质量评估报告容器。
 
-    该类作为数据探查 (EDA) 流程的最终输出枢纽，负责统一管理特征统计指标与数据质量 (DQ) 指标的
-    展示、交互与导出。它无缝连接了底层纯粹的分析数据与业务级可视化报表。
+    作为数据探查（EDA）流水线的标准输出载体，该组件负责统一管理并呈现由 
+    `MarsDataProfiler` 产出的高维特征统计指标与多维趋势矩阵。系统封装了对底层
+    数据帧的只读访问接口、面向 Jupyter 环境的交互式富文本渲染，以及携带高保真
+    条件格式的跨平台电子表格（Excel）持久化导出能力。
 
-    核心特性
-    --------
-    * **交互式探查 (Interactive EDA)**: 在 Jupyter Notebook 中渲染富文本 HTML，
-      支持嵌入式迷你分布图 (Sparklines)、热力图色阶与动态数据表。
-    * **企业级导出 (Professional Export)**: 一键生成符合业务阅读直觉的 Excel 监控报表，
-      并原生保留所有条件格式 (Conditional Formatting)、数据条与百分比刻度。
-    * **趋势追踪 (Trend Tracking)**: 管理按时间切片或客群维度展开的多维分析结果，
-      通过统一的 API 快速下钻追踪特定指标的演变趋势。
+    Parameters
+    ----------
+    overview : DataFrame (pl.DataFrame or pd.DataFrame)
+        全量特征概览宽表。包含全体特征的全局数据质量（DQ）度量与统计分布特征计算结果。
+        
+    dq_tables : dict of str to DataFrame
+        数据质量指标的分组趋势透视表字典。键为具体的度量名称（如 'missing', 'zeros', 'unique'），
+        值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
+        
+    stats_tables : dict of str to DataFrame
+        统计分布指标的分组趋势透视表字典。键为具体的度量名称（如 'mean', 'max', 'p25'），
+        值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
 
     Attributes
     ----------
-    overview_table : Union[pl.DataFrame, pd.DataFrame]
-        全量特征概览宽表。包含所有特征的全局数据质量与统计分布表现 (如 missing_rate, mean 等)。
-    dq_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-        数据质量 (DQ) 指标的分组趋势字典。
-        - Key: 指标名称 (如 'missing', 'zeros', 'unique')。
-        - Value: 该指标在不同时间切片/分组下的透视宽表 (Pivot Table)。
-    stats_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-        统计分布指标的分组趋势字典。
-        - Key: 指标名称 (如 'mean', 'max', 'p25')。
-        - Value: 该指标在不同时间切片/分组下的透视宽表 (Pivot Table)。
+    overview_table : DataFrame
+        内部持有的全量特征概览宽表上下文引用。
+        
+    dq_tables : dict of str to DataFrame
+        内部持有的数据质量指标趋势字典上下文引用。
+        
+    stats_tables : dict of str to DataFrame
+        内部持有的统计分布指标趋势字典上下文引用。
+
+    Notes
+    -----
+    该容器提供了针对数据质量探查与时序追踪的统一交互层 API。
+    其内部暴露的 `show_overview` 与 `show_trend` 方法通过动态构建级联的样式渲染器
+    （Pandas Styler），支持在交互式计算环境中直接将统计梯度映射为色带（Colormaps）、
+    数据条（Data Bars）及微缩分布字符图（Sparklines）。
+    调用持久化导出时，底层引擎将在物理存储层面上严格还原交互式环境中的条件格式规则，
+    以确保离线监控报表与线上分析环境的视觉一致性。
 
     Examples
     --------
@@ -55,14 +68,14 @@ class MarsProfileReport:
     >>> profiler = MarsDataProfiler(df)
     >>> report = profiler.generate_profile(profile_by="month")
     >>> 
-    >>> # 1. 在 Jupyter 中进行交互式展示
+    >>> # 1. 触发交互式富文本视图渲染
     >>> report.show_overview(sort_by="missing_rate")
     >>> report.show_trend("missing", features=["age", "income"])
     >>> 
-    >>> # 2. 提取底层干净的分析数据进行二次开发
+    >>> # 2. 剥离并获取底层物理数据帧以执行二次开发
     >>> overview_df, dq_dict, stat_dict = report.get_profile_data()
     >>> 
-    >>> # 3. 导出为带高亮业务样式的 Excel 报表
+    >>> # 3. 执行携带条件格式映射的跨平台报表持久化导出
     >>> report.write_excel("mars_data_health_audit.xlsx")
     """
 
@@ -548,36 +561,52 @@ class MarsProfileReport:
     
 class MarsEvaluationReport:
     """
-    由 MarsBinEvaluator 生成的特征效能与稳定性评估报告容器。
+    特征效能与稳定性评估报告容器。
 
-    该类是风控特征工程的核心交付物载体。它不仅负责安全存储底层极速计算出的海量评估数据，
-    还提供了一套为金融级建模场景深度定制的分析与交互接口。它智能兼容 Polars 与 Pandas 
-    双引擎，确保数据流水线的类型连贯性。
+    作为风控特征工程流水线的标准输出载体，该组件负责统一管理并呈现由 `MarsBinEvaluator` 
+    产出的高维特征评估度量与多维趋势矩阵。系统封装了对底层评估数据帧的只读访问接口、
+    面向交互式分析环境的富文本视图渲染，以及跨平台的高保真电子表格持久化导出能力，
+    以支撑特征区分度审计与跨期分布漂移监控。
 
-    核心特性
-    --------
-    * **交互式审计 (Interactive Audit)**: 在 Jupyter 环境中渲染带业务语境色彩 
-      (如 RdYlGn_r 预警色带) 的富文本 Styler，快速扫描特征区分度与单调性缺陷。
-    * **时序趋势追踪 (Time-Series Tracking)**: 动态聚合生成 PSI、AUC、IV、坏账率及逻辑稳定性
-      (RiskCorr) 的跨期趋势热力图，精准定位特征分布漂移 (Data Drift) 的时间拐点。
-    * **生产级报表导出 (Production-Ready Export)**: 一键生成包含条件格式 (红绿灯/数据条)
-      和专业分箱排版的跨平台多 Sheet Excel 监控月报，实现从代码到业务汇报的无缝衔接。
+    Parameters
+    ----------
+    summary_table : DataFrame (pl.DataFrame or pd.DataFrame)
+        特征级汇总评估宽表。涵盖特征的全局预测力（如 IV, KS, AUC）与跨期稳定性边界
+        （如最大 PSI, 最小风险逻辑一致性相关系数）的核心度量数据。
+        
+    trend_tables : dict of str to DataFrame
+        核心评估指标的跨期趋势字典。键为具体风控指标名称（如 'psi', 'auc', 'iv', 'bad_rate', 
+        'risk_corr'），值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
+        
+    detail_table : DataFrame
+        细粒度分箱明细表。包含特征在各时间切片下所有分箱区间的样本分布占比、坏账率、
+        提升度（Lift）、证据权重（WOE）及累积风险推演指标。
+        
+    group_col : str, optional
+        驱动趋势分析与分箱明细切片的分组维度标识。若当前处于单点截面评估模式，
+        则该值为 None 或全局默认聚合标识。
 
     Attributes
     ----------
-    summary_table : Union[pl.DataFrame, pd.DataFrame]
-        特征级汇总审计宽表。涵盖全局预测力 (如 Total IV, Max KS, AUC) 与
-        跨期稳定性边界 (如 Max PSI, Min RiskCorr) 的核心雷达数据。
-    trend_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-        核心评估指标的跨期趋势字典。
-        - Key: 指标名称 (如 'psi', 'auc', 'iv', 'bad_rate', 'risk_corr')。
-        - Value: 结构为 [特征名 x 时间切片] 的透视宽表 (Pivot Table)。
-    detail_table : Union[pl.DataFrame, pd.DataFrame]
-        最细粒度的分箱明细表。包含每个特征、每个时间切片下所有分箱的样本分布占比、
-        坏账率、Lift、WOE 及累积风险推演指标。
-    group_col : str, optional
-        驱动趋势分析的切片维度标识 (如 'month', 'vintage', 'channel')。
-        若处于单点快照评估模式 (Snapshot Mode)，则通常为 'Total' 或 None。
+    summary_table : DataFrame
+        内部持有的特征级汇总评估宽表引用。
+        
+    trend_tables : dict of str to DataFrame
+        内部持有的核心评估指标趋势字典引用。
+        
+    detail_table : DataFrame
+        内部持有的细粒度分箱明细表引用。
+        
+    group_col : str
+        内部挂载的分组维度标识。
+
+    Notes
+    -----
+    该容器提供了针对特征评估诊断的统一交互层 API。其暴露的 `show_summary` 与 `show_trend` 
+    方法通过动态构建样式渲染器（Pandas Styler），支持直接将风控指标梯度映射为预警色带
+    与数据条，以加速区分度缺陷与单调性倒挂的物理识别。
+    执行持久化导出时，底层引擎严格还原交互式视图中的条件格式与业务阈值规则，确保离线
+    模型监控文档与线上审计视图的视觉连贯性。
 
     Examples
     --------
@@ -585,14 +614,14 @@ class MarsEvaluationReport:
     >>> evaluator = MarsBinEvaluator(target="is_bad")
     >>> report = evaluator.evaluate(df, profile_by="month")
     >>> 
-    >>> # 1. 快速查看核心特征的全局排行与红绿灯预警
+    >>> # 触发交互式特征汇总审计视图
     >>> core_features = ["age", "debt_ratio", "revolving_util"]
     >>> report.show_summary(features=core_features)
     >>> 
-    >>> # 2. 下钻追踪特定指标的时间序列漂移轨迹 (按全局表现降序，时间正序)
+    >>> # 追踪特定指标的时间序列漂移轨迹
     >>> report.show_trend("psi", sort_by="Total", sort_ascending=False, group_ascending=True)
     >>> 
-    >>> # 3. 导出包含全量明细和色彩高亮的专业 Excel 监控报表
+    >>> # 执行包含全量分箱明细的监控报表持久化导出
     >>> report.write_excel("mars_feature_evaluation.xlsx")
     """
 

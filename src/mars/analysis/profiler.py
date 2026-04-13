@@ -18,59 +18,94 @@ from mars.utils.date import MarsDate
 
 class MarsDataProfiler(MarsBaseEstimator):
     """
-    [Mars 高性能数据画像] 
+    高性能数据特征画像与稳定性评估器。
 
-    专为大规模风控建模数据集设计。它作为分析流程的入口，封装了从
-    数据质量诊断、统计值计算到可视化生成的全链路逻辑。
+    该组件负责计算数据集的全局质量指标（如缺失率、零值率、众数占比）与统计分布特征
+    （如均值、方差、分位数）。同时提供基于底层向量化引擎的字符级微缩分布图（Sparklines）
+    渲染，并支持基于时间切片或客群维度的多维趋势分析及群体稳定性（PSI）评估。
 
-    主要功能
-    --------
-    1. 全量指标概览 (Overview):
-       - 计算 Missing/Zero/Unique/Top1 等基础 DQ 指标。
-       - 自动识别并计算数值列的统计分布 (Mean, Std, Quantiles)。
-    
-    2. 迷你分布图 (Sparklines):
-       - 在报告中生成 Unicode 字符画 (如  ▂▅▇█)。
-       - **可视化逻辑**: 自动采样 (默认20w行) -> 剔除异常值 -> 等宽分箱 -> 字符映射。
-       - 支持通过 Config 调整分箱精度和采样率。
-
-    3. 多维趋势分析 (Trend Analysis):
-       - 支持按时间 (Month/Vintage) 或客群 (Segment) 进行分组分析。
-       - 自动计算组间稳定性指标 (Variance/CV)。
+    Parameters
+    ----------
+    df : DataFrame (pl.DataFrame or pd.DataFrame)
+        输入数据集上下文。引擎内部统一将其转换为 Polars 内存数据帧格式。
+        
+    features : list of str, optional
+        指定参与计算的特征列名集合。若为 None，系统将默认挂载数据集中的全量特征列。
+        
+    exclude_features : list of str, optional
+        排除计算的特征列名黑名单。
+        
+    include_dtypes : type or pl.DataType or list, optional
+        数据类型白名单约束。仅允许匹配指定类型的列进入计算管道，支持 Python 原生类型
+        （如 int, float, str）与 Polars 数据类型（如 pl.Int64）的混合枚举约束。
+        
+    missing_values : list of Any, optional
+        领域自定义缺失值定义（如 [-999, 'unknown']）。该集合内的数值在计算质量指标时
+        将被纳入缺失率统计，并在连续变量的统计分布及分布图计算中被物理剔除。
+        
+    special_values : list of Any, optional
+        领域自定义特殊值定义。在数据质量统计中被视为有效值并参与众数等计算，但在
+        连续型变量的数值分布运算中会被剥离。
+        
+    psi_n_bins : int, default 10
+        执行群体稳定性 (PSI) 计算时，针对连续型变量设定的空间离散化分箱上限。
+        
+    psi_bin_method : {'quantile', 'uniform'}, default 'quantile'
+        执行群体稳定性 (PSI) 计算时，针对连续型变量调用的无监督区间切分策略。
+        
+    psi_cv_ignore_threshold : float, default 0.05
+        群体稳定性变异系数 (CV) 的触发门限。用于抑制极小基数分布下的方差膨胀效应。
+        
+    psi_batch_size : int, default 50
+        执行跨维度 PSI 矩阵交叉运算时的特征列并发切块大小。
+        
+    overview_batch_size : int, default 500
+        执行全局概览统计时的特征列并发切块大小，用于防范大规模特征下底层查询优化器
+        (Query Planner) 的抽象语法树 (AST) 解析过载。
+        
+    sample_frac : float, optional
+        全局随机采样比例限，区间边界为 (0.0, 1.0)。配置该参数将通过牺牲部分统计精度
+        以换取极大规模数据集下的特征计算吞吐量。
+        
+    config : MarsProfileConfig, optional
+        画像管线配置上下文。用于精细化控制各计算节点的度量算子开关与图表渲染参数。
 
     Attributes
     ----------
     df : pl.DataFrame
-        内部存储的 Polars DataFrame。
-    features : List[str]
-        最终确定的待分析特征列表。
+        内部挂载并经过预处理（如随机采样）的数据帧只读引用。
+    features : list of str
+        经过数据类型过滤与黑白名单校验后，实际流入画像管道的物理特征名称集合。
     config : MarsProfileConfig
-        全局配置对象。控制计算哪些指标、是否画图等。
-        详见 `mars.analysis.config.MarsProfileConfig`。
-    custom_missing : List[Any]
-        自定义缺失值列表 (如 -999, 'null')。
-        - 在计算 missing_rate 时计入分子，
-        - 在计算统计分布 (Mean/Std) 时被剔除。
-    special_values : List[Any]
-        自定义特殊值列表。这些值被视为有效值参与 DQ 统计 (如 Top1),
-        但在计算数值分布 (Sparkline/Mean/PSI) 时会被剔除。
-    psi_cv_ignore_threshold : float
-        PSI 稳定性计算的门控阈值 (默认 0.05)。
-        用于解决 "小基数陷阱"：若某特征在所有分组下的 PSI 最大值仍小于该阈值，
-        则认为其处于绝对稳定区，强制将 Group CV 置为 0, 避免微小波动触发误报。
+        执行期绑定的全局配置实体。
+    missing_values : list of Any
+        执行期绑定的自定义缺失值集合。
+    special_values : list of Any
+        执行期绑定的特殊值集合。
+
+    Notes
+    -----
+    在计算多维组间变异系数 (Group CV) 时，若某特征在全部分布切片下的 PSI 峰值均未突破 
+    `psi_cv_ignore_threshold`，底层引擎将强制抹零其组间波动率，以此对冲在极小偏移量下
+    由分母极值引发的相对误差放大现象。
+    微缩分布图 (Sparklines) 生成机制内部集成了异常值截断与自适应降采样策略，以确保
+    前端终端渲染的稳健性与一致性。
 
     Examples
     --------
-    >>> # 1. 基础用法
+    >>> # 基础调用范式：生成全量报告与交互式视图
     >>> profiler = MarsDataProfiler(df)
     >>> report = profiler.generate_profile()
     >>> report.show_overview()
 
-    >>> # 2. 高级用法：自定义缺失值 + 按月分组 + 关闭画图(提速)
+    >>> # 进阶调用范式：挂载领域特殊值、注入时间窗口并覆写底层渲染配置
     >>> profiler = MarsDataProfiler(df, missing_values=[-999, "unknown"])
     >>> report = profiler.generate_profile(
     ...     profile_by="month",
-    ...     config_overrides={"enable_sparkline": False, "stat_metrics": ["psi", "mean", "min", "max"]}
+    ...     config_overrides={
+    ...         "enable_sparkline": False, 
+    ...         "stat_metrics": ["psi", "mean", "min", "max"]
+    ...     }
     ... )
     """
 
@@ -81,53 +116,16 @@ class MarsDataProfiler(MarsBaseEstimator):
         *,
         exclude_features: Optional[List[str]] = None,
         include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None] = None,
-        
         missing_values: Optional[List[Union[int, float, str]]] = None,
         special_values: Optional[List[Any]] = None,
-        
         psi_n_bins: int = 10,           
         psi_bin_method: Literal["quantile", "uniform"] = "quantile", 
         psi_cv_ignore_threshold: float = 0.05,
         psi_batch_size: int = 50, 
         overview_batch_size: int = 500,
-        
         sample_frac: Optional[float] = None, 
-        
         config: Optional[MarsProfileConfig] = None,
     ) -> None:
-        """
-        Parameters
-        ----------
-        df : Union[pl.DataFrame, pd.DataFrame]
-            输入数据集。会自动转换为 Polars 格式。
-        features : List[str], optional
-            指定要分析的列名列表。如果为 None，则分析所有列。
-        exclude_features : List[str], optional
-            [黑名单] 指定要排除的列名列表。
-            - 逻辑优先级: final_features = (features or all_cols) - exclude_features
-        include_dtypes : List[pl.DataType], optional
-            [类型白名单] 仅包含指定数据类型的列进行分析。
-            - 支持 Python 原生类型和 Polars 类型。例如: [int, pl.Int64, pl.Float64] 只分析数值列。
-        missing_values : List[Union[int, float, str]], optional
-            指定自定义缺失值列表。例如: [-999, "unknown", "\\N"]。
-        special_values : List[Any], optional
-            指定自定义特殊值列表 (如极端值)。这些值在计算分布图时会被单独处理。
-        psi_batch_size : int, optional
-            计算 PSI 时的特征批处理大小。默认为 50。
-        psi_n_bins : int, optional
-            计算 PSI 时的分箱数量。默认为 10。
-        psi_bin_method : str, optional
-            计算 PSI 时的分箱方法。支持 "quantile" 或 "uniform"。默认为 "quantile"。
-        psi_cv_ignore_threshold : float, optional
-            PSI 稳定性计算的门控阈值。默认 0.01。
-            - 当某特征的平均 PSI 小于该值时，强制将 group_cv 置为 0，避免"小基数陷阱"。
-        sample_frac : float, optional
-            如果指定，则对输入数据进行随机采样，采样比例为该值 (0~1之间)。
-            数据量非常大时可用以提升分析速度，但会牺牲一定精度。
-        config : MarsProfileConfig, optional
-            配置对象。如果为 None，则使用默认配置。
-        
-        """
         super().__init__()
         # 数据接入与采样
         self.df = self._ensure_polars_dataframe(df)
@@ -138,7 +136,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         self.config = config if config else MarsProfileConfig()
         
         # 值处理配置
-        self.custom_missing = missing_values if missing_values else []
+        self.missing_values = missing_values if missing_values else []
         self.special_values = special_values if special_values else []
         
         # PSI 配置
@@ -214,7 +212,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         config_overrides: Optional[Dict[str, Any]] = None
     ) -> MarsProfileReport:
         """
-        [Core] 执行数据画像分析管道，生成完整分析报告。
+        执行数据画像分析流水线，生成完整的特征分析报告。
 
         该方法会自动计算两类指标：
         - Overview：包含数据分布(Sparkline)、DQ指标、统计指标。不涉及分组。
@@ -224,7 +222,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         ----------
         profile_by : str, optional
             分组维度。
-            - 若提供 `dt_col`: 可选 "day", "week", "month"。
+            - 若提供 `dt_col`: 可选 "day", "week", "month", "3d", "14d" 等。
             - 若未提供 `dt_col`: 必须是数据中已存在的列名。
             - None: 仅生成 Overview 和 Total 趋势列。
             - 如果是自动聚合，Overview 表中不会包含这个临时的日期分组列，只会在 Trends 表中体现。
@@ -529,7 +527,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         - **非 0 值**: 使用 2/8 到 8/8 高度的方块 (``▂`` 到 ``█``)，跳过 1/8 块以增强可视性。
         
         * **无有效数据**: 显示全下划线 ``________``。
-        - 场景: 原始列全为 Null/NaN，或者所有值都在 `custom_missing` 列表中。
+        - 场景: 原始列全为 Null/NaN，或者所有值都在 `missing_values` 列表中。
         
         * **逻辑无分布**: 显示全下划线 ``________`` (并记录 Debug 日志)。
         - 场景: 数据存在 (len>0) 但无法构建直方图 (如全为无穷大 Inf)。
@@ -852,7 +850,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         # 数值特征 PSI 
         if num_cols:
             try:
-                numeric_missing = [v for v in self.custom_missing if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                numeric_missing = [v for v in self.missing_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
                 numeric_special = [v for v in self.special_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
                 
                 from mars import MarsNativeBinner
@@ -1411,17 +1409,17 @@ class MarsDataProfiler(MarsBaseEstimator):
         """[Helper] 类型安全的缺失值匹配 (防止类型不匹配报错)"""
         # Polars 很严格，如果拿字符串 "unknown" 去过滤整数列，会崩。
         # 这个函数会检查当前列的类型，只返回类型匹配的自定义缺失值。
-        if not self.custom_missing: 
+        if not self.missing_values: 
             return []
         is_num = self._is_numeric(col)
         is_str = self.df[col].dtype == pl.String
-        return [v for v in self.custom_missing if (is_num and isinstance(v, (int, float))) or (is_str and isinstance(v, str))]
+        return [v for v in self.missing_values if (is_num and isinstance(v, (int, float))) or (is_str and isinstance(v, str))]
     
     def _get_values_to_exclude(self, col: str) -> List[Any]:
         """
         [Helper] 获取当前列需要剔除的所有特定值 (类型安全)。
 
-        该方法合并了实例的 `custom_missing` (自定义缺失值) 和 `special_values` (特殊值)，
+        该方法合并了实例的 `missing_values` (自定义缺失值) 和 `special_values` (特殊值)，
         并根据目标列的物理类型 (`dtype`) 对值进行严格过滤。
 
         Polars 的比较算子 (`is_in`, `eq`) 是强类型的。如果尝试将字符串类型的值（如 "unknown"）
@@ -1440,7 +1438,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         """
         # 如果 self.special_values 还没定义，就用空列表代替
         special_vals = getattr(self, "special_values", [])
-        candidates = self.custom_missing + special_vals
+        candidates = self.missing_values + special_vals
         
         if not candidates: 
             return []
