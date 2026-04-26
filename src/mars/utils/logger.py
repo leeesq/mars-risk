@@ -1,6 +1,8 @@
+"""MARS 统一日志工具。"""
+
 import logging
 import sys
-from typing import Union, Optional, Dict
+from typing import Union, Dict
 
 # 尝试导入 colorlog 以支持彩色日志输出
 # 如果环境中未安装 colorlog，将自动回退到标准无色日志
@@ -12,6 +14,62 @@ except ImportError:
 
 # 定义单例 Logger 的名称，确保整个项目使用的是同一个日志实例
 LOGGER_NAME: str = "mars"
+CONSOLE_ENCODING: str = getattr(sys.stdout, "encoding", None) or "utf-8"
+SAFE_REPLACEMENTS: Dict[str, str] = {
+    "⚠️": "[WARN]",
+    "⚠": "[WARN]",
+    "❌": "[ERROR]",
+    "✅": "[OK]",
+    "ℹ️": "[INFO]",
+    "ℹ": "[INFO]",
+    "⚙️": "[SETUP]",
+    "⚙": "[SETUP]",
+    "📈": "[PLOT]",
+    "📊": "[REPORT]",
+    "📉": "[CHECK]",
+    "🧹": "[CLEAN]",
+    "🔄": "[TRANSFORM]",
+    "🧮": "[METRIC]",
+    "🎲": "[SAMPLE]",
+    "⏱️": "[TIMER]",
+    "⏱": "[TIMER]",
+    "∑": "[ROLLUP]",
+}
+def _sanitize_console_text(text: str) -> str:
+    """
+    清洗控制台输出文本中的高风险字符。
+
+    Parameters
+    ----------
+    text : str
+        待写入控制台的原始文本。
+
+    Returns
+    -------
+    str
+        经过编码安全处理后的文本。
+    """
+    sanitized = text
+    for src, dst in SAFE_REPLACEMENTS.items():
+        sanitized = sanitized.replace(src, dst)
+    return sanitized.encode(CONSOLE_ENCODING, errors="replace").decode(CONSOLE_ENCODING)
+
+
+class SafePlainFormatter(logging.Formatter):
+    """面向普通文本控制台的安全格式化器。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        """格式化日志记录并执行编码安全转换。"""
+        return _sanitize_console_text(super().format(record))
+
+
+if HAS_COLORLOG:
+    class SafeColoredFormatter(colorlog.ColoredFormatter):
+        """面向彩色终端的安全格式化器。"""
+
+        def format(self, record: logging.LogRecord) -> str:
+            """格式化彩色日志记录并执行编码安全转换。"""
+            return _sanitize_console_text(super().format(record))
 
 def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     """
@@ -75,7 +133,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
         # 使用 colorlog 进行带颜色的格式化
         # %(log_color)s ... 切换颜色
         # %(reset)s ... 重置颜色
-        formatter = colorlog.ColoredFormatter(
+        formatter = SafeColoredFormatter(
             '%(log_color)s[MARS] %(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S',
             log_colors=log_colors,
@@ -84,7 +142,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
         )
     else:
         # 回退方案：标准的无色格式化
-        formatter = logging.Formatter(
+        formatter = SafePlainFormatter(
             '[MARS] %(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )

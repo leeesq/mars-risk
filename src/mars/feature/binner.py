@@ -1,4 +1,4 @@
-# mars/feature/binner.py
+"""MARS 分箱器实现模块。"""
 
 from joblib import Parallel, delayed
 from typing import List, Dict, Optional, Union, Any, Literal, Tuple, Set
@@ -145,6 +145,38 @@ class MarsBinnerBase(MarsTransformer):
             }
         }
 
+    @staticmethod
+    def _build_trend_shape_frame(
+        grouped_woe_df: pl.DataFrame,
+        trend_col_name: str = "trend_shape"
+    ) -> pl.DataFrame:
+        """
+        基于聚合后的 WOE 列表构建趋势形态结果表。
+
+        Parameters
+        ----------
+        grouped_woe_df : pl.DataFrame
+            至少包含 `feature` 与 `woe` 列的聚合结果。
+        trend_col_name : str, default "trend_shape"
+            输出趋势列名。
+
+        Returns
+        -------
+        pl.DataFrame
+            包含特征名与趋势标签的结果表。
+        """
+        rows = []
+        for row in grouped_woe_df.iter_rows(named=True):
+            rows.append({
+                "feature": row["feature"],
+                trend_col_name: MarsBinnerBase._detect_trend_scientific(row["woe"]),
+            })
+
+        if not rows:
+            return pl.DataFrame(schema={"feature": pl.Utf8, trend_col_name: pl.Utf8})
+
+        return pl.DataFrame(rows)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
         """
@@ -197,7 +229,7 @@ class MarsBinnerBase(MarsTransformer):
 
     def _get_safe_values(self, dtype: pl.DataType, values: List[Any]) -> List[Any]:
         """
-        [Helper] 跨引擎类型安全清洗函数。
+        根据列类型筛选可安全参与比较的配置值。
 
         在强类型引擎 (如 Polars)中, 类型不匹配是导致崩溃的主要原因。该方法通过预扫描 
         Schema, 确保用户定义的业务逻辑 (缺失值、特殊值)与数据的物理存储类型保持绝对兼容。
@@ -253,7 +285,7 @@ class MarsBinnerBase(MarsTransformer):
         return self.bin_mappings_.get(col, {})
 
     def _is_numeric(self, series: pl.Series) -> bool:
-        """Helper: 判断 Series 是否为数值类型。"""
+        """判断输入序列是否为数值类型。"""
         if series.dtype == pl.Null:
             return False
         return series.dtype in self.NUMERIC_DTYPES
@@ -272,7 +304,7 @@ class MarsBinnerBase(MarsTransformer):
             return
 
         n_cols = len(self.bin_cuts_)+ len(self.cat_cuts_)
-        logger.info(f"⚡ [Auto-Trigger] Materializing WOE for {n_cols} features...")
+        logger.info(f"Materializing WOE mappings for {n_cols} features.")
         
         y_name = "_y_tmp"
         y_series = pl.Series(name=y_name, values=self._cache_y)
@@ -443,14 +475,12 @@ class MarsBinnerBase(MarsTransformer):
                     missing_cond |= pl.col(col).cast(pl.Float64).is_nan()
                 for v in safe_missing_vals: 
                     missing_cond |= (pl.col(col) == v)
-                # ⭐构建缺失值分箱表达式
+                # 先将缺失值映射到统一索引，再叠加特殊值和常规分箱逻辑。
                 layer_missing = pl.when(missing_cond).then(pl.lit(IDX_MISSING, dtype=pl.Int16))
                 
                 # 正常分箱逻辑: Cut
                 raw_breaks = cuts[1:-1] if len(cuts) > 2 else []
-                # [优化] 增加 set去重 和 sorted排序, 防止 pl.cut 报错
-                    # 1. 去重 (set): 应对高偏态数据 (如大量 0 值) 导致多个分位数计算结果相同 (q25=0, q50=0)。
-                    # 2. 排序 (sorted): Polars.cut 要求切点严格单调递增，否则 Rust 内核会抛出 Panic。
+                # `pl.cut` 要求切点严格递增；高偏态数据可能产生重复分位点，这里统一去重并排序。
                 breaks = sorted(list(set(raw_breaks)))
 
                 col_mapping: Dict[int, str] = {IDX_MISSING: "Missing", IDX_OTHER: "Other"} # 分箱标签映射表 IDX -> Label
@@ -467,22 +497,13 @@ class MarsBinnerBase(MarsTransformer):
                         high_str = self._format_cut_point(high)
                         col_mapping[i] = f"{i:02d}_[{low_str}, {high_str})"
                         
-                    # [优化] 显式生成 labels 确保 cast(Int16) 成功, 修复 PSI=0 Bug
+                    # 显式生成标签，确保后续转换稳定地落回业务索引。
                     bin_labels: List[str] = [str(i) for i in range(len(breaks) + 1)]
-                    # ⭐ 构建正常分箱表达式
                     layer_normal = (
                         pl.col(col)
-                        # 核心分箱: 将连续数值切分为离散区间
-                        # 返回类型为 Categorical (分类类型), 底层由"物理ID"和"逻辑标签"组成
                         .cut(breaks, labels=bin_labels, left_closed=True)
-                        
-                        # [优化] 强制逻辑解引用
-                        # 直接 cast(Int) 会读取到底层的物理存储 ID (Physical Index), 
-                        # 该 ID 可能受 Null 值或全局字典影响而发生偏移 (如标签"0"对应ID=1)。
-                        # 所以这里先转 Utf8 强制 Polars 查表返回业务标签值 (如字符串 "0", "1")。
+                        # 先还原逻辑标签，再转回业务索引，避免直接读取底层物理 ID。
                         .cast(pl.Utf8)
-                        
-                        # 将字符串 "0" -> 数字 0, 确保与 bin_mappings_ 字典的 Key 完美对齐。
                         .cast(pl.Int16)
                    )
                 
@@ -496,7 +517,7 @@ class MarsBinnerBase(MarsTransformer):
                         # 注意这里的覆盖顺序: 后定义的优先级更高
                         current_branch = pl.when(pl.col(col) == v).then(pl.lit(idx, dtype=pl.Int16)).otherwise(current_branch)
                 
-                # ⭐ 最终的分箱表达式: Missing -> Special -> Normal
+                # 优先级为 Missing -> Special -> Normal。
                 final_idx_expr = layer_missing.otherwise(current_branch)
                 self.bin_mappings_[col] = col_mapping
                 
@@ -506,7 +527,7 @@ class MarsBinnerBase(MarsTransformer):
                 cat_to_idx: Dict[str, int] = {}
                 idx_to_label: Dict[int, str] = {IDX_MISSING: "Missing", IDX_OTHER: "Other"}
                 
-                # [新增] 默认路由索引, 默认为 -2
+                # 未命中任何已知类别时，默认落入 Other 箱。
                 default_bin_idx = IDX_OTHER
                 
                 # 更新映射表
@@ -521,7 +542,7 @@ class MarsBinnerBase(MarsTransformer):
                     for val in group: 
                         val_str = str(val)
                         cat_to_idx[val_str] = i
-                        # [新增] 如果训练时这一箱含有 "__Mars_Other_Pre__", 则将其设为默认箱
+                        # 若训练阶段预聚合了 Other 占位类别，则沿用该箱作为默认去向。
                         if val_str == "__Mars_Other_Pre__":
                             default_bin_idx = i
                 
@@ -560,7 +581,7 @@ class MarsBinnerBase(MarsTransformer):
                         f"_idx_{col}": list(cat_to_idx.values())
                     }).cast({"_k": pl.Utf8, f"_idx_{col}": pl.Int16})
                     
-                    # [修复] 根据 X 的类型自适应转换 map_df
+                    # 跟随输入数据的 eager/lazy 形态，避免额外的执行模式切换。
                     join_tbl = map_df.lazy() if isinstance(X, pl.LazyFrame) else map_df
                     X = X.join(join_tbl, left_on=target_col_name, right_on="_k", how="left")
                     temp_join_cols.append(f"_idx_{col}")
@@ -572,14 +593,10 @@ class MarsBinnerBase(MarsTransformer):
                     # 1. 显式转 String 确保匹配安全
                     str_map = {k: str(v) for k, v in cat_to_idx.items()}
                     
-                    # 2.  default 必须设为 None (Null)！
-                    #    - 如果设为 IDX_OTHER (-2)，特殊值(如-999)会被提前截获变成 -2，
-                    #      导致后续的 Special Logic (current_branch) 无法生效。
-                    #    - 设为 None 后，特殊值会穿透变成 Null，从而落入 otherwise(current_branch) 被正确处理。
-                    #    - 真正的未知类别也会落入 otherwise，最终由 current_branch 的兜底逻辑归为 Other。
+                    # 保持 default=None，让特殊值和未知类别都进入后续兜底分支统一处理。
                     layer_normal = (
                         target_col
-                        .replace(str_map, default=None)
+                        .replace_strict(str_map, default=None)
                         .cast(pl.Int16) 
                     )
                 
@@ -596,15 +613,13 @@ class MarsBinnerBase(MarsTransformer):
             elif return_type == "woe":
                 woe_map = self.bin_woes_.get(col, {})
                 if woe_map:
-                    # [优化] 在 Replace 执行前，确保字典 Key 只有整数，剔除任何 NaN 键
-                    # 这能防御从旧版本或外部加载的模型中潜在的类型污染
+                    # 对旧模型或外部加载映射做一次键类型清洗，避免脏键污染 replace。
                     clean_woe_map = {
                         int(k): float(v) for k, v in woe_map.items() 
                         if k is not None and not (isinstance(k, float) and np.isnan(k))
                     }
                     
-                    # [优化] 使用 clean_woe_map，并增加了 default=0.0
-                    # 确保即便映射表里没定义的索引 (如 -2), 也会被强制转为 0 权重, 而不是保留索引原值
+                    # 未命中的索引统一记为 0.0，避免原始分箱索引泄露到 WOE 输出。
                     expr = final_idx_expr.replace(clean_woe_map, default=0.0).cast(pl.Float32)
                 else:
                     # 如果压根没映射表, 保持原样的全列 0.0
@@ -732,7 +747,7 @@ class MarsBinnerBase(MarsTransformer):
                 .with_columns(
                     pl.col("feature").str.replace("_bin", "")
                 )
-                .collect(streaming=True) 
+                .collect(engine="streaming") 
             )
             agg_results.append(batch_stats)
 
@@ -838,20 +853,14 @@ class MarsBinnerBase(MarsTransformer):
             ])
         )
 
-        trend_df = (
+        trend_df = self._build_trend_shape_frame(
             stats_df.lazy()
-            .filter(pl.col("bin_index") >= 0) 
-            .sort(["feature", "bin_index"])  
+            .filter(pl.col("bin_index") >= 0)
+            .sort(["feature", "bin_index"])
             .group_by("feature")
             .agg(pl.col("woe"))
-            .with_columns(
-                pl.col("woe").map_elements(
-                    self._detect_trend_scientific, 
-                    return_dtype=pl.Utf8
-                ).alias("trend_shape")
-            )
-            .select(["feature", "trend_shape"])
-            .collect()
+            .collect(),
+            trend_col_name="trend_shape",
         )
         
         final_df = (
@@ -873,7 +882,7 @@ class MarsBinnerBase(MarsTransformer):
         y: Optional[Any] = None,
     ) -> Optional[pl.DataFrame]:
         """
-        [Interactive] 批量交互式手动调箱。
+        批量更新分箱规则并即时重算相关统计量。
         
         允许用户批量传入需要强行修改切点的特征字典，系统将自动更新内部规则，
         并在单次扫描中重新计算所有被修改特征的 WOE 和分箱统计量。
@@ -911,7 +920,7 @@ class MarsBinnerBase(MarsTransformer):
         # 遍历更新物理切点状态
         for feature, splits in bin_rules.items():
             if feature not in self.feature_names_in_:
-                logger.warning(f"⚠️ Feature '{feature}' is not recognized by this binner. Skipped.")
+                logger.warning(f"Feature '{feature}' is not recognized by this binner. Skipped.")
                 continue
                 
             # 智能推断类型：如果列表里的元素还是列表，说明是类别型分组；否则是数值型切点
@@ -941,7 +950,7 @@ class MarsBinnerBase(MarsTransformer):
             return None
 
         # 执行即时重算 (Batch 模式)
-        logger.info(f"🔄 Recalculating WOE & stats for {len(updated_features)} modified features...")
+        logger.info(f"Recalculating WOE and statistics for {len(updated_features)} modified features.")
         
         # 仅截取被更新的特征列送入 profile 引擎，实现单次极速扫描
         stats_df = self.profile_bin_performance(
@@ -954,7 +963,7 @@ class MarsBinnerBase(MarsTransformer):
     
     def prune(self, keep_features: List[str]) -> "MarsBinnerBase":
         """
-        [Lifecycle] 模型瘦身剪枝。
+        裁剪分箱器内部状态，仅保留指定特征。
         
         仅保留 `keep_features` 列表中的特征分箱规则，清空其它所有特征的状态，
         用于在特征筛选结束后极大缩小模型序列化 (Pickle) 后的文件体积。
@@ -972,7 +981,7 @@ class MarsBinnerBase(MarsTransformer):
         # 更新输入特征名单
         self.feature_names_in_ = [f for f in self.feature_names_in_ if f in keep_set]
         
-        logger.info(f"✂️ Pruned binner down to {len(self.feature_names_in_)} features.")
+        logger.info(f"Pruned binner down to {len(self.feature_names_in_)} features.")
         return self
     
     def generate_sql(
@@ -984,7 +993,7 @@ class MarsBinnerBase(MarsTransformer):
         map_special: bool = True
     ) -> str:
         """
-        [Deployment] 一键将特征的分箱规则转换为标准 SQL CASE WHEN 语句。
+        将分箱规则导出为标准 SQL CASE WHEN 语句。
         支持单特征、指定多特征或一键导出全量已拟合特征的 SQL 脚本。
         
         Parameters
@@ -1024,6 +1033,7 @@ class MarsBinnerBase(MarsTransformer):
 
         # 2. 定义内部核心处理函数：生成单列的 CASE WHEN
         def _generate_single_sql(feature: str) -> str:
+            """为单个特征生成 SQL CASE WHEN 片段。"""
             if feature not in self.bin_mappings_:
                 raise ValueError(f"Feature '{feature}' not found or not fitted.")
 
@@ -1103,7 +1113,7 @@ class MarsBinnerBase(MarsTransformer):
     @staticmethod
     def _format_cut_point(val: float) -> str:
         """
-        [Helper] 智能格式化切点数值，彻底杜绝科学计数法，提升图表和 SQL 的观感。
+        将切点格式化为适合图表和 SQL 展示的字符串。
         """
         if val == float('inf'): return 'inf'
         if val == float('-inf'): return '-inf'
@@ -1215,6 +1225,34 @@ class MarsNativeBinner(MarsBinnerBase):
         remove_empty_bins: bool = False,
         n_jobs: int = -1,
     ) -> None:
+        """
+        初始化原生分箱器。
+
+        Parameters
+        ----------
+        features : list of str, optional
+            数值型特征列表。
+        cat_features : list of str, optional
+            类别型特征列表。
+        method : {"cart", "quantile", "uniform"}, default "cart"
+            数值特征分箱方法。
+        n_bins : int, default 10
+            最大分箱数。
+        special_values : list, optional
+            特殊值集合。
+        missing_values : list, optional
+            自定义缺失值集合。
+        min_bin_size : float, default 0.02
+            最小单箱样本占比。
+        merge_small_bins : bool, default False
+            是否合并小箱。
+        cart_params : dict, optional
+            CART 分箱器参数。
+        remove_empty_bins : bool, default False
+            是否清理空箱。
+        n_jobs : int, default -1
+            并行任务数量。
+        """
         super().__init__(
             features=features, n_bins=n_bins, 
             cat_features=cat_features, # 传递给父类
@@ -1341,8 +1379,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 elif self.method == "cart":
                     self._fit_cart_parallel(X, y, valid_num_cols)
                     
-                # [修复] CART 自带 min_samples_leaf 约束，绝不能事后干预破坏最优切点！
-                # 只有机械切分的 quantile 和 uniform 才需要执行事后贪心合并
+                # CART 已经内建叶子样本量约束；仅机械切分策略需要额外合并小箱。
                 if self.merge_small_bins and self.method in ["quantile", "uniform"]:
                     self._apply_min_bin_size(X, valid_num_cols)
 
@@ -1352,7 +1389,7 @@ class MarsNativeBinner(MarsBinnerBase):
 
         if self.fit_failures_:
             logger.warning(
-                f"⚠️ {len(self.fit_failures_)} features failed and fallbacked. "
+                f"{len(self.fit_failures_)} features failed during fitting and fell back to default handling. "
                 f"Check `.fit_failures_` for details."
             )
     
@@ -1560,8 +1597,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 col_dtype = X.schema[c]
                 safe_exclude = self._get_safe_values(col_dtype, raw_exclude)
                 
-                # [优化] 构建联合过滤条件
-                # 初始条件: 非 Null
+                # 统一组装“可参与分位数计算”的过滤条件。
                 valid_cond = pl.col(c).is_not_null()
                 
                 # 叠加: 非 NaN (仅浮点)
@@ -1678,7 +1714,7 @@ class MarsNativeBinner(MarsBinnerBase):
             safe_exclude = self._get_safe_values(col_dtype, raw_exclude)
             col_safe_excludes[c] = safe_exclude
 
-            # [优化] 构建联合条件
+            # 统一组装“可参与统计”的过滤条件。
             keep_mask = pl.lit(True)
             if col_dtype in [pl.Float32, pl.Float64]:
                 keep_mask &= ~pl.col(c).is_nan()
@@ -1820,6 +1856,7 @@ class MarsNativeBinner(MarsBinnerBase):
         
         n_total_samples = X.height
         def worker(col_name: str, x_clean_np: np.ndarray, y_clean_np: np.ndarray) -> Tuple[str, List[float]]:
+            """对单个数值特征执行 CART 分箱拟合。"""
             try:
                 # 如果 min_bin_size 是浮点数 (如 0.05), 则基于 总行数(n_total_samples) 计算
                 # 而不是基于 过滤后的行数(len(x_clean_np)) 计算
@@ -1849,13 +1886,14 @@ class MarsNativeBinner(MarsBinnerBase):
         raw_exclude = self.special_values + self.missing_values
 
         def cart_task_gen():
+            """逐列生成 CART 分箱任务。"""
             for c in cols:
                 col_dtype = X.schema[c]
                 safe_exclude = self._get_safe_values(col_dtype, raw_exclude)
 
                 series = X.get_column(c)
 
-                # [优化] 使用更紧凑的位运算构建 Mask
+                # 先在列级别构建有效样本掩码，减少后续 numpy 清洗成本。
                 valid_mask = series.is_not_null()
                 if col_dtype in self.NUMERIC_DTYPES:
                     valid_mask &= (~series.is_nan())
@@ -1865,8 +1903,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 if not valid_mask.any():
                     continue
 
-                # [优化] x 端利用 zero-copy 转换
-                # valid_mask 在 Polars 中是 BitMap, filter 之后转 numpy 非常快
+                # x 端尽量采用零拷贝转换，减轻并行任务间的数据搬运开销。
                 x_clean = (
                     series
                     .filter(valid_mask)
@@ -1898,7 +1935,7 @@ class MarsNativeBinner(MarsBinnerBase):
         # fit 结束后统一警告
         if self.fit_failures_:
             logger.warning(
-                f"⚠️ {len(self.fit_failures_)} features failed during CART binning and fallbacked to single bin. "
+                f"{len(self.fit_failures_)} features failed during CART binning and fell back to a single bin. "
                 f"Check `self.fit_failures_` for details. Sample fails: {list(self.fit_failures_.items())[:3]}"
            )
 
@@ -2022,6 +2059,50 @@ class MarsOptimalBinner(MarsBinnerBase):
         join_threshold: int = 100,
         n_jobs: int = -1
     ) -> None:
+        """
+        初始化最优分箱器。
+
+        Parameters
+        ----------
+        features : list of str, optional
+            数值型特征列表。
+        cat_features : list of str, optional
+            类别型特征列表。
+        n_bins : int, default 10
+            最大分箱数。
+        min_n_bins : int, default 1
+            最小分箱数。
+        min_bin_size : float, default 0.02
+            最小单箱样本占比。
+        min_bin_n_event : int, default 3
+            单箱最少事件数。
+        prebinning_method : {"quantile", "uniform", "cart"}, default "cart"
+            预分箱方法。
+        n_prebins : int, default 50
+            预分箱数量。
+        min_prebin_size : float, default 0.01
+            最小预分箱样本占比。
+        monotonic_trend : {"ascending", "descending", "auto", "auto_asc_desc"}, default "auto_asc_desc"
+            单调性约束方向。
+        solver : {"cp", "mip"}, default "cp"
+            求解器类型。
+        time_limit : int, default 10
+            单特征求解时间限制。
+        max_cats_to_solver : int, optional, default 100
+            进入求解器的最大类别数。
+        min_cat_fraction : float, default 0.05
+            最小类别占比。
+        special_values : list, optional
+            特殊值集合。
+        missing_values : list, optional
+            缺失值集合。
+        cart_params : dict, optional
+            预分箱决策树参数。
+        join_threshold : int, default 100
+            高基数类别映射的 Join 阈值。
+        n_jobs : int, default -1
+            并行任务数量。
+        """
         super().__init__(
             features=features, cat_features=cat_features, n_bins=n_bins,
             special_values=special_values, missing_values=missing_values,
@@ -2116,7 +2197,7 @@ class MarsOptimalBinner(MarsBinnerBase):
             num_fails = len([k for k in self.fit_failures_ if k in num_cols])
             cat_fails = len([k for k in self.fit_failures_ if k in cat_cols])
             logger.warning(
-                f"⚠️ MarsOptimalBinner: {len(self.fit_failures_)} features encountered issues "
+                f"MarsOptimalBinner: {len(self.fit_failures_)} features encountered issues "
                 f"({num_fails} num, {cat_fails} cat). Fallback applied. "
                 f"Check `.fit_failures_` for details. Sample: {list(self.fit_failures_.items())[:2]}"
            )
@@ -2142,8 +2223,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         - 3. 并发控制: 使用 `loky` 后端。由于单个特征的最优求解耗时较长 PCR, 
           支付跨进程通讯成本以换取独立 CPU 核心的满载运行是非常合算的。
         """
-        # [优化] 将 numpy 包装为 Series，确保下游基类能正确获取 .name 属性
-        # 避免 pre_binner 内部 getattr(y, "name") 失败或逻辑异常
+        # 包装为具名 Series，便于下游复用统一的目标列读取逻辑。
         y_series = pl.Series(name="target", values=y_np)
         
         pre_binner = MarsNativeBinner(
@@ -2180,6 +2260,7 @@ class MarsOptimalBinner(MarsBinnerBase):
             col_data: np.ndarray, 
             y_data: np.ndarray
         ) -> Tuple[str, List[float], Optional[str]]:
+            """对单个数值特征执行最优分箱求解。"""
             fallback_res = (col, pre_cuts, None)
             try:
                 # 计算基于"总体"的绝对 min_bin_size
@@ -2288,7 +2369,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                     .to_numpy(writable=False)
                )
 
-                # [优化] joblib/pickle 对连续数组有特殊优化，在 'loky' 后端传输大数据块时，非连续数组可能会触发昂贵的内存重排和拷贝。
+                # `loky` 传输连续数组更稳定，也能减少额外的内存重排。
                 if not col_np.flags['C_CONTIGUOUS']:
                     col_np = np.ascontiguousarray(col_np)
 
@@ -2330,6 +2411,7 @@ class MarsOptimalBinner(MarsBinnerBase):
             clean_data: np.ndarray, 
             clean_y: np.ndarray
         ) -> Tuple[str, Optional[List[List[Any]]], Optional[str]]:
+            """对单个类别特征执行最优分箱求解。"""
             try:
                 opt = self.OptimalBinning(
                     name=col, dtype="categorical", 
@@ -2348,6 +2430,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 return col, None, f"{type(e).__name__}: {str(e)}"
 
         def cat_task_gen():
+            """逐列生成类别型最优分箱任务。"""
             for c in cat_cols:
                 series = X.get_column(c)
                 col_dtype = series.dtype

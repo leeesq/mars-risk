@@ -144,6 +144,66 @@ class MarsStatsSelector(MarsBaseSelector):
         batch_size: Optional[int] = 100,    
         n_jobs: int = -1
     ):
+        """
+        初始化统计筛选器配置。
+
+        Parameters
+        ----------
+        target : str
+            目标变量列名。
+        features : list of str, optional
+            候选特征列表。
+        time_col : str, optional
+            时间列名。
+        profile_by : str, optional
+            分组或时间聚合维度。
+        missing_thr : float, default 0.90
+            缺失率阈值。
+        zeros_thr : float, default 0.90
+            零值率阈值。
+        mode_thr : float, default 0.90
+            众数占比阈值。
+        iv_thr : float, default 0.01
+            精筛阶段 IV 阈值。
+        lift_thr : float, optional, default 1.2
+            精筛阶段 Lift 阈值。
+        min_sample_rate : float, default 0.05
+            精筛阶段最小样本占比。
+        psi_thr : float, optional, default 0.25
+            PSI 阈值。
+        rc_thr : float, optional, default 0.5
+            风险相关性阈值。
+        corr_thr : float, optional, default 0.95
+            相关性去重阈值。
+        skip_rough_scan : bool, default False
+            是否跳过粗筛。
+        skip_fine_scan : bool, default False
+            是否跳过精筛。
+        rough_iv_thr : float, default 0.01
+            粗筛阶段 IV 阈值。
+        rough_lift_thr : float, default 1.2
+            粗筛阶段 Lift 阈值。
+        rough_min_sample_rate : float, default 0.02
+            粗筛阶段最小样本占比。
+        white_list : list of str, optional
+            白名单特征列表。
+        black_list : list of str, optional
+            黑名单特征列表。
+        missing_values : list, optional
+            自定义缺失值集合。
+        special_values : list, optional
+            自定义特殊值集合。
+        binning_params : dict, optional
+            精筛分箱参数。
+        rough_binning_params : dict, optional
+            粗筛分箱参数。
+        max_samples : int, optional
+            抽样样本上限。
+        batch_size : int, optional, default 100
+            批处理大小。
+        n_jobs : int, default -1
+            并行任务数量。
+        """
         super().__init__(target=target)
         
         self.features = features
@@ -364,6 +424,7 @@ class MarsStatsSelector(MarsBaseSelector):
         df_summary = pd.DataFrame(self._funnel_stats)
         
         def _color_retention(val):
+            """为留存率文本生成条件样式。"""
             try:
                 p = float(val.rstrip('%'))
                 if p < 30: return 'color: #d32f2f; font-weight: bold;'
@@ -372,6 +433,7 @@ class MarsStatsSelector(MarsBaseSelector):
             except: return 'color: #757575;'
 
         def _style_logic_text(v):
+            """为阈值逻辑文本生成高亮样式。"""
             if not isinstance(v, str): return ''
             logic_ops = ['&', '|', '<', '>', '=']
             if any(op in v for op in logic_ops):
@@ -407,7 +469,7 @@ class MarsStatsSelector(MarsBaseSelector):
             from IPython.display import display
             display(styler)
         except ImportError:
-            print(df_summary.to_string(index=False))
+            logger.info("Selector summary:\n%s", df_summary.to_string(index=False))
 
     def _should_bypass_filter(self, feat: str) -> bool:
         """内部方法：解析特征实体是否命中免检逻辑池。"""
@@ -795,9 +857,7 @@ class MarsStatsSelector(MarsBaseSelector):
             pd_df = report_df.to_pandas()
             
         logger.info(f"Exporting Selection Report to {path}...")
-        
-        pd_df = report_df.to_pandas()
-        
+
         if path.endswith(".csv"):
             pd_df.to_csv(path, index=False, encoding="utf-8-sig")
         else:
@@ -836,6 +896,7 @@ class MarsStatsSelector(MarsBaseSelector):
             patterns = []
 
         def is_stage_matched(actual_stage: str) -> bool:
+            """判断当前阶段名是否命中黑名单过滤规则。"""
             if not patterns:
                 return True
             actual_stage_lower = actual_stage.lower()
@@ -922,10 +983,18 @@ class MarsStatsSelector(MarsBaseSelector):
             
         stats_msg.append(f"{'='*50}")
         
-        print("\n".join(stats_msg))
+        logger.info("\n%s", "\n".join(stats_msg))
     
     
 class MarsLinearSelector(MarsBaseSelector):
+    """
+    线性模型场景下的特征筛选器占位实现。
+
+    Notes
+    -----
+    当前类主要用于固定接口与参数语义，具体筛选流程仍待实现。
+    """
+
     def __init__(
         self,
         target: str,
@@ -952,14 +1021,46 @@ class MarsLinearSelector(MarsBaseSelector):
         n_jobs: int = -1
     ):
         """
-        初始化线性筛选器。
-        推荐作为 Pipeline 的第二步，接在 MarsStatsSelector 之后。
+        初始化线性筛选器配置。
+
+        Parameters
+        ----------
+        target : str
+            目标变量列名。
+        enable_corr_filter : bool, default True
+            是否启用相关性去重阶段。
+        corr_thr : float, default 0.8
+            相关性去重阈值。
+        corr_method : str, default "spearman"
+            相关性计算方法。
+        enable_vif_filter : bool, default False
+            是否启用 VIF 筛查阶段。
+        vif_threshold : float, default 5.0
+            VIF 阈值。
+        enable_stepwise : bool, default False
+            是否启用逐步回归阶段。
+        stepwise_direction : str, default "forward"
+            逐步回归方向。
+        stepwise_criterion : str, default "aic"
+            逐步回归优化准则。
+        max_features : int, optional
+            最终保留特征数上限。
+        n_jobs : int, default -1
+            并行任务数量。
         """
-        super().__init__()
+        super().__init__(target=target)
         # ...
         
 
 class MarsImportanceSelector(MarsBaseSelector):
+    """
+    基于模型重要性的特征筛选器占位实现。
+
+    Notes
+    -----
+    当前类用于固定接口与参数语义，具体训练与筛选流程仍待实现。
+    """
+
     def __init__(
         self,
         target: str,
@@ -993,8 +1094,28 @@ class MarsImportanceSelector(MarsBaseSelector):
         random_state: int = 42
     ):
         """
-        初始化重要性筛选器。
-        通常作为特征筛选的最后一步，产出最终入模名单。
+        初始化重要性筛选器配置。
+
+        Parameters
+        ----------
+        target : str
+            目标变量列名。
+        estimator : str or Any, default "lgbm"
+            底层模型类型或实例。
+        estimator_params : dict, optional
+            底层模型初始化参数。
+        method : {"importance", "shap", "rfe", "sfm"}, default "importance"
+            重要性筛选策略。
+        selection_mode : {"top_k", "threshold", "percentile"}, default "top_k"
+            特征保留模式。
+        selection_threshold : int or float or str, default 50
+            对应筛选模式下的阈值。
+        cv : int, default 3
+            交叉验证折数。
+        n_jobs : int, default -1
+            并行任务数量。
+        random_state : int, default 42
+            随机种子。
         """
-        super().__init__()
+        super().__init__(target=target)
         # ...

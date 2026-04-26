@@ -1,4 +1,5 @@
-import sys
+"""MARS 对外公共 API 入口模块。"""
+
 from .analysis import (
     MarsDataProfiler, MarsProfileConfig, MarsProfileReport,
     MarsBinEvaluator, MarsEvaluationReport,  profile_risk
@@ -23,13 +24,12 @@ _BANNER = r"""
     __________________________________________________________________________
 """.format(ver=__version__)
 
-# if hasattr(sys, 'ps1') or 'ipykernel' in sys.modules:
-#     print(_BANNER)
-
 def __repr__():
+    """返回 MARS 包级横幅字符串表示。"""
     return _BANNER
 
 def __str__():
+    """返回 MARS 包级横幅字符串。"""
     return _BANNER
 
 __all__ = [

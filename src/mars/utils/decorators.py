@@ -1,4 +1,5 @@
-# mars/utils/decorators.py
+"""MARS 通用装饰器工具。"""
+
 import functools
 import time
 import warnings
@@ -14,7 +15,6 @@ except ImportError:
     import logging
     logger = logging.getLogger("mars_fallback")
 
-# 定义泛型，用于类型提示，保证装饰器不丢失函数签名信息
 F = TypeVar('F', bound=Callable[..., Any])
 
 def time_it(func: F) -> F:
@@ -36,6 +36,7 @@ def time_it(func: F) -> F:
     """
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        """执行被装饰函数并记录耗时。"""
         start = time.time()
         
         # 执行业务逻辑
@@ -53,7 +54,7 @@ def time_it(func: F) -> F:
             # 格式: function_name
             name = func.__name__
             
-        logger.info(f"⏱️ [{name}] finished in {duration:.4f}s")
+        logger.info(f"[TIMER] [{name}] finished in {duration:.4f}s")
         return result
     
     return cast(F, wrapper)
@@ -81,12 +82,13 @@ def deprecated(reason: str) -> Callable[[F], F]:
         pass
     """
     def decorator(func: F) -> F:
+        """包装目标函数并在调用时发出弃用警告。"""
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # 发出警告
-            # stacklevel=2 确保警告指向调用该函数的那一行，而不是装饰器内部
+            """执行目标函数前发出弃用警告。"""
             warnings.warn(
-                f"⚠️ Function '{func.__name__}' is deprecated. {reason}",
+                f"Function '{func.__name__}' is deprecated. {reason}",
                 category=FutureWarning, 
                 stacklevel=2
             )
@@ -112,14 +114,15 @@ def safe_run(default_return: Any = None) -> Callable[[F], F]:
         装饰器函数。
     """
     def decorator(func: F) -> F:
+        """包装目标函数并提供统一异常兜底。"""
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            """执行目标函数，失败时返回约定的默认值。"""
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                # 记录详细的错误堆栈，但不中断主进程
-                logger.error(f"❌ Error in {func.__name__}: {str(e)}")
-                # 在调试模式下，可能希望看到完整的 traceback，可以使用 logger.exception(e)
+                logger.error(f"Error in {func.__name__}: {str(e)}")
                 return default_return
         return cast(F, wrapper)
     return decorator

@@ -1,9 +1,10 @@
-# mars/analysis/evaluator.py
+"""MARS 特征分箱评估模块。"""
 
 from typing import List, Optional, Dict, Union, Any, Tuple, Literal
 from collections import defaultdict
 import inspect
 import re
+import warnings
 
 import polars as pl
 import numpy as np
@@ -15,7 +16,6 @@ from mars.analysis.report import MarsEvaluationReport
 from mars.utils.logger import logger
 from mars.utils.decorators import time_it
 from mars.utils.date import MarsDate
-from mars.utils.plotter import MarsPlotter
 
 class MarsBinEvaluator(MarsBaseEstimator):
     """
@@ -39,7 +39,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         若提供此参数，评估器将直接复用该分箱器内部的区间边界与映射规则（`bin_cuts_` 等）；
         若为 None，评估器将在执行 `evaluate` 时，依据后续配置自动实例化并拟合全新的分箱器。
         
-    bining_type : {'native', 'opt'}, default 'native'
+    binning_type : {'native', 'opt'}, default 'native'
         底层离散化引擎的动态路由选择。仅在 `binner` 为 None 时生效。
         - 'native': 调用基于 Scikit-Learn 与 Polars 的原生分箱器 (`MarsNativeBinner`)。
         - 'opt': 调用基于数学规划的最优分箱器 (`MarsOptimalBinner`)。
@@ -55,7 +55,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         实例绑定的目标变量列名。
     binner : MarsBinnerBase
         评估器当前持有的底层分箱器物理实体引用。
-    bining_type : str
+    binning_type : str
         初始化声明的底层离散化引擎类型。
     binner_kwargs : dict
         捕获的透传超参数映射字典。
@@ -72,7 +72,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
     >>> # 初始化评估器并透传原生分箱器参数
     >>> evaluator = MarsBinEvaluator(
     ...     target="is_default", 
-    ...     bining_type="native", 
+    ...     binning_type="native", 
     ...     method="quantile", 
     ...     n_bins=10
     ... )
@@ -91,14 +91,46 @@ class MarsBinEvaluator(MarsBaseEstimator):
         target: str = "target",
         *,
         binner: Optional[MarsBinnerBase] = None,
-        bining_type: Literal["native", "opt"] = "native",
+        binning_type: Optional[Literal["native", "opt"]] = None,
+        bining_type: Optional[Literal["native", "opt"]] = None,
         **binner_kwargs
     ) -> None:
+        """
+        初始化特征分箱评估器。
+
+        Parameters
+        ----------
+        target : str, default "target"
+            目标变量列名。
+        binner : MarsBinnerBase, optional
+            预先构造好的分箱器实例。
+        binning_type : {"native", "opt"}, optional
+            动态构建分箱器时采用的分箱策略。
+        bining_type : {"native", "opt"}, optional
+            历史兼容参数名，已弃用。
+        **binner_kwargs
+            透传给分箱器构造函数的额外参数。
+        """
         super().__init__()
         self.target = target
         self.binner = binner
         self.binner_kwargs = binner_kwargs
-        self.bining_type = bining_type
+        if bining_type is not None:
+            warnings.warn(
+                "`bining_type` is deprecated and will be removed in a future version. "
+                "Use `binning_type` instead.",
+                FutureWarning,
+                stacklevel=2,
+            )
+            if binning_type is not None and binning_type != bining_type:
+                raise ValueError("Received conflicting values for 'binning_type' and deprecated 'bining_type'.")
+
+        resolved_binning_type = binning_type if binning_type is not None else bining_type
+        if resolved_binning_type is None:
+            resolved_binning_type = "native"
+
+        self.binning_type = resolved_binning_type
+        self.bining_type = resolved_binning_type
         
     @time_it
     def evaluate(
@@ -166,22 +198,24 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if benchmark_df is not None:
             benchmark_df = self._ensure_polars_dataframe(benchmark_df)
             
-        # [新增] 判断是否进入“无标签模式”
-        # 允许 target 为 None 或者 target 列根本不存在
+        # 允许 target 为空，或数据集中本就不存在目标列。
         self.has_target_ = self.target is not None and self.target in working_df.columns
 
         if not self.has_target_:
-            logger.info(f"🔮 Label-Free Mode: Target '{self.target}' not found. Injecting dummy target. Will only evaluate Distributions and PSI.")
+            logger.info(
+                f"Label-free mode enabled: target '{self.target}' was not found. "
+                "A dummy target will be injected and only distribution metrics plus PSI will be evaluated."
+            )
             dummy_target = self.target if self.target else "dummy_target"
             self.target = dummy_target
-            # 临时注入全 0 标签，保护下游几百行代码不断链
+            # 临时注入常量标签，保持下游统计链路可复用。
             working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(self.target))
 
         # 检查 Target 有效性 (仅在有真实标签时检查)
         if self.has_target_:
             n_unique = working_df.select(pl.col(self.target).n_unique()).item()
             if n_unique < 2:
-                raise ValueError(f"❌ Target column '{self.target}' must have at least 2 unique values for evaluation.")
+                raise ValueError(f"Target column '{self.target}' must have at least 2 unique values for evaluation.")
 
         working_df, group_col = self._prepare_context(working_df, profile_by, dt_col)
 
@@ -204,9 +238,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             }
             
             # 确定分箱器类型
-            binner_cls = binner_factory.get(self.bining_type)
+            binner_cls = binner_factory.get(self.binning_type)
             if binner_cls is None:
-                logger.warning(f"⚠️ Unknown bining_type '{self.bining_type}'. Fallback to 'native'.")
+                logger.warning(f"Unknown binning_type '{self.binning_type}'. Falling back to 'native'.")
                 binner_cls = MarsNativeBinner
             
             # 获取目标类的构造函数签名
@@ -224,23 +258,21 @@ class MarsBinEvaluator(MarsBaseEstimator):
             # 记录被丢弃的参数，方便调试
             ignored_keys = set(fit_kwargs.keys()) - set(clean_kwargs.keys())
             if ignored_keys:
-                logger.debug(f"🧹 Auto-cleaned kwargs for {binner_cls.__name__}. Ignored: {ignored_keys}")
+                logger.debug(f"Auto-cleaned kwargs for {binner_cls.__name__}. Ignored: {ignored_keys}")
             
-            logger.info(f"⚙️ No binner provided. Auto-fitting {binner_cls.__name__} internally with params: {clean_kwargs}...")
+            logger.info(f"Auto-fitting {binner_cls.__name__} internally with params: {clean_kwargs}.")
             
             # 实例化并拟合分箱器
             self.binner = binner_cls(features=target_features, **clean_kwargs)
             y_series = working_df.get_column(self.target)
             self.binner.fit(working_df, y_series)
         
-        # [Transform] 数据转换：将原始连续值/离散值映射为分箱索引 (Int16)
-        # 映射后的列名为 {feat}_bin
-        logger.debug("🔄 Transforming features to bin indices...")
+        # 将原始特征映射为分箱索引列 `{feature}_bin`。
+        logger.debug("Transforming features to bin indices.")
         df_binned = self.binner.transform(working_df, return_type="index")
         
-        # [Map Phase] 执行全量数据的流式扫描
-        # 将宽表 unpivot 后聚合，得到最小粒度统计表 (Group, Feature, Bin, Count, Bad)
-        logger.debug("📊 Step 1: Scanning raw data for stats (Single Pass Map)...")
+        # 流式扫描并聚合到最细粒度统计表。
+        logger.debug("Step 1: scanning grouped bin statistics.")
         group_stats_raw = self._agg_basic_stats(
             df_binned, group_col, target_features, self.target, weights_col,
             batch_size=batch_size 
@@ -250,15 +282,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 计算 KS/AUC 依赖 WOE 排序。若分箱器无 WOE，利用 group_stats_raw 内存计算，无需扫原表。
         self._ensure_woe_info(group_stats_raw)
 
-        # [Reduce Phase B] 获取 PSI 基准分布
-        # 获取 Expected Distribution。若无外部基准，取 group_stats_raw 中最早的一组。
+        # 获取 PSI 基准分布。若无外部基准，默认取最早一组。
         expected_dist = self._get_benchmark_dist(
             group_stats_raw, benchmark_df, group_col, target_features, weights_col
         )
 
-        # [Reduce Phase C] 汇总 total 统计量
-        # 在内存中将不同 Group 的统计量累加，得到全量数据的分布情况。
-        logger.debug("∑  Step 2: Rolling up stats for total (Reduce)...")
+        # 汇总 total 统计量，得到全量样本的分布表现。
+        logger.debug("Step 2: rolling up total statistics.")
         total_stats_raw = (
             group_stats_raw
             .group_by(["feature", "bin_index"])
@@ -270,7 +300,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 指标计算 
-        logger.debug("🧮 Step 3: Calculating metrics (PSI/AUC/KS/IV)...")
+        logger.debug("Step 3: calculating metrics.")
         
         # 计算 Trend 数据
         metrics_groups = (
@@ -294,23 +324,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 合并分组与总体结果
         metrics_total = metrics_total.select(metrics_groups.columns)
 
-        # [BugFix] 防止单点评估模式下出现双重 "Total"
-        # 判断逻辑：如果分组结果中只有 1 个组，且名字就叫 "total"，说明这是单点评估模式
-        # 此时 metrics_groups 和 metrics_total 是完全一样的数学意义
+        # 单点评估时避免重复拼接一份语义相同的 Total 结果。
         is_single_snapshot = (
             metrics_groups.select(pl.col(group_col).n_unique()).item() == 1 and 
             metrics_groups.select(pl.col(group_col).first()).item() == "Total"
         )
 
         if is_single_snapshot:
-            logger.debug("ℹ️ Single snapshot detected. Skipping total concatenation.")
+            logger.debug("Single snapshot detected. Skipping total concatenation.")
             stats_long = metrics_groups
         else:
-            # 正常模式（有多组，或者单组但不叫total）：将 total 作为汇总行追加到头部
             stats_long = pl.concat([metrics_total, metrics_groups])
 
         # 单调性检查 (Monotonicity Check)
-        logger.debug("📉 Step 4: Checking monotonicity...")
+        logger.debug("Step 4: checking monotonicity.")
         if self.has_target_:
             monotonicity_df = (
                 stats_long
@@ -326,7 +353,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             stats_long, metrics_groups, metrics_total, group_col, monotonicity_df
         )
 
-        # [新增] 无标签模式擦除无意义的指标 (替换为 NaN，供下游 Plotter 和展示使用)
+        # 无标签模式下擦除依赖真实坏样本标签的指标，保留分布类结果。
         if not self.has_target_:
             null_cols = ["bad", "bad_rate", "lift", "trend", "cum_bad", "cum_bad_rate", "ks_bin", "auc_bin", "iv_bin", "mono"]
             
@@ -351,7 +378,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     pl.lit(None).cast(pl.Float64).alias(c) for c in sum_cols
                 ])
             
-            # [修复] trend_tables 擦除：无标签模式下，趋势字典里只保留 PSI
+            # 无标签模式仅保留 PSI 趋势表。
             if "psi" in report._trend_dict:
                 report._trend_dict = {"psi": report._trend_dict["psi"]}
             else:
@@ -403,10 +430,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 记录丢失的列
         missing_cols = set(theoretical_bin_cols) - set(actual_bin_cols)
         if missing_cols:
-            logger.warning(f"⚠️ {len(missing_cols)} features were not binned and will be skipped in evaluation. All missing: {list(missing_cols)}")
+            logger.warning(
+                f"{len(missing_cols)} features were not binned and will be skipped in evaluation. "
+                f"All missing: {list(missing_cols)}"
+            )
             
         if not actual_bin_cols:
-            raise ValueError("❌ No valid binned columns found in dataframe. Check your binner fit results.")
+            raise ValueError("No valid binned columns found in dataframe. Check your binner fit results.")
 
         # 使用实际存在的列进行后续操作
         bin_cols = actual_bin_cols
@@ -453,7 +483,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 .group_by([group_col, "feature", "bin_index"])
                 .agg(agg_exprs)
                 # 执行并物化 (Streaming 模式防止大聚合 OOM)
-                .collect(streaming=True)
+                .collect(engine="streaming")
             )
             
             result_frames.append(batch_res)
@@ -490,7 +520,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if not missing_woe_feats:
             return
 
-        logger.debug(f"⚡ Calculating missing WOEs for {len(missing_woe_feats)} features (Memory Optimized)...")
+        logger.debug(f"Calculating missing WOEs for {len(missing_woe_feats)} features.")
         
         # 过滤出需要计算的特征
         target_stats = group_stats_raw.filter(pl.col("feature").is_in(missing_woe_feats))
@@ -777,7 +807,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                          dt_col: Optional[str]
                          ) -> Tuple[pl.DataFrame, str]:
         """
-        [Helper] 上下文准备：标准化分组维度 (Context Preparation).
+        标准化评估所需的分组上下文。
 
         该方法负责解析用户传入的 `profile_by` 和 `dt_col` 参数，确定最终用于趋势分析的分组列。
         如果需要基于时间切片（如按月、按周），它会自动调用 `MarsDate` 生成派生列。
@@ -818,7 +848,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         
         # 有时间没分组 -> 默认按月
         if dt_col and not profile_by:
-            logger.info(f"ℹ️ `dt_col` provided without `profile_by`. Defaulting trend to 'month'.")
+            logger.info("`dt_col` was provided without `profile_by`; defaulting trend grouping to 'month'.")
             profile_by = "month"
 
         # 新逻辑：支持正则匹配 'Nd' (如 '3d', '14d')
@@ -842,7 +872,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if profile_by in df.columns:
                 return df.with_columns(pl.col(profile_by).cast(pl.String).alias(self.MARS_GROUP_COL)), self.MARS_GROUP_COL
             else:
-                logger.warning(f"⚠️ Column '{profile_by}' not found. Falling back to Snapshot mode.")
+                logger.warning(f"Column '{profile_by}' was not found. Falling back to snapshot mode.")
 
         # 兜底逻辑：单点评估
         return df.with_columns(pl.lit("Total").alias(self.MARS_GROUP_COL)), self.MARS_GROUP_COL
@@ -856,7 +886,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         monotonicity_df: pl.DataFrame
     ) -> "MarsEvaluationReport":
         """
-        [Helper] 报告构造与特征稳定性审计引擎 (Report Construction & Audit Engine).
+        构建评估报告的明细、汇总与趋势数据。
 
         该方法负责将向量化计算的中间结果重塑为具备业务深度的三层报表体系：
         明细层 (Detail)、审计层 (Summary) 和趋势层 (Trend)。
@@ -922,18 +952,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 调用 Binner 中的静态方法进行判断
         from mars.feature.binner import MarsBinnerBase 
 
-        trend_shape_df = (
-            trend_source
-            .group_by("feature")
-            .agg(pl.col("woe"))
-            .with_columns(
-                pl.col("woe").map_elements(
-                    MarsBinnerBase._detect_trend_scientific, 
-                    return_dtype=pl.Utf8
-                ).alias("trend")
-            )
-            .select(["feature", "trend"])
-            .collect()
+        trend_shape_df = MarsBinnerBase._build_trend_shape_frame(
+            trend_source.group_by("feature").agg(pl.col("woe")).collect(),
+            trend_col_name="trend",
         )
         detail_base = detail_base.join(trend_shape_df, on="feature", how="left")
 
@@ -1018,7 +1039,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 (pl.col("count") - pl.col("bad")).alias("good"),
                 (pl.col("bad") / (pl.col("count") + 1e-9)).alias("bad_rate"),
 
-                # [新增] total 行的占比恒为 1.0
+                # total 行代表全量样本，占比固定为 1.0。
                 pl.lit(1.0).alias("pct"),
                 
                 # 累积列 (对于 total 行，累积值等于自身)
@@ -1259,18 +1280,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if report is not None:
             dt_table = report.detail_table
             # 兼容 Pandas DataFrame
-            if isinstance(dt_table, pd.DataFrame):
-                target_df = pl.from_pandas(dt_table).filter(pl.col("bin_index") != 9999)
-            else:
-                target_df = dt_table.filter(pl.col("bin_index") != 9999)
+            target_df = self._ensure_polars_dataframe(dt_table).filter(pl.col("bin_index") != 9999)
             target_group_col = report.group_col
             
         # 尝试从 df_detail 提取数据
         elif df_detail is not None:
-            if isinstance(df_detail, pd.DataFrame):
-                target_df = pl.from_pandas(df_detail).filter(pl.col("bin_index") != 9999)
-            else:
-                target_df = df_detail.filter(pl.col("bin_index") != 9999)
+            target_df = self._ensure_polars_dataframe(df_detail).filter(pl.col("bin_index") != 9999)
                 
             if group_col:
                 target_group_col = group_col
@@ -1280,9 +1295,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 known = {"feature", "bin_index", "bin_label", "count", "bad", "bad_rate", "lift", "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count", "trend", "y"}
                 candidates = [c for c in target_df.columns if c not in known]
                 target_group_col = candidates[0] if candidates else "month"
-                logger.debug(f"ℹ️ Auto-inferred group_col: '{target_group_col}'")
+                logger.debug(f"Auto-inferred group_col: '{target_group_col}'")
         else:
-            raise ValueError("❌ Must provide either 'report' or 'df_detail' to plot.")
+            raise ValueError("Must provide either 'report' or 'df_detail' to plot.")
 
         if features is None:
             features = target_df["feature"].unique().to_list()
@@ -1293,6 +1308,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 优先使用传入的 target_name (多目标循环时传入)，否则使用实例绑定的 target
         final_target_name = target_name if target_name else self.target
             
+        from mars.utils.plotter import MarsPlotter
+
         # 调用 MarsPlotter 绘图组件进行渲染
         MarsPlotter.plot_feature_binning_risk_trend_batch(
             df_detail=target_df,
@@ -1428,15 +1445,17 @@ def profile_risk(
     将默认仅保留对主目标维度的时序分析结果。
     """
     
-    # [新增] 兼容 Target 为空的模式
+    input_is_pandas = isinstance(df, pd.DataFrame)
+
+    # 兼容 target 为空的无标签模式。
     if target is None or target == []:
         target_list = ["dummy_target"]
         primary_target = "dummy_target"
         is_multi_target = False
         
-        # 安全降级：无标签无法运行 CART 或 OptBinning，强制切为无监督等频分箱
+        # 无标签模式下无法运行 CART/OptBinning，统一降级为无监督等频分箱。
         if binning_type == "opt" or (binner_kwargs and binner_kwargs.get("method") == "cart"):
-            logger.warning("⚠️ No target provided. Forcing binning_type='native' and method='quantile'.")
+            logger.warning("No target provided. Forcing `binning_type='native'` and `method='quantile'`.")
             binning_type = "native"
             if binner_kwargs is None: 
                 binner_kwargs = {}
@@ -1463,7 +1482,7 @@ def profile_risk(
     # 拟合 main binner
     primary_evaluator = MarsBinEvaluator(
         target=primary_target,
-        bining_type=binning_type,
+        binning_type=binning_type,
         **fit_params
     )
     
@@ -1489,6 +1508,7 @@ def profile_risk(
         trained_binner = primary_evaluator.binner
         
         def to_pl(d: Union[pl.DataFrame, pd.DataFrame]) -> pl.DataFrame:
+            """将中间结果统一转换为 Polars DataFrame。"""
             return pl.from_pandas(d) if isinstance(d, pd.DataFrame) else d
 
         # 处理主目标的表：添加 target 列以区分来源
@@ -1525,15 +1545,15 @@ def profile_risk(
             all_summaries.append(s_summary)
 
         # 纵向合并所有 Detail 和 Summary 表
-        final_detail = pl.concat(all_details)
-        final_summary = pl.concat(all_summaries)
+        final_detail = pl.concat(all_details, how="vertical_relaxed")
+        final_summary = pl.concat(all_summaries, how="vertical_relaxed")
         
-        # 【修复】如果主目标的表是 Pandas (说明用户传入的是 Pandas)，需要转换回去
-        if isinstance(primary_report.summary_table, pd.DataFrame):
+        # 如果原始输入是 Pandas，则保持最终报告的 Pandas 返回风格。
+        if input_is_pandas:
             final_detail = final_detail.to_pandas()
             final_summary = final_summary.to_pandas()
         
-        logger.info("ℹ️ Note: 'trend_tables' in the report contains data for Primary Target only.")
+        logger.info("`trend_tables` in the merged report contains primary-target data only.")
         
         final_report = MarsEvaluationReport(
             summary_table=final_summary,
@@ -1558,7 +1578,7 @@ def profile_risk(
         targets_to_plot = [t for t in targets_to_plot if t in target_list]
         
         if not targets_to_plot:
-            logger.warning("⚠️ No valid targets specified for plotting.")
+            logger.warning("No valid targets specified for plotting.")
         else:
             _plot_report_helper(
                 evaluator=primary_evaluator, # 复用这个实例的 plot 方法即可
@@ -1594,14 +1614,10 @@ def _plot_report_helper(
         需要绘制的目标变量列表。
     """
     # 准备 Summary 表用于排序
-    summary_all = report.summary_table
-    if isinstance(summary_all, pd.DataFrame):
-        summary_all = pl.from_pandas(summary_all)
+    summary_all = evaluator._ensure_polars_dataframe(report.summary_table)
         
     # 准备 Detail 表用于绘图数据源
-    detail_all = report.detail_table
-    if isinstance(detail_all, pd.DataFrame):
-        detail_all = pl.from_pandas(detail_all)
+    detail_all = evaluator._ensure_polars_dataframe(report.detail_table)
 
     # 映射排序简码到真实列名
     sort_map = {
@@ -1611,7 +1627,7 @@ def _plot_report_helper(
     sort_key = sort_map.get(sort_by.lower(), "iv")
 
     for current_target in target_list:
-        logger.info(f"📈 [Plotting Target] {current_target} ...")
+        logger.info(f"Plotting target '{current_target}'.")
          
         # 筛选当前 Target 的 Summary 数据（用于排序）
         # 注意：不同 Target 下特征的 IV/AUC 是不一样的，所以 Top 特征可能不同
@@ -1626,7 +1642,7 @@ def _plot_report_helper(
             sorted_feats = curr_summary.sort(sort_key, descending=not ascending)["feature"].to_list()
             
             if len(sorted_feats) > max_plots:
-                logger.info(f"   📉 Top {max_plots} features by '{sort_key}'")
+                logger.info(f"Selecting top {max_plots} features by '{sort_key}' for plotting.")
                 plot_features = sorted_feats[:max_plots]
             else:
                 plot_features = sorted_feats
@@ -1637,7 +1653,7 @@ def _plot_report_helper(
         curr_detail = detail_all.filter(pl.col("y") == current_target)
         
         if curr_detail.is_empty():
-            logger.warning(f"   ⚠️ No detail data found for target '{current_target}'. Skipping.")
+            logger.warning(f"No detail data found for target '{current_target}'. Skipping plotting.")
             continue
 
         # 调用底层绘图

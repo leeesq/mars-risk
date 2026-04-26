@@ -1,4 +1,4 @@
-# mars/core/base.py
+"""MARS 核心估计器、转换器与筛选器基类。"""
 
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Union, Literal, Dict
@@ -29,12 +29,14 @@ class MarsBaseEstimator(BaseEstimator):
     }
 
     def __init__(self) -> None:
-        # 内部标志位：是否返回 Pandas 格式
-        # 默认 False (返回 Polars)，但在 _ensure_polars_dataframe 中会根据输入自动调整
+        """
+        初始化基础估计器状态。
+
+        Notes
+        -----
+        初始化阶段仅负责记录输出格式偏好，不执行任何数据转换。
+        """
         self._return_pandas: bool = False
-        
-        # 用户配置：记录 set_output 的设定 ('default', 'pandas', 'polars')
-        # 优先级高于输入类型的自动推断
         self._output_config: str = "default"
 
     def set_output(self, transform: Literal["default", "pandas", "polars"] = "default") -> "MarsBaseEstimator":
@@ -167,7 +169,7 @@ class MarsBaseEstimator(BaseEstimator):
                 if pl_dtype == pl.Null:
                     continue
                 raise DataTypeError(
-                    f"❌ [Critical Type Mismatch] Column '{col}' is numeric in Pandas ({pd_dtype}) "
+                    f"Column '{col}' is numeric in Pandas ({pd_dtype}) "
                     f"but converted to non-numeric in Polars ({pl_dtype}). "
                     f"Check for mixed dtypes in your Pandas DataFrame."
                 )
@@ -179,9 +181,9 @@ class MarsBaseEstimator(BaseEstimator):
                 if SKIP_PATTERNS.match(str(col)):
                     continue
 
-                # [优化] 获取样本数据进行探测：仅针对该列进行惰性计算
+                # 仅抽样当前列的少量非空值，用于识别“看起来像数值”的脏字符串列。
                 if isinstance(df_pl, pl.LazyFrame):
-                    # select 单列 -> drop_nulls -> limit -> collect -> to_series
+                    # 对 LazyFrame 只物化当前列的前几个非空样本，避免整表 collect。
                     sample_series = (
                         df_pl.select(pl.col(col))
                         .drop_nulls()
@@ -211,11 +213,11 @@ class MarsBaseEstimator(BaseEstimator):
                 
                 if looks_like_numeric:
                     logger.warning(
-                        f"\n⚠️  [Potential Dirty Data] Column '{col}' looks numeric but is treated as String.\n"
+                        f"\nPotential dirty data detected: column '{col}' looks numeric but is treated as String.\n"
                         f"   - Input (Pandas): object (mixed types)\n"
                         f"   - Output (Polars): Utf8\n"
                         f"   - Sample Values: {samples[:5]}...\n"
-                        f"   -> Risk: This column will be handled as Categorical. If it contains dirty strings "
+                        f"   - Impact: This column will be handled as Categorical. If it contains dirty strings "
                         f"(e.g. 'null', 'unknown'), please clean them upstream or add them to 'missing_values'.",
                         stacklevel=2
                     )
@@ -260,20 +262,35 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     """
 
     def __init__(self):
+        """初始化转换器运行状态。"""
         super().__init__() 
         self.feature_names_in_: List[str] = []
         self._is_fitted: bool = False
 
     def __sklearn_is_fitted__(self) -> bool:
+        """向 sklearn 暴露当前实例的拟合状态。"""
         return self._is_fitted
     
     def _check_is_fitted(self):
-        """[Helper] 检查当前实例是否已完成拟合"""
+        """检查当前转换器实例是否已完成拟合。"""
         if not self._is_fitted:
             from mars.core.exceptions import NotFittedError
             raise NotFittedError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")
 
     def get_feature_names_out(self, input_features=None) -> List[str]:
+        """
+        返回转换器输出特征名列表。
+
+        Parameters
+        ----------
+        input_features : Any, optional
+            sklearn 兼容保留参数，当前实现未使用。
+
+        Returns
+        -------
+        list of str
+            拟合阶段缓存的输入特征名。
+        """
         return self.feature_names_in_
 
     @time_it
@@ -283,12 +300,27 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         y: Optional[pl.Series | pd.Series | np.ndarray | list[Any]] = None, 
         **kwargs
     ) -> "MarsTransformer":
-        
-        # 检查 X 和 y 的索引一致性
+        """
+        拟合转换器并缓存输入特征信息。
+
+        Parameters
+        ----------
+        X : DataFrame
+            输入特征矩阵。
+        y : Series or ndarray or list, optional
+            目标变量。
+        **kwargs
+            透传给底层 `_fit_impl` 的附加参数。
+
+        Returns
+        -------
+        MarsTransformer
+            拟合完成后的转换器实例。
+        """
         if isinstance(X, pd.DataFrame) and isinstance(y, (pd.Series, pd.DataFrame)):
             if not X.index.equals(y.index):
                 raise ValueError(
-                    "CRITICAL: X and y have different indices. "
+                    "X and y have different indices. "
                     "Converting to Polars will lose index information leading to row mismatch. "
                     "Please align indices in Pandas strictly before passing to Mars."
                 )
@@ -326,21 +358,21 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         y: Optional[Any] = None, **kwargs
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """
-        [API Alignment] 拟合并转换数据 (Scikit-learn 兼容)。
+        执行拟合并返回转换结果。
         """
         return self.fit(X, y, **kwargs).transform(X)
 
     @abstractmethod
     def _fit_impl(self, X: pl.DataFrame, y=None, **kwargs): 
         """
-        [Abstract Core] 子类必须实现的核心拟合逻辑。
+        子类必须实现的核心拟合逻辑。
         """
         pass
 
     @abstractmethod
     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame: 
         """
-        [Abstract Core] 子类必须实现的核心转换逻辑。
+        子类必须实现的核心转换逻辑。
         必须返回 Polars DataFrame。
         """
         pass
@@ -364,6 +396,14 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
     """
 
     def __init__(self, target: str):
+        """
+        初始化筛选器公共状态。
+
+        Parameters
+        ----------
+        target : str
+            目标变量列名。
+        """
         super().__init__()
         self.target = target
         
@@ -407,7 +447,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         **kwargs
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """
-        [API Alignment] 拟合并转换数据 (Scikit-learn 兼容)。
+        执行拟合并返回筛选后的数据。
         """
         return self.fit(X, y, **kwargs).transform(X)
 
@@ -424,7 +464,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self._check_is_fitted()
         
         if not self.report_records_:
-            logger.warning("⚠️ No report records found. Did you forget to call `_register_decision` in subclass?")
+            logger.warning("No report records found. Did you forget to call `_register_decision` in a subclass?")
             return pl.DataFrame([])
 
         # 将记录列表转换为 DataFrame
@@ -452,7 +492,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         desc: str = ""
     ):
         """
-        [Helper] 埋点记录。子类在做决定时调用此方法。
+        记录单个特征在筛选过程中的决策结果。
         
         Parameters
         ----------
@@ -478,12 +518,13 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
     def _get_feature_pool(self, X: pl.DataFrame) -> List[str]:
         """
-        [Helper] 获取初始特征池 (排除 Target 和 非数值列等通用逻辑)。
+        获取初始特征池。
         """
         # 这里可以加入通用的排除逻辑，比如日期列、ID列等
         # 暂时只排除 Target
         return [c for c in X.columns if c != self.target]
 
     def _check_is_fitted(self):
+        """校验筛选器是否已经完成拟合。"""
         if not self._is_fitted:
             raise ValueError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")

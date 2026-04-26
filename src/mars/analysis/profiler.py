@@ -1,4 +1,4 @@
-# mars/analysis/profiler.py
+"""MARS 数据画像与稳定性分析模块。"""
 
 import dataclasses
 from typing import List, Union, Optional, Any, Dict, Literal
@@ -126,6 +126,38 @@ class MarsDataProfiler(MarsBaseEstimator):
         sample_frac: Optional[float] = None, 
         config: Optional[MarsProfileConfig] = None,
     ) -> None:
+        """
+        初始化数据画像器。
+
+        Parameters
+        ----------
+        df : DataFrame
+            输入数据集。
+        features : list of str, optional
+            需要纳入画像的特征列表。
+        exclude_features : list of str, optional
+            需要排除的特征列表。
+        include_dtypes : type or pl.DataType or list, optional
+            数据类型白名单。
+        missing_values : list, optional
+            自定义缺失值集合。
+        special_values : list, optional
+            自定义特殊值集合。
+        psi_n_bins : int, default 10
+            PSI 计算的分箱数量上限。
+        psi_bin_method : {"quantile", "uniform"}, default "quantile"
+            PSI 分箱策略。
+        psi_cv_ignore_threshold : float, default 0.05
+            Group CV 忽略阈值。
+        psi_batch_size : int, default 50
+            PSI 批处理大小。
+        overview_batch_size : int, default 500
+            概览计算批处理大小。
+        sample_frac : float, optional
+            随机采样比例。
+        config : MarsProfileConfig, optional
+            画像运行配置。
+        """
         super().__init__()
         # 数据接入与采样
         self.df = self._ensure_polars_dataframe(df)
@@ -287,7 +319,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         working_df = self.df
         group_col = profile_by
 
-        # ✅ [新增] 识别是否是时间聚合指令 (兼容 'Nd' 格式)
+        # 同时兼容标准粒度别名和 `Nd` 形式的滚动天窗指令。
         is_date_granularity = profile_by in ["day", "week", "month"] or (
             isinstance(profile_by, str) and bool(re.match(r"^\d+d$", profile_by.lower()))
         )
@@ -297,7 +329,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             if dt_col not in self.df.columns:
                 raise ValueError(f"dt_col '{dt_col}' not found in DataFrame.")
             
-            # ✅ [修改] 分发路由，将 day 和 Nd 全部交给重构后的 dt2day 处理
+            # `day` 与 `Nd` 统一走按日聚合逻辑，避免分支分散。
             if profile_by == "month":
                 date_expr = MarsDate.dt2month(dt_col)
             elif profile_by == "week":
@@ -348,7 +380,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                 if not psi_df.is_empty():
                     stat_tables["psi"] = psi_df
             except Exception as e:
-                logger.warning(f"⚠️ PSI calculation skipped due to error: {e}")
+                logger.warning(f"PSI calculation skipped due to error: {e}")
 
         return MarsProfileReport(
             overview=self._format_output(overview_df),
@@ -358,7 +390,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         
     def _calculate_overview(self, config: MarsProfileConfig) -> pl.DataFrame:
         """
-        [Internal] 计算全量概览大宽表 (Overview Table)。
+        计算全量概览宽表。
 
         该方法采用 **One-Pass (单次扫描)** 策略，通过构建向量化表达式一次性计算所有指标（DQ + Stats），
         并自动拼接元数据、分布图 (Sparklines)，最后对列顺序和数据类型进行标准化整形。
@@ -418,7 +450,7 @@ class MarsDataProfiler(MarsBaseEstimator):
     
     def _analyze_cols_vectorized(self, cols: List[str], config: Optional[MarsProfileConfig] = None) -> pl.DataFrame:
         """
-        [Internal] 全量指标向量化计算引擎 (Overview 核心)。
+        以批量向量化方式计算概览指标。
         
         该方法通过“分批次向量化 (Batch Vectorization)”策略，平衡了 Polars 的并行计算能力
         与查询优化器 (Query Planner) 的解析开销。
@@ -571,6 +603,7 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         # 单列处理函数
         def _process_column(col: str) -> Dict[str, str]:
+            """计算单个数值列的字符分布图结果。"""
             dist_str: str = "-" 
             try:
                 # 获取清洗逻辑（排除 -999 等自定义缺失值）
@@ -818,7 +851,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         n_groups = target_df.select(pl.col(group_col).n_unique()).item()
         
         if n_groups > MAX_PSI_GROUPS:
-            logger.error(f"❌ PSI Calculation aborted: Column '{group_col}' has {n_groups} unique values.")
+            logger.error(f"PSI calculation aborted: column '{group_col}' has {n_groups} unique values.")
             logger.error(f"   Threshold is {MAX_PSI_GROUPS}. Did you accidentally group by an ID column?")
             # 返回空表，避免程序 Crash，让报告其他部分能正常生成
             return pl.DataFrame()
@@ -929,7 +962,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                         lf_psi_num_raw
                         .join(mapping_df, on="feat_idx", how="left")
                         .select(common_schema_order)
-                        .collect(streaming=True) # 只有在最后合并前才 collect
+                        .collect(engine="streaming") # 只有在最后合并前才 collect
                     )
                     
                     psi_result_parts.append(psi_num_final)
@@ -977,7 +1010,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                 psi_cat_final = (
                     lf_psi_cat_raw
                     .select(common_schema_order)
-                    .collect(streaming=True)
+                    .collect(engine="streaming")
                 )
                 psi_result_parts.append(psi_cat_final)
 
@@ -1390,7 +1423,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         return mapper.get(metric_type, pl.lit(None))
 
     def _get_feature_dtypes(self) -> pl.DataFrame:
-        """[Helper] 获取 Schema 信息表"""
+        """返回当前数据集的字段类型清单。"""
         schema = {"feature": [], "dtype": []}
         for n, d in self.df.schema.items():
             schema["feature"].append(n)
@@ -1398,26 +1431,28 @@ class MarsDataProfiler(MarsBaseEstimator):
         return pl.DataFrame(schema)
 
     def _is_numeric(self, col: str) -> bool:
-        """[Helper] 判断列是否为数值类型"""
-        # 兼容 Polars 这里的类型判断
+        """判断指定列是否属于数值类型。"""
         dtype = self._dtype_map.get(col)
         return dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64, 
                         pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64, 
                         pl.Float32, pl.Float64]
 
     def _get_valid_missing(self, col: str) -> List[Any]:
-        """[Helper] 类型安全的缺失值匹配 (防止类型不匹配报错)"""
-        # Polars 很严格，如果拿字符串 "unknown" 去过滤整数列，会崩。
-        # 这个函数会检查当前列的类型，只返回类型匹配的自定义缺失值。
+        """返回与当前列物理类型兼容的自定义缺失值列表。"""
         if not self.missing_values: 
             return []
         is_num = self._is_numeric(col)
         is_str = self.df[col].dtype == pl.String
-        return [v for v in self.missing_values if (is_num and isinstance(v, (int, float))) or (is_str and isinstance(v, str))]
+        return [
+            v
+            for v in self.missing_values
+            if (is_num and isinstance(v, (int, float)) and not isinstance(v, bool))
+            or (is_str and isinstance(v, str))
+        ]
     
     def _get_values_to_exclude(self, col: str) -> List[Any]:
         """
-        [Helper] 获取当前列需要剔除的所有特定值 (类型安全)。
+        获取当前列需要剔除的特定值，并保证类型安全。
 
         该方法合并了实例的 `missing_values` (自定义缺失值) 和 `special_values` (特殊值)，
         并根据目标列的物理类型 (`dtype`) 对值进行严格过滤。

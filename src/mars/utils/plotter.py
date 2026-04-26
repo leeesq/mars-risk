@@ -23,6 +23,25 @@ class MarsPlotter:
     UNIT_HEIGHT = 2.75 # 单个子图的基准高度
 
     @staticmethod
+    def _as_pandas_detail_frame(df_detail: Union[pd.DataFrame, pl.DataFrame]) -> pd.DataFrame:
+        """
+        将绘图输入统一转换为 Pandas DataFrame。
+
+        Parameters
+        ----------
+        df_detail : Union[pd.DataFrame, pl.DataFrame]
+            绘图明细表。
+
+        Returns
+        -------
+        pd.DataFrame
+            可直接用于 Matplotlib 和 Pandas 切片的表对象。
+        """
+        if isinstance(df_detail, pl.DataFrame):
+            return df_detail.to_pandas()
+        return df_detail
+
+    @staticmethod
     def _show_scrollable(fig: plt.Figure, dpi: int = 150):
         """
         将 Matplotlib 图表包装进可滚动、可点击放大的交互式 HTML 容器。
@@ -135,19 +154,17 @@ class MarsPlotter:
         dpi : int, optional, default 150
             绘图分辨率。
         """
-        # 数据类型标准化
-        if isinstance(df_detail, pl.DataFrame):
-            df_detail = df_detail.to_pandas()
+        df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
             
         df_feat: pd.DataFrame = df_detail[df_detail["feature"] == feature].copy()
         
         if df_feat.empty:
-            print(f"❌ Feature '{feature}' not found.")
+            logger.error("Feature '%s' not found in detail table.", feature)
             return
 
         if group_col not in df_feat.columns:
-             print(f"❌ Group column '{group_col}' not found.")
-             return
+            logger.error("Group column '%s' not found in detail table.", group_col)
+            return
 
         # 提取全局汇总指标 (Total 维度)
         if "Total" in df_feat[group_col].values:
@@ -314,7 +331,7 @@ class MarsPlotter:
             ax.set_xticklabels(labels, rotation=90, fontsize=fs_label+1.5)
             ax.tick_params(axis='x', length=0)
             
-            # B & C: 仅在有目标变量时绘制红线折线和详细数据标签 (✅ 恢复你精调的这部分代码)
+            # 仅在存在目标变量时绘制坏样本率折线与细粒度标签。
             if has_target:
                 bads = df_g["bad_rate"]
                 ax2 = ax.twinx()
@@ -348,7 +365,7 @@ class MarsPlotter:
                 else:
                     ax2.set_yticks([]) 
                 
-                # C. 数据标注 (BadRate & Lift) [✅ 完美恢复]
+                # 叠加坏样本率与 Lift 文本标注。
                 for j, val in enumerate(bads):
                     is_special = indices[j] < 0
                     color_lift_text = COLOR_BLUE if is_special else 'black'
@@ -442,15 +459,14 @@ class MarsPlotter:
         ascending : bool, default False
             是否升序排列（默认降序，即最重要的特征排在最前面）。
         """
-        if isinstance(df_detail, pl.DataFrame):
-            df_detail = df_detail.to_pandas()
+        df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
 
         # 重置交互式容器的显示标记
         display(HTML("<script>window.MARS_PLOTTER_HINT_SHOWN = undefined;</script>"))
             
         # 计算全局排序得分
         if sort_by and sort_by.lower() in ['iv', 'ks', 'auc']:
-            logger.info(f"📊 Calculating {sort_by.upper()} for sorting...")
+            logger.info(f"Calculating {sort_by.upper()} scores for plotting order.")
             feature_stats = []
             for feat in features:
                 df_feat = df_detail[df_detail["feature"] == feat]
@@ -474,7 +490,7 @@ class MarsPlotter:
         else:
             sorted_features = features
 
-        logger.info(f"🚀 Starting batch plot for {len(sorted_features)} features...")
+        logger.info(f"Starting batch plot for {len(sorted_features)} features.")
         
         # 循环生成每个特征的图表
         for i, feat in enumerate(sorted_features):
@@ -492,4 +508,4 @@ class MarsPlotter:
                 target_name=target_name,
                 dpi=dpi
             )
-        logger.info("✅ Batch plotting completed.")
+        logger.info("Batch plotting completed.")

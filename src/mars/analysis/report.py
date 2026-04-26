@@ -14,8 +14,29 @@ try:
     from IPython.display import display, HTML
 except ImportError:
     display = None
+
+
+def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
+    """
+    将展示层输入统一转换为 Pandas DataFrame。
+
+    Parameters
+    ----------
+    df : Union[pl.DataFrame, pd.DataFrame]
+        需要用于样式渲染或 Excel 导出的数据表。
+
+    Returns
+    -------
+    pd.DataFrame
+        转换后的 Pandas DataFrame。若输入本身已为 Pandas，则直接返回原对象。
+    """
+    if isinstance(df, pl.DataFrame):
+        return df.to_pandas()
+    return df
     
 class ProfileData(NamedTuple):
+    """画像报告底层数据对象集合。"""
+
     overview: Union[pl.DataFrame, pd.DataFrame]
     dq_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
     stats_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
@@ -85,6 +106,18 @@ class MarsProfileReport:
         dq_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         stats_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
     ) -> None:
+        """
+        初始化画像报告容器。
+
+        Parameters
+        ----------
+        overview : DataFrame
+            特征概览宽表。
+        dq_tables : dict of str to DataFrame
+            数据质量趋势表字典。
+        stats_tables : dict of str to DataFrame
+            统计指标趋势表字典。
+        """
         self.overview_table = overview
         self.dq_tables = dq_tables
         self.stats_tables = stats_tables
@@ -98,7 +131,7 @@ class MarsProfileReport:
             self._metric_index[k] = "stat"
 
     def get_profile_data(self) -> ProfileData:
-        """[API] 获取原始数据对象"""
+        """返回画像报告的原始数据对象。"""
         return ProfileData(
             overview=self.overview_table,
             dq_trends=self.dq_tables,
@@ -107,7 +140,7 @@ class MarsProfileReport:
 
     def _repr_html_(self) -> str:
         """
-        [Internal] Jupyter Notebook 控制面板 
+        返回 Jupyter 环境下的 HTML 摘要面板。
         """
         df_ov = self.overview_table
         n_feats = len(df_ov) if hasattr(df_ov, "__len__") else df_ov.height
@@ -129,6 +162,7 @@ class MarsProfileReport:
         
         # 辅助函数：生成指标徽章列表
         def _fmt_pills(keys):
+            """将指标名称渲染为 HTML 胶囊标签。"""
             if not keys: return "<span style='color:#ccc'>None</span>"
             # 为了防止指标太多撑爆屏幕，限制显示数量 (例如只显示前 20 个，后面加 ...)
             display_keys = keys[:30] 
@@ -208,7 +242,7 @@ class MarsProfileReport:
             排序方向。默认降序 (False)，即把问题最严重的特征排在前面。
         """
         # 转换为 Pandas 副本以进行切片
-        df = self._to_pd(self.overview_table).copy()
+        df = _as_pandas_frame(self.overview_table).copy()
         
         # 特征筛选逻辑
         if features is not None:
@@ -252,9 +286,9 @@ class MarsProfileReport:
         # 路由逻辑：查找指标属于哪个表
         source_type = self._metric_index.get(metric)
         if source_type is None:
-             # 提供更友好的报错提示
+            # 提供可用指标的快速提示，方便交互式探索。
             available = list(self._metric_index.keys())
-            raise ValueError(f"❌ Metric '{metric}' not found. Available metrics: {available[:10]}...")
+            raise ValueError(f"Metric '{metric}' not found. Available metrics: {available[:10]}...")
 
         # 获取数据
         if source_type == "dq":
@@ -277,7 +311,7 @@ class MarsProfileReport:
             fmt_pct = False   # PSI 是数值不是百分比
             vmin, vmax = 0.0, 0.5 # 锚定阈值
         
-        df = self._to_pd(df_raw).copy()
+        df = _as_pandas_frame(df_raw).copy()
 
         # 特征筛选逻辑
         if features is not None:
@@ -300,7 +334,7 @@ class MarsProfileReport:
         )
 
     def _reorder_trend_cols(self, df: pd.DataFrame, group_ascending: bool) -> pd.DataFrame:
-        """[Internal Helper] 重新排列趋势表的列顺序。"""
+        """重新排列趋势表的列顺序。"""
         # 定义元数据列和末尾统计列
         meta_cols = ["feature", "dtype", "distribution", "top1_value"]
         stat_cols = ["total", "group_mean", "group_var", "group_cv"]
@@ -326,13 +360,13 @@ class MarsProfileReport:
         """
         导出带有精美样式和趋势热力图的 Excel 报告。
         """
-        logger.info(f"📊 Exporting report to: {path}...")
+        logger.info(f"Exporting report to: {path}...")
         
         # 1. 依赖检查
         try:
             import xlsxwriter
         except ImportError:
-            logger.error("❌ 'xlsxwriter' is required for Excel export. Install it via: pip install xlsxwriter")
+            logger.error("'xlsxwriter' is required for Excel export. Install it via: pip install xlsxwriter")
             return
 
         try:
@@ -381,7 +415,7 @@ class MarsProfileReport:
             logger.info("Report exported successfully.")
 
         except Exception as e:
-            logger.error(f"❌ Failed to export Excel: {e}", exc_info=True)
+            logger.error(f"Failed to export Excel: {e}", exc_info=True)
 
     def _apply_excel_formatting(self, 
                                 writer, 
@@ -391,7 +425,7 @@ class MarsProfileReport:
                                 sort_by: Union[str, List[str]],
                                 sort_ascending: bool):
         """
-        [Helper] 抽离 Excel 条件格式逻辑，保持主流程清晰。
+        为导出的趋势工作表应用条件格式。
         """
         if metric in self.dq_tables:
             raw_df = self.dq_tables[metric]
@@ -399,7 +433,7 @@ class MarsProfileReport:
             raw_df = self.stats_tables[metric]
             
         # 必须和 show_trend 的内部重排逻辑一模一样，否则 Excel 样式会错位
-        df_pd: pd.DataFrame = self._to_pd(raw_df).copy()
+        df_pd: pd.DataFrame = _as_pandas_frame(raw_df).copy()
         
         # 匹配行排序
         if sort_by in df_pd.columns or (isinstance(sort_by, list) and all(c in df_pd.columns for c in sort_by)):
@@ -408,7 +442,7 @@ class MarsProfileReport:
         # 匹配列排序
         df_pd = self._reorder_trend_cols(df_pd, group_ascending=group_ascending)
         
-        # [优化] 动态查找时间列的索引范围
+        # 动态识别趋势列范围，避免依赖固定列位置。
         meta_and_stat = set(["feature", "dtype", "distribution", "top1_value", "total", "group_mean", "group_var", "group_cv"])
         time_cols = [c for c in df_pd.columns if c not in meta_and_stat]
         
@@ -446,14 +480,6 @@ class MarsProfileReport:
                 'max_type': 'num', 'max_value': 1
             })
 
-    def _to_pd(self, df: Any) -> pd.DataFrame:
-        """
-        [辅助方法] 确保数据转换为 Pandas DataFrame 格式。
-        """
-        if isinstance(df, pl.DataFrame):
-            return df.to_pandas()
-        return df
-
     def _get_styler(
         self, 
         df_input: Any, 
@@ -468,11 +494,11 @@ class MarsProfileReport:
         vmax: Optional[float] = None
     ) -> Optional["pd.io.formats.style.Styler"]:
         """
-        [Internal] 通用样式生成器。
+        生成统一的 Pandas Styler 样式对象。
         """
         if df_input is None:
             return None
-        df: pd.DataFrame = self._to_pd(df_input)
+        df: pd.DataFrame = _as_pandas_frame(df_input)
         if sort_by is not None:
             df = df.sort_values(by=sort_by, ascending=sort_ascending) # 使用统一参数进行底层排序
         if df.empty:
@@ -682,18 +708,12 @@ class MarsEvaluationReport:
         """
         return self.summary_table, self.trend_tables, self.detail_table
 
-    def _to_pd(self, df: Any) -> pd.DataFrame:
-        """辅助函数：将输入对象转为 Pandas DataFrame（用于展示或导出）。"""
-        if isinstance(df, pl.DataFrame):
-            return df.to_pandas()
-        return df
-
     def _repr_html_(self) -> str:
         """
-        [Dashboard] Jupyter Notebook 控制面板。
+        返回 Jupyter 环境下的评估摘要面板。
         """
         # 内部展示逻辑统一转为 Pandas 处理
-        df_summary_pd = self._to_pd(self.summary_table)
+        df_summary_pd = _as_pandas_frame(self.summary_table)
         n_feats = len(df_summary_pd)
         
         # 简单统计报警数 (修正为新的小写列名 psi_max)
@@ -716,7 +736,7 @@ class MarsEvaluationReport:
         lines.append('👉 <code>.show_summary()</code> &nbsp;<span style="color:#7f8c8d">View Feature Ranking</span>')
         lines.append(f'👉 <code>.show_trend(metric)</code> <span style="color:#7f8c8d">metric: {trend_pills}</span>')
         
-        # [新增] 获取数据类操作
+        # 数据访问与导出入口
         lines.append('<hr style="margin: 8px 0; border: 0; border-top: 1px dashed #ccc;">')
         lines.append('📥 <code>.get_evaluation_data()</code> &nbsp;<span style="color:#7f8c8d">Get Raw Data (summary, trends, detail)</span>')
         lines.append('💾 <code>.write_excel()</code> &nbsp;<span style="color:#7f8c8d">Export to Excel</span>')
@@ -738,7 +758,7 @@ class MarsEvaluationReport:
         """
 
     def show_summary(self, 
-                     features: Optional[Union[str, List[str]]] = None # 新增特征筛选
+                     features: Optional[Union[str, List[str]]] = None
                      ) -> "pd.io.formats.style.Styler":
         """
         展示特征汇总评分表。
@@ -748,7 +768,7 @@ class MarsEvaluationReport:
         features : str or List[str], optional
             需要展示的特征名列表。若为 None，则展示所有特征。
         """
-        df: pd.DataFrame = self._to_pd(self.summary_table).copy()
+        df: pd.DataFrame = _as_pandas_frame(self.summary_table).copy()
         
         # 特征筛选逻辑
         if features is not None:
@@ -756,7 +776,7 @@ class MarsEvaluationReport:
                 features = [features]
             df = df[df["feature"].isin(features)]
         
-        # [UI 优化] 如果是多目标模式，自动将 target 列提取到最前面
+        # 多目标模式下，将 target 列提前，便于快速按目标查看结果。
         for t_col in ["target", "target_col", "y"]:
             if t_col in df.columns:
                 cols = [t_col] + [c for c in df.columns if c != t_col]
@@ -790,12 +810,12 @@ class MarsEvaluationReport:
 
     def show_trend(self, 
                    metric: str, 
-                   features: Optional[Union[str, List[str]]] = None, # 新增特征筛选参数
+                   features: Optional[Union[str, List[str]]] = None,
                    group_ascending: bool = True, 
                    sort_by: Union[str, List[str]] = "Total", 
                    sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
         """
-        [Interactive] 展示指标的时间趋势热力图。
+        展示指定指标的时间趋势热力图。
 
         渲染并返回一个带条件格式 (Conditional Formatting) 的 Pandas Styler 对象，
         用于直观分析特征在不同时间切片（或客群分组）下的指标波动趋势。内置了针对
@@ -824,7 +844,7 @@ class MarsEvaluationReport:
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
         
         # 转换为 Pandas 副本进行安全的样式处理
-        df: pd.DataFrame = self._to_pd(self.trend_tables[metric]).copy()
+        df: pd.DataFrame = _as_pandas_frame(self.trend_tables[metric]).copy()
         
         # 特征筛选逻辑
         if features is not None:
@@ -896,7 +916,7 @@ class MarsEvaluationReport:
         """
         valid_engines = ["auto", "xlwings", "openpyxl"]
         if engine not in valid_engines:
-            raise ValueError(f"❌ 不支持的 engine: '{engine}'，请从 {valid_engines} 中选择。")
+            raise ValueError(f"不支持的 engine: '{engine}'，请从 {valid_engines} 中选择。")
 
         # 智能定位模板路径
         package_name = "mars.analysis" 
@@ -904,6 +924,7 @@ class MarsEvaluationReport:
         template_name_openpyxl = "mars_bin_report_linux.xlsx"
         
         def get_template_path(fname):
+            """解析 Excel 模板文件的物理路径。"""
             try:
                 import importlib.resources as resources
                 with resources.as_file(resources.files(package_name).joinpath(fname)) as p:
@@ -940,10 +961,10 @@ class MarsEvaluationReport:
             except Exception as e:
                 if engine == "xlwings":
                     # 用户强制要求但失败，直接抛错
-                    raise RuntimeError(f"❌ 强制使用 xlwings 引擎失败，请确认系统已正确安装 Excel 及 xlwings 库。\n报错详情: {e}")
+                    raise RuntimeError(f"强制使用 xlwings 引擎失败，请确认系统已正确安装 Excel 及 xlwings 库。\n报错详情: {e}")
                 else:
                     # auto 模式下失败，降级处理
-                    print(f"⚠️ xlwings 启动失败，将降级使用 openpyxl 引擎: {e}")
+                    logger.warning("xlwings 启动失败，将降级使用 openpyxl 引擎: %s", e)
                     use_xlwings = False
 
         # 若未使用 xlwings，则准备 openpyxl 依赖
@@ -954,10 +975,10 @@ class MarsEvaluationReport:
             template_path = get_template_path(template_name_openpyxl)
 
         if not os.path.exists(template_path):
-            raise FileNotFoundError(f"❌ 找不到模板文件: {template_path}")
+            raise FileNotFoundError(f"找不到模板文件: {template_path}")
 
         # 准备数据
-        df_pd = self._to_pd(self.detail_table)
+        df_pd = _as_pandas_frame(self.detail_table)
         total_cols = len(df_pd.columns)
 
         # ================= 路径 A: xlwings 写入 (Win/Mac 跨平台兼容) =================
@@ -1009,11 +1030,10 @@ class MarsEvaluationReport:
                     ws.range(f"{final_row + 1}:{last_used_row}").delete()
 
                 wb.save(path)
-                print(f"[xlwings Engine] 导出成功: {path}")
+                logger.info("Exported evaluation report via xlwings: %s", path)
 
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                logger.exception("xlwings 导出过程出错。")
                 raise RuntimeError(f"xlwings 导出过程出错: {e}")
             finally:
                 if 'wb' in locals() and wb: wb.close()
@@ -1084,4 +1104,4 @@ class MarsEvaluationReport:
                 ws.delete_rows(final_row + 1, ws.max_row - final_row)
 
             wb.save(path)
-            print(f"[openpyxl Engine] 导出成功: {path}")
+            logger.info("Exported evaluation report via openpyxl: %s", path)
