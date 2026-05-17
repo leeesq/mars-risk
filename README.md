@@ -200,6 +200,21 @@ psi_trend = profile_report.stats_tables["psi"]
 profile_report.write_excel("mars_profile.xlsx")
 ```
 
+```python
+from mars.analysis import profile_stats
+
+quick_profile = profile_stats(
+    df,
+    metrics=["missing", "mean"],
+    features=["income", "utilization"],
+    profile_by="month",
+    missing_values=[-999],
+)
+
+quick_profile.show_overview()
+quick_profile.show_trend("missing")
+```
+
 ### 3. 一键做特征评估
 
 `profile_risk()` 的返回值是：
@@ -236,6 +251,7 @@ trend_psi = eval_report.trend_tables["psi"]
 
 ```python
 eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
+eval_report.write_html("mars_evaluation.html")
 ```
 
 ### 4. 直接使用分箱器
@@ -267,7 +283,23 @@ sql = binner.generate_sql(
 )
 ```
 
-### 5. 做一轮特征筛选
+```python
+from mars.scoring import build_scorecard
+
+scorecard = build_scorecard(
+    binner=binner,
+    coefficients={"income": -0.35, "utilization": 0.82},
+    intercept=-1.1,
+    pdo=50,
+    base_score=600,
+    base_odds=20,
+)
+
+scorecard.write_excel("mars_scorecard.xlsx")
+sql_score = scorecard.generate_sql(table_prefix="t", score_name="credit_score")
+```
+
+### 6. 做一轮特征筛选
 
 ```python
 from mars.feature import MarsStatsSelector
@@ -416,6 +448,7 @@ report, evaluator = profile_risk(
 | `MarsProfileReport` | 画像报告对象 |
 | `MarsBinEvaluator` | 特征评估器 |
 | `MarsEvaluationReport` | 评估报告对象 |
+| `profile_stats` | 轻量统计画像入口，适合快速看缺失率/均值等指标 |
 | `profile_risk` | 一键评估入口 |
 
 ### `mars.feature`
@@ -425,6 +458,13 @@ report, evaluator = profile_risk(
 | `MarsNativeBinner` | 原生高性能分箱器 |
 | `MarsOptimalBinner` | 带约束的最优分箱器 |
 | `MarsStatsSelector` | 漏斗式特征筛选器 |
+
+### `mars.scoring`
+
+| API | 说明 |
+| --- | --- |
+| `build_scorecard` | 基于已拟合分箱器和 LR 系数生成评分卡 |
+| `MarsScorecard` | 评分卡结果对象，支持表格导出与 SQL 生成 |
 
 ### 参数兼容提醒
 

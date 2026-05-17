@@ -2,12 +2,13 @@
 
 from .analysis import (
     MarsDataProfiler, MarsProfileConfig, MarsProfileReport,
-    MarsBinEvaluator, MarsEvaluationReport,  profile_risk
+    MarsBinEvaluator, MarsEvaluationReport, profile_stats, profile_risk
 )
 from .feature import MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
+from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.14" 
+__version__ = "0.0.15" 
 
 _BANNER = r"""
     __________________________________________________________________________
@@ -41,9 +42,13 @@ __all__ = [
     "MarsOptimalBinner",
     "MarsBinEvaluator",
     "MarsEvaluationReport",
+    "profile_stats",
     "profile_risk",
     
     "MarsStatsSelector",
+
+    "MarsScorecard",
+    "build_scorecard",
     
     "logger",
     "set_log_level",

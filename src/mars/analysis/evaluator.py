@@ -88,11 +88,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
     
     def __init__(
         self, 
-        target: str = "target",
-        *,
+        target: str = "target", 
+        *, 
         binner: Optional[MarsBinnerBase] = None,
         binning_type: Optional[Literal["native", "opt"]] = None,
         bining_type: Optional[Literal["native", "opt"]] = None,
+        feature_data_source: Optional[Dict[str, List[str]]] = None,
         **binner_kwargs
     ) -> None:
         """
@@ -114,6 +115,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         super().__init__()
         self.target = target
         self.binner = binner
+        self.feature_data_source = feature_data_source or {}
         self.binner_kwargs = binner_kwargs
         if bining_type is not None:
             warnings.warn(
@@ -140,6 +142,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         *,
         profile_by: Optional[str] = None,
         dt_col: Optional[str] = None,
+        feature_start_aware_baseline: bool = False,
+        feature_data_source: Optional[Dict[str, List[str]]] = None,
         psi_include_missing: bool = False,
         psi_include_special: bool = False, 
         benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
@@ -197,6 +201,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         working_df = self._ensure_polars_dataframe(df)
         if benchmark_df is not None:
             benchmark_df = self._ensure_polars_dataframe(benchmark_df)
+        original_target = self.target
+        effective_target = self.target if self.target else "dummy_target"
             
         # 允许 target 为空，或数据集中本就不存在目标列。
         self.has_target_ = self.target is not None and self.target in working_df.columns
@@ -206,10 +212,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 f"Label-free mode enabled: target '{self.target}' was not found. "
                 "A dummy target will be injected and only distribution metrics plus PSI will be evaluated."
             )
-            dummy_target = self.target if self.target else "dummy_target"
-            self.target = dummy_target
             # 临时注入常量标签，保持下游统计链路可复用。
-            working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(self.target))
+            working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
+        self.target = effective_target
 
         # 检查 Target 有效性 (仅在有真实标签时检查)
         if self.has_target_:
@@ -228,6 +233,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
         target_features = features if features else [
             c for c in working_df.columns if c not in exclude_cols
         ]
+
+        effective_feature_data_source = feature_data_source if feature_data_source is not None else self.feature_data_source
+        feature_source_map = self._normalize_feature_data_source(effective_feature_data_source, target_features)
 
         if self.binner is None:
             fit_kwargs = self.binner_kwargs if self.binner_kwargs is not None else {}
@@ -270,6 +278,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 将原始特征映射为分箱索引列 `{feature}_bin`。
         logger.debug("Transforming features to bin indices.")
         df_binned = self.binner.transform(working_df, return_type="index")
+        missing_by_day_table = self._build_missing_by_day_table(
+            df=working_df,
+            features=target_features,
+            dt_col=dt_col,
+            output_kind="pandas" if isinstance(df, pd.DataFrame) else "polars",
+        )
         
         # 流式扫描并聚合到最细粒度统计表。
         logger.debug("Step 1: scanning grouped bin statistics.")
@@ -286,6 +300,33 @@ class MarsBinEvaluator(MarsBaseEstimator):
         expected_dist = self._get_benchmark_dist(
             group_stats_raw, benchmark_df, group_col, target_features, weights_col
         )
+        feature_start_reference = None
+        if feature_start_aware_baseline:
+            if benchmark_df is not None:
+                logger.warning(
+                    "`feature_start_aware_baseline=True` was ignored because `benchmark_df` was provided."
+                )
+            elif not dt_col or dt_col not in working_df.columns:
+                logger.warning(
+                    "`feature_start_aware_baseline=True` requires a valid `dt_col`; falling back to the default baseline logic."
+                )
+            else:
+                feature_start_reference = self._build_feature_start_baseline_reference(
+                    df_binned=df_binned,
+                    missing_by_day_table=missing_by_day_table,
+                    features=target_features,
+                    dt_col=dt_col,
+                    profile_by=profile_by,
+                    group_col=group_col,
+                    weights_col=weights_col,
+                )
+                if feature_start_reference is not None and not feature_start_reference["expected_dist"].is_empty():
+                    expected_dist = self._merge_feature_expected_dist(
+                        default_expected_dist=expected_dist,
+                        feature_expected_dist=feature_start_reference["expected_dist"],
+                    )
+        monitor_metrics_groups = None
+        monitor_metrics_total = None
 
         # 汇总 total 统计量，得到全量样本的分布表现。
         logger.debug("Step 2: rolling up total statistics.")
@@ -322,6 +363,36 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 合并分组与总体结果
+        if feature_start_reference is not None:
+            monitor_group_stats_raw = feature_start_reference.get("monitor_group_stats_raw")
+            if monitor_group_stats_raw is not None and not monitor_group_stats_raw.is_empty():
+                monitor_total_stats_raw = (
+                    monitor_group_stats_raw
+                    .group_by(["feature", "bin_index"])
+                    .agg([
+                        pl.col("count").sum().alias("count"),
+                        pl.col("bad").sum().alias("bad"),
+                    ])
+                    .with_columns(pl.lit("Total").alias(group_col))
+                )
+                monitor_metrics_groups = (
+                    self._calc_metrics_from_stats(
+                        monitor_group_stats_raw,
+                        expected_dist,
+                        group_col,
+                        include_missing=psi_include_missing,
+                        include_special=psi_include_special,
+                    )
+                    .with_columns(pl.col(group_col).cast(pl.String))
+                )
+                monitor_metrics_total = self._calc_metrics_from_stats(
+                    monitor_total_stats_raw,
+                    expected_dist,
+                    group_col,
+                    include_missing=psi_include_missing,
+                    include_special=psi_include_special,
+                ).select(monitor_metrics_groups.columns)
+
         metrics_total = metrics_total.select(metrics_groups.columns)
 
         # 单点评估时避免重复拼接一份语义相同的 Total 结果。
@@ -350,8 +421,51 @@ class MarsBinEvaluator(MarsBaseEstimator):
             monotonicity_df = pl.DataFrame({"feature": target_features, "mono": [1.0] * len(target_features)})
 
         report = self._format_report(
-            stats_long, metrics_groups, metrics_total, group_col, monotonicity_df
+            stats_long,
+            metrics_groups,
+            metrics_total,
+            group_col,
+            monotonicity_df,
+            feature_source_map=feature_source_map,
+            dt_col=dt_col,
+            missing_by_day_table=missing_by_day_table,
+            risk_corr_baseline_df=feature_start_reference["baseline_bad_rate"] if feature_start_reference else None,
+            feature_valid_groups_df=feature_start_reference["valid_groups"] if feature_start_reference else None,
+            monitor_metrics_groups=monitor_metrics_groups,
+            monitor_metrics_total=monitor_metrics_total,
         )
+        profile_label = profile_by
+        if dt_col and not profile_by:
+            profile_label = "month (auto)"
+        report._report_meta = {
+            "row_count": int(working_df.height),
+            "feature_count": len(target_features),
+            "profile_by_input": profile_label,
+            "group_col": group_col,
+            "group_count": max(int(stats_long[group_col].n_unique()) - 1, 0),
+            "dt_col": dt_col,
+            "start_dt": None,
+            "end_dt": None,
+            "targets": [original_target] if self.has_target_ and original_target else [],
+            "event_rate_by_target": {},
+            "feature_start_aware_baseline": bool(feature_start_reference),
+            "feature_start_baseline_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
+            "feature_start_baseline_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
+        }
+        if dt_col and dt_col in working_df.columns:
+            try:
+                report._report_meta["start_dt"] = str(working_df.select(pl.col(dt_col).min()).item())
+                report._report_meta["end_dt"] = str(working_df.select(pl.col(dt_col).max()).item())
+            except Exception:
+                report._report_meta["start_dt"] = None
+                report._report_meta["end_dt"] = None
+        if self.has_target_ and original_target and original_target in working_df.columns:
+            try:
+                event_rate = float(working_df.select(pl.col(original_target).cast(pl.Float64).mean()).item())
+            except Exception:
+                event_rate = None
+            report._report_meta["event_rate_by_target"] = {str(original_target): event_rate}
+        self.target = original_target
 
         # 无标签模式下擦除依赖真实坏样本标签的指标，保留分布类结果。
         if not self.has_target_:
@@ -368,7 +482,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ])
             
             # summary_table 擦除
-            sum_cols = ["iv", "ks", "auc", "rc_min", "mono"]
+            sum_cols = ["iv", "ks", "auc", "rc_min", "lift_min", "lift_max", "mono"]
             sum_cols = [c for c in sum_cols if c in report._summary.columns]
             if isinstance(report._summary, pd.DataFrame):
                 for c in sum_cols:
@@ -613,9 +727,22 @@ class MarsBinEvaluator(MarsBaseEstimator):
            适用于 "Month vs Baseline Month" 的跨期稳定性监控。
         """
         if bench_df is not None:
-            # Case A: 处理外部基准集 
+            # Case A: 处理外部基准集
             bench_binned = self.binner.transform(bench_df, return_type="index")
-            bin_cols = [f"{f}_bin" for f in features]
+            theoretical_bin_cols = [f"{f}_bin" for f in features]
+            existing_cols = set(bench_binned.columns)
+            bin_cols = [c for c in theoretical_bin_cols if c in existing_cols]
+            missing_cols = set(theoretical_bin_cols) - set(bin_cols)
+            if missing_cols:
+                logger.warning(
+                    f"{len(missing_cols)} benchmark features were not binned and will be skipped in PSI baseline. "
+                    f"All missing: {list(missing_cols)}"
+                )
+            if not bin_cols:
+                raise ValueError(
+                    "No valid benchmark bin columns found in dataframe. "
+                    "Check that benchmark_df includes the fitted feature set."
+                )
             agg_expr = pl.col(w_col).sum().alias("expected_count") if w_col else pl.len().alias("expected_count")
             idx_cols = [w_col] if w_col else []
             
@@ -631,7 +758,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         else:
             # Case B: 内部基准
             min_group = group_stats_raw.select(pl.col(group_col).min()).item()
-            logger.debug(f"📅 Using earliest group '{min_group}' as baseline (from stats cache).")
+            logger.debug(f"[BASELINE] Using earliest group '{min_group}' as baseline (from stats cache).")
             
             return (
                 group_stats_raw
@@ -877,13 +1004,380 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 兜底逻辑：单点评估
         return df.with_columns(pl.lit("Total").alias(self.MARS_GROUP_COL)), self.MARS_GROUP_COL
 
+    @staticmethod
+    def _normalize_feature_data_source(
+        feature_data_source: Optional[Dict[str, List[str]]],
+        features: List[str],
+    ) -> Dict[str, str]:
+        feature_set = set(features)
+        if not feature_data_source:
+            return {feature: "UNMAPPED" for feature in features}
+
+        normalized: Dict[str, str] = {}
+        mapped_features = set()
+        for data_source, source_features in feature_data_source.items():
+            for feature in source_features or []:
+                if feature not in feature_set:
+                    raise ValueError(
+                        "feature_data_source contains features outside the active evaluation feature set: "
+                        f"{feature}"
+                    )
+                normalized[feature] = str(data_source)
+                mapped_features.add(feature)
+
+        for feature in feature_set - mapped_features:
+            normalized[feature] = "UNMAPPED"
+
+        return normalized
+
+    def _build_missing_by_day_table(
+        self,
+        *,
+        df: pl.DataFrame,
+        features: List[str],
+        dt_col: Optional[str],
+        output_kind: str,
+    ) -> Optional[Union[pl.DataFrame, pd.DataFrame]]:
+        if not dt_col or dt_col not in df.columns:
+            return None
+
+        try:
+            from mars.analysis.profiler import profile_stats
+
+            missing_values = getattr(self.binner, "missing_values", None)
+            if missing_values is None:
+                missing_values = self.binner_kwargs.get("missing_values")
+            special_values = getattr(self.binner, "special_values", None)
+            if special_values is None:
+                special_values = self.binner_kwargs.get("special_values")
+
+            report = profile_stats(
+                df,
+                metrics=["missing"],
+                features=features,
+                profile_by="day",
+                dt_col=dt_col,
+                missing_values=missing_values,
+                special_values=special_values,
+                enable_sparkline=False,
+            )
+            missing_table = report.dq_tables.get("missing")
+            if missing_table is None:
+                return None
+            if output_kind == "pandas" and isinstance(missing_table, pl.DataFrame):
+                return missing_table.to_pandas()
+            if output_kind == "polars" and isinstance(missing_table, pd.DataFrame):
+                return pl.from_pandas(missing_table)
+            return missing_table
+        except Exception as exc:
+            logger.warning("Missing-by-day trend generation skipped due to error: %s", exc)
+            return None
+
+    @staticmethod
+    def _is_time_granularity(profile_by: Optional[str]) -> bool:
+        if profile_by in {"day", "week", "month"}:
+            return True
+        return isinstance(profile_by, str) and re.match(r"^\d+d$", profile_by.lower()) is not None
+
+    @staticmethod
+    def _detect_feature_start_index(
+        inactive_flags: List[bool],
+        *,
+        leading_inactive_ratio: float = 0.90,
+        sustain_window: int = 3,
+        sustain_active_ratio: float = 2.0 / 3.0,
+    ) -> Optional[int]:
+        if not inactive_flags:
+            return None
+
+        inactive_prefix = [0]
+        for flag in inactive_flags:
+            inactive_prefix.append(inactive_prefix[-1] + int(flag))
+
+        n_days = len(inactive_flags)
+        for idx, is_inactive in enumerate(inactive_flags):
+            if is_inactive:
+                continue
+
+            prefix_days = idx
+            prefix_ratio = 1.0 if prefix_days == 0 else inactive_prefix[idx] / prefix_days
+            if prefix_ratio < leading_inactive_ratio:
+                continue
+
+            window_end = min(n_days, idx + sustain_window)
+            window_flags = inactive_flags[idx:window_end]
+            active_days = sum(not flag for flag in window_flags)
+            required_active_days = max(1, int(np.ceil(len(window_flags) * sustain_active_ratio)))
+            if active_days >= required_active_days:
+                return idx
+
+        return None
+
+    @staticmethod
+    def _merge_feature_expected_dist(
+        default_expected_dist: pl.DataFrame,
+        feature_expected_dist: pl.DataFrame,
+    ) -> pl.DataFrame:
+        if feature_expected_dist.is_empty():
+            return default_expected_dist
+
+        override_features = feature_expected_dist.get_column("feature").unique().to_list()
+        retained_default = default_expected_dist.filter(~pl.col("feature").is_in(override_features))
+        return pl.concat([retained_default, feature_expected_dist], how="vertical_relaxed")
+
+    @staticmethod
+    def _merge_feature_frame(
+        default_df: pl.DataFrame,
+        override_df: Optional[pl.DataFrame],
+    ) -> pl.DataFrame:
+        if override_df is None or override_df.is_empty():
+            return default_df
+
+        override_features = override_df.get_column("feature").unique().to_list()
+        retained_default = default_df.filter(~pl.col("feature").is_in(override_features))
+        return pl.concat([retained_default, override_df], how="vertical_relaxed")
+
+    def _build_feature_start_baseline_reference(
+        self,
+        *,
+        df_binned: pl.DataFrame,
+        missing_by_day_table: Optional[Union[pl.DataFrame, pd.DataFrame]],
+        features: List[str],
+        dt_col: str,
+        profile_by: Optional[str],
+        group_col: str,
+        weights_col: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        _ = missing_by_day_table
+
+        if dt_col not in df_binned.columns:
+            return None
+
+        dt_alias = "__mars_feature_start_dt"
+        working_df = df_binned.with_columns(MarsDate.smart_parse_expr(dt_col).alias(dt_alias))
+        if working_df.select(pl.col(dt_alias).is_not_null().any()).item() is not True:
+            return None
+
+        missing_idx = -1
+        try:
+            missing_idx = int(MarsBinnerBase.IDX_MISSING)
+        except Exception:
+            missing_idx = -1
+
+        expected_frames: List[pl.DataFrame] = []
+        baseline_bad_rate_frames: List[pl.DataFrame] = []
+        valid_group_frames: List[pl.DataFrame] = []
+        monitor_group_stats_frames: List[pl.DataFrame] = []
+        feature_start_dates: Dict[str, str] = {}
+        is_time_profile = self._is_time_granularity(profile_by)
+
+        for feature in features:
+            bin_col = f"{feature}_bin"
+            if bin_col not in working_df.columns:
+                continue
+
+            select_cols = [dt_alias, group_col, bin_col]
+            if weights_col and weights_col in working_df.columns:
+                select_cols.append(weights_col)
+            if self.has_target_ and self.target in working_df.columns:
+                select_cols.append(self.target)
+
+            feature_df = (
+                working_df
+                .select(select_cols)
+                .rename({bin_col: "bin_index"})
+                .filter(pl.col(dt_alias).is_not_null())
+            )
+            if feature_df.is_empty():
+                continue
+
+            daily_missing = (
+                feature_df
+                .group_by(dt_alias)
+                .agg([
+                    pl.len().alias("_day_count"),
+                    pl.when(pl.col("bin_index") == missing_idx).then(1).otherwise(0).sum().alias("_missing_count"),
+                ])
+                .sort(dt_alias)
+                .with_columns(
+                    pl.when(pl.col("_day_count") > 0)
+                    .then(pl.col("_missing_count") / pl.col("_day_count"))
+                    .otherwise(1.0)
+                    .alias("_missing_rate")
+                )
+            )
+            if daily_missing.is_empty():
+                continue
+
+            inactive_flags = [
+                bool(rate >= 0.99)
+                for rate in daily_missing.get_column("_missing_rate").to_list()
+            ]
+            start_idx = self._detect_feature_start_index(inactive_flags)
+            if start_idx is None:
+                continue
+
+            start_dt = daily_missing.get_column(dt_alias).to_list()[start_idx]
+            post_start_df = feature_df.filter(pl.col(dt_alias) >= pl.lit(start_dt))
+            if post_start_df.is_empty():
+                continue
+
+            baseline_group = (
+                post_start_df
+                .sort(dt_alias)
+                .select(pl.col(group_col).first())
+                .item()
+            )
+            if baseline_group is None:
+                continue
+
+            baseline_rows = post_start_df.filter(pl.col(group_col) == pl.lit(str(baseline_group)))
+
+            if baseline_rows.is_empty():
+                continue
+
+            if weights_col and weights_col in post_start_df.columns:
+                monitor_count_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("count")
+            else:
+                monitor_count_expr = pl.len().cast(pl.Float64).alias("count")
+
+            if self.has_target_ and self.target in post_start_df.columns:
+                if weights_col and weights_col in post_start_df.columns:
+                    monitor_bad_expr = (
+                        pl.col(self.target).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64)
+                    ).sum().alias("bad")
+                else:
+                    monitor_bad_expr = pl.col(self.target).cast(pl.Float64).sum().alias("bad")
+            else:
+                monitor_bad_expr = pl.lit(0.0).alias("bad")
+
+            monitor_group_stats_df = (
+                post_start_df
+                .group_by([group_col, "bin_index"])
+                .agg([monitor_count_expr, monitor_bad_expr])
+                .select([
+                    pl.col(group_col).cast(pl.String).alias(group_col),
+                    pl.lit(feature).alias("feature"),
+                    pl.col("bin_index"),
+                    pl.col("count").cast(pl.Float64),
+                    pl.col("bad").cast(pl.Float64),
+                ])
+            )
+            if not monitor_group_stats_df.is_empty():
+                monitor_group_stats_frames.append(monitor_group_stats_df)
+
+            if weights_col and weights_col in baseline_rows.columns:
+                expected_count_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("expected_count")
+            else:
+                expected_count_expr = pl.len().cast(pl.Float64).alias("expected_count")
+
+            expected_dist_df = (
+                baseline_rows
+                .group_by("bin_index")
+                .agg(expected_count_expr)
+                .with_columns(
+                    (pl.col("expected_count") / (pl.col("expected_count").sum() + 1e-9)).alias("expected_dist")
+                )
+                .select([
+                    pl.lit(feature).alias("feature"),
+                    pl.col("bin_index"),
+                    pl.col("expected_dist"),
+                ])
+            )
+            if expected_dist_df.is_empty():
+                continue
+            expected_frames.append(expected_dist_df)
+            valid_groups_df = (
+                post_start_df
+                .select([
+                    pl.lit(feature).alias("feature"),
+                    pl.col(group_col).cast(pl.String).alias(group_col),
+                ])
+                .unique()
+            )
+            if not valid_groups_df.is_empty():
+                valid_group_frames.append(valid_groups_df)
+            feature_start_dates[feature] = str(start_dt)
+
+            if self.has_target_ and self.target in baseline_rows.columns:
+                if weights_col and weights_col in baseline_rows.columns:
+                    bad_expr = (
+                        pl.col(self.target).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64)
+                    ).sum().alias("base_bad")
+                    total_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("base_total")
+                else:
+                    bad_expr = pl.col(self.target).cast(pl.Float64).sum().alias("base_bad")
+                    total_expr = pl.len().cast(pl.Float64).alias("base_total")
+
+                baseline_bad_rate_df = (
+                    baseline_rows
+                    .filter(pl.col("bin_index") >= 0)
+                    .group_by("bin_index")
+                    .agg([bad_expr, total_expr])
+                    .with_columns(
+                        (pl.col("base_bad") / (pl.col("base_total") + 1e-9)).alias("base_br")
+                    )
+                    .select([
+                        pl.lit(feature).alias("feature"),
+                        pl.col("bin_index"),
+                        pl.col("base_br"),
+                    ])
+                )
+                if not baseline_bad_rate_df.is_empty():
+                    baseline_bad_rate_frames.append(baseline_bad_rate_df)
+
+        if not expected_frames:
+            return None
+
+        expected_dist = pl.concat(expected_frames, how="vertical_relaxed")
+        if baseline_bad_rate_frames:
+            baseline_bad_rate = pl.concat(baseline_bad_rate_frames, how="vertical_relaxed")
+        else:
+            baseline_bad_rate = pl.DataFrame(
+                schema={"feature": pl.String, "bin_index": pl.Int16, "base_br": pl.Float64}
+            )
+        if valid_group_frames:
+            valid_groups = pl.concat(valid_group_frames, how="vertical_relaxed")
+        else:
+            valid_groups = pl.DataFrame(
+                schema={"feature": pl.String, group_col: pl.String}
+            )
+        if monitor_group_stats_frames:
+            monitor_group_stats_raw = pl.concat(monitor_group_stats_frames, how="vertical_relaxed")
+        else:
+            monitor_group_stats_raw = pl.DataFrame(
+                schema={
+                    group_col: pl.String,
+                    "feature": pl.String,
+                    "bin_index": pl.Int16,
+                    "count": pl.Float64,
+                    "bad": pl.Float64,
+                }
+            )
+
+        return {
+            "expected_dist": expected_dist,
+            "baseline_bad_rate": baseline_bad_rate,
+            "valid_groups": valid_groups,
+            "monitor_group_stats_raw": monitor_group_stats_raw,
+            "feature_start_dates": feature_start_dates,
+        }
+
     def _format_report(
         self, 
         stats_long: pl.DataFrame, 
         metrics_groups: pl.DataFrame, 
         metrics_total: pl.DataFrame, 
         group_col: str, 
-        monotonicity_df: pl.DataFrame
+        monotonicity_df: pl.DataFrame,
+        *,
+        feature_source_map: Optional[Dict[str, str]] = None,
+        dt_col: Optional[str] = None,
+        missing_by_day_table: Optional[Union[pl.DataFrame, pd.DataFrame]] = None,
+        risk_corr_baseline_df: Optional[pl.DataFrame] = None,
+        feature_valid_groups_df: Optional[pl.DataFrame] = None,
+        monitor_metrics_groups: Optional[pl.DataFrame] = None,
+        monitor_metrics_total: Optional[pl.DataFrame] = None,
     ) -> "MarsEvaluationReport":
         """
         构建评估报告的明细、汇总与趋势数据。
@@ -1092,21 +1586,85 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "bin_type"
         ])
 
+        if feature_source_map:
+            source_df = pl.DataFrame({
+                "feature": list(feature_source_map.keys()),
+                "data_source": [feature_source_map[feature] for feature in feature_source_map],
+            })
+            detail_table = detail_table.join(source_df, on="feature", how="left").with_columns(
+                pl.col("data_source").fill_null("UNMAPPED")
+            )
+
         #  Intermediate Calculations 
         # RiskCorr (RC) 跨期稳定性逻辑 
         # 确定基准序列 (选取时间最早的一组)
         first_group = metrics_groups.select(pl.col(group_col).min()).item()
-        baseline_df = (
+        default_baseline_df = (
             metrics_groups
             .filter((pl.col(group_col) == first_group) & (pl.col("bin_index") >= 0))
             .select(["feature", "bin_index", "bad_rate"])
             .rename({"bad_rate": "base_br"})
         )
+        if risk_corr_baseline_df is not None and not risk_corr_baseline_df.is_empty():
+            override_features = risk_corr_baseline_df.get_column("feature").unique().to_list()
+            baseline_df = pl.concat(
+                [
+                    default_baseline_df.filter(~pl.col("feature").is_in(override_features)),
+                    risk_corr_baseline_df.select(["feature", "bin_index", "base_br"]),
+                ],
+                how="vertical_relaxed",
+            )
+        else:
+            baseline_df = default_baseline_df
+
+        _ = feature_valid_groups_df
+        monitoring_groups = self._merge_feature_frame(metrics_groups, monitor_metrics_groups)
+        monitoring_total = self._merge_feature_frame(metrics_total, monitor_metrics_total)
+
+        valid_group_lookup = None
+        valid_group_feature_flags = None
+        if feature_valid_groups_df is not None and not feature_valid_groups_df.is_empty():
+            valid_group_lookup = (
+                feature_valid_groups_df
+                .select(["feature", group_col])
+                .unique()
+                .with_columns(pl.lit(True).alias("_mars_valid_group"))
+            )
+            valid_group_feature_flags = (
+                feature_valid_groups_df
+                .select(["feature"])
+                .unique()
+                .with_columns(pl.lit(True).alias("_mars_feature_start_override"))
+            )
+
+        def _null_metric_for_invalid_groups(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
+            if (
+                df.is_empty()
+                or metric_col not in df.columns
+                or valid_group_lookup is None
+                or valid_group_feature_flags is None
+            ):
+                return df
+            return (
+                df
+                .join(valid_group_feature_flags, on="feature", how="left")
+                .join(valid_group_lookup, on=["feature", group_col], how="left")
+                .with_columns(
+                    pl.when(
+                        pl.col("_mars_feature_start_override").fill_null(False)
+                        & pl.col("_mars_valid_group").is_null()
+                    )
+                    .then(pl.lit(None).cast(pl.Float64))
+                    .otherwise(pl.col(metric_col))
+                    .alias(metric_col)
+                )
+                .drop(["_mars_feature_start_override", "_mars_valid_group"])
+            )
 
         # 构造用于计算相关性的全量数据流
         all_metrics_for_corr = pl.concat([
-            metrics_groups.select(["feature", group_col, "bin_index", "bad_rate"]),
-            metrics_total.select(["feature", group_col, "bin_index", "bad_rate"]) 
+            monitoring_groups.select(["feature", group_col, "bin_index", "bad_rate"]),
+            monitoring_total.select(["feature", group_col, "bin_index", "bad_rate"]) 
         ])
 
         # 计算 RiskCorr 长表: [feature, group_col, risk_corr]
@@ -1127,6 +1685,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                   .alias("risk_corr")
             )
         )
+        _ = _null_metric_for_invalid_groups
 
         # 分组指标聚合 
         # 将分箱粒度聚合为分组粒度 (如: Month Level)
@@ -1136,13 +1695,55 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .agg([
                 pl.col("iv_bin").sum().alias("iv"),
                 pl.col("auc_bin").sum().alias("auc"),
-                pl.col("psi_bin").sum().alias("psi"),
+                (
+                    pl.when(pl.col("bin_index") == MarsBinnerBase.IDX_MISSING)
+                    .then(pl.col("count"))
+                    .otherwise(0)
+                    .sum()
+                    /
+                    (pl.col("count").sum() + 1e-9)
+                ).alias("missing"),
+                pl.col("lift").max().alias("lift"),
             ])
             # 确保 AUC 方向正确 (>= 0.5)
             .with_columns(
                 pl.when(pl.col("auc") < 0.5).then(pl.lit(1) - pl.col("auc")).otherwise(pl.col("auc")).alias("auc")
             )
+        )
+        monitor_group_level_metrics = (
+            monitoring_groups
+            .group_by(["feature", group_col])
+            .agg(pl.col("psi_bin").sum().alias("psi"))
+        )
+        group_level_metrics = (
+            group_level_metrics
+            .join(monitor_group_level_metrics, on=["feature", group_col], how="left")
             .join(risk_corr_long, on=["feature", group_col], how="left")
+        )
+
+        total_missing_metrics = (
+            stats_long
+            .group_by("feature")
+            .agg(
+                (
+                    pl.when(pl.col("bin_index") == MarsBinnerBase.IDX_MISSING)
+                    .then(pl.col("count"))
+                    .otherwise(0)
+                    .sum()
+                    /
+                    (pl.col("count").sum() + 1e-9)
+                ).alias("missing")
+            )
+        )
+
+        total_real_bin_lift_metrics = (
+            metrics_total
+            .filter(pl.col("bin_index") >= 0)
+            .group_by("feature")
+            .agg([
+                pl.col("lift").min().alias("lift_min"),
+                pl.col("lift").max().alias("lift_max"),
+            ])
         )
 
         # Part 3: Summary Table 
@@ -1167,7 +1768,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 .group_by("feature")
                 .agg([
                     pl.col("psi").max().fill_null(0.0).alias("psi_max"),
-                    pl.col("risk_corr").min().fill_null(1.0).alias("rc_min")
+                    pl.col("risk_corr").min().fill_null(1.0).alias("rc_min"),
+                    pl.col("missing").min().alias("missing_min"),
+                    pl.col("missing").max().alias("missing_max"),
                 ])
             )
         else:
@@ -1175,36 +1778,82 @@ class MarsBinEvaluator(MarsBaseEstimator):
             summary_audit = pl.DataFrame({
                 "feature": total_metrics_agg["feature"],
                 "psi_max": [0.0] * len(total_metrics_agg),
-                "rc_min": [1.0] * len(total_metrics_agg)
+                "rc_min": [1.0] * len(total_metrics_agg),
+                "missing_min": [0.0] * len(total_metrics_agg),
+                "missing_max": [0.0] * len(total_metrics_agg),
             })
 
         summary_df = (
             total_metrics_agg
             .join(summary_audit, on="feature", how="left")
+            .join(total_missing_metrics, on="feature", how="left")
+            .join(total_real_bin_lift_metrics, on="feature", how="left")
             .join(monotonicity_df, on="feature", how="left")
             .with_columns([
                 # 空值兜底，防备部分单点评估或无数据的极端情况
                 pl.col("psi_max").fill_null(0.0),
                 pl.col("rc_min").fill_null(1.0),
+                pl.col("missing").fill_null(0.0),
+                pl.col("missing_min").fill_null(0.0),
+                pl.col("missing_max").fill_null(0.0),
                 pl.col("mono").fill_null(1.0)
             ])
             .sort(["iv", "rc_min"], descending=[True, True]) # 按预测力和稳定性双重降序
             .select([
-                "feature", "iv", "ks", "auc", 
-                "psi_max", "rc_min", "mono"
+                "feature", "iv", "ks", "auc",
+                "psi_max", "rc_min",
+                "lift_min", "lift_max",
+                "missing", "missing_min", "missing_max",
+                "mono"
             ])
         )
 
+        if feature_source_map:
+            source_df = pl.DataFrame({
+                "feature": list(feature_source_map.keys()),
+                "data_source": [feature_source_map[feature] for feature in feature_source_map],
+            })
+            summary_df = summary_df.join(source_df, on="feature", how="left").with_columns(
+                pl.col("data_source").fill_null("UNMAPPED")
+            )
+            summary_df = summary_df.select(
+                ["feature", "data_source"] + [col for col in summary_df.columns if col not in {"feature", "data_source"}]
+            )
+
         # Trend Tables
         trend_tables = {}
-        target_metrics = ["psi", "auc", "ks", "iv", "bad_rate", "risk_corr"] 
+        target_metrics = ["psi", "auc", "ks", "iv", "missing", "lift", "bad_rate", "risk_corr"] 
         
         for metric in target_metrics:
             if metric == "risk_corr":
                 pivot_src = risk_corr_long
+            elif metric == "psi":
+                psi_total_src = (
+                    monitoring_total
+                    .group_by(["feature", group_col])
+                    .agg(pl.col("psi_bin").sum().alias("psi"))
+                )
+                pivot_src = pl.concat(
+                    [
+                        monitor_group_level_metrics.select(["feature", group_col, "psi"]),
+                        psi_total_src.select(["feature", group_col, "psi"]),
+                    ],
+                    how="vertical_relaxed",
+                )
             else:
                 if metric == "bad_rate": 
                     agg_func = (pl.col("bad").sum() / (pl.col("count").sum() + 1e-9))
+                elif metric == "missing":
+                    agg_func = (
+                        pl.when(pl.col("bin_index") == MarsBinnerBase.IDX_MISSING)
+                        .then(pl.col("count"))
+                        .otherwise(0)
+                        .sum()
+                        /
+                        (pl.col("count").sum() + 1e-9)
+                    )
+                elif metric == "lift":
+                    agg_func = pl.col("lift").max()
                 elif metric == "ks": 
                     agg_func = pl.col(f"{metric}_bin").max()
                 else: 
@@ -1233,7 +1882,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             summary_table=self._format_output(summary_df), 
             trend_tables=trend_tables, 
             detail_table=self._format_output(detail_table), 
-            group_col=group_col
+            group_col=group_col,
+            feature_data_source=feature_source_map or {},
+            dt_col=dt_col,
+            missing_by_day_table=missing_by_day_table,
         )
     
     def plot_feature_binning_risk_trends(
@@ -1326,8 +1978,10 @@ def profile_risk(
     *,
     target: Optional[Union[str, List[str]]] = None, # 放宽约束
     features: Optional[List[str]] = None,
+    feature_data_source: Optional[Dict[str, List[str]]] = None,
     profile_by: Optional[str] = None,
     dt_col: Optional[str] = None,
+    feature_start_aware_baseline: bool = False,
     
     binning_type: Literal["native", "opt"] = "native",
     n_bins: int = 10,
@@ -1483,6 +2137,7 @@ def profile_risk(
     primary_evaluator = MarsBinEvaluator(
         target=primary_target,
         binning_type=binning_type,
+        feature_data_source=feature_data_source,
         **fit_params
     )
     
@@ -1491,6 +2146,8 @@ def profile_risk(
         features=features,
         profile_by=profile_by,
         dt_col=dt_col,
+        feature_start_aware_baseline=feature_start_aware_baseline,
+        feature_data_source=feature_data_source,
         benchmark_df=benchmark_df,
         weights_col=weights_col,
         batch_size=batch_size
@@ -1524,6 +2181,7 @@ def profile_risk(
             # 实例化一个新的 Evaluator，但传入**已训练好的 Binner**, 确保分箱规则复用
             sec_evaluator = MarsBinEvaluator(
                 target=sec_target,
+                feature_data_source=feature_data_source,
                 binner=trained_binner # 复用分箱规则
             )
             
@@ -1532,6 +2190,8 @@ def profile_risk(
                 features=features,
                 profile_by=profile_by,
                 dt_col=dt_col,
+                feature_start_aware_baseline=feature_start_aware_baseline,
+                feature_data_source=feature_data_source,
                 benchmark_df=benchmark_df,
                 weights_col=weights_col,
                 batch_size=batch_size
@@ -1554,12 +2214,27 @@ def profile_risk(
             final_summary = final_summary.to_pandas()
         
         logger.info("`trend_tables` in the merged report contains primary-target data only.")
+        merged_meta = dict(primary_report.report_meta or {})
+        meta_df = primary_evaluator._ensure_polars_dataframe(df)
+        merged_meta["targets"] = [str(t) for t in target_list]
+        event_rate_map = {}
+        for target_name in target_list:
+            if target_name in meta_df.columns:
+                try:
+                    event_rate_map[str(target_name)] = float(meta_df.select(pl.col(target_name).cast(pl.Float64).mean()).item())
+                except Exception:
+                    event_rate_map[str(target_name)] = None
+        merged_meta["event_rate_by_target"] = event_rate_map
         
         final_report = MarsEvaluationReport(
             summary_table=final_summary,
             trend_tables=primary_report.trend_tables,
             detail_table=final_detail,
-            group_col=primary_report.group_col
+            group_col=primary_report.group_col,
+            feature_data_source=primary_report.feature_data_source,
+            dt_col=primary_report.dt_col,
+            missing_by_day_table=primary_report.missing_by_day_table,
+            report_meta=merged_meta,
         )
         
     if plot:

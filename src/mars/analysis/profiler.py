@@ -16,6 +16,99 @@ from mars.utils.logger import logger
 from mars.utils.decorators import time_it 
 from mars.utils.date import MarsDate
 
+
+def profile_stats(
+    df: Union[pl.DataFrame, pd.DataFrame],
+    *,
+    metrics: List[str],
+    features: Optional[List[str]] = None,
+    profile_by: Optional[str] = None,
+    dt_col: Optional[str] = None,
+    missing_values: Optional[List[Union[int, float, str]]] = None,
+    special_values: Optional[List[Any]] = None,
+    exclude_features: Optional[List[str]] = None,
+    include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None] = None,
+    sample_frac: Optional[float] = None,
+    enable_sparkline: bool = False,
+    config_overrides: Optional[Dict[str, Any]] = None,
+) -> MarsProfileReport:
+    """
+    Lightweight top-level helper for profiling a small set of metrics.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Input dataset.
+    metrics : list of str
+        Mixed metric names, e.g. ["missing", "zeros", "mean"].
+    features : list of str, optional
+        Feature subset to profile.
+    profile_by : str, optional
+        Grouping dimension for trend analysis.
+    dt_col : str, optional
+        Datetime column used with date granularities such as month/week/day.
+    missing_values, special_values, exclude_features, include_dtypes, sample_frac
+        Passed through to ``MarsDataProfiler``.
+    enable_sparkline : bool, default False
+        Whether to enable overview sparklines.
+    config_overrides : dict, optional
+        Extra temporary profiler config overrides. Explicit ``metrics`` and
+        ``enable_sparkline`` always take precedence.
+
+    Returns
+    -------
+    MarsProfileReport
+        Profile report containing only the requested metric subsets.
+    """
+    if not metrics:
+        raise ValueError("`metrics` must contain at least one metric name.")
+
+    base_config = MarsProfileConfig()
+    dq_supported = set(base_config.dq_metrics)
+    stat_supported = set(base_config.stat_metrics)
+
+    dq_metrics: List[str] = []
+    stat_metrics: List[str] = []
+    unknown_metrics: List[str] = []
+
+    for metric in metrics:
+        metric_name = str(metric)
+        if metric_name in dq_supported:
+            if metric_name not in dq_metrics:
+                dq_metrics.append(metric_name)
+        elif metric_name in stat_supported:
+            if metric_name not in stat_metrics:
+                stat_metrics.append(metric_name)
+        else:
+            unknown_metrics.append(metric_name)
+
+    if unknown_metrics:
+        supported = sorted(dq_supported | stat_supported)
+        raise ValueError(
+            f"Unknown metrics: {unknown_metrics}. Supported metrics: {supported}"
+        )
+
+    profiler = MarsDataProfiler(
+        df,
+        features=features,
+        exclude_features=exclude_features,
+        include_dtypes=include_dtypes,
+        missing_values=missing_values,
+        special_values=special_values,
+        sample_frac=sample_frac,
+    )
+
+    merged_overrides = dict(config_overrides or {})
+    merged_overrides["dq_metrics"] = dq_metrics
+    merged_overrides["stat_metrics"] = stat_metrics
+    merged_overrides["enable_sparkline"] = enable_sparkline
+
+    return profiler.generate_profile(
+        profile_by=profile_by,
+        dt_col=dt_col,
+        config_overrides=merged_overrides,
+    )
+
 class MarsDataProfiler(MarsBaseEstimator):
     """
     高性能数据特征画像与稳定性评估器。
@@ -162,7 +255,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         # 数据接入与采样
         self.df = self._ensure_polars_dataframe(df)
         if sample_frac is not None and 0 < sample_frac < 1.0:
-            logger.warning(f"🎲 Data is sampled (frac={sample_frac}). Metrics are estimates.")
+            logger.warning(f"[SAMPLE] Data is sampled (frac={sample_frac}). Metrics are estimates.")
             self.df = self.df.sample(fraction=sample_frac, shuffle=True)
 
         self.config = config if config else MarsProfileConfig()
@@ -648,7 +741,8 @@ class MarsDataProfiler(MarsBaseEstimator):
                 
             return {"feature": col, "distribution": dist_str}
 
-        with ThreadPoolExecutor(max_workers=pl.thread_pool_size()-1) as executor:
+        max_workers = max(1, pl.thread_pool_size() - 1)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             results = list(executor.map(_process_column, num_cols))
 
         return pl.DataFrame(

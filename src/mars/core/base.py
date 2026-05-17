@@ -470,6 +470,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         # 将记录列表转换为 DataFrame
         report_df = pl.DataFrame(self.report_records_, schema={
             "feature": pl.Utf8,
+            "data_source": pl.Utf8,
             "status": pl.Utf8,       # 'Selected' / 'Dropped'
             "stage": pl.Utf8,        # 'Quality', 'IV_Rough', 'PSI'
             "reason": pl.Utf8,       # 'Low IV', 'High Corr'
@@ -489,7 +490,8 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         stage: str, 
         reason: str = "", 
         value: float = -1.0,
-        desc: str = ""
+        desc: str = "",
+        data_source: Optional[str] = None
     ):
         """
         记录单个特征在筛选过程中的决策结果。
@@ -509,6 +511,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         """
         self.report_records_.append({
             "feature": feature,
+            "data_source": data_source,
             "status": status,
             "stage": stage,
             "reason": reason,

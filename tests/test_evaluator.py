@@ -5,7 +5,33 @@ import polars as pl
 import pytest
 
 from mars.analysis import MarsBinEvaluator, profile_risk
+from mars.analysis.report import MarsEvaluationReport
 from mars.feature import MarsNativeBinner
+
+
+def _as_pandas(df):
+    return df.to_pandas() if isinstance(df, pl.DataFrame) else df.copy()
+
+
+def _make_exact_start_aware_monthly_df() -> pl.DataFrame:
+    rows = []
+    for day in pd.date_range("2018-01-01", periods=100, freq="D"):
+        if day < pd.Timestamp("2018-02-15"):
+            for _ in range(40):
+                rows.append({"dt": day, "EXT_SOURCE_1": None, "target": 0})
+        else:
+            for _ in range(20):
+                rows.append({"dt": day, "EXT_SOURCE_1": 0.2, "target": 0})
+            for _ in range(20):
+                rows.append({"dt": day, "EXT_SOURCE_1": 0.8, "target": 1})
+    return pl.DataFrame(
+        rows,
+        schema={
+            "dt": pl.Datetime,
+            "EXT_SOURCE_1": pl.Float64,
+            "target": pl.Int64,
+        },
+    )
 
 
 def test_evaluator_accepts_deprecated_bining_type_with_warning(sample_credit_df):
@@ -111,6 +137,39 @@ def test_profile_risk_without_target_returns_distribution_only_metrics(sample_cr
     assert summary.select(pl.col("iv").is_null().all()).item()
 
 
+def test_evaluator_label_free_mode_does_not_mutate_target_state(sample_credit_df):
+    monitor_df = sample_credit_df.select(["month", "income", "utilization", "segment"])
+    evaluator = MarsBinEvaluator(target=None, method="quantile", n_bins=3)
+
+    report = evaluator.evaluate(
+        monitor_df,
+        features=["income", "utilization"],
+        profile_by="month",
+    )
+
+    assert evaluator.target is None
+    assert evaluator.has_target_ is False
+    assert report.summary_table.select(pl.col("iv").is_null().all()).item()
+
+
+def test_evaluator_external_benchmark_skips_missing_benchmark_columns(sample_credit_df):
+    benchmark_df = sample_credit_df.select(["month", "income", "target"])
+
+    report, _ = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        profile_by="month",
+        plot=False,
+        benchmark_df=benchmark_df,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    assert set(report.summary_table["feature"].to_list()) == {"income", "utilization"}
+
+
 def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
     report, _ = profile_risk(
         sample_credit_df,
@@ -141,6 +200,200 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
             artifacts_dir.rmdir()
 
 
+def test_evaluation_report_can_write_html(sample_credit_df, caplog):
+    report, _ = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        profile_by="month",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    output_path = artifacts_dir / "evaluation_report.html"
+    if output_path.exists():
+        output_path.unlink()
+
+    try:
+        with caplog.at_level("INFO", logger="mars"):
+            report.write_html(str(output_path), report_name="中文风控监控报告", sort_by="not_a_real_metric", max_plots=1)
+        assert output_path.exists()
+        html_text = output_path.read_text(encoding="utf-8")
+        assert "<title>中文风控监控报告</title>" in html_text
+        assert "中文风控监控报告" in html_text
+        assert "Summary" in html_text
+        assert "Dataset Overview" in html_text
+        assert "Trend Tables" in html_text
+        assert "Grouped Pivot" in html_text
+        assert "Charts" in html_text
+        assert "Regex Mode" in html_text
+        assert "Global search across tables and charts" in html_text
+        assert "Export Feature List" in html_text
+        assert "Jump to Feature" in html_text
+        assert "Jumps to the matching row in Summary." in html_text
+        assert "marsJumpToFeature()" in html_text
+        assert "marsOpenAncestorSections" in html_text
+        assert "marsClearJumpHighlight" in html_text
+        assert "marsActivateJumpHighlight" in html_text
+        assert 'Feature "${value}" does not exist in Summary.' in html_text
+        assert 'Feature "${value}" is hidden by data source, global search, or summary filter.' in html_text
+        assert 'id="mars-page-top"' in html_text
+        assert 'id="mars-floating-header-host"' in html_text
+        assert 'id="mars-floating-header-scroll"' in html_text
+        assert 'id="mars-back-to-top"' in html_text
+        assert 'onclick="marsBackToTop()"' in html_text
+        assert "mars-table-ownership-sentinel" in html_text
+        assert 'data-sentinel-role="start"' in html_text
+        assert 'data-sentinel-role="end"' in html_text
+        assert "mars-resize-handle" in html_text
+        assert "--mars-feature-col-width: 220px" in html_text
+        assert "mars-secondary-col" in html_text
+        assert 'data-table-id="mars-summary-table"' in html_text
+        assert "mars-summary-table-query" in html_text
+        assert "Feature Filter Expression" in html_text
+        assert "marsSetSummaryExpression(this.value)" in html_text
+        assert "Supported operators: &gt;, &gt;=, &lt;, &lt;=, ==, !=, &amp;, |, ( ). Use &amp; for AND and | for OR." in html_text
+        assert "MISSING" in html_text
+        assert "LIFT" in html_text
+        assert "Lift Min" in html_text
+        assert "purple at or below 0.5" in html_text
+        assert "<strong>Lift Max</strong> 1.2 / 1.3 / 1.4, purple above 1.5" in html_text
+        assert "<strong>Lift</strong> 1.2 / 1.3 / 1.4, purple above 1.5" in html_text
+        assert "Search chart features..." in html_text
+        assert "Search grouped pivot..." in html_text
+        assert 'class="mars-source-checkbox"' in html_text
+        assert 'function marsQueueRefresh(scopeToken="all", delayMs=0)' in html_text
+        assert 'function marsQueueTextRefresh(scopeToken="all")' in html_text
+        assert "marsResolveLocalScope" in html_text
+        assert 'marsQueueRefresh("table:mars-summary-table")' in html_text
+        assert "marsRefreshFloatingHeader" in html_text
+        assert "marsCloneFloatingHeader" in html_text
+        assert "marsGetFirstVisibleDataRowTop" in html_text
+        assert "marsAncestorsDetailsOpen" in html_text
+        assert "marsTableIsActuallyVisible" in html_text
+        assert "marsCollectLeafColumnWidths" in html_text
+        assert "marsBuildFloatingHeaderColGroup" in html_text
+        assert "marsRegisterTableScrollListeners" in html_text
+        assert "marsResolveFloatingHeaderOwner" in html_text
+        assert "marsUpdateBackToTopVisibility" in html_text
+        assert 'window.addEventListener("scroll", marsScheduleViewportRefresh' in html_text
+        assert 'document.addEventListener("toggle", () => { marsHideFloatingHeader(); marsQueueLayoutSync("all"); marsScheduleViewportRefresh(); }, true);' in html_text
+        assert "jumpHighlightTimerId" in html_text
+        assert "jumpHighlightArmTimerId" in html_text
+        assert "3000" in html_text
+        assert "marsState.jumpHighlightArmTimerId=window.setTimeout" in html_text
+        assert "const readingLine=Math.max(1, hostHeight || owner.headerHeight) + 1;" in html_text
+        assert "item.theadTop > 0 && item.firstDataRowTop <= readingLine" in html_text
+        assert "if(!hasVisibleReadingTable) return null;" in html_text
+        assert "marsGetTableOwnershipSentinels" not in html_text
+        assert "startRect.top > 0 || endRect.top <= headerHeight" not in html_text
+        assert "rect.top <= 0 && rect.bottom > headerHeight" not in html_text
+        assert "mars-chart-cards-status" in html_text
+        assert "mars-result-status" in html_text
+        assert "marsSelectAllSources()" in html_text
+        assert "window.requestAnimationFrame" in html_text
+        assert 'window.addEventListener("resize"' in html_text
+        assert "JSON.stringify(featureMap, null, 2)" in html_text
+        assert "let cursor=0;" in html_text
+        assert "tokenPattern.lastIndex = cursor" in html_text
+        assert "cursor < text.length" in html_text
+        assert "lastIndex!==text.length" not in html_text
+        assert '["identifier", "compare", "and", "or"].includes(left.type)' in html_text
+        assert "Export uses Summary expression + Data Source only." in html_text
+        assert "Global and local searches only affect display." in html_text
+        assert "marsCollectVisibleFeatures" not in html_text
+        assert "mars_features.txt" in html_text
+        assert "activeTableId" not in html_text
+        assert "detail-section" not in html_text
+        assert "mars-trend-bad-rate" not in html_text
+        assert 'id="missing-day-section"' not in html_text
+        assert "Bin Type" not in html_text
+        assert "Threshold Filter (Total)" not in html_text
+        assert ">mono<" not in html_text
+        assert "Event Rate" in html_text
+        assert "Binned distribution and risk comparison across groups." in html_text
+        assert "Grouped pivot aligned with the Excel-style source + bin matrix." not in html_text
+        assert html_text.index("mars-trend-missing") < html_text.index("mars-trend-psi")
+        assert html_text.index("mars-trend-psi") < html_text.index("mars-trend-iv")
+        assert html_text.index("mars-trend-iv") < html_text.index("mars-trend-ks")
+        assert html_text.index("mars-trend-ks") < html_text.index("mars-trend-lift")
+        assert html_text.index("mars-trend-lift") < html_text.index("mars-trend-auc")
+        assert html_text.index("mars-trend-auc") < html_text.index("mars-trend-risk-corr")
+        assert any("HTML" in message or "html" in message for message in caplog.messages)
+    finally:
+        if output_path.exists():
+            output_path.unlink()
+        if artifacts_dir.exists() and not any(artifacts_dir.iterdir()):
+            artifacts_dir.rmdir()
+
+
+def test_evaluation_report_produces_missing_and_lift_trend_tables(sample_credit_df):
+    report, _ = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        profile_by="month",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    assert "missing" in report.trend_tables
+    assert "lift" in report.trend_tables
+
+    missing_df = report.trend_tables["missing"]
+    lift_df = report.trend_tables["lift"]
+    if isinstance(missing_df, pl.DataFrame):
+        missing_df = missing_df.to_pandas()
+    if isinstance(lift_df, pl.DataFrame):
+        lift_df = lift_df.to_pandas()
+
+    assert "Total" in missing_df.columns
+    assert "Total" in lift_df.columns
+    assert missing_df["feature"].isin(["income", "utilization"]).all()
+
+
+def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
+    df = sample_credit_df.with_columns(
+        (pl.col("utilization") >= 0.45).cast(pl.Int8).alias("target_alt")
+    )
+
+    report, _ = profile_risk(
+        df,
+        target=["target", "target_alt"],
+        features=["income", "utilization"],
+        profile_by="month",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    output_path = artifacts_dir / "evaluation_report_multi.html"
+    if output_path.exists():
+        output_path.unlink()
+
+    try:
+        with caplog.at_level("INFO", logger="mars"):
+            report.write_html(str(output_path), max_plots=1)
+        html_text = output_path.read_text(encoding="utf-8")
+        assert "Pivot Target" in html_text
+        assert "Chart Target" in html_text
+        assert "target_alt" in html_text
+    finally:
+        if output_path.exists():
+            output_path.unlink()
+        if artifacts_dir.exists() and not any(artifacts_dir.iterdir()):
+            artifacts_dir.rmdir()
+
+
 def test_show_summary_uses_pandas_view_without_mutating_polars_report(sample_credit_df):
     report, _ = profile_risk(
         sample_credit_df,
@@ -158,3 +411,356 @@ def test_show_summary_uses_pandas_view_without_mutating_polars_report(sample_cre
     assert isinstance(styler.data, pd.DataFrame)
     assert isinstance(report.summary_table, pl.DataFrame)
     assert set(report.summary_table["feature"].to_list()) == {"income", "utilization"}
+
+
+def test_feature_data_source_is_attached_to_report_outputs(sample_credit_df):
+    report, _ = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        feature_data_source={"APP": ["income"]},
+        profile_by="month",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    summary_map = {
+        row["feature"]: row["data_source"]
+        for row in report.summary_table.select(["feature", "data_source"]).to_dicts()
+    }
+    detail_map = {
+        row["feature"]: row["data_source"]
+        for row in report.detail_table.select(["feature", "data_source"]).unique().to_dicts()
+    }
+
+    assert summary_map["income"] == "APP"
+    assert summary_map["utilization"] == "UNMAPPED"
+    assert detail_map["income"] == "APP"
+    assert detail_map["utilization"] == "UNMAPPED"
+
+
+def test_feature_data_source_rejects_features_outside_active_feature_set(sample_credit_df):
+    evaluator = MarsBinEvaluator(target="target", feature_data_source={"BAD": ["age"]}, method="quantile", n_bins=3)
+
+    with pytest.raises(ValueError, match="feature_data_source"):
+        evaluator.evaluate(
+            sample_credit_df,
+            features=["income", "utilization"],
+            profile_by="month",
+        )
+
+
+def test_evaluator_generates_missing_by_day_table_when_dt_col_is_provided(sample_credit_df):
+    df = sample_credit_df.with_columns(
+        pl.Series("biz_dt", pd.date_range("2024-01-01", periods=sample_credit_df.height, freq="D"))
+    )
+
+    report, _ = profile_risk(
+        df,
+        target="target",
+        features=["income", "utilization"],
+        profile_by="month",
+        dt_col="biz_dt",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    assert report.dt_col == "biz_dt"
+    assert report.missing_by_day_table is not None
+    missing_by_day = report.missing_by_day_table
+    if isinstance(missing_by_day, pd.DataFrame):
+        assert "feature" in missing_by_day.columns
+    else:
+        assert "feature" in missing_by_day.columns
+
+
+def test_summary_table_includes_missing_and_lift_monitor_columns(sample_credit_df):
+    report, _ = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        profile_by="month",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    summary_pd = report.summary_table.to_pandas() if isinstance(report.summary_table, pl.DataFrame) else report.summary_table.copy()
+    assert {"lift_min", "lift_max", "missing", "missing_min", "missing_max", "mono"}.issubset(summary_pd.columns)
+
+    income_row = summary_pd.loc[summary_pd["feature"] == "income"].iloc[0]
+    assert income_row["missing"] == pytest.approx(0.125, rel=1e-6)
+    assert income_row["missing_min"] == pytest.approx(0.125, rel=1e-6)
+    assert income_row["missing_max"] == pytest.approx(0.125, rel=1e-6)
+    assert income_row["lift_min"] == pytest.approx(0.7272727, rel=1e-6)
+    assert income_row["lift_max"] == pytest.approx(1.3636363, rel=1e-6)
+
+
+def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(sample_credit_df, caplog):
+    df = sample_credit_df.with_columns(
+        pl.Series("biz_dt", pd.date_range("2024-01-01", periods=sample_credit_df.height, freq="D"))
+    )
+
+    report, _ = profile_risk(
+        df,
+        target="target",
+        features=["income", "utilization"],
+        feature_data_source={"EXT_SOURCE_1": ["income"], "EXT_SOURCE_2": ["utilization"]},
+        profile_by="month",
+        dt_col="biz_dt",
+        plot=False,
+        binning_type="native",
+        n_bins=3,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    output_path = artifacts_dir / "evaluation_report_with_day.html"
+    if output_path.exists():
+        output_path.unlink()
+
+    try:
+        with caplog.at_level("INFO", logger="mars"):
+            report.write_html(str(output_path), max_plots=1)
+        html_text = output_path.read_text(encoding="utf-8")
+        assert "Missing Trend By Day" in html_text
+        assert "Data Source" in html_text
+        assert "EXT_SOURCE_1" in html_text
+        assert "EXT_SOURCE_2" in html_text
+        assert "Export Feature List" in html_text
+        assert "Jump to Feature" in html_text
+        assert "Jumps to the matching row in Summary." in html_text
+        assert "marsOpenAncestorSections" in html_text
+        assert "mars-secondary-col" in html_text
+        assert html_text.index('id="missing-day-section"') < html_text.index('id="trend-section"')
+        assert "Search chart features..." in html_text
+        assert 'class="mars-source-checkbox"' in html_text
+        assert "Bin Type" not in html_text
+    finally:
+        if output_path.exists():
+            output_path.unlink()
+        if artifacts_dir.exists() and not any(artifacts_dir.iterdir()):
+            artifacts_dir.rmdir()
+
+
+def test_trend_threshold_style_rules_cover_purple_and_three_color_thresholds():
+    iv_rule = MarsEvaluationReport._trend_style_rule("iv")
+    psi_rule = MarsEvaluationReport._trend_style_rule("psi")
+    lift_min_rule = MarsEvaluationReport._summary_style_rule("lift_min")
+    lift_rule = MarsEvaluationReport._trend_style_rule("lift")
+    assert iv_rule is not None
+    assert psi_rule is not None
+    assert lift_min_rule is not None
+    assert lift_rule is not None
+
+    iv_gradient = MarsEvaluationReport._cell_style(
+        0.15,
+        semantic="good_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=iv_rule,
+    )
+    iv_purple = MarsEvaluationReport._cell_style(
+        0.25,
+        semantic="good_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=iv_rule,
+    )
+    psi_green = MarsEvaluationReport._cell_style(
+        0.0,
+        semantic="risk_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=psi_rule,
+    )
+    psi_red = MarsEvaluationReport._cell_style(
+        0.25,
+        semantic="risk_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=psi_rule,
+    )
+    lift_min_green = MarsEvaluationReport._cell_style(
+        0.5,
+        semantic="risk_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=lift_min_rule,
+    )
+    lift_min_yellow = MarsEvaluationReport._cell_style(
+        0.7,
+        semantic="risk_high",
+        vmin=0.0,
+        vmax=1.0,
+        style_rule=lift_min_rule,
+    )
+    lift_purple = MarsEvaluationReport._cell_style(
+        1.5,
+        semantic="good_high",
+        vmin=0.0,
+        vmax=2.0,
+        style_rule=lift_rule,
+    )
+
+    assert "130, 144, 160" in iv_gradient
+    assert "160, 98, 196" in iv_purple
+    assert "99, 190, 123" in psi_green
+    assert "248, 105, 107" in psi_red
+    assert "160, 98, 196" in lift_min_green
+    assert "255, 235, 132" in lift_min_yellow
+    assert "160, 98, 196" in lift_purple
+
+
+def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv():
+    detail_df = pd.DataFrame(
+        [
+            {"data_source": "SRC_A", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.30, "iv_bin": 0.10},
+            {"data_source": "SRC_B", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 0, "count": 10, "lift": 1.20, "iv_bin": 0.08},
+            {"data_source": "SRC_A", "feature": "feature_high", "bin_label": "Missing", "bin_index": -1, "bin_type": "\u7a7a\u503c\u7ec4", "grp": "202401", "bad": 1, "count": 10, "lift": 1.10, "iv_bin": 0.07},
+            {"data_source": "SRC_A", "feature": "feature_low", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.05, "iv_bin": 0.04},
+            {"data_source": "SRC_A", "feature": "feature_low", "bin_label": "B", "bin_index": 1, "bin_type": "\u6b63\u5e38\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.01, "iv_bin": 0.03},
+        ]
+    )
+
+    html_text = MarsEvaluationReport._build_grouped_pivot_section_html(
+        detail_df,
+        group_col="grp",
+        feature_sources={"feature_high": "SRC", "feature_low": "SRC"},
+    )
+
+    assert "Search grouped pivot..." in html_text
+    assert "25.00%" in html_text
+    assert "75.00%" in html_text
+    assert "Missing" in html_text
+    assert html_text.index("feature_high") < html_text.index("feature_low")
+    assert "SRC_A" not in html_text
+    assert "SRC_B" not in html_text
+    assert "marsStartColumnResize(event, 'mars-pivot-target', 'bin')" in html_text
+    assert "--mars-bin-col-width: 140px;" in html_text
+    assert 'data-table-kind="pivot"' in html_text
+    assert "No grouped pivot rows match current filters." in html_text
+
+
+def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(feature_start_aware_df):
+    default_report, _ = profile_risk(
+        feature_start_aware_df,
+        target="target",
+        features=["x"],
+        profile_by="month",
+        dt_col="biz_dt",
+        plot=False,
+        binning_type="native",
+        n_bins=2,
+        binner_kwargs={"method": "quantile"},
+    )
+    aware_report, _ = profile_risk(
+        feature_start_aware_df,
+        target="target",
+        features=["x"],
+        profile_by="month",
+        dt_col="biz_dt",
+        feature_start_aware_baseline=True,
+        plot=False,
+        binning_type="native",
+        n_bins=2,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    aware_summary = _as_pandas(aware_report.summary_table)
+    default_summary = _as_pandas(default_report.summary_table)
+    aware_psi = _as_pandas(aware_report.trend_tables["psi"])
+
+    aware_row = aware_summary.loc[aware_summary["feature"] == "x"].iloc[0]
+    default_row = default_summary.loc[default_summary["feature"] == "x"].iloc[0]
+    psi_row = aware_psi.loc[aware_psi["feature"] == "x"].iloc[0]
+
+    assert aware_report.report_meta["feature_start_aware_baseline"] is True
+    assert aware_report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}
+    assert default_row["psi_max"] > 0.1
+    assert "202401" not in aware_psi.columns
+    assert psi_row["202402"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["202403"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["Total"] == pytest.approx(0.0, abs=1e-9)
+    assert aware_row["psi_max"] == pytest.approx(0.0, abs=1e-9)
+    assert aware_row["rc_min"] == pytest.approx(1.0, abs=1e-9)
+
+
+@pytest.mark.parametrize("include_missing", [False, True])
+def test_feature_start_aware_baseline_exact_monthly_cutover_keeps_feb_psi_zero(include_missing):
+    df = _make_exact_start_aware_monthly_df()
+    evaluator = MarsBinEvaluator(target="target", method="quantile", n_bins=2)
+
+    report = evaluator.evaluate(
+        df,
+        features=["EXT_SOURCE_1"],
+        profile_by="month",
+        dt_col="dt",
+        feature_start_aware_baseline=True,
+        psi_include_missing=include_missing,
+    )
+
+    psi_df = _as_pandas(report.trend_tables["psi"])
+    psi_row = psi_df.loc[psi_df["feature"] == "EXT_SOURCE_1"].iloc[0]
+
+    assert report.report_meta["feature_start_aware_baseline"] is True
+    assert report.report_meta["feature_start_baseline_dates"] == {"EXT_SOURCE_1": "2018-02-15"}
+    assert "201801" not in psi_df.columns
+    assert psi_row["201802"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["201803"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["201804"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["Total"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(feature_start_aware_df):
+    report, _ = profile_risk(
+        feature_start_aware_df,
+        target="target",
+        features=["x"],
+        profile_by="segment",
+        dt_col="biz_dt",
+        feature_start_aware_baseline=True,
+        plot=False,
+        binning_type="native",
+        n_bins=2,
+        binner_kwargs={"method": "quantile"},
+    )
+
+    psi_df = _as_pandas(report.trend_tables["psi"])
+    psi_row = psi_df.loc[psi_df["feature"] == "x"].iloc[0]
+
+    assert report.report_meta["feature_start_aware_baseline"] is True
+    assert report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}
+    assert "ACTIVE_A" in psi_df.columns
+    assert "ACTIVE_B" in psi_df.columns
+    assert "PRE" not in psi_df.columns
+    assert psi_row["ACTIVE_A"] == pytest.approx(0.0, abs=1e-9)
+    assert psi_row["ACTIVE_B"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_feature_start_aware_baseline_is_ignored_when_benchmark_df_is_provided(feature_start_aware_df, caplog):
+    benchmark_df = feature_start_aware_df.select(["biz_dt", "x", "target"])
+
+    with caplog.at_level("WARNING", logger="mars"):
+        report, _ = profile_risk(
+            feature_start_aware_df,
+            target="target",
+            features=["x"],
+            profile_by="month",
+            dt_col="biz_dt",
+            benchmark_df=benchmark_df,
+            feature_start_aware_baseline=True,
+            plot=False,
+            binning_type="native",
+            n_bins=2,
+            binner_kwargs={"method": "quantile"},
+        )
+
+    assert report.report_meta["feature_start_aware_baseline"] is False
+    assert any("ignored because `benchmark_df` was provided" in message for message in caplog.messages)

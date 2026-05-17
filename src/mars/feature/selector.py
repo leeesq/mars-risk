@@ -110,8 +110,10 @@ class MarsStatsSelector(MarsBaseSelector):
         *,
         target: str,
         features: Optional[List[str]] = None,        
+        feature_data_source: Optional[Dict[str, List[str]]] = None,
         time_col: Optional[str] = None,
         profile_by: Optional[str] = None, 
+        feature_start_aware_baseline: bool = False,
         
         missing_thr: float = 0.90,
         zeros_thr: float = 0.90,  
@@ -207,8 +209,10 @@ class MarsStatsSelector(MarsBaseSelector):
         super().__init__(target=target)
         
         self.features = features
+        self.feature_data_source = feature_data_source or {}
         self.time_col = time_col
         self.profile_by = profile_by
+        self.feature_start_aware_baseline = feature_start_aware_baseline
         self.white_list = white_list if white_list else []
         self.black_list = black_list if black_list else []
         
@@ -251,6 +255,7 @@ class MarsStatsSelector(MarsBaseSelector):
         self._rough_binner: Optional[MarsNativeBinner] = None 
         self._stage3_binner: Optional[MarsBinnerBase] = None
         self._feature_iv_dict: Dict[str, float] = {}  
+        self._feature_source_map: Dict[str, str] = {}
         
         self._funnel_stats = []
 
@@ -286,6 +291,7 @@ class MarsStatsSelector(MarsBaseSelector):
         
         candidate_features = [c for c in (self.features if self.features else X.columns) 
                               if c in X.columns and c not in exclude_cols]
+        self._feature_source_map = self._normalize_feature_data_source(candidate_features)
         
         # 校准白名单，剔除数据集中不存在的幽灵声明
         valid_white_list = [f for f in self.white_list if f in candidate_features]
@@ -393,6 +399,51 @@ class MarsStatsSelector(MarsBaseSelector):
         self._is_fitted = True
         self.show_summary()
         return self
+
+    def _normalize_feature_data_source(self, features: List[str]) -> Dict[str, str]:
+        if not self.feature_data_source:
+            return {feature: "UNMAPPED" for feature in features}
+
+        feature_set = set(features)
+        mapped_features = set()
+        normalized: Dict[str, str] = {}
+
+        for data_source, source_features in self.feature_data_source.items():
+            for feature in source_features or []:
+                if feature not in feature_set:
+                    raise ValueError(
+                        "feature_data_source contains features outside the active selector feature set: "
+                        f"{feature}"
+                    )
+                normalized[feature] = str(data_source)
+                mapped_features.add(feature)
+
+        for feature in feature_set - mapped_features:
+            normalized[feature] = "UNMAPPED"
+
+        return normalized
+
+    def _feature_source_for(self, feature: str) -> str:
+        return self._feature_source_map.get(feature, "UNMAPPED")
+
+    def _register_feature_decision(
+        self,
+        feature: str,
+        status: str,
+        stage: str,
+        reason: str = "",
+        value: float = -1.0,
+        desc: str = "",
+    ) -> None:
+        self._register_decision(
+            feature,
+            status,
+            stage,
+            reason,
+            value,
+            desc,
+            data_source=self._feature_source_for(feature),
+        )
     
     def _record_funnel(self, stage: str, description: str, thresholds: Union[Dict, str], count_before: int, count_after: int):
         """内部方法：序列化记录筛选节点的快照度量。"""
@@ -515,18 +566,18 @@ class MarsStatsSelector(MarsBaseSelector):
             
             # 实施特定属性旁路绕过数据分布的边界校验
             if self._should_bypass_filter(feat):
-                self._register_decision(feat, "Selected", "Quality", "White List", missing)
+                self._register_feature_decision(feat, "Selected", "Quality", "White List", missing)
                 kept_features.append(feat)
                 continue
 
             if missing > self.missing_thr:
-                self._register_decision(feat, "Dropped", "Quality", "High Missing", missing)
+                self._register_feature_decision(feat, "Dropped", "Quality", "High Missing", missing)
             elif zeros_rate > self.zeros_thr:
-                self._register_decision(feat, "Dropped", "Quality", "High Zero Rate", zeros_rate)
+                self._register_feature_decision(feat, "Dropped", "Quality", "High Zero Rate", zeros_rate)
             elif mode_rate > self.mode_thr:
-                self._register_decision(feat, "Dropped", "Quality", "Single Value (Mode)", mode_rate)
+                self._register_feature_decision(feat, "Dropped", "Quality", "Single Value (Mode)", mode_rate)
             else:
-                self._register_decision(feat, "Selected", "Quality", "Pass", missing)
+                self._register_feature_decision(feat, "Selected", "Quality", "Pass", missing)
                 kept_features.append(feat)
                 
         return kept_features
@@ -580,11 +631,11 @@ class MarsStatsSelector(MarsBaseSelector):
                 
             if iv > self.rough_iv_thr or has_high_lift:
                 reason = f"Pass (IV={iv:.3f})" if iv > self.rough_iv_thr else f"Pass (Lift={max_lift:.2f})"
-                self._register_decision(feat, "Selected", "Rough_Scan", reason, iv)
+                self._register_feature_decision(feat, "Selected", "Rough_Scan", reason, iv)
                 kept_features.append(feat)
                 self._feature_iv_dict[feat] = iv 
             else:
-                self._register_decision(feat, "Dropped", "Rough_Scan", "Low IV & Low Lift", iv)
+                self._register_feature_decision(feat, "Dropped", "Rough_Scan", "Low IV & Low Lift", iv)
 
         # 构建分箱失败时的容错矩阵，确保声明属性不发生物理丢失
         kept_set = set(kept_features)
@@ -592,7 +643,7 @@ class MarsStatsSelector(MarsBaseSelector):
             if self._should_bypass_filter(f) and f not in kept_set:
                 kept_features.append(f)
                 self._feature_iv_dict[f] = 0.0
-                self._register_decision(f, "Selected", "Rough_Scan", "White List (Binner Fallback)", 0.0)
+                self._register_feature_decision(f, "Selected", "Rough_Scan", "White List (Binner Fallback)", 0.0)
 
         return kept_features
 
@@ -606,6 +657,7 @@ class MarsStatsSelector(MarsBaseSelector):
         evaluator = MarsBinEvaluator(
             target=self.target, 
             bining_type="opt", 
+            feature_data_source=self.feature_data_source,
             cat_features=cat_features,
             missing_values=self.missing_values, 
             special_values=self.special_values,
@@ -618,6 +670,7 @@ class MarsStatsSelector(MarsBaseSelector):
             dt_col=self.time_col, 
             profile_by=self.profile_by,
             batch_size=self.batch_size,
+            feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
         
         self._stage3_binner = evaluator.binner
@@ -648,12 +701,12 @@ class MarsStatsSelector(MarsBaseSelector):
 
             if is_iv_ok or is_lift_recall:
                 decision_reason = "Pass (IV)" if is_iv_ok else "Pass (Lift Recall)"
-                self._register_decision(feat, "Selected", "Fine_Scan", decision_reason, iv_total)
+                self._register_feature_decision(feat, "Selected", "Fine_Scan", decision_reason, iv_total)
                 
                 self._feature_iv_dict[feat] = iv_total
                 kept_features.append(feat)
             else:
-                self._register_decision(feat, "Dropped", "Fine_Scan", "Low IV & No Lift Recall", iv_total)
+                self._register_feature_decision(feat, "Dropped", "Fine_Scan", "Low IV & No Lift Recall", iv_total)
 
         # 执行针对数学期望异常结果的系统级强制路由分配
         kept_set = set(kept_features)
@@ -661,7 +714,7 @@ class MarsStatsSelector(MarsBaseSelector):
             if self._should_bypass_filter(f) and f not in kept_set:
                 kept_features.append(f)
                 self._feature_iv_dict[f] = 0.0
-                self._register_decision(f, "Selected", "Fine_Scan", "White List (Binner Fallback)", 0.0)
+                self._register_feature_decision(f, "Selected", "Fine_Scan", "White List (Binner Fallback)", 0.0)
 
         return kept_features
     
@@ -671,10 +724,17 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.evaluator import MarsBinEvaluator
         evaluator = MarsBinEvaluator(
             target=self.target,
+            feature_data_source=self.feature_data_source,
             binner=self._stage3_binner 
         )
         
-        report = evaluator.evaluate(df, features=features, dt_col=self.time_col, profile_by=self.profile_by)
+        report = evaluator.evaluate(
+            df,
+            features=features,
+            dt_col=self.time_col,
+            profile_by=self.profile_by,
+            feature_start_aware_baseline=self.feature_start_aware_baseline,
+        )
         psi_map = {r["feature"]: r["psi_max"] for r in report.summary_table.select(["feature", "psi_max"]).to_dicts()}
         
         kept_features = []
@@ -685,10 +745,10 @@ class MarsStatsSelector(MarsBaseSelector):
                 
             psi_val = psi_map.get(feat, 0.0)
             if psi_val < self.psi_thr:
-                self._register_decision(feat, "Selected", "Stability", "Stable PSI", psi_val)
+                self._register_feature_decision(feat, "Selected", "Stability", "Stable PSI", psi_val)
                 kept_features.append(feat)
             else:
-                self._register_decision(feat, "Dropped", "Stability", f"High PSI ({psi_val:.2f})", psi_val)
+                self._register_feature_decision(feat, "Dropped", "Stability", f"High PSI ({psi_val:.2f})", psi_val)
 
         return kept_features
 
@@ -698,10 +758,17 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.evaluator import MarsBinEvaluator
         evaluator = MarsBinEvaluator(
             target=self.target,
+            feature_data_source=self.feature_data_source,
             binner=self._stage3_binner 
         )
         
-        report = evaluator.evaluate(df, features=features, dt_col=self.time_col, profile_by=self.profile_by)
+        report = evaluator.evaluate(
+            df,
+            features=features,
+            dt_col=self.time_col,
+            profile_by=self.profile_by,
+            feature_start_aware_baseline=self.feature_start_aware_baseline,
+        )
         
         if "rc_min" in report.summary_table.columns:
             rc_map = {r["feature"]: r["rc_min"] for r in report.summary_table.select(["feature", "rc_min"]).to_dicts()}
@@ -717,10 +784,10 @@ class MarsStatsSelector(MarsBaseSelector):
                 
             rc_val = rc_map.get(feat, 1.0)
             if rc_val is None or rc_val >= self.rc_thr:
-                self._register_decision(feat, "Selected", "RiskCorr", "Stable Logic", rc_val if rc_val is not None else 1.0)
+                self._register_feature_decision(feat, "Selected", "RiskCorr", "Stable Logic", rc_val if rc_val is not None else 1.0)
                 kept_features.append(feat)
             else:
-                self._register_decision(feat, "Dropped", "RiskCorr", f"Logic Broken (RC={rc_val:.2f})", rc_val)
+                self._register_feature_decision(feat, "Dropped", "RiskCorr", f"Logic Broken (RC={rc_val:.2f})", rc_val)
 
         return kept_features
 
@@ -755,7 +822,7 @@ class MarsStatsSelector(MarsBaseSelector):
                 continue
             
             kept_features_set.add(feat)
-            self._register_decision(feat, "Selected", "Corr_Filter", "Independent", self._feature_iv_dict.get(feat, 0))
+            self._register_feature_decision(feat, "Selected", "Corr_Filter", "Independent", self._feature_iv_dict.get(feat, 0))
             
             target_woe_name = f"{feat}_woe"
             high_corr_row = corr_matrix_with_names.filter(pl.col("feature_name") == target_woe_name)
@@ -769,7 +836,7 @@ class MarsStatsSelector(MarsBaseSelector):
                     orig_f = other_feat_woe[:-4]
                     if orig_f not in dropped_features and not self._should_bypass_filter(orig_f):
                         dropped_features.add(orig_f)
-                        self._register_decision(orig_f, "Dropped", "Corr_Filter", f"Correlated with '{feat}'", corr_val)
+                        self._register_feature_decision(orig_f, "Dropped", "Corr_Filter", f"Correlated with '{feat}'", corr_val)
 
         return [f for f in features if f in kept_features_set]
 
@@ -802,7 +869,8 @@ class MarsStatsSelector(MarsBaseSelector):
         if self._stage3_binner is not None:
             evaluator = MarsBinEvaluator(
                 target=self.target,
-                binner=self._stage3_binner
+                binner=self._stage3_binner,
+                feature_data_source=self.feature_data_source,
             )
         else:
             logger.warning("Cached binner not found. Re-fitting Binner for the selected features...")
@@ -815,6 +883,7 @@ class MarsStatsSelector(MarsBaseSelector):
             evaluator = MarsBinEvaluator(
                 target=self.target,
                 bining_type=bining_type,
+                feature_data_source=self.feature_data_source,
                 cat_features=cat_features,
                 missing_values=self.missing_values,
                 special_values=self.special_values,
@@ -830,7 +899,9 @@ class MarsStatsSelector(MarsBaseSelector):
             X_pl, 
             features=self.selected_features_, 
             dt_col=self.time_col, 
-            profile_by=self.profile_by
+            profile_by=self.profile_by,
+            feature_start_aware_baseline=self.feature_start_aware_baseline,
+            feature_data_source=self.feature_data_source,
         )
         
         return report, evaluator

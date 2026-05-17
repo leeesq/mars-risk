@@ -52,3 +52,27 @@ def sample_credit_df() -> pl.DataFrame:
 @pytest.fixture
 def sample_credit_pd(sample_credit_df: pl.DataFrame) -> pd.DataFrame:
     return sample_credit_df.to_pandas()
+
+
+@pytest.fixture
+def feature_start_aware_df() -> pl.DataFrame:
+    rows = []
+
+    for day in pd.date_range("2024-01-01", periods=3, freq="D"):
+        for _ in range(99):
+            rows.append({"biz_dt": day, "segment": "PRE", "x": None, "target": 0})
+        rows.append({"biz_dt": day, "segment": "PRE", "x": 0.0, "target": 0})
+
+    for day in pd.date_range("2024-02-15", periods=3, freq="D"):
+        for _ in range(10):
+            rows.append({"biz_dt": day, "segment": "ACTIVE_A", "x": 0.0, "target": 0})
+        for _ in range(10):
+            rows.append({"biz_dt": day, "segment": "ACTIVE_A", "x": 1.0, "target": 1})
+
+    for day in pd.date_range("2024-03-15", periods=3, freq="D"):
+        for _ in range(10):
+            rows.append({"biz_dt": day, "segment": "ACTIVE_B", "x": 0.0, "target": 0})
+        for _ in range(10):
+            rows.append({"biz_dt": day, "segment": "ACTIVE_B", "x": 1.0, "target": 1})
+
+    return pl.DataFrame(rows)
