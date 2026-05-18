@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
@@ -76,3 +77,47 @@ def feature_start_aware_df() -> pl.DataFrame:
             rows.append({"biz_dt": day, "segment": "ACTIVE_B", "x": 1.0, "target": 1})
 
     return pl.DataFrame(rows)
+
+
+@pytest.fixture
+def sample_modeling_pd() -> pd.DataFrame:
+    rng = np.random.default_rng(7)
+    rows = []
+    split_specs = [
+        ("train", 60, "2024-01-01", 0.0),
+        ("val", 30, "2024-02-01", 0.2),
+        ("oot1", 30, "2024-03-01", 0.35),
+    ]
+
+    for split_name, size, start_date, drift in split_specs:
+        dates = pd.date_range(start_date, periods=size, freq="D")
+        for idx in range(size):
+            x1 = rng.normal(loc=drift, scale=1.0)
+            x2 = rng.normal(loc=0.0, scale=1.1)
+            x3 = rng.normal(loc=-drift, scale=0.8)
+            raw_score = 1.6 * x1 - 1.1 * x2 + 0.7 * x3 + rng.normal(scale=0.4)
+            target = int(raw_score > 0.0)
+            benchmark_score = 1 / (1 + np.exp(-(0.9 * x1 - 0.6 * x2 + 0.3 * x3)))
+            rows.append(
+                {
+                    "biz_dt": dates[idx],
+                    "dataset_flag": split_name,
+                    "x1": x1,
+                    "x2": x2,
+                    "x3": x3,
+                    "segment": "A" if x1 > 0.6 else ("B" if x1 > -0.4 else "C"),
+                    "target": target,
+                    "benchmark_score": benchmark_score,
+                }
+            )
+
+    df = pd.DataFrame(rows)
+    for split_name in ["train", "val", "oot1"]:
+        sub = df[df["dataset_flag"] == split_name]
+        assert sub["target"].nunique() == 2
+    return df
+
+
+@pytest.fixture
+def sample_modeling_df(sample_modeling_pd: pd.DataFrame) -> pl.DataFrame:
+    return pl.from_pandas(sample_modeling_pd)

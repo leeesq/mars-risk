@@ -1,14 +1,29 @@
-"""MARS 对外公共 API 入口模块。"""
+"""Public package exports for MARS."""
 
 from .analysis import (
-    MarsDataProfiler, MarsProfileConfig, MarsProfileReport,
-    MarsBinEvaluator, MarsEvaluationReport, profile_stats, profile_risk
+    MarsDataProfiler,
+    MarsProfileConfig,
+    MarsProfileReport,
+    MarsBinEvaluator,
+    MarsEvaluationReport,
+    profile_stats,
+    profile_risk,
 )
 from .feature import MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
+from .modeling import (
+    MarsModelDataSlicer,
+    MarsModelEvaluator,
+    MarsModelingReport,
+    MarsModelingRun,
+    MarsModelingSession,
+    MarsModelReplay,
+    MarsModelTuner,
+    MarsReplayRun,
+)
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.15" 
+__version__ = "0.0.15"
 
 _BANNER = r"""
     __________________________________________________________________________
@@ -25,31 +40,38 @@ _BANNER = r"""
     __________________________________________________________________________
 """.format(ver=__version__)
 
-def __repr__():
-    """返回 MARS 包级横幅字符串表示。"""
+
+def __repr__() -> str:
+    """Return the package banner string."""
     return _BANNER
 
-def __str__():
-    """返回 MARS 包级横幅字符串。"""
+
+def __str__() -> str:
+    """Return the package banner string."""
     return _BANNER
+
 
 __all__ = [
     "MarsDataProfiler",
     "MarsProfileConfig",
     "MarsProfileReport",
-    
     "MarsNativeBinner",
     "MarsOptimalBinner",
     "MarsBinEvaluator",
     "MarsEvaluationReport",
     "profile_stats",
     "profile_risk",
-    
     "MarsStatsSelector",
-
+    "MarsModelDataSlicer",
+    "MarsModelingSession",
+    "MarsModelTuner",
+    "MarsModelEvaluator",
+    "MarsModelReplay",
+    "MarsModelingRun",
+    "MarsModelingReport",
+    "MarsReplayRun",
     "MarsScorecard",
     "build_scorecard",
-    
     "logger",
     "set_log_level",
 ]

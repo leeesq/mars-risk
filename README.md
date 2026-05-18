@@ -28,8 +28,8 @@
 
 > `Profile -> Bin -> Evaluate -> Select -> Export`
 >
-> MARS 不是一个泛化的 AutoML 框架。  
-> 它更像一套为风控分析师、评分卡建模工程师和特征治理场景准备的“日常工作台”。
+> MARS 同时承担 `AutoML` 框架能力与风控建模日常工作台角色。  
+> 它用 `sklearn` 风格 API 组织调参、评估、回放、分箱、筛选与评分卡流程，并把结果沉淀为可复用的显式对象。
 
 ## MARS 是什么
 
@@ -128,12 +128,18 @@ pip install "mars-risk[plot]"
 pip install "mars-risk[notebook]"
 ```
 
+### 安装建模调参与树模型支持
+
+```bash
+pip install "mars-risk[ml,tuning]"
+```
+
 ### 安装完整开发环境
 
 ```bash
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
-pip install -e ".[dev]"
+pip install -e ".[dev,ml,tuning]"
 ```
 
 ### Python 版本要求
@@ -586,6 +592,54 @@ MARS 现在更像一个已经进入“可持续打磨期”的 `0.x` 项目：
 - 提出你希望优先补的示例、教程或导出能力
 
 如果你在使用中踩到了 API 不一致、报表体验不顺、Polars 性能问题，或者只是觉得 README 还不够清楚，这类反馈都很有价值。
+
+## Modeling
+
+MARS now exposes a two-layer modeling API:
+
+- `MarsModelingSession` is the high-level AutoML workflow entrypoint for `slice -> tune -> evaluate -> replay`.
+- `MarsModelTuner`, `MarsModelEvaluator`, and `MarsModelReplay` are the lower-level sklearn-style tools for teams that want to compose each task explicitly.
+- `MarsModelingRun`, `MarsModelingReport`, and `MarsReplayRun` are reusable result objects instead of one-off dictionaries or tuples.
+
+```python
+from mars.modeling import MarsModelEvaluator, MarsModelReplay, MarsModelTuner, MarsModelingSession
+
+tuner = MarsModelTuner(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+
+tuning_run = tuner.tune(scored_df, n_trials=20)
+
+replay = MarsModelReplay(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+replay_run = replay.run(tuning_run, scored_df, top_k=3, sort_metric="ks")
+
+evaluator = MarsModelEvaluator(
+    group_col="dataset_flag",
+    target_col="target",
+    time_col="biz_dt",
+)
+top_pred_col = next(
+    col for col in replay_run.scored_df.columns if str(col).startswith("prob_top1_trial")
+)
+report = evaluator.evaluate(replay_run.scored_df, pred_col=top_pred_col)
+
+session = MarsModelingSession(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+same_run = session.tune(scored_df, n_trials=20)
+same_report = session.evaluate(scored_df, pred_col="pred_score")
+```
 
 ## License
 

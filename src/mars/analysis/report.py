@@ -2482,7 +2482,12 @@ __RUNTIME_SCRIPT__
             logger.warning("HTML chart rendering skipped due to error: %s", exc)
 
         if not chart_views:
-            return None
+            for y_val in chart_y_values:
+                chart_views.append(
+                    f'<div class="mars-chart-view" data-y-value="{self._escape_attr(y_val)}">'
+                    f'<div class="mars-empty">Chart rendering is unavailable in the current environment.</div>'
+                    f"</div>"
+                )
 
         chart_feedback_html = self._build_scope_feedback_html("mars-chart-cards", empty_text="No charts match current filters.")
         return self._wrap_html_section(
@@ -3189,6 +3194,14 @@ __RUNTIME_SCRIPT__
                     )
             except Exception as e:
                 logger.warning("HTML chart rendering skipped due to error: %s", e)
+
+            if not chart_views:
+                for y_val in chart_y_values:
+                    chart_views.append(
+                        f'<div class="mars-chart-view" data-y-value="{html.escape(y_val)}">'
+                        f'<div class="mars-empty">Chart rendering is unavailable in the current environment.</div>'
+                        f"</div>"
+                    )
 
             if chart_views:
                 html_parts.append(

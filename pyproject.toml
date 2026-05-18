@@ -64,6 +64,11 @@ ml = [
     "catboost>=1.2.9"
 ]
 
+tuning = [
+    "optuna>=4.0.0",
+    "optuna-integration>=4.0.0"
+]
+
 # 开发与测试环境
 dev = [
     "pytest>=7.4.0",
