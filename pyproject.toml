@@ -29,7 +29,7 @@ dependencies = [
     "pandas>=2.0.0",     
     "pyarrow>=14.0.0",    
 
-    "scikit-learn>=1.7.0", 
+    "scikit-learn>=1.7.2", 
     "scipy>=1.10.0",       
     "optbinning>=0.19.0",  
     
@@ -59,9 +59,9 @@ notebook = [
 
 # 机器学习模型支持
 ml = [
-    "xgboost>=3.2.0",
+    "xgboost>=3.0.0",
     "lightgbm>=4.6.0",
-    "catboost>=1.2.0"
+    "catboost>=1.2.9"
 ]
 
 # 开发与测试环境

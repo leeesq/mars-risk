@@ -166,15 +166,15 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
 def set_log_level(level: Union[str, int]) -> None:
     """
     动态修改全局 Logger 的日志级别。
-    
-    允许在程序运行时切换日志详细程度（例如从 INFO 切换到 DEBUG 以排查问题）。
+
+    允许在程序运行时切换日志详细程度，例如从 ``INFO`` 切换到 ``DEBUG``
+    以便定位问题。
 
     Parameters
     ----------
     level : Union[str, int]
-        目标日志级别。
-        可以是 logging 常量 (如 logging.DEBUG) 
-        也可以是字符串 (如 'DEBUG', 'info', 'WARNING')。
+        目标日志级别。可以是 ``logging`` 常量，也可以是字符串形式的
+        级别名称，例如 ``"DEBUG"``、``"info"`` 或 ``"WARNING"``。
 
     Examples
     --------

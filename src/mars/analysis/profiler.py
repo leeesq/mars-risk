@@ -33,32 +33,50 @@ def profile_stats(
     config_overrides: Optional[Dict[str, Any]] = None,
 ) -> MarsProfileReport:
     """
-    Lightweight top-level helper for profiling a small set of metrics.
+    轻量级统计画像入口。
+
+    该函数会根据 ``metrics`` 自动拆分数据质量指标与统计指标，
+    并调用 ``MarsDataProfiler`` 生成仅包含所需指标的画像报告。
 
     Parameters
     ----------
-    df : DataFrame
-        Input dataset.
+    df : pl.DataFrame or pd.DataFrame
+        待分析的数据集。
     metrics : list of str
-        Mixed metric names, e.g. ["missing", "zeros", "mean"].
+        需要计算的指标名称列表，可混合传入数据质量指标与统计指标，
+        例如 ``["missing", "zeros", "mean"]``。
     features : list of str, optional
-        Feature subset to profile.
+        指定要画像的特征子集。默认为全部候选特征。
     profile_by : str, optional
-        Grouping dimension for trend analysis.
+        趋势分析的分组维度，可以是数据中已有列名，也可以是时间粒度指令。
     dt_col : str, optional
-        Datetime column used with date granularities such as month/week/day.
-    missing_values, special_values, exclude_features, include_dtypes, sample_frac
-        Passed through to ``MarsDataProfiler``.
+        当 ``profile_by`` 为 ``month``、``week``、``day`` 或 ``Nd`` 时，
+        作为时间聚合基准的日期列名。
+    missing_values : list of Any, optional
+        传递给 ``MarsDataProfiler`` 的自定义缺失值集合。
+    special_values : list of Any, optional
+        传递给 ``MarsDataProfiler`` 的自定义特殊值集合。
+    exclude_features : list of str, optional
+        需要排除的特征列表。
+    include_dtypes : type or pl.DataType or list, optional
+        仅纳入指定数据类型的列。
+    sample_frac : float, optional
+        在画像前对输入数据执行随机采样的比例。
     enable_sparkline : bool, default False
-        Whether to enable overview sparklines.
+        是否在概览表中启用 Sparkline。
     config_overrides : dict, optional
-        Extra temporary profiler config overrides. Explicit ``metrics`` and
-        ``enable_sparkline`` always take precedence.
+        临时覆盖 ``MarsProfileConfig`` 的配置项。由 ``metrics`` 推导出的
+        ``dq_metrics``、``stat_metrics`` 以及 ``enable_sparkline`` 会覆盖同名项。
 
     Returns
     -------
     MarsProfileReport
-        Profile report containing only the requested metric subsets.
+        仅包含所请求指标范围的画像报告对象。
+
+    Raises
+    ------
+    ValueError
+        当 ``metrics`` 为空，或包含未支持的指标名称时抛出。
     """
     if not metrics:
         raise ValueError("`metrics` must contain at least one metric name.")
@@ -119,7 +137,7 @@ class MarsDataProfiler(MarsBaseEstimator):
 
     Parameters
     ----------
-    df : DataFrame (pl.DataFrame or pd.DataFrame)
+    df : pl.DataFrame or pd.DataFrame
         输入数据集上下文。引擎内部统一将其转换为 Polars 内存数据帧格式。
         
     features : list of str, optional
@@ -132,18 +150,18 @@ class MarsDataProfiler(MarsBaseEstimator):
         数据类型白名单约束。仅允许匹配指定类型的列进入计算管道，支持 Python 原生类型
         （如 int, float, str）与 Polars 数据类型（如 pl.Int64）的混合枚举约束。
         
-    missing_values : list of Any, optional
+    missing_values : list, optional
         领域自定义缺失值定义（如 [-999, 'unknown']）。该集合内的数值在计算质量指标时
         将被纳入缺失率统计，并在连续变量的统计分布及分布图计算中被物理剔除。
-        
-    special_values : list of Any, optional
+
+    special_values : list, optional
         领域自定义特殊值定义。在数据质量统计中被视为有效值并参与众数等计算，但在
         连续型变量的数值分布运算中会被剥离。
-        
+
     psi_n_bins : int, default 10
         执行群体稳定性 (PSI) 计算时，针对连续型变量设定的空间离散化分箱上限。
-        
-    psi_bin_method : {'quantile', 'uniform'}, default 'quantile'
+
+    psi_bin_method : {"quantile", "uniform"}, default "quantile"
         执行群体稳定性 (PSI) 计算时，针对连续型变量调用的无监督区间切分策略。
         
     psi_cv_ignore_threshold : float, default 0.05
@@ -224,32 +242,32 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Parameters
         ----------
-        df : DataFrame
-            输入数据集。
+        df : pl.DataFrame or pd.DataFrame
+            待画像的数据集。
         features : list of str, optional
-            需要纳入画像的特征列表。
+            需要纳入画像流程的特征列表。默认使用全部候选列。
         exclude_features : list of str, optional
-            需要排除的特征列表。
+            需要从候选特征中排除的列名列表。
         include_dtypes : type or pl.DataType or list, optional
-            数据类型白名单。
+            数据类型白名单，仅允许匹配到的列参与画像。
         missing_values : list, optional
-            自定义缺失值集合。
+            自定义缺失值集合，会并入缺失率统计。
         special_values : list, optional
-            自定义特殊值集合。
+            自定义特殊值集合，会在连续变量分布计算中被单独隔离。
         psi_n_bins : int, default 10
-            PSI 计算的分箱数量上限。
+            计算 PSI 时连续特征的最大分箱数。
         psi_bin_method : {"quantile", "uniform"}, default "quantile"
-            PSI 分箱策略。
+            计算 PSI 时使用的连续特征分箱策略。
         psi_cv_ignore_threshold : float, default 0.05
-            Group CV 忽略阈值。
+            组间 PSI 波动较小时忽略 Group CV 的阈值。
         psi_batch_size : int, default 50
-            PSI 批处理大小。
+            计算 PSI 趋势时的特征批处理大小。
         overview_batch_size : int, default 500
-            概览计算批处理大小。
+            计算概览宽表时的特征批处理大小。
         sample_frac : float, optional
-            随机采样比例。
+            画像前执行随机采样的比例，取值应位于 ``(0, 1)``。
         config : MarsProfileConfig, optional
-            画像运行配置。
+            画像流程配置对象。未提供时使用默认配置。
         """
         super().__init__()
         # 数据接入与采样
@@ -337,70 +355,48 @@ class MarsDataProfiler(MarsBaseEstimator):
         config_overrides: Optional[Dict[str, Any]] = None
     ) -> MarsProfileReport:
         """
-        执行数据画像分析流水线，生成完整的特征分析报告。
+        执行数据画像分析并生成报告。
 
-        该方法会自动计算两类指标：
-        - Overview：包含数据分布(Sparkline)、DQ指标、统计指标。不涉及分组。
-        - Trends：如果指定了 `profile_by`，会计算各项指标随该维度的变化。
+        结果包含两个部分：
+        1. ``overview``：全量特征概览表，包含分布、数据质量指标和统计指标。
+        2. ``trend tables``：当指定 ``profile_by`` 时，计算各指标随分组维度的变化趋势。
 
         Parameters
         ----------
         profile_by : str, optional
-            分组维度。
-            - 若提供 `dt_col`: 可选 "day", "week", "month", "3d", "14d" 等。
-            - 若未提供 `dt_col`: 必须是数据中已存在的列名。
-            - None: 仅生成 Overview 和 Total 趋势列。
-            - 如果是自动聚合，Overview 表中不会包含这个临时的日期分组列，只会在 Trends 表中体现。
-        
+            趋势分析的分组维度。
+            当同时提供 ``dt_col`` 时，可使用 ``"day"``、``"week"``、
+            ``"month"`` 或 ``"7d"``、``"14d"`` 这类时间粒度指令；
+            否则应为数据中已存在的列名。若为 ``None``，仅生成概览表。
         dt_col : str, optional
-            指定日期/时间列名。用于配合 `profile_by` 进行自动时间聚合。
-
+            用于配合 ``profile_by`` 进行自动时间聚合的日期列名。
         config_overrides : Dict[str, Any], optional
-            临时覆盖 `MarsProfileConfig` 中的默认配置。支持以下配置项：
-
-            **1. 计算范围 (Metrics)**
-            
-            * ``stat_metrics`` (List[str]): 需要计算的统计指标。
-              可选值: "psi", "mean", "std", "min", "max", "p25", "median", "p75", "skew", "kurtosis"。
-            * ``dq_metrics`` (List[str]): 需要计算的数据质量指标。
-              可选值: "missing", "zeros", "unique", "top1"。
-
-            **2. 可视化 (Visualization)**
-            
-            * ``enable_sparkline`` (bool): 是否计算字符画形式的迷你分布图 (默认 True)。
-            * ``sparkline_sample_size`` (int): 计算分布图时的采样行数。
-            * ``sparkline_bins`` (int): 分布图的分箱精度。
-            
-            **3. psi 计算**
+            临时覆盖 ``MarsProfileConfig`` 的配置项。
+            常见键包括 ``stat_metrics``、``dq_metrics``、``enable_sparkline``、
+            ``sparkline_sample_size``、``sparkline_bins``、
+            ``psi_include_missing`` 与 ``psi_include_special``。
 
         Returns
         -------
         MarsProfileReport
-            包含概览表和趋势表的报告对象容器。
+            包含概览表与趋势表的画像报告对象。
+
+        Raises
+        ------
+        ValueError
+            当 ``dt_col`` 不存在于输入数据中时抛出。
 
         Examples
         --------
-        >>> # 1. 基础用法：生成并查看报告
         >>> profiler = MarsDataProfiler(df)
         >>> report = profiler.generate_profile()
-        
-        >>> # 拿到 report 后怎么用？
-        >>> report # 在 Jupyter 中显示报告的用法
-        >>> report.show_overview()  # 在 Jupyter 中显示数据概览
-        >>> report.write_excel("my_analysis.xlsx")  # 导出 Excel
-
-        >>> # 2. 高级用法：按月分组分析
+        >>> report.show_overview()
+        >>> report.write_excel("my_analysis.xlsx")
+        >>> 
         >>> report = profiler.generate_profile(profile_by="month")
-        >>> report.show_trend("mean") # 查看均值随月份的变化趋势
-        
-        >>> # 3. 获取底层数据 (可以用于自动化特征筛选)
-        >>> # 返回值结构:
-        >>> # overview: DataFrame (全量概览)
-        >>> # dq_tables: Dict[str, DataFrame] (DQ 指标趋势表字典)
-        >>> # stat_tables: Dict[str, DataFrame] (统计指标趋势表字典)
+        >>> report.show_trend("mean")
+        >>>
         >>> overview, dq_tables, stat_tables = report.get_profile_data()
-        
-        >>> # 示例: 筛选出缺失率 > 90% 的特征列表
         >>> high_missing_cols = overview.filter(pl.col("missing_rate") > 0.9)["feature"].to_list()
         """
         # 动态配置合并

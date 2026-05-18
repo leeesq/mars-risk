@@ -19,35 +19,51 @@ from mars.utils.decorators import time_it
 
 class MarsBinnerBase(MarsTransformer):
     """
-    [Mars 分箱器抽象基类]
+    MARS 分箱器抽象基类。
 
-    这是 Mars 特征工程体系中所有分箱组件的底层核心。它不仅定义了分箱器的状态契约, 
-    还封装了高度优化的转换 (Transform) 与分析 (Profiling) 算子。
+    该基类定义了分箱器的公共状态、索引协议以及数值/类别特征的统一转换行为。
+    子类负责学习切点或类别分组规则，基类则负责缓存管理、映射导出、
+    WOE 物化、统计报告和 SQL 生成。
 
-    该基类采用了“计算与路由分离”的设计: 
-    - 计算: 由子类实现的 `fit` 策略负责填充切点。
-    - 路由: 基类负责处理复杂的缺失值、特殊值、高基数类别路由以及 Eager/Lazy 混合执行。
+    Parameters
+    ----------
+    features : list of str, optional
+        数值型特征白名单。若为空，子类通常会自动识别输入数据中的数值列。
+    cat_features : list of str, optional
+        类别型特征白名单。用于显式声明哪些列应按类别分组逻辑处理。
+    n_bins : int, default 10
+        目标最大分箱数量。
+    special_values : list of int or float or str, optional
+        需要单独映射到特殊值箱的取值集合。
+    missing_values : list of int or float or str, optional
+        除原生空值外，额外视为缺失的取值集合。
+    join_threshold : int, default 100
+        类别特征在 ``transform`` 阶段切换到 Join 映射策略的基数阈值。
+    n_jobs : int, default -1
+        并行计算使用的核心数配置。``-1`` 表示自动使用 ``CPU核心数 - 1``。
 
     Attributes
     ----------
-    bin_cuts_: Dict[str, List[float]]
-        数值型特征的物理切点。每个列表均以 `[-inf, ..., inf]` 闭合, 确保全值域覆盖。
-    cat_cuts_: Dict[str, List[List[Any]]]
+    bin_cuts_ : dict of str to list of float
+        数值型特征的物理切点，每个列表均以 ``[-inf, ..., inf]`` 闭合。
+    cat_cuts_ : dict of str to list of list
         类别型特征的分组映射规则。将零散的字符串/分类标签聚类为逻辑组。
-    bin_mappings_: Dict[str, Dict[int, str]]
-        分箱可视化地图。将物理索引 (如 -1, 0, 1) 映射为业务可读标签 (如 "Missing", "01_[0, 10)")。
-    bin_woes_: Dict[str, Dict[int, float]]
+    bin_mappings_ : dict of str to dict of int to str
+        分箱可视化映射表。将物理索引映射为业务可读标签。
+    bin_woes_ : dict of str to dict of int to float
         分箱权重字典。存储每个分箱索引对应的 WOE 值。
-    feature_names_in_: List[str]
+    feature_names_in_ : list of str
         拟合时输入的原始特征列名。
+    fit_failures_ : dict of str to str
+        拟合过程中失败的特征及其诊断信息。
 
     Notes
     -----
-    索引协议 (Index Protocol): 
-    - `Missing`: -1
-    - `Other`: -2
-    - `Special`: -3, -4, ...
-    - `Normal`: 0, 1, 2, ...
+    索引协议如下：
+    ``Missing`` 为 ``-1``，
+    ``Other`` 为 ``-2``，
+    ``Special`` 从 ``-3`` 开始向负方向扩展，
+    正常分箱索引从 ``0`` 开始递增。
     """
 
     # 类型常量: 用于快速判定数值列
@@ -122,10 +138,97 @@ class MarsBinnerBase(MarsTransformer):
         self._cache_y: Optional[Any] = None
         
         self.fit_failures_: Dict[str, str] = {}
+
+    def transform(
+        self,
+        X: Union[pl.DataFrame, pl.LazyFrame, pd.DataFrame],
+        *,
+        return_type: Literal["index", "label", "woe"] = "index",
+        woe_batch_size: int = 200,
+        lazy: bool = False,
+    ) -> Union[pl.DataFrame, pd.DataFrame, pl.LazyFrame]:
+        """
+        按当前分箱规则将输入特征映射为索引、标签或 WOE 值。
+
+        Parameters
+        ----------
+        X : pl.DataFrame or pl.LazyFrame or pd.DataFrame
+            待转换的数据集。
+        return_type : {"index", "label", "woe"}, default "index"
+            输出形式。``"index"`` 返回分箱索引，``"label"`` 返回分箱标签，
+            ``"woe"`` 返回对应分箱的 WOE 值。
+        woe_batch_size : int, default 200
+            当 ``return_type="woe"`` 且当前实例尚未物化 WOE 映射时，
+            计算 WOE 的批处理特征数。
+        lazy : bool, default False
+            是否保持延迟执行。为 ``True`` 时返回 ``pl.LazyFrame``。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame or pl.LazyFrame
+            分箱转换结果。若设置了 ``set_output("pandas")`` 且结果为 eager
+            DataFrame，则返回 Pandas 对象。
+        """
+        self._check_is_fitted()
+
+        X_pl = self._ensure_polars_dataframe(X)
+        X_new = self._transform_impl(
+            X_pl,
+            return_type=return_type,
+            woe_batch_size=woe_batch_size,
+            lazy=lazy,
+        )
+        return self._format_output(X_new)
+
+    def fit_transform(
+        self,
+        X: Union[pl.DataFrame, pd.DataFrame],
+        y: Optional[Any] = None,
+        *,
+        return_type: Literal["index", "label", "woe"] = "index",
+        woe_batch_size: int = 200,
+        lazy: bool = False,
+    ) -> Union[pl.DataFrame, pd.DataFrame, pl.LazyFrame]:
+        """
+        先拟合分箱器，再返回分箱转换结果。
+
+        Parameters
+        ----------
+        X : pl.DataFrame or pd.DataFrame
+            输入特征矩阵。
+        y : Any, optional
+            目标变量。无监督分箱场景下可为空。
+        return_type : {"index", "label", "woe"}, default "index"
+            转换结果形式。
+        woe_batch_size : int, default 200
+            计算 WOE 映射时的批处理特征数。
+        lazy : bool, default False
+            是否返回 ``pl.LazyFrame``。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame or pl.LazyFrame
+            分箱转换结果。
+        """
+        return self.fit(X, y).transform(
+            X,
+            return_type=return_type,
+            woe_batch_size=woe_batch_size,
+            lazy=lazy,
+        )
         
     def to_dict(self) -> Dict[str, Any]:
         """
         将分箱器状态序列化为 Python 字典。
+
+        Returns
+        -------
+        dict of str to Any
+            包含 ``params`` 与 ``state`` 两部分的可序列化字典。
+
+        Notes
+        -----
+        返回结果只包含分箱规则和必要状态，不包含缓存的训练数据本体。
         """
         return {
             "params": {
@@ -180,7 +283,17 @@ class MarsBinnerBase(MarsTransformer):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
         """
-        从典中恢复分箱器实例。
+        从字典恢复分箱器实例。
+
+        Parameters
+        ----------
+        data : dict of str to Any
+            由 ``to_dict`` 生成的状态字典。
+
+        Returns
+        -------
+        MarsBinnerBase
+            恢复后的已拟合分箱器实例。
         """
         # 实例化一个空对象
         instance = cls(**data["params"])
@@ -222,7 +335,14 @@ class MarsBinnerBase(MarsTransformer):
             self._cache_y = None
             
     def clear_cache(self):
-        """手动清理训练数据缓存。建议在模型训练完成后调用, 以释放内存。"""
+        """
+        清理缓存的训练数据引用。
+
+        Notes
+        -----
+        该方法会清空 ``_cache_X`` 和 ``_cache_y``，并主动触发一次垃圾回收。
+        适合在模型训练完成、无需再次即时重算统计量时调用。
+        """
         self._cache_X = None
         self._cache_y = None
         gc.collect() 
@@ -281,7 +401,19 @@ class MarsBinnerBase(MarsTransformer):
         return safe_vals
     
     def get_bin_mapping(self, col: str) -> Dict[int, str]:
-        """获取指定列的分箱映射字典。"""
+        """
+        获取指定特征的分箱标签映射。
+
+        Parameters
+        ----------
+        col : str
+            特征名称。
+
+        Returns
+        -------
+        dict of int to str
+            分箱索引到标签的映射字典。若该特征不存在，则返回空字典。
+        """
         return self.bin_mappings_.get(col, {})
 
     def _is_numeric(self, series: pl.Series) -> bool:
@@ -681,23 +813,29 @@ class MarsBinnerBase(MarsTransformer):
         batch_size: int = 100
     ) -> pl.DataFrame | pd.DataFrame:
         """
-        [分箱指标画像] 产出全量分箱深度分析报告 (IV/KS/AUC/Lift)。
+        计算分箱表现统计报告。
 
         Parameters
         ----------
-        X: polars.DataFrame or pandas.DataFrame
+        X : pl.DataFrame or pd.DataFrame
             原始特征数据集。
-        y: polars.Series or pandas.Series
-            目标标签 (二分类)。
-        update_woe: bool, default=True
-            是否更新内部 WOE 字典。
-        batch_size: int, default=100
-            特征分批处理的大小。调低可进一步降低内存峰值, 提升计算性能。
-            
+        y : pl.Series or pd.Series
+            二分类目标标签。
+        update_woe : bool, default True
+            是否将本次计算得到的 WOE 同步回写到 ``bin_woes_``。
+        batch_size : int, default 100
+            特征分批处理大小。减小该值可进一步降低内存峰值。
+             
         Returns
         -------
-        polars.DataFrame or pandas.DataFrame
-            包含每个分箱的统计指标的 DataFrame
+        pl.DataFrame or pd.DataFrame
+            包含各特征各分箱统计量的明细表，通常包括样本数、坏样本数、
+            分布占比、WOE、IV、KS、AUC 和 Lift 等指标。
+
+        Notes
+        -----
+        该方法依赖当前分箱器已完成拟合，并会复用 ``transform(return_type="index")``
+        的输出结果来执行聚合统计。
         """
         X = self._ensure_polars_dataframe(X)
         
@@ -900,8 +1038,13 @@ class MarsBinnerBase(MarsTransformer):
 
         Returns
         -------
-        pl.DataFrame
-            返回包含所有被修改特征的最新分箱统计分布表（包含 Bad Rate, IV, WOE 等），提供即时反馈。
+        pl.DataFrame or pd.DataFrame or None
+            返回被修改特征的最新分箱统计分布表；若没有任何有效特征被更新，则返回 ``None``。
+
+        Raises
+        ------
+        ValueError
+            当缺少用于重算 WOE 的 ``X``/``y``，且缓存也不可用时抛出。
         """
         self._check_is_fitted()
         
@@ -964,9 +1107,21 @@ class MarsBinnerBase(MarsTransformer):
     def prune(self, keep_features: List[str]) -> "MarsBinnerBase":
         """
         裁剪分箱器内部状态，仅保留指定特征。
-        
-        仅保留 `keep_features` 列表中的特征分箱规则，清空其它所有特征的状态，
-        用于在特征筛选结束后极大缩小模型序列化 (Pickle) 后的文件体积。
+
+        Parameters
+        ----------
+        keep_features : list of str
+            需要保留状态的特征列表。
+
+        Returns
+        -------
+        MarsBinnerBase
+            裁剪完成后的当前实例。
+
+        Notes
+        -----
+        该方法会同步裁剪切点、类别分组、标签映射、WOE 映射以及 ``feature_names_in_``，
+        常用于特征筛选完成后缩小序列化模型体积。
         """
         keep_set = set(keep_features)
         
@@ -993,16 +1148,15 @@ class MarsBinnerBase(MarsTransformer):
         map_special: bool = True
     ) -> str:
         """
-        将分箱规则导出为标准 SQL CASE WHEN 语句。
-        支持单特征、指定多特征或一键导出全量已拟合特征的 SQL 脚本。
-        
+        将分箱规则导出为 SQL ``CASE WHEN`` 片段。
+
         Parameters
         ----------
         features : str or List[str], optional
             特征名称或特征列表。若为 None，则自动导出所有已拟合的特征。
         table_prefix : str, default "t"
             表别名前缀。例如 "t" 会生成 "t.age"。若为空则直接使用特征名。
-        return_type : {'woe', 'index', 'label'}, default 'woe'
+        return_type : {"woe", "index", "label"}, default "woe"
             生成 SQL 的目标值类型：
             - 'woe': 输出 WOE 浮点数 (适合 LR 逻辑回归模型部署)
             - 'index': 输出分箱序号 (适合 XGBoost/LightGBM 树模型部署)
@@ -1016,6 +1170,11 @@ class MarsBinnerBase(MarsTransformer):
         -------
         str
             标准 SQL 脚本（多字段间已用逗号安全分隔，可直接嵌入 SELECT 子句）。
+
+        Raises
+        ------
+        ValueError
+            当请求导出未拟合或不存在映射的特征时抛出。
         """
         self._check_is_fitted()
         
@@ -1157,7 +1316,7 @@ class MarsNativeBinner(MarsBinnerBase):
         类别型特征列名列表。类别特征将保留频率最高的 `n_bins` 个类别，
         其余类别将折叠为单一的冗余组（Other）。
         
-    method : {'cart', 'quantile', 'uniform'}, default 'cart'
+    method : {"cart", "quantile", "uniform"}, default "cart"
         连续型变量的底层切分策略。
         - 'cart': 监督式决策树最优切分。
         - 'quantile': 无监督等频切分。
@@ -1166,10 +1325,10 @@ class MarsNativeBinner(MarsBinnerBase):
     n_bins : int, default 10
         最大分箱数量（不包含缺失值箱与特殊值箱）。
         
-    special_values : list of Any, optional
+    special_values : list, optional
         领域自定义的特殊值集（如 -999）。底部分箱引擎将优先对这些数值执行提取，并分配独立的特殊值箱。
-        
-    missing_values : list of Any, optional
+
+    missing_values : list, optional
         领域自定义的缺失值集。将被统一路由至标准的缺失值箱。系统原生的 Null 与 NaN 始终会被自动捕获。
         
     min_bin_size : float, default 0.02
@@ -1231,27 +1390,27 @@ class MarsNativeBinner(MarsBinnerBase):
         Parameters
         ----------
         features : list of str, optional
-            数值型特征列表。
+            需要进行连续分箱的数值特征列表。
         cat_features : list of str, optional
-            类别型特征列表。
+            需要进行类别分箱的特征列表。
         method : {"cart", "quantile", "uniform"}, default "cart"
-            数值特征分箱方法。
+            数值特征的分箱策略。
         n_bins : int, default 10
-            最大分箱数。
+            最大分箱数量，不含缺失值箱和特殊值箱。
         special_values : list, optional
-            特殊值集合。
+            需要独立隔离的特殊值集合。
         missing_values : list, optional
-            自定义缺失值集合。
+            需要额外识别为缺失的值集合。
         min_bin_size : float, default 0.02
-            最小单箱样本占比。
+            单箱最小样本占比约束。
         merge_small_bins : bool, default False
-            是否合并小箱。
+            是否在无监督分箱后自动合并小样本箱。
         cart_params : dict, optional
-            CART 分箱器参数。
+            透传给 ``DecisionTreeClassifier`` 的参数。
         remove_empty_bins : bool, default False
-            是否清理空箱。
+            是否在 ``uniform`` 分箱时清理空箱。
         n_jobs : int, default -1
-            并行任务数量。
+            并行计算使用的核心数限制。
         """
         super().__init__(
             features=features, n_bins=n_bins, 
@@ -1266,6 +1425,29 @@ class MarsNativeBinner(MarsBinnerBase):
         self.remove_empty_bins = remove_empty_bins
         
         self.cart_params = cart_params if cart_params is not None else {}
+
+    def fit(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Optional[pl.Series | pd.Series | np.ndarray | list[Any]] = None,
+    ) -> "MarsNativeBinner":
+        """
+        拟合原生分箱器。
+
+        Parameters
+        ----------
+        X : pl.DataFrame or pd.DataFrame
+            输入特征矩阵。
+        y : pl.Series or pd.Series or np.ndarray or list, optional
+            目标变量。仅当 ``method="cart"`` 时必填。
+
+        Returns
+        -------
+        MarsNativeBinner
+            拟合完成后的原生分箱器实例。
+        """
+        super().fit(X, y)
+        return self
 
     def _fit_impl(self, X: pl.DataFrame, y: Optional[Any] = None) -> None:
         """
@@ -1968,7 +2150,7 @@ class MarsOptimalBinner(MarsBinnerBase):
     min_bin_n_event : int, default 3
         单一分箱（非缺失/特殊箱）内包含的正样本（事件）最小绝对数量约束。
         
-    prebinning_method : {'cart', 'quantile', 'uniform'}, default 'cart'
+    prebinning_method : {"quantile", "uniform", "cart"}, default "cart"
         求解规划问题前的空间降维预切分策略。
         - 'cart': 监督式决策树最优切分。
         - 'quantile': 无监督等频切分。
@@ -1981,11 +2163,11 @@ class MarsOptimalBinner(MarsBinnerBase):
         预分箱区间的最小样本占比约束。仅当 `prebinning_method='cart'` 时，该参数作为
         决策树叶子节点的最小样本比例生效。
         
-    monotonic_trend : {'ascending', 'descending', 'auto', 'auto_asc_desc'}, default 'auto_asc_desc'
+    monotonic_trend : {"ascending", "descending", "auto", "auto_asc_desc"}, default "auto_asc_desc"
         针对目标事件率的全局单调性约束方向。'auto_asc_desc' 将并发评估严格单调递增与递减
         两种假设空间，并返回信息值更优的解。
-        
-    solver : {'cp', 'mip'}, default 'cp'
+
+    solver : {"cp", "mip"}, default "cp"
         底层优化问题的数学规划求解引擎。
         - 'cp': 约束编程 (Constraint Programming)，在处理复杂边界约束时具备较优的收敛速度。
         - 'mip': 混合整数规划 (Mixed-Integer Programming)。
@@ -1993,18 +2175,18 @@ class MarsOptimalBinner(MarsBinnerBase):
     time_limit : int, default 10
         单个特征规划求解的超时时间界限（以秒为单位）。触发超时拦截后将安全回退至次优基准规则。
         
-    max_cats_to_solver : int, default 100
+    max_cats_to_solver : int, optional, default 100
         类别型特征的高基数截断阈值。仅保留出现频率最高的前 K 个类别进入求解器组合搜索，
         其余类别将被安全折叠为预处理冗余组。
         
     min_cat_fraction : float, default 0.05
         类别型特征单一类别的最小物理样本占比约束。
         
-    special_values : list of Any, optional
+    special_values : list, optional
         领域自定义的特殊值集。底部分箱引擎将对这些数值执行物理隔离并分配至独立的负数索引区间，
         不参与规划求解运算。
-        
-    missing_values : list of Any, optional
+
+    missing_values : list, optional
         领域自定义的缺失值集。将被统一路由至标准的缺失值箱（缺省索引 -1）。
         
     cart_params : dict, optional
@@ -2065,43 +2247,43 @@ class MarsOptimalBinner(MarsBinnerBase):
         Parameters
         ----------
         features : list of str, optional
-            数值型特征列表。
+            需要进行连续最优分箱的数值特征列表。
         cat_features : list of str, optional
-            类别型特征列表。
+            需要进行类别最优分箱的特征列表。
         n_bins : int, default 10
-            最大分箱数。
+            最大分箱数量，不含缺失值箱和特殊值箱。
         min_n_bins : int, default 1
-            最小分箱数。
+            允许求解器返回的最小分箱数。
         min_bin_size : float, default 0.02
-            最小单箱样本占比。
+            单箱最小样本占比约束。
         min_bin_n_event : int, default 3
-            单箱最少事件数。
+            单箱最少事件数约束。
         prebinning_method : {"quantile", "uniform", "cart"}, default "cart"
-            预分箱方法。
+            求解前的预分箱策略。
         n_prebins : int, default 50
-            预分箱数量。
+            预分箱数量上限。
         min_prebin_size : float, default 0.01
-            最小预分箱样本占比。
+            预分箱阶段的最小样本占比。
         monotonic_trend : {"ascending", "descending", "auto", "auto_asc_desc"}, default "auto_asc_desc"
-            单调性约束方向。
+            目标事件率的单调性约束方向。
         solver : {"cp", "mip"}, default "cp"
-            求解器类型。
+            数学规划求解器类型。
         time_limit : int, default 10
-            单特征求解时间限制。
+            单个特征的求解时间上限，单位为秒。
         max_cats_to_solver : int, optional, default 100
-            进入求解器的最大类别数。
+            进入求解器搜索空间的最大类别数。
         min_cat_fraction : float, default 0.05
-            最小类别占比。
+            类别特征单一类别的最小样本占比。
         special_values : list, optional
-            特殊值集合。
+            需要独立隔离的特殊值集合。
         missing_values : list, optional
-            缺失值集合。
+            需要额外识别为缺失的值集合。
         cart_params : dict, optional
-            预分箱决策树参数。
+            透传给预分箱决策树的参数。
         join_threshold : int, default 100
-            高基数类别映射的 Join 阈值。
+            高基数类别映射时切换到 Join 模式的阈值。
         n_jobs : int, default -1
-            并行任务数量。
+            并行计算使用的核心数限制。
         """
         super().__init__(
             features=features, cat_features=cat_features, n_bins=n_bins,
@@ -2126,6 +2308,29 @@ class MarsOptimalBinner(MarsBinnerBase):
         self.cart_params = cart_params if cart_params is not None else {}
             
         self.OptimalBinning = OptimalBinning
+
+    def fit(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Optional[pl.Series | pd.Series | np.ndarray | list[Any]] = None,
+    ) -> "MarsOptimalBinner":
+        """
+        拟合最优分箱器。
+
+        Parameters
+        ----------
+        X : pl.DataFrame or pd.DataFrame
+            输入特征矩阵。
+        y : pl.Series or pd.Series or np.ndarray or list, optional
+            目标变量。最优分箱依赖监督信息，因此通常必须提供。
+
+        Returns
+        -------
+        MarsOptimalBinner
+            拟合完成后的最优分箱器实例。
+        """
+        super().fit(X, y)
+        return self
 
     def _fit_impl(self, X: pl.DataFrame, y: pl.Series = None) -> None:
         """

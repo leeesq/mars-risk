@@ -54,7 +54,7 @@ class MarsProfileReport:
 
     Parameters
     ----------
-    overview : DataFrame (pl.DataFrame or pd.DataFrame)
+    overview : DataFrame
         全量特征概览宽表。包含全体特征的全局数据质量（DQ）度量与统计分布特征计算结果。
         
     dq_tables : dict of str to DataFrame
@@ -133,7 +133,14 @@ class MarsProfileReport:
             self._metric_index[k] = "stat"
 
     def get_profile_data(self) -> ProfileData:
-        """返回画像报告的原始数据对象。"""
+        """
+        返回画像报告的原始数据对象。
+
+        Returns
+        -------
+        ProfileData
+            包含概览表、数据质量趋势表字典和统计指标趋势表字典的命名元组。
+        """
         return ProfileData(
             overview=self.overview_table,
             dq_trends=self.dq_tables,
@@ -232,16 +239,21 @@ class MarsProfileReport:
                       sort_by: Optional[Union[str, List[str]]] = None, 
                       sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
         """
-        展示全量概览大宽表。
+        展示特征概览宽表。
 
         Parameters
-       -------
+        ----------
         features : str or List[str], optional
-            需要展示的特征名列表。若为 None，则展示所有特征。
+            需要展示的特征名称。若为 ``None``，展示全部特征。
         sort_by : str or List[str], optional
-            排序的依据列。默认先按 dtype 聚类，再按 missing_rate 排序。
+            排序依据列。若为 ``None``，默认先按 ``dtype`` 再按 ``missing_rate`` 排序。
         sort_ascending : bool, default False
-            排序方向。默认降序 (False)，即把问题最严重的特征排在前面。
+            是否按 ``sort_by`` 升序排列。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            适合在 Jupyter 环境中直接渲染的样式化概览表。
         """
         # 转换为 Pandas 副本以进行切片
         df = _as_pandas_frame(self.overview_table).copy()
@@ -273,17 +285,27 @@ class MarsProfileReport:
         展示指定指标的分组趋势。
 
         Parameters
-       -------
+        ----------
         metric : str
-            指标名称 (如 'missing', 'mean', 'psi')。
+            指标名称，例如 ``"missing"``、``"mean"`` 或 ``"psi"``。
         features : str or List[str], optional
-            需要展示的特征名列表。若为 None，则展示所有特征。
+            需要展示的特征名称。若为 ``None``，展示全部特征。
         group_ascending : bool, default True
-            分组/时间切片列的排序方向 (横向)。True 表示正序（从左到右由旧到新）。
+            分组列或时间切片列的横向排序方向。
         sort_by : str or List[str], default 'total'
-            趋势表内部排序的依据列，可以是单列名或多列名列表。
+            趋势表内部排序依据，可以是单列或多列列表。
         sort_ascending : bool, default False
-            趋势表内部排序的方式，默认为降序。
+            是否按 ``sort_by`` 升序排列。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            样式化趋势热力表。
+
+        Raises
+        ------
+        ValueError
+            当 ``metric`` 不在当前报告支持的指标范围内时抛出。
         """
         # 路由逻辑：查找指标属于哪个表
         source_type = self._metric_index.get(metric)
@@ -360,7 +382,22 @@ class MarsProfileReport:
                     sort_by: Union[str, List[str]] = "total",
                     sort_ascending: bool = False) -> None:
         """
-        导出带有精美样式和趋势热力图的 Excel 报告。
+        导出画像 Excel 报告。
+
+        Parameters
+        ----------
+        path : str, default "mars_report.xlsx"
+            输出文件路径。
+        group_ascending : bool, default True
+            趋势页中分组列的横向排序方向。
+        sort_by : str or list of str, default "total"
+            趋势页内部的排序依据。
+        sort_ascending : bool, default False
+            趋势页内部是否按 ``sort_by`` 升序排列。
+
+        Notes
+        -----
+        该方法依赖 ``xlsxwriter`` 导出带样式的多工作表 Excel 文件。
         """
         logger.info(f"Exporting report to: {path}...")
         
@@ -598,21 +635,29 @@ class MarsEvaluationReport:
 
     Parameters
     ----------
-    summary_table : DataFrame (pl.DataFrame or pd.DataFrame)
+    summary_table : Union[pl.DataFrame, pd.DataFrame]
         特征级汇总评估宽表。涵盖特征的全局预测力（如 IV, KS, AUC）与跨期稳定性边界
         （如最大 PSI, 最小风险逻辑一致性相关系数）的核心度量数据。
-        
-    trend_tables : dict of str to DataFrame
+
+    trend_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
         核心评估指标的跨期趋势字典。键为具体风控指标名称（如 'psi', 'auc', 'iv', 'bad_rate', 
         'risk_corr'），值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
-        
-    detail_table : DataFrame
+
+    detail_table : Union[pl.DataFrame, pd.DataFrame]
         细粒度分箱明细表。包含特征在各时间切片下所有分箱区间的样本分布占比、坏账率、
         提升度（Lift）、证据权重（WOE）及累积风险推演指标。
-        
+
     group_col : str, optional
         驱动趋势分析与分箱明细切片的分组维度标识。若当前处于单点截面评估模式，
         则该值为 None 或全局默认聚合标识。
+    feature_data_source : dict of str to str, optional
+        特征到数据源标签的映射。
+    dt_col : str, optional
+        原始日期列名。
+    missing_by_day_table : Union[pl.DataFrame, pd.DataFrame], optional
+        按日聚合的缺失明细表。
+    report_meta : dict, optional
+        报告元信息，例如目标列、绘图配置或上下文标签。
 
     Attributes
     ----------
@@ -668,7 +713,7 @@ class MarsEvaluationReport:
         初始化报告容器。
 
         Parameters
-       -------
+        ----------
         summary_table : Union[pl.DataFrame, pd.DataFrame]
             特征级汇总表。
         trend_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
@@ -677,6 +722,14 @@ class MarsEvaluationReport:
             最细粒度的分箱明细表。
         group_col : str, optional
             分组列名（例如：'month' 或 'vintage'）。
+        feature_data_source : dict of str to str, optional
+            特征到数据源标签的映射。
+        dt_col : str, optional
+            原始日期列名。
+        missing_by_day_table : Union[pl.DataFrame, pd.DataFrame], optional
+            按日汇总的缺失率明细表。
+        report_meta : dict, optional
+            报告元信息，例如目标列、绘图配置或上下文标签。
         """
         # 直接存储原始数据，不再强制命名为 _pl，以支持多种类型
         self._summary = summary_table
@@ -690,25 +743,62 @@ class MarsEvaluationReport:
         
     @property
     def summary_table(self) -> Union[pl.DataFrame, pd.DataFrame]:
-        """返回汇总统计表（类型与输入一致）。"""
+        """
+        返回特征汇总评估表。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame
+            与构造时输入类型一致的汇总表。
+        """
         return self._summary
 
     @property
     def trend_tables(self) -> Dict[str, Union[pl.DataFrame, pd.DataFrame]]:
-        """返回趋势宽表字典（类型与输入一致）。"""
+        """
+        返回指标趋势表字典。
+
+        Returns
+        -------
+        dict of str to pl.DataFrame or pd.DataFrame
+            键为指标名称，值为对应趋势宽表。
+        """
         return self._trend_dict
 
     @property
     def detail_table(self) -> Union[pl.DataFrame, pd.DataFrame]:
-        """返回分箱明细表（类型与输入一致）。"""
+        """
+        返回分箱明细表。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame
+            与构造时输入类型一致的分箱明细表。
+        """
         return self._detail
 
     @property
     def missing_by_day_table(self) -> Optional[Union[pl.DataFrame, pd.DataFrame]]:
+        """
+        返回按日聚合的缺失明细表。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame or None
+            若评估流程生成了按日缺失统计，则返回对应表；否则返回 ``None``。
+        """
         return self._missing_by_day
 
     @property
     def report_meta(self) -> Dict[str, Any]:
+        """
+        返回报告元信息字典。
+
+        Returns
+        -------
+        dict of str to Any
+            生成报告时记录的辅助元数据。
+        """
         return self._report_meta
 
     def get_evaluation_data(self) -> Tuple[
@@ -717,12 +807,13 @@ class MarsEvaluationReport:
         Union[pl.DataFrame, pd.DataFrame]
     ]:
         """
-        获取所有原始数据。
-        
+        获取评估报告的原始数据。
+
         Returns
-       ----
-        Tuple
-            返回 (汇总表, 趋势表字典, 明细表)，类型与输入一致。
+        -------
+        tuple
+            依次返回 ``(summary_table, trend_tables, detail_table)``，
+            且各对象类型与构造时输入保持一致。
         """
         return self.summary_table, self.trend_tables, self.detail_table
 
@@ -2880,7 +2971,32 @@ __RUNTIME_SCRIPT__
         include_charts: bool = True,
     ) -> None:
         """
-        Export a self-contained interactive HTML report.
+        导出自包含的交互式 HTML 报告。
+
+        Parameters
+        ----------
+        path : str, default "mars_bin_report.html"
+            输出文件路径。
+        report_name : str, default "MARS Evaluation Report"
+            HTML 页面标题与报告名称。
+        max_plots : int, default 20
+            图表区域最多展示的特征数量。
+        sort_by : str, default "iv"
+            图表和汇总视图默认使用的排序指标。
+        ascending : bool, default False
+            是否按 ``sort_by`` 升序排列。
+        include_summary : bool, default True
+            是否包含汇总表区域。
+        include_trends : bool, default True
+            是否包含趋势分析区域。
+        include_detail : bool, default True
+            是否包含分箱明细区域。
+        include_charts : bool, default True
+            是否包含图表区域。
+
+        Notes
+        -----
+        导出的 HTML 为单文件报告，适合脱离 Notebook 独立分享或归档。
         """
         return self._write_html_v2(
             path=path,
@@ -4282,9 +4398,14 @@ __RUNTIME_SCRIPT__
         展示特征汇总评分表。
 
         Parameters
-       -------
+        ----------
         features : str or List[str], optional
-            需要展示的特征名列表。若为 None，则展示所有特征。
+            需要展示的特征名称。若为 ``None``，展示全部特征。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            样式化后的特征汇总表。
         """
         df: pd.DataFrame = _as_pandas_frame(self.summary_table).copy()
         
@@ -4340,7 +4461,7 @@ __RUNTIME_SCRIPT__
         风控业务语义优化的专属色盘 (Colormap)。
 
         Parameters
-       -------
+        ----------
         metric : str
             需要展示的指标名称。支持的选项可通过 `self.trend_tables.keys()` 查看
             (通常包含 'psi', 'auc', 'ks', 'iv', 'bad_rate', 'risk_corr')。
@@ -4354,9 +4475,14 @@ __RUNTIME_SCRIPT__
             特征行的排序方向 (纵向)。默认降序 (False)，即把表现最差/最好的特征排在最上面。
 
         Returns
-       ----
+        -------
         pd.io.formats.style.Styler
             渲染完成的热力图对象。在 Jupyter Notebook 环境下会自动渲染为精美表格。
+
+        Raises
+        ------
+        ValueError
+            当 ``metric`` 不在当前报告支持的趋势指标集合中时抛出。
         """
         if metric not in self.trend_tables:
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
@@ -4420,10 +4546,10 @@ __RUNTIME_SCRIPT__
 
     def write_excel(self, path: str = "mars_bin_report.xlsx", engine: str = "openpyxl") -> None:
         """
-        [Professional Export] 自动化导出分箱明细表。
-        
+        导出评估 Excel 报告。
+
         Parameters
-        -------
+        ----------
         path : str
             导出的 Excel 文件路径。
         engine : str, default="openpyxl"
@@ -4431,6 +4557,11 @@ __RUNTIME_SCRIPT__
             - "auto": 自动检测，Win/Mac 下优先尝试 xlwings，若失败或在 Linux 下则回退至 openpyxl。
             - "xlwings": 强制使用 xlwings 引擎 (依赖本地安装的 Excel 应用程序，格式保留最完美)。
             - "openpyxl": 强制使用 openpyxl 引擎 (无需安装 Excel，跨平台兼容性好)。
+
+        Raises
+        ------
+        ValueError
+            当 ``engine`` 不在支持列表中时抛出。
         """
         valid_engines = ["auto", "xlwings", "openpyxl"]
         if engine not in valid_engines:

@@ -47,7 +47,31 @@ def _ensure_binner_scorecard_artifacts(
 @dataclass
 class MarsScorecard:
     """
-    Scorecard artifact built from a fitted binner and LR coefficients.
+    评分卡结果对象。
+
+    该对象封装了由已拟合分箱器和逻辑回归系数推导出的分值明细表，
+    同时保留评分卡刻度参数，便于导出 CSV、Excel 或生成部署 SQL。
+
+    Attributes
+    ----------
+    points_table : pl.DataFrame or pd.DataFrame
+        评分卡分值明细表，包含特征、分箱、WOE、系数与最终分值。
+    base_points : float
+        基础分。
+    factor : float
+        评分卡缩放因子。
+    offset : float
+        评分卡偏移量。
+    pdo : float
+        Points to Double the Odds 参数。
+    base_score : float
+        基准分数。
+    base_odds : float
+        基准赔率。
+    intercept : float
+        逻辑回归截距项。
+    coefficients : dict of str to float
+        特征系数字典。
     """
 
     points_table: Union[pl.DataFrame, pd.DataFrame]
@@ -62,10 +86,31 @@ class MarsScorecard:
     _binner: MarsBinnerBase
 
     def write_csv(self, path: str = "mars_scorecard.csv") -> None:
+        """
+        导出评分卡分值表为 CSV 文件。
+
+        Parameters
+        ----------
+        path : str, default "mars_scorecard.csv"
+            输出文件路径。
+        """
         df = self.points_table.to_pandas() if isinstance(self.points_table, pl.DataFrame) else self.points_table
         df.to_csv(path, index=False)
 
     def write_excel(self, path: str = "mars_scorecard.xlsx") -> None:
+        """
+        导出评分卡为 Excel 文件。
+
+        Parameters
+        ----------
+        path : str, default "mars_scorecard.xlsx"
+            输出文件路径。
+
+        Notes
+        -----
+        导出结果包含 ``Config`` 与 ``Points`` 两个工作表，分别记录评分卡参数
+        与分值明细。若环境缺少 ``xlsxwriter``，会自动回退到 ``openpyxl``。
+        """
         df = self.points_table.to_pandas() if isinstance(self.points_table, pl.DataFrame) else self.points_table
         config_df = pd.DataFrame(
             [
@@ -150,6 +195,25 @@ class MarsScorecard:
         score_name: str = "score",
         include_base_points: bool = True,
     ) -> str:
+        """
+        生成评分卡 SQL 片段。
+
+        Parameters
+        ----------
+        features : list of str, optional
+            需要生成 SQL 的特征列表。默认为全部系数特征。
+        table_prefix : str, default "t"
+            SQL 中引用特征列时使用的表别名前缀。传空字符串表示不加前缀。
+        score_name : str, default "score"
+            最终总分字段名称。
+        include_base_points : bool, default True
+            是否在总分表达式中包含基础分。
+
+        Returns
+        -------
+        str
+            可直接嵌入 ``SELECT`` 语句的 SQL 片段。若没有任何有效特征，则返回空字符串。
+        """
         target_features = features or list(self.coefficients.keys())
         valid_features = [f for f in target_features if f in self.coefficients]
         if not valid_features:
@@ -179,7 +243,33 @@ def build_scorecard(
     base_odds: float,
 ) -> MarsScorecard:
     """
-    Build a scorecard from a fitted binner and logistic regression coefficients.
+    基于分箱器和逻辑回归系数构建评分卡。
+
+    Parameters
+    ----------
+    binner : MarsBinnerBase
+        已拟合的分箱器，且能够提供分箱映射与 WOE 信息。
+    coefficients : dict of str to float
+        特征系数字典，键为特征名，值为对应逻辑回归系数。
+    intercept : float
+        逻辑回归截距项。
+    pdo : float
+        Points to Double the Odds 参数，必须为正数。
+    base_score : float
+        评分卡基准分数。
+    base_odds : float
+        基准赔率，必须为正数。
+
+    Returns
+    -------
+    MarsScorecard
+        构建完成的评分卡对象。
+
+    Raises
+    ------
+    ValueError
+        当 ``pdo`` 或 ``base_odds`` 非正，``coefficients`` 为空，
+        或分箱器缺少构建评分卡所需的映射信息时抛出。
     """
     binner._check_is_fitted()
 

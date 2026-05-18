@@ -39,11 +39,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
         若提供此参数，评估器将直接复用该分箱器内部的区间边界与映射规则（`bin_cuts_` 等）；
         若为 None，评估器将在执行 `evaluate` 时，依据后续配置自动实例化并拟合全新的分箱器。
         
-    binning_type : {'native', 'opt'}, default 'native'
+    binning_type : {"native", "opt"}, optional
         底层离散化引擎的动态路由选择。仅在 `binner` 为 None 时生效。
         - 'native': 调用基于 Scikit-Learn 与 Polars 的原生分箱器 (`MarsNativeBinner`)。
         - 'opt': 调用基于数学规划的最优分箱器 (`MarsOptimalBinner`)。
-        
+    bining_type : {"native", "opt"}, optional
+        ``binning_type`` 的历史兼容别名，已弃用。
+    feature_data_source : dict of str to list of str, optional
+        特征到数据源标签的映射，可用于多源特征的分析与展示。
     **binner_kwargs
         任意透传至底层分箱器初始化方法的超参数字典（例如 `n_bins`, `method`, `min_bin_size` 等）。
         仅在 `binner` 为 None 且需要引擎内部动态构建分箱器时生效。系统会自动过滤目标
@@ -104,13 +107,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
         target : str, default "target"
             目标变量列名。
         binner : MarsBinnerBase, optional
-            预先构造好的分箱器实例。
+            已拟合或待复用的分箱器实例。提供后将优先复用其分箱规则。
         binning_type : {"native", "opt"}, optional
-            动态构建分箱器时采用的分箱策略。
+            在未提供 ``binner`` 时，内部动态构建分箱器所采用的类型。
         bining_type : {"native", "opt"}, optional
-            历史兼容参数名，已弃用。
+            ``binning_type`` 的历史兼容别名，已弃用。
+        feature_data_source : dict of str to list of str, optional
+            特征到数据源标签的映射，可用于多源特征的分析与展示。
         **binner_kwargs
-            透传给分箱器构造函数的额外参数。
+            透传给底层分箱器构造函数的额外参数。
+
+        Raises
+        ------
+        ValueError
+            当同时传入 ``binning_type`` 和 ``bining_type`` 且取值冲突时抛出。
         """
         super().__init__()
         self.target = target
@@ -151,50 +161,45 @@ class MarsBinEvaluator(MarsBaseEstimator):
         batch_size: int = 100
     ) -> "MarsEvaluationReport":
         """
-        执行特征评估。
+        执行特征分箱评估并生成报告。
 
         Parameters
         ----------
         df : Union[pl.DataFrame, pd.DataFrame]
-            待评估的数据集 (Evaluation Set)，支持 Pandas DataFrame（内部自动转换为 Polars）。
+            待评估的数据集，支持 Polars 与 Pandas DataFrame。
         features : Optional[List[str]]
-            指定需要评估的特征列名列表。
-            若为 None，系统将自动扫描除 `target`, `weights`, `group` 之外的所有列。
+            指定需要评估的特征列表。若为 ``None``，将自动扫描除目标列、
+            分组列和权重列外的全部候选特征。
         profile_by : Optional[str]
-            趋势分析的分组维度 (Group Key)。
-            - 可以是具体的分类列 (e.g., 'city', 'vintage').
-            - 也可以是时间粒度指令 ('day', 'week', 'month', '3d', '14d'等)，需配合 `dt_col` 使用。
+            趋势分析的分组维度，可以是数据中已有列名，也可以是
+            ``"day"``、``"week"``、``"month"`` 或 ``"7d"`` 这类时间粒度指令。
         dt_col : Optional[str]
-            日期列名 (Date Column)。
-            - 用于辅助 `profile_by` 生成时间切片。
-            - 默认: 若提供了 `dt_col` 但未指定 `profile_by`，默认按 **'month'** 聚合。
+            用于辅助 ``profile_by`` 生成时间切片的日期列名。
+        feature_start_aware_baseline : bool, default False
+            是否按特征首次出现的分组切片作为稳定性计算基准。
+        feature_data_source : dict of str to list of str, optional
+            本次评估中使用的特征数据源标签映射。若未提供，则回退到评估器实例级配置。
         psi_include_missing : bool, default=False
-            PSI 计算是否包含缺失值箱 (Missing Bin)。
-            - True: 将 Missing Bin 视为一个独立的分箱参与 PSI 计算。
-            - False (默认): 在计算 PSI 时忽略 Missing Bin，基准分布和实际分布均不包含该箱。
+            计算 PSI 时是否包含缺失值箱。
         psi_include_special : bool, default=False
-            PSI 计算是否包含特殊值箱 (Special Bin)。
-            - True: 将 Special Bin 视为一个独立的分箱参与 PSI 计算。
-            - False (默认): 在计算 PSI 时忽略 Special Bin，基准分布和实际分布均不包含该箱。
+            计算 PSI 时是否包含特殊值箱。
         benchmark_df : Union[pl.DataFrame, pd.DataFrame, None]
-            PSI 计算的基准数据集 (Expected Distribution Reference)。
-            - None (默认): 使用 `df` 中时间/分组顺序最早的一组作为基准 (Internal Baseline)。
-            - DataFrame: 使用外部传入的数据集（如训练集）作为基准 (External Baseline)。
+            PSI 计算使用的基准数据集。未提供时默认使用 ``df`` 中最早的分组切片。
         weights_col : Optional[str]
-            样本权重列名。
-            若指定，所有的统计指标 (IV, AUC, KS, PSI, Lift) 均基于加权频数计算。
-        batch_size : int, default=500
-            Map 阶段的特征切片大小。
-            - 较小的值 (e.g., 100) 降低内存峰值，适合超宽表 (5000+ features)。
-            - 较大的值 (e.g., 1000) 提升 I/O 吞吐量，适合内存充足的场景。
+            样本权重列名。提供后，IV、AUC、KS、PSI、Lift 等指标
+            将基于加权频数计算。
+        batch_size : int, default 100
+            特征切片的批处理大小。
 
         Returns
         -------
         MarsEvaluationReport
-            评估报告容器对象。包含以下核心属性：
-            - `summary_table`: 特征维度的审计汇总表 (IV, AUC, PSI_max, Efficiency_Score)。
-            - `trend_tables`: 指标维度的趋势宽表字典 (Key: 'auc', 'psi'...)。
-            - `detail_table`: 最细粒度的分箱明细表。
+            特征评估报告对象，包含汇总表、趋势表和分箱明细表。
+
+        Raises
+        ------
+        ValueError
+            当真实目标列存在但取值少于两个类别时抛出。
         """
         
         # 上下文准备
@@ -1901,29 +1906,34 @@ class MarsBinEvaluator(MarsBaseEstimator):
         dpi: int = 150
     ):
         """
-        [Visualization] 批量绘制特征分箱风险趋势图。
+        批量绘制特征分箱风险趋势图。
 
-        该图表展示了特征分箱在不同时间切片下的样本占比和坏率表现，是特征筛选最直观的依据。
+        该方法用于展示特征在不同分组切片下的样本分布与坏率走势，
+        便于快速识别风险倒挂、稳定性漂移和分箱效果异常。
 
         Parameters
         ----------
         report : MarsEvaluationReport, optional
-            由 evaluate 生成的报告对象。
+            由 ``evaluate`` 生成的评估报告对象。
         df_detail : Union[pl.DataFrame, pd.DataFrame], optional
-            直接传入明细表（若未提供 report）。支持 Pandas DataFrame。
+            直接传入分箱明细表；当未提供 ``report`` 时使用。
         features : str or List[str], optional
-            要绘图的特征名。若为 None，绘制明细表中所有特征。
+            需要绘图的特征名称。若为 ``None``，绘制明细表中的全部特征。
         group_col : str, optional
-            分组列名。
+            分组列名。当直接传入 ``df_detail`` 且无法自动推断时可显式指定。
         target_name : str, optional
-            目标变量名称。用于图表标题显示。
-            若不提供，默认使用 self.target。
+            图表标题中展示的目标名称。未提供时默认使用 ``self.target``。
         sort_by : str, default "iv"
-            特征展示的排序指标。
+            绘图特征的排序依据。
         ascending : bool, default False
-            是否升序排列。
+            是否按 ``sort_by`` 升序绘制。
         dpi : int, default 150
             图像分辨率。
+
+        Raises
+        ------
+        ValueError
+            当 ``report`` 和 ``df_detail`` 同时缺失时抛出。
         """
         target_df = None
         target_group_col = None
@@ -2016,80 +2026,60 @@ def profile_risk(
 
     Parameters
     ----------
-    df : DataFrame (pl.DataFrame or pd.DataFrame)
-        待评估的数据集上下文环境。
-        
+    df : pl.DataFrame or pd.DataFrame
+        待评估的数据集。
     target : str or list of str, optional
-        目标变量列名。支持单目标与多目标数组。在多目标模式下，首个元素被视为主目标
-        参与分箱规则训练。若为 None，系统将激活无标签模式，强制采用无监督分箱引擎
-        并仅输出分布漂移类指标。
-        
+        目标变量列名。支持单目标和多目标模式；在多目标模式下，首个目标会被用作
+        主目标来训练分箱边界。若为 ``None``，将启用无标签模式，仅输出分布类指标。
     features : list of str, optional
-        待评估的特征候选集合。若为 None，系统将自动扫描并剔除已知标识列后的全量特征。
-        
+        需要评估的特征候选集合。默认为自动推断的全部候选特征。
+    feature_data_source : dict of str to list of str, optional
+        特征到数据源标签的映射，用于报告展示或分源分析。
     profile_by : str, optional
-        稳定性探查的分组聚合维度（如特定客群或时间切片标识）。
-        
+        稳定性分析的分组维度，可为业务分群列或时间粒度指令。
     dt_col : str, optional
-        时间基准列名。配合 `profile_by` 中的时间粒度指令（如 'month', '7d'）生成动态截断窗口。
-        
+        配合 ``profile_by`` 进行时间聚合的日期列名。
+    feature_start_aware_baseline : bool, default False
+        是否按特征首次出现的分组切片作为基准，计算稳定性指标。
     binning_type : {'native', 'opt'}, default 'native'
-        底层分箱引擎策略。'native' 调用极速原生分箱，'opt' 调用支持约束规划的最优分箱。
-        
+        底层分箱器类型。
     n_bins : int, default 10
-        特征分箱的目标最大物理区间数。
-        
+        分箱的目标最大区间数。
     min_bin_size : float, default 0.02
-        单一分箱的最小物理样本占比约束。
-        
+        单一分箱的最小样本占比约束。
     monotonic_trend : str, default 'auto_asc_desc'
-        分箱单调性约束方向，仅在使用最优分箱策略时生效。
-        
+        最优分箱时使用的单调性约束方向。
     special_values : list of Any, optional
-        领域自定义特殊值集合。底部分箱引擎将对这些数值执行强制物理隔离。
-        
+        需要单独隔离的特殊值集合。
     missing_values : list of Any, optional
-        领域自定义缺失值集合。
-        
+        需要额外识别为缺失的值集合。
     binner_kwargs : dict, optional
-        透传至底层分箱器初始化方法的超参数映射字典。
-        
-    benchmark_df : DataFrame, optional
-        群体稳定性 (PSI) 计算的参照基准数据集。若未提供，默认提取数据分布中最靠前
-        的分组切片作为基准。
-        
+        透传到底层分箱器的额外构造参数。
+    benchmark_df : pl.DataFrame or pd.DataFrame, optional
+        群体稳定性计算的基准数据集。
     weights_col : str, optional
-        样本权重列名。配置后将激活加权频数聚合机制。
-        
+        样本权重列名。
     plot : bool, default True
-        控制是否在评估结束后自动触发特征分组风险趋势图的渲染。
-        
+        是否在评估完成后自动绘制风险趋势图。
     plot_target : str or list of str, optional
-        多目标模式下，指定需要执行图表渲染的目标名称集合。默认为渲染所有已知目标。
-        
+        多目标模式下需要绘图的目标名称集合。默认为所有目标。
     max_plots : int, default 10
-        图表渲染的特征上限熔断值。系统将依 `sort_by` 条件选取头部特征进行截断渲染。
-        
+        自动绘图时展示的特征数量上限。
     sort_by : str, default 'iv'
-        评估图表可视化的排序依据指标。
-        
+        自动绘图时的特征排序依据。
     ascending : bool, default False
-        排序方向控制。
-        
+        自动绘图时是否按 ``sort_by`` 升序排列。
     dpi : int, default 300
-        图表渲染的输出分辨率。
-        
+        绘图输出分辨率。
     n_jobs : int, default -1
-        并行计算引擎的并发核心数限制。
-        
+        并行计算使用的核心数限制。
     batch_size : int, default 100
-        底层评估引擎在执行特征切片遍历时的并发分块大小。
+        底层评估引擎处理特征切片时的批处理大小。
 
     Returns
     -------
     tuple of (MarsEvaluationReport, MarsBinEvaluator)
-        包含统计汇总报表与趋势透视表的报告容器对象，以及持有最终分箱规则实体
-        的评估器实例。
+        评估报告对象与对应的评估器实例。
 
     Notes
     -----
@@ -2097,6 +2087,11 @@ def profile_risk(
     算法，强制回退至基于等频策略的无监督原生分箱模式，以保障数据集探查的连续性。
     在多目标评估场景中，鉴于主副目标的评价基准差异，报告对象内的趋势宽表（Trend Tables）
     将默认仅保留对主目标维度的时序分析结果。
+
+    Raises
+    ------
+    ValueError
+        当底层评估流程校验失败时，由 ``MarsBinEvaluator`` 继续向上抛出。
     """
     
     input_is_pandas = isinstance(df, pd.DataFrame)

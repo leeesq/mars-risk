@@ -106,7 +106,9 @@ binner = MarsNativeBinner(
     special_values=[-999],
 )
 
-X_binned = binner.fit_transform(X, y)
+binner.fit(X, y)
+X_binned = binner.transform(X, return_type="index")
+X_woe = binner.transform(X, return_type="woe")
 income_mapping = binner.get_bin_mapping("income")
 ```
 

@@ -33,6 +33,8 @@ class MarsStatsSelector(MarsBaseSelector):
         目标变量列名。
     features : list of str, optional
         特征候选池。若为 None，将自动扫描输入数据集中剔除目标列与时间（或分组）列后的全量特征。
+    feature_data_source : dict of str to list of str, optional
+        特征到数据源标签的映射。
     time_col : str, optional
         时间切片列名。用于界定特征表现的时间序列，支撑跨期稳定性与风险逻辑一致性的测算。
     profile_by : str, optional
@@ -42,6 +44,8 @@ class MarsStatsSelector(MarsBaseSelector):
         - 时间粒度聚合指令（如 'month', 'week', 'day' 及自定义滚动周期的 '7d', '14d' 等），用于执行时间序列分析。
         - 当使用时间粒度指令时，必须协同配置 `time_col` 参数提供原始时间基准，底层引擎将基于该时间戳列自动完成时间窗口的动态截断与衍生列生成。
         - 若仅配置了 `time_col` 参数而未显式声明本参数，系统将默认采用 'month' 级别的时间跨期聚合策略。
+    feature_start_aware_baseline : bool, default False
+        是否按特征首次出现时点感知稳定性基准。
     missing_thr : float, default 0.90
         缺失率控制阈值。超过该阈值的特征将在数据质量校验阶段被剔除。
     zeros_thr : float, default 0.90
@@ -60,7 +64,7 @@ class MarsStatsSelector(MarsBaseSelector):
         风险逻辑一致性相关系数 (RiskCorr) 下限，用于防范特征分箱的违约率排序逻辑随时间发生跨期翻转。
     corr_thr : float, optional, default 0.95
         皮尔逊相关系数上限。用于执行基于信息值的贪心共线性去重。
-    skip_rough_scan : bool, default True
+    skip_rough_scan : bool, default False
         控制是否跳过基于原生分箱器 (`MarsNativeBinner`) 的特征筛选阶段。
     skip_fine_scan : bool, default False
         控制是否跳过基于最优分箱器 (`MarsOptimalBinner`) 的特征筛选阶段。
@@ -74,9 +78,9 @@ class MarsStatsSelector(MarsBaseSelector):
         白名单特征列表。列表内的特征将无视各项统计与稳定性约束，强制保留至结果集。
     black_list : list of str, optional
         黑名单特征列表。列表内的特征将在评估管道启动前被物理剥离。
-    missing_values : list of Any, optional
+    missing_values : list, optional
         领域自定义缺失值定义（如 [-999, 'unknown']）。将合并计入数据质量模块的缺失率统计，并分配至独立的缺失值箱。
-    special_values : list of Any, optional
+    special_values : list, optional
         领域自定义特殊值定义。底层分箱引擎将对此类数值执行强制物理隔离，不参与正常区间切分。
     binning_params : dict, optional
         透传至最优分箱器 (`MarsOptimalBinner`) 的初始化超参数字典。
@@ -84,7 +88,7 @@ class MarsStatsSelector(MarsBaseSelector):
         透传至原生分箱器 (`MarsNativeBinner`) 的初始化超参数字典。
     max_samples : int, optional
         全局随机采样上限，用于控制超大规模数据集下的运算时间边界。
-    batch_size : int, default 100
+    batch_size : int, optional, default 100
         向量化计算执行时的特征列并发分块大小，防范底层查询优化器 (Query Planner) 解析耗时爆炸。
     n_jobs : int, default -1
         并行计算的分配核心数限制。
@@ -155,10 +159,14 @@ class MarsStatsSelector(MarsBaseSelector):
             目标变量列名。
         features : list of str, optional
             候选特征列表。
+        feature_data_source : dict of str to list of str, optional
+            特征到数据源标签的映射。
         time_col : str, optional
             时间列名。
         profile_by : str, optional
             分组或时间聚合维度。
+        feature_start_aware_baseline : bool, default False
+            是否按特征首次出现时点感知稳定性基准。
         missing_thr : float, default 0.90
             缺失率阈值。
         zeros_thr : float, default 0.90
@@ -262,7 +270,7 @@ class MarsStatsSelector(MarsBaseSelector):
     @time_it
     def fit(self, X: pl.DataFrame, y: Optional[Any] = None) -> "MarsStatsSelector":
         """
-        触发自动化特征过滤管道。
+        触发自动化特征筛选流程。
 
         Parameters
         ----------
@@ -275,6 +283,11 @@ class MarsStatsSelector(MarsBaseSelector):
         -------
         MarsStatsSelector
             完成拟合与裁剪的自身实例。
+
+        Raises
+        ------
+        ValueError
+            当粗筛和精筛同时被禁用时抛出。
         """
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
@@ -467,7 +480,13 @@ class MarsStatsSelector(MarsBaseSelector):
         })
     
     def show_summary(self):
-        """渲染并打印交互式数据特征选择概要报表。"""
+        """
+        展示特征筛选漏斗摘要。
+
+        Notes
+        -----
+        在 Notebook 环境中优先返回富样式表格；若环境不支持，则退化为日志打印。
+        """
         if not self._funnel_stats:
             logger.warning("No funnel stats available. Run .fit() first.")
             return
@@ -527,7 +546,13 @@ class MarsStatsSelector(MarsBaseSelector):
         return feat in self.white_list
     
     def clear_cache(self) -> None:
-        """释放底层物理分箱器引擎关联的数据集上下文镜像。"""
+        """
+        释放缓存的分箱器上下文。
+
+        Notes
+        -----
+        该方法会清理最终分箱器中缓存的数据引用，并主动触发一次垃圾回收。
+        """
         if self._stage3_binner is not None:
             self._stage3_binner.clear_cache()
             
@@ -842,10 +867,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> Tuple["MarsEvaluationReport", "MarsBinEvaluator"]:
         """
-        触发特征评估引擎以生成筛选闭环的终态报告。
-
-        复用特征截取阶段生成的最优分箱结构，在特定数据环境进行详细指标的
-        计算渲染。
+        基于当前筛选结果生成最终评估报告。
 
         Parameters
         ----------
@@ -856,6 +878,11 @@ class MarsStatsSelector(MarsBaseSelector):
         -------
         tuple of (MarsEvaluationReport, MarsBinEvaluator)
             包含汇总统计报表与趋势透视表的报告容器，以及执行规则推演的评估器实例。
+
+        Raises
+        ------
+        ValueError
+            当当前选择器尚未拟合，或没有任何入选特征时抛出。
         """
         self._check_is_fitted()
         
@@ -908,7 +935,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def export_selector_report(self, path: str = "mars_selector_report.xlsx") -> None:
         """
-        执行选择器决策轨迹度量的持久化导出。
+        导出选择器决策报告。
 
         Parameters
         ----------
@@ -950,7 +977,7 @@ class MarsStatsSelector(MarsBaseSelector):
         blacklist_stages: Optional[List[str]] = None
     ):
         """
-        保存当前决策树执行的规则池终态以便次级会话恢复调用。
+        保存当前筛选结果中的白名单与黑名单。
 
         Parameters
         ----------
@@ -958,6 +985,11 @@ class MarsStatsSelector(MarsBaseSelector):
             JSON 结构存储路径。
         blacklist_stages : list of str, optional
             界定需写入惩罚名单的阶段。支持字符串模糊匹配（例如 'quality' 匹配质量校验环节）。
+
+        Notes
+        -----
+        导出的 ``white_list`` 为当前最终入选特征；``black_list`` 为被剔除特征与
+        用户预设黑名单的并集。
         """
         self._check_is_fitted()
         
@@ -992,7 +1024,7 @@ class MarsStatsSelector(MarsBaseSelector):
     @classmethod
     def load_lists_from_json(cls, path: str) -> Dict[str, List[str]]:
         """
-        恢复挂载 JSON 持久化向量记录中的池规则名单。
+        从 JSON 文件加载白名单与黑名单。
 
         Parameters
         ----------
@@ -1002,7 +1034,7 @@ class MarsStatsSelector(MarsBaseSelector):
         Returns
         -------
         dict
-            涵盖解析后的免检列表与惩罚列表。
+            包含 ``white_list`` 与 ``black_list`` 的字典。
         """
         if not os.path.exists(path):
             logger.warning(f"File {path} not found. Returning empty lists.")
@@ -1013,9 +1045,7 @@ class MarsStatsSelector(MarsBaseSelector):
         
     def print_stats(self, iv_thresholds: Optional[List[float]] = None) -> None:
         """
-        渲染执行期结束后的预测效能量化摘要。
-
-        基于指定的临界参数域输出存活特征的高维分布概览与梯度统计信息。
+        打印最终入选特征的统计摘要。
 
         Parameters
         ----------
