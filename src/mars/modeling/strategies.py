@@ -555,7 +555,7 @@ class MarsCatBoostStrategy(MarsBaseModelTuner):
             CatBoost 默认超参数搜索空间。
         """
         return {
-            "depth": ("int", 4, 8),
+            "depth": ("int", 2, 5),
             "learning_rate": ("float", 0.02, 0.2, 0.02),
             "l2_leaf_reg": ("float", 1.0, 10.0, 1.0),
             "random_strength": ("float", 0.0, 2.0, 0.2),

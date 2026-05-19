@@ -35,9 +35,11 @@ secret_config.py
 
 # 示例文件
 examples/
+modeling_artifacts/
 
 # 测试与教程运行产物
 tests/_artifacts/
 tutorial/__pycache__/
 tutorial/*.tmp
 tutorial/*.log
+.html

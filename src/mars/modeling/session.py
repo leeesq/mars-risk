@@ -127,16 +127,40 @@ class MarsModelingSession:
         benchmark_col: Optional[str] = None,
         time_col: Optional[str] = None,
         val_target_col: Optional[str] = None,
+        feature_cols: Optional[Sequence[str]] = None,
+        importance_table: Optional[pd.DataFrame] = None,
     ) -> MarsModelingReport:
         """Delegate report generation to :class:`MarsModelEvaluator`."""
+        run = self.last_run
+        resolved_feature_cols = list(feature_cols) if feature_cols is not None else list(self.tuner.spec.features)
+        resolved_importance = importance_table
+        if resolved_importance is None and run is not None:
+            resolved_importance = run.importance_table.copy()
         evaluator = MarsModelEvaluator(
             group_col=self.tuner.spec.dataset_flag_col,
             target_col=self.tuner.spec.target,
             benchmark_col=benchmark_col if benchmark_col is not None else self.tuner.spec.benchmark_col,
             time_col=time_col if time_col is not None else self.tuner.spec.time_col,
             val_target_col=val_target_col,
+            feature_cols=resolved_feature_cols,
+            importance_table=resolved_importance,
         )
-        return evaluator.evaluate(df, pred_col=pred_col)
+        report = evaluator.evaluate(df, pred_col=pred_col)
+        if run is not None:
+            report.metadata.update(
+                {
+                    "history_table": run.history_table.copy(),
+                    "importance_table": resolved_importance.copy() if resolved_importance is not None else run.importance_table.copy(),
+                    "training_config": dict(run.training_config),
+                    "library_versions": dict(run.library_versions),
+                    "backend_data_mode": run.backend_data_mode,
+                    "model_type": run.model_type,
+                    "optimize_metric": run.optimize_metric,
+                    "best_score": run.best_score,
+                    "best_iteration": run.best_iteration,
+                }
+            )
+        return report
 
     def replay(
         self,
