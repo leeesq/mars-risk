@@ -463,10 +463,15 @@ class _ModelPredictor:
         model: Any,
         feature_list: Sequence[str],
         categorical_features: Optional[Sequence[str]] = None,
+        category_levels: Optional[Dict[str, Sequence[Any]]] = None,
     ) -> None:
         self.model: Any = model
         self.features: List[str] = list(feature_list)
         self.categorical_features: List[str] = list(categorical_features or [])
+        self.category_levels: Dict[str, List[Any]] = {
+            str(feature): list(levels)
+            for feature, levels in dict(category_levels or {}).items()
+        }
 
     def _safe_predict_logic(self, df: pd.DataFrame) -> np.ndarray:
         """Dispatch prediction logic to the correct backend implementation."""
@@ -477,7 +482,11 @@ class _ModelPredictor:
         X = df.loc[:, self.features].copy()
         for feature in self.categorical_features:
             if feature in X.columns:
-                X[feature] = X[feature].astype("category")
+                categories = self.category_levels.get(feature)
+                if categories is not None:
+                    X[feature] = X[feature].astype(pd.CategoricalDtype(categories=categories))
+                else:
+                    X[feature] = X[feature].astype("category")
 
         xgb = _optional_import("xgboost")
         lgb = _optional_import("lightgbm")

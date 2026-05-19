@@ -103,7 +103,7 @@ def _build_importance_table(
 
 def _as_probability(preds: Any) -> np.ndarray:
     """Return probabilities, applying a sigmoid when a backend exposes raw margins."""
-    arr = np.asarray(preds, dtype=float)
+    arr = np.asarray(preds, dtype=float).reshape(-1)
     if arr.size and (np.nanmin(arr) < 0.0 or np.nanmax(arr) > 1.0):
         arr = 1.0 / (1.0 + np.exp(-arr))
     return arr
@@ -127,7 +127,15 @@ class _CatBoostKSMetric:
 
     def evaluate(self, approxes: Any, target: Any, weight: Any) -> tuple[float, float]:
         preds = _as_probability(approxes[0])
-        return calculate_ks(np.asarray(target), preds) / 100.0, 1.0
+        target_arr = np.asarray(target).reshape(-1)
+        if preds.size == 0 and target_arr.size == 0:
+            return 0.0, 1.0
+        if preds.size != target_arr.size:
+            raise ValueError(
+                "CatBoost KS metric received mismatched prediction and target lengths: "
+                f"{preds.size} vs {target_arr.size}."
+            )
+        return calculate_ks(target_arr, preds) / 100.0, 1.0
 
     def get_final_error(self, error: float, weight: float) -> float:
         return float(error) * 100.0

@@ -91,6 +91,7 @@ class MarsModelingRun:
     library_versions: Dict[str, Any] = field(default_factory=dict)
     feature_schema: Dict[str, Any] = field(default_factory=dict)
     backend_data_mode: str = "unknown"
+    category_levels: Dict[str, List[Any]] = field(default_factory=dict)
 
     def write_artifact(self, path: str) -> Path:
         """Write the tuning result into a local artifact directory."""
@@ -124,6 +125,7 @@ class MarsModelingRun:
             "library_versions": self.library_versions,
             "feature_schema": self.feature_schema,
             "backend_data_mode": self.backend_data_mode,
+            "category_levels": self.category_levels,
             "files": {
                 "history": history_path.name,
                 "importance": importance_path.name,
@@ -173,6 +175,7 @@ class MarsModelingRun:
             library_versions=dict(metadata.get("library_versions", {})),
             feature_schema=dict(metadata.get("feature_schema", {})),
             backend_data_mode=str(metadata.get("backend_data_mode", "unknown")),
+            category_levels=dict(metadata.get("category_levels", {})),
         )
 
 

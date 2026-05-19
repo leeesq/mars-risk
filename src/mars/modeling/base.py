@@ -328,6 +328,7 @@ class MarsBaseModelTuner(ABC):
         self.early_stopping_rounds: int = 50
         self.training_metric: str = "auc"
         self.backend_data_mode: str = "unset"
+        self.category_levels: Dict[str, List[Any]] = {}
         if self._input_is_polars:
             assert self.df_pl is not None
             self.feature_schema = {
@@ -342,6 +343,7 @@ class MarsBaseModelTuner(ABC):
             }
 
         self._prepare_data()
+        self._initialize_category_levels()
         self._build_backend_data()
 
     @property
@@ -452,6 +454,38 @@ class MarsBaseModelTuner(ABC):
                 self.df_pd[self.dataset_flag_col].astype(str) == str(flag)
             ].copy()
 
+    def _initialize_category_levels(self) -> None:
+        """Collect stable train-split category levels for categorical backend features."""
+        if not self.categorical_features or not hasattr(self, "data_dict") or "train" not in self.data_dict:
+            self.category_levels = {}
+            return
+
+        train_df = self.data_dict["train"]
+        levels: Dict[str, List[Any]] = {}
+        for feature in self.categorical_features:
+            if isinstance(train_df, pd.DataFrame):
+                if feature not in train_df.columns:
+                    continue
+                values = pd.Series(train_df[feature]).dropna()
+                levels[feature] = list(pd.unique(values))
+            elif isinstance(train_df, pl.DataFrame):
+                if feature not in train_df.columns:
+                    continue
+                levels[feature] = train_df.get_column(feature).drop_nulls().unique(maintain_order=True).to_list()
+        self.category_levels = levels
+
+    def _apply_category_levels(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply stable pandas CategoricalDtype levels to declared categorical features."""
+        for feature in self.categorical_features:
+            if feature not in X.columns:
+                continue
+            categories = self.category_levels.get(feature)
+            if categories is not None:
+                X[feature] = X[feature].astype(pd.CategoricalDtype(categories=categories))
+            else:
+                X[feature] = X[feature].astype("category")
+        return X
+
     def _get_feature_frame(self, df: FrameLike, *, for_categorical_backend: bool) -> pd.DataFrame:
         """
         生成后端可直接消费的特征数据框。
@@ -475,9 +509,7 @@ class MarsBaseModelTuner(ABC):
         else:
             raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
         if for_categorical_backend:
-            for feature in self.categorical_features:
-                if feature in X.columns:
-                    X[feature] = X[feature].astype("category")
+            X = self._apply_category_levels(X)
         return X
 
     def _get_feature_polars(self, df: FrameLike) -> pl.DataFrame:

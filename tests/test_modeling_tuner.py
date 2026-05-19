@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("xgboost")
@@ -12,6 +13,7 @@ import mars
 import mars.modeling as modeling
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
+from mars.modeling.strategies import _CatBoostKSMetric, _as_probability
 from mars.modeling import tuner as tuner_module
 from mars.modeling import MarsModelTuner, MarsModelingRun, MarsModelingSession
 
@@ -114,6 +116,7 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
     assert loaded.training_config == result.training_config
     assert loaded.feature_schema == result.feature_schema
     assert loaded.backend_data_mode == result.backend_data_mode
+    assert loaded.category_levels == result.category_levels
 
 
 def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
@@ -226,3 +229,16 @@ def test_modeling_session_tune_rejects_ambiguous_dataset_flags(sample_modeling_p
             features=["x1", "x2", "x3"],
             target="target",
         ).tune(df, n_trials=1)
+
+
+def test_catboost_ks_metric_handles_flattened_inputs_and_shape_errors():
+    metric = _CatBoostKSMetric()
+    score, weight = metric.evaluate([[[-2.0, 0.0, 2.0, 3.0]]], [0, 0, 1, 1], None)
+
+    assert weight == 1.0
+    assert score > 0.0
+    assert _as_probability(np.array([[-2.0, 0.0, 2.0]])).shape == (3,)
+    assert metric.evaluate([[]], [], None) == (0.0, 1.0)
+
+    with pytest.raises(ValueError, match="mismatched"):
+        metric.evaluate([[0.1, 0.2]], [0], None)

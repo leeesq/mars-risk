@@ -85,6 +85,52 @@ class MarsScorecard:
     coefficients: Dict[str, float]
     _binner: MarsBinnerBase
 
+    @staticmethod
+    def _format_score_value(value: float) -> str:
+        value_float = float(value)
+        if value_float.is_integer():
+            return str(int(value_float))
+        return f"{value_float:.6f}"
+
+    def to_integer(self, round_decimals: int = 0, rebalance: bool = True) -> "MarsScorecard":
+        """Return a rounded scorecard, optionally rebalancing rounding drift into base points."""
+        decimals = int(round_decimals)
+        table_is_polars = isinstance(self.points_table, pl.DataFrame)
+        table_pd = self.points_table.to_pandas() if table_is_polars else self.points_table.copy()
+        if "points" not in table_pd.columns:
+            raise ValueError("points_table must contain a 'points' column.")
+
+        original_points = table_pd["points"].astype(float)
+        rounded_points = original_points.round(decimals)
+        rounded_base = round(float(self.base_points), decimals)
+        if rebalance:
+            original_total = round(float(self.base_points) + float(original_points.sum()), decimals)
+            rounded_base = round(original_total - float(rounded_points.sum()), decimals)
+
+        table_pd["points_original"] = original_points
+        table_pd["points"] = rounded_points
+        table_pd["points_round_error"] = rounded_points - original_points
+        if decimals == 0:
+            table_pd["points"] = table_pd["points"].astype("int64")
+
+        if table_is_polars:
+            points_table: Union[pl.DataFrame, pd.DataFrame] = pl.from_pandas(table_pd)
+        else:
+            points_table = table_pd
+
+        return MarsScorecard(
+            points_table=points_table,
+            base_points=int(rounded_base) if decimals == 0 else float(rounded_base),
+            factor=self.factor,
+            offset=self.offset,
+            pdo=self.pdo,
+            base_score=self.base_score,
+            base_odds=self.base_odds,
+            intercept=self.intercept,
+            coefficients=dict(self.coefficients),
+            _binner=self._binner,
+        )
+
     def write_csv(self, path: str = "mars_scorecard.csv") -> None:
         """
         导出评分卡分值表为 CSV 文件。
@@ -150,7 +196,7 @@ class MarsScorecard:
         lines = ["CASE"]
 
         lines.append(
-            f"  WHEN {col_name} IS NULL THEN {point_map.get(MarsBinnerBase.IDX_MISSING, 0.0):.6f}"
+            f"  WHEN {col_name} IS NULL THEN {self._format_score_value(point_map.get(MarsBinnerBase.IDX_MISSING, 0.0))}"
         )
 
         special_idx = [k for k in mappings.keys() if int(k) <= MarsBinnerBase.IDX_SPECIAL_START]
@@ -162,7 +208,7 @@ class MarsScorecard:
                 sql_val = val_str
             except ValueError:
                 sql_val = f"'{val_str}'"
-            lines.append(f"  WHEN {col_name} = {sql_val} THEN {point_map.get(idx, 0.0):.6f}")
+            lines.append(f"  WHEN {col_name} = {sql_val} THEN {self._format_score_value(point_map.get(idx, 0.0))}")
 
         if hasattr(self._binner, "bin_cuts_") and feature in self._binner.bin_cuts_:
             cuts = self._binner.bin_cuts_[feature]
@@ -170,19 +216,19 @@ class MarsScorecard:
                 upper_bound = cuts[i + 1]
                 points_val = point_map.get(i, 0.0)
                 if upper_bound != float("inf"):
-                    lines.append(f"  WHEN {col_name} < {upper_bound} THEN {points_val:.6f}")
+                    lines.append(f"  WHEN {col_name} < {upper_bound} THEN {self._format_score_value(points_val)}")
                 else:
-                    lines.append(f"  ELSE {points_val:.6f}")
+                    lines.append(f"  ELSE {self._format_score_value(points_val)}")
         elif hasattr(self._binner, "cat_cuts_") and feature in self._binner.cat_cuts_:
             groups = self._binner.cat_cuts_[feature]
             for i, group in enumerate(groups):
                 if "__Mars_Other_Pre__" in group:
                     continue
                 in_clause = ", ".join([f"'{v}'" if isinstance(v, str) else str(v) for v in group])
-                lines.append(f"  WHEN {col_name} IN ({in_clause}) THEN {point_map.get(i, 0.0):.6f}")
-            lines.append(f"  ELSE {point_map.get(MarsBinnerBase.IDX_OTHER, 0.0):.6f}")
+                lines.append(f"  WHEN {col_name} IN ({in_clause}) THEN {self._format_score_value(point_map.get(i, 0.0))}")
+            lines.append(f"  ELSE {self._format_score_value(point_map.get(MarsBinnerBase.IDX_OTHER, 0.0))}")
         elif "ELSE" not in "\n".join(lines):
-            lines.append(f"  ELSE {point_map.get(MarsBinnerBase.IDX_OTHER, 0.0):.6f}")
+            lines.append(f"  ELSE {self._format_score_value(point_map.get(MarsBinnerBase.IDX_OTHER, 0.0))}")
 
         lines.append(f"END AS {feature}_points")
         return "\n".join(lines)
@@ -229,7 +275,7 @@ class MarsScorecard:
 
         expr = " +\n".join(terms)
         if include_base_points:
-            expr = f"{self.base_points:.6f} +\n" + expr
+            expr = f"{self._format_score_value(self.base_points)} +\n" + expr
 
         return ",\n\n".join(feature_blocks + [f"({expr}) AS {score_name}"])
 

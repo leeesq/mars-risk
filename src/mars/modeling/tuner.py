@@ -260,6 +260,7 @@ class MarsModelTuner:
             ),
             feature_schema=dict(backend.feature_schema),
             backend_data_mode=backend.backend_data_mode,
+            category_levels=dict(getattr(backend, "category_levels", {})),
         )
         self.last_run = run
         return run
@@ -411,6 +412,7 @@ class MarsModelReplay:
                 model,
                 feature_list=self.spec.features,
                 categorical_features=self.spec.categorical_features,
+                category_levels=getattr(backend, "category_levels", {}),
             )
             scored_df = bench.predict(scored_df, pred_col_name=pred_col, inplace=False)
             reports[model_name] = evaluator.evaluate(scored_df, pred_col=pred_col)

@@ -79,3 +79,24 @@ def test_native_binner_transform_can_explicitly_return_woe(sample_credit_df, rec
 
     assert {"age_woe", "income_woe", "utilization_woe", "segment_woe"}.issubset(transformed.columns)
     assert not any("replace" in str(warning.message) for warning in recwarn)
+
+
+def test_materialize_woe_uses_columnwise_aggregation(sample_credit_df):
+    source = inspect.getsource(MarsBinnerBase._materialize_woe)
+    assert "unpivot" not in source
+
+    features = sample_credit_df.select(["age", "income", "utilization", "segment"])
+    target = sample_credit_df.get_column("target")
+    binner = MarsNativeBinner(
+        method="quantile",
+        n_bins=4,
+        cat_features=["segment"],
+        special_values=[-999],
+    )
+
+    binner.fit(features, target)
+    transformed = binner.transform(features, return_type="woe", woe_batch_size=2)
+
+    assert {"age_woe", "income_woe", "utilization_woe", "segment_woe"}.issubset(transformed.columns)
+    assert set(binner.bin_woes_) == {"age", "income", "utilization", "segment"}
+    assert all(binner.bin_woes_[feature] for feature in binner.bin_woes_)

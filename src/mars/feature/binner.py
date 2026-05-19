@@ -424,7 +424,10 @@ class MarsBinnerBase(MarsTransformer):
 
     def _materialize_woe(self, batch_size: int = 200) -> None:
         """
-        将分箱统计分布转化为 WOE 算子。
+        将分箱统计分布转化为 WOE 映射表。
+
+        该方法按特征逐列聚合分箱统计量，避免将宽表物化成超长表，
+        从而显著降低大样本、超宽表场景下的峰值内存占用。
 
         Parameters
         ----------
@@ -435,7 +438,7 @@ class MarsBinnerBase(MarsTransformer):
             logger.warning("No training data cached. WOE cannot be computed.")
             return
 
-        n_cols = len(self.bin_cuts_)+ len(self.cat_cuts_)
+        n_cols = len(self.bin_cuts_) + len(self.cat_cuts_)
         logger.info(f"Materializing WOE mappings for {n_cols} features.")
         
         y_name = "_y_tmp"
@@ -459,33 +462,36 @@ class MarsBinnerBase(MarsTransformer):
             )
             X_batch_bin = X_batch_bin.with_columns(y_series)
 
-            # 构造带 _bin 后缀的列名列表
-            target_bin_cols = [f"{c}_bin" for c in batch_features]
+            # 逐列聚合分箱统计量，避免宽转长物化出 N 行 * M 特征的长表。
+            stats_list = []
+            for feature in batch_features:
+                target_bin_col = f"{feature}_bin"
+                if target_bin_col not in X_batch_bin.columns:
+                    continue
 
-            # 逆透视 (Unpivot): 确保作用于转换后的索引列
-            long_df = X_batch_bin.unpivot(
-                index=[y_name],
-                on=target_bin_cols, # 使用转换后的索引列名
-                variable_name="feature_raw", # 临时名称
-                value_name="bin_index"
-            ).with_columns(
-                # 去掉后缀，恢复原始特征名，保持与 bin_woes_ 的 Key 一致
-                pl.col("feature_raw").str.replace("_bin", "").alias("feature")
-            )
+                stats_list.append(
+                    X_batch_bin.group_by(target_bin_col)
+                    .agg([
+                        pl.col(y_name).sum().alias("bin_bads"),
+                        pl.len().alias("bin_total")
+                    ])
+                    .rename({target_bin_col: "bin_index"})
+                    .with_columns(pl.lit(feature).alias("feature"))
+                    .select(["feature", "bin_index", "bin_bads", "bin_total"])
+                )
 
-            # 一次性聚合所有特征的统计量
+            if not stats_list:
+                del X_batch_bin
+                gc.collect()
+                continue
+
             stats_df = (
-                long_df.group_by(["feature", "bin_index"])
-                .agg([
-                    pl.col(y_name).sum().alias("bin_bads"),
-                    pl.len().alias("bin_total")
-                ])
-                # 计算 WOE
+                pl.concat(stats_list)
                 .with_columns(
                     (
-                        ((pl.col("bin_bads")+ 1e-6) / (total_bads + 1e-6))
-                        / 
-                        ((pl.col("bin_total")- pl.col("bin_bads")+ 1e-6) / (total_goods + 1e-6))
+                        ((pl.col("bin_bads") + 1e-6) / (total_bads + 1e-6))
+                        /
+                        ((pl.col("bin_total") - pl.col("bin_bads") + 1e-6) / (total_goods + 1e-6))
                     )
                     .log()
                     .cast(pl.Float32)
@@ -505,7 +511,7 @@ class MarsBinnerBase(MarsTransformer):
             
             self.bin_woes_.update(temp_woe_map)
 
-            del X_batch_bin, long_df, stats_df
+            del X_batch_bin, stats_list, stats_df
             gc.collect()
 
     def _transform_impl(
