@@ -1,222 +1,26 @@
-"""MARS 建模调参与基础评估工具。"""
+"""建模后端共享基类。"""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 import numbers
-import importlib
-import re
 
 import numpy as np
 import pandas as pd
 import polars as pl
-from sklearn.metrics import roc_auc_score, roc_curve
 
-
-FrameLike = Union[pd.DataFrame, pl.DataFrame]
-HISTORY_BASE_COLUMNS = ["trial_num", "trial_state", "is_valid", "val_diff", "max_oot_diff"]
-METRIC_NAMES = ("auc", "ks")
-
-
-def is_polars_dataframe(df: Any) -> bool:
-    """
-    判断输入对象是否为 Polars eager DataFrame。
-
-    Parameters
-    ----------
-    df : Any
-        待检查对象。
-
-    Returns
-    -------
-    bool
-        若对象是 `polars.DataFrame`，返回 ``True``；否则返回 ``False``。
-    """
-    return isinstance(df, pl.DataFrame)
-
-
-def to_pandas_frame(df: FrameLike) -> pd.DataFrame:
-    """
-    将 Pandas 或 Polars 数据框转换为 Pandas 数据框。
-
-    Parameters
-    ----------
-    df : pandas.DataFrame or polars.DataFrame
-        输入数据框。
-
-    Returns
-    -------
-    pandas.DataFrame
-        转换后的 Pandas 数据框副本。
-
-    Raises
-    ------
-    TypeError
-        当输入既不是 Pandas 也不是 Polars 数据框时抛出。
-    """
-    if isinstance(df, pd.DataFrame):
-        return df.copy()
-    if isinstance(df, pl.DataFrame):
-        return df.to_pandas()
-    raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-
-
-def to_polars_frame(df: FrameLike) -> pl.DataFrame:
-    """Convert a pandas or polars DataFrame into a Polars eager DataFrame."""
-    if isinstance(df, pl.DataFrame):
-        return df.clone()
-    if isinstance(df, pd.DataFrame):
-        return pl.from_pandas(df)
-    raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-
-
-def restore_frame_type(df: Union[pd.DataFrame, pl.DataFrame], prefer_polars: bool) -> FrameLike:
-    """
-    按调用方期望的公开类型恢复数据框。
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        内部处理后的 Pandas 数据框。
-    prefer_polars : bool
-        是否需要将结果恢复为 Polars 数据框。
-
-    Returns
-    -------
-    pandas.DataFrame or polars.DataFrame
-        与调用方输入风格一致的数据框。
-    """
-    if prefer_polars:
-        if isinstance(df, pl.DataFrame):
-            return df
-        return pl.from_pandas(df)
-    if isinstance(df, pd.DataFrame):
-        return df
-    return df.to_pandas()
-
-
-def calculate_ks(y_true: Union[np.ndarray, pd.Series], y_pred: Union[np.ndarray, pd.Series]) -> float:
-    """
-    计算百分制 KS 指标。
-
-    Parameters
-    ----------
-    y_true : np.ndarray or pd.Series
-        真实二分类标签。
-    y_pred : np.ndarray or pd.Series
-        预测正类分数。
-
-    Returns
-    -------
-    float
-        百分制 KS 值。当标签中不同时包含正负两类时返回 ``0.0``。
-    """
-    y_true_arr = np.asarray(y_true)
-    y_pred_arr = np.asarray(y_pred)
-
-    if np.unique(y_true_arr).size < 2:
-        return 0.0
-
-    fpr, tpr, _ = roc_curve(y_true_arr, y_pred_arr)
-    return round(float(np.max(tpr - fpr) * 100), 6)
-
-
-def calculate_auc(y_true: Union[np.ndarray, pd.Series], y_pred: Union[np.ndarray, pd.Series]) -> float:
-    """
-    计算百分制 AUC 指标。
-
-    Parameters
-    ----------
-    y_true : np.ndarray or pd.Series
-        真实二分类标签。
-    y_pred : np.ndarray or pd.Series
-        预测正类分数。
-
-    Returns
-    -------
-    float
-        百分制 AUC 值。当标签中不同时包含正负两类时返回 ``50.0``。
-    """
-    y_true_arr = np.asarray(y_true)
-    y_pred_arr = np.asarray(y_pred)
-
-    if np.unique(y_true_arr).size < 2:
-        return 50.0
-
-    return round(float(roc_auc_score(y_true_arr, y_pred_arr) * 100), 6)
-
-
-def split_name_sort_key(split_name: str) -> Tuple[int, int, str]:
-    """
-    生成数据切片名称的稳定排序键。
-
-    Parameters
-    ----------
-    split_name : str
-        切片名称。
-
-    Returns
-    -------
-    tuple of int, int, str
-        用于排序的稳定键，顺序为 ``train``、``val``、``oot*``、其他。
-    """
-    normalized = str(split_name).strip().lower()
-    if "train" in normalized:
-        return (0, 0, normalized)
-    if "val" in normalized:
-        return (1, 0, normalized)
-    if "oot" in normalized:
-        match = re.search(r"(\d+)", normalized)
-        return (2, int(match.group(1)) if match else 10**9, normalized)
-    return (3, 0, normalized)
-
-
-def normalize_dataset_flags(flags: Union[pd.Series, pl.Series]) -> pd.Series:
-    """Normalize dataset flag labels before train/val/oot role detection."""
-    if isinstance(flags, pl.Series):
-        flags_pd = flags.to_pandas()
-    else:
-        flags_pd = flags
-    return flags_pd.astype(str).str.strip().str.lower()
-
-
-def validate_dataset_flag_roles(flags: Union[pd.Series, pl.Series]) -> None:
-    """Reject ambiguous split labels that match multiple reserved roles."""
-    normalized = normalize_dataset_flags(flags)
-    unique_flags = sorted(set(normalized.dropna().tolist()))
-    conflicts: List[str] = []
-    for flag in unique_flags:
-        roles = [
-            role
-            for role, matched in {
-                "train": "train" in flag,
-                "val": "val" in flag,
-                "oot": "oot" in flag,
-            }.items()
-            if matched
-        ]
-        if len(roles) > 1:
-            conflicts.append(flag)
-    if conflicts:
-        raise ValueError(
-            "Ambiguous dataset_flag values matched multiple split roles: "
-            f"{conflicts}. Please rename them so each value contains only one of train/val/oot."
-        )
-
-
-def collect_library_versions(*module_names: str) -> Dict[str, Optional[str]]:
-    """Collect optional dependency versions for reproducible modeling artifacts."""
-    versions: Dict[str, Optional[str]] = {}
-    for module_name in module_names:
-        try:
-            module = importlib.import_module(module_name)
-            versions[module_name] = getattr(module, "__version__", None)
-        except Exception:
-            versions[module_name] = None
-    return versions
-
+from mars.modeling.metrics import calculate_auc, calculate_ks
+from mars.modeling.utils import (
+    FrameLike,
+    HISTORY_BASE_COLUMNS,
+    METRIC_NAMES,
+    is_polars_dataframe,
+    normalize_dataset_flags,
+    split_name_sort_key,
+    validate_dataset_flag_roles,
+)
 
 class MarsBaseModelTuner(ABC):
     """

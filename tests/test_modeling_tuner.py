@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib
 
 import numpy as np
 import pytest
@@ -13,9 +14,11 @@ import mars
 import mars.modeling as modeling
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
-from mars.modeling.strategies import _CatBoostKSMetric, _as_probability
-from mars.modeling import tuner as tuner_module
-from mars.modeling import MarsModelTuner, MarsModelingRun, MarsModelingSession
+from mars.modeling import MarsModelingSession
+from mars.modeling.metrics import CatBoostKSMetric, as_probability
+from mars.modeling.results import MarsModelingRun
+from mars.modeling import tuning as tuning_module
+from mars.modeling.tuning import MarsModelTuner
 
 
 @pytest.mark.parametrize("model_type", ["xgb", "lgb", "cbt"])
@@ -125,22 +128,32 @@ def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
 
 
 def test_modeling_public_exports_only_include_formal_api():
-    assert "MarsModelingSession" in modeling.__all__
-    assert "MarsModelTuner" in modeling.__all__
-    assert "MarsModelEvaluator" in modeling.__all__
-    assert "MarsModelReplay" in modeling.__all__
-    assert "MarsModelDataSlicer" in modeling.__all__
-    assert "MarsModelingRun" in modeling.__all__
-    assert "MarsModelingReport" in modeling.__all__
-    assert "MarsReplayRun" in modeling.__all__
-    assert "MarsAutoModelTuner" not in modeling.__all__
-    assert not hasattr(tuner_module, "MarsAutoModelTuner")
+    assert modeling.__all__ == ["MarsModelingSession"]
+    assert hasattr(tuning_module, "MarsModelTuner")
+    assert not hasattr(tuning_module, "MarsAutoModelTuner")
     assert not hasattr(report_module, "MarsModelEvaluationReport")
     assert not hasattr(results_module, "MarsTuningResult")
     assert not hasattr(results_module, "MarsPostTuningResult")
-    assert "MarsModelTuner" in mars.__all__
-    assert "MarsModelEvaluator" in mars.__all__
-    assert "MarsModelReplay" in mars.__all__
+    assert "MarsModelingSession" in mars.__all__
+    assert "MarsModelTuner" not in mars.__all__
+    assert "MarsModelEvaluator" not in mars.__all__
+    assert "MarsModelReplay" not in mars.__all__
+
+
+def test_modeling_old_module_paths_are_removed():
+    for module_name in [
+        "mars.modeling.base",
+        "mars.modeling.data",
+        "mars.modeling.strategies",
+        "mars.modeling.tuner",
+    ]:
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module_name)
+
+    assert not hasattr(modeling, "MarsModelTuner")
+    assert not hasattr(modeling, "MarsModelEvaluator")
+    assert not hasattr(modeling, "MarsModelingReport")
+    assert not hasattr(modeling, "MarsModelDataSlicer")
 
 
 def test_modeling_session_tune_records_oot_penalty_columns(sample_modeling_pd, tmp_path: Path):
@@ -232,12 +245,12 @@ def test_modeling_session_tune_rejects_ambiguous_dataset_flags(sample_modeling_p
 
 
 def test_catboost_ks_metric_handles_flattened_inputs_and_shape_errors():
-    metric = _CatBoostKSMetric()
+    metric = CatBoostKSMetric()
     score, weight = metric.evaluate([[[-2.0, 0.0, 2.0, 3.0]]], [0, 0, 1, 1], None)
 
     assert weight == 1.0
     assert score > 0.0
-    assert _as_probability(np.array([[-2.0, 0.0, 2.0]])).shape == (3,)
+    assert as_probability(np.array([[-2.0, 0.0, 2.0]])).shape == (3,)
     assert metric.evaluate([[]], [], None) == (0.0, 1.0)
 
     with pytest.raises(ValueError, match="mismatched"):

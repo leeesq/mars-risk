@@ -595,14 +595,16 @@ MARS 现在更像一个已经进入“可持续打磨期”的 `0.x` 项目：
 
 ## Modeling
 
-MARS now exposes a two-layer modeling API:
+MARS now keeps the top-level modeling API intentionally small:
 
-- `MarsModelingSession` is the high-level AutoML workflow entrypoint for `slice -> tune -> evaluate -> replay`.
-- `MarsModelTuner`, `MarsModelEvaluator`, and `MarsModelReplay` are the lower-level sklearn-style tools for teams that want to compose each task explicitly.
-- `MarsModelingRun`, `MarsModelingReport`, and `MarsReplayRun` are reusable result objects instead of one-off dictionaries or tuples.
+- `MarsModelingSession` is the session-level workflow entrypoint for `slice -> tune -> evaluate -> replay`.
+- Lower-level tools live under explicit modules, for example `mars.modeling.tuning`, `mars.modeling.evaluation`, and `mars.modeling.report`.
+- `MarsModelingRun`, `MarsModelingReport`, and `MarsReplayRun` remain reusable result objects, but they are imported from their owning modules.
 
 ```python
-from mars.modeling import MarsModelEvaluator, MarsModelReplay, MarsModelTuner, MarsModelingSession
+from mars.modeling import MarsModelingSession
+from mars.modeling.evaluation import MarsModelEvaluator
+from mars.modeling.tuning import MarsModelReplay, MarsModelTuner
 
 tuner = MarsModelTuner(
     model_type="xgb",

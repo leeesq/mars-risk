@@ -1,4 +1,4 @@
-"""MARS modeling data slicing helpers."""
+"""建模样本切分工具。"""
 
 from __future__ import annotations
 
@@ -8,11 +8,28 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.modeling.base import FrameLike, is_polars_dataframe
+from mars.modeling.utils import FrameLike, is_polars_dataframe
 
 
 class MarsModelDataSlicer:
-    """Split binary modeling datasets on whole-day boundaries using the input engine."""
+    """
+    按输入数据引擎切分二分类建模样本。
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or polars.DataFrame
+        原始建模样本。
+    time_col : str
+        时间列名，切分时按自然日保持完整。
+    label_col : str
+        二分类标签列名，仅 ``0``/``1`` 参与切分。
+    dataset_flag_col : str, default "dataset_flag"
+        输出的数据集标识列名。
+
+    Notes
+    -----
+    Pandas 输入全程走 Pandas，Polars 输入全程走 Polars，避免无收益的跨框架转换。
+    """
 
     def __init__(
         self,
@@ -48,7 +65,7 @@ class MarsModelDataSlicer:
 
     @property
     def engine_(self) -> str:
-        """Return the internal slicing engine selected from the input type."""
+        """返回由输入类型自动选择的切分引擎。"""
         return self._engine
 
     def _init_pandas(self) -> None:
@@ -100,7 +117,19 @@ class MarsModelDataSlicer:
         return train_ratio, val_ratio, modeling_ratio
 
     def split_by_time_strictly(self, split_ratios: Dict[str, float]) -> FrameLike:
-        """Split all valid rows chronologically, keeping each date in one split."""
+        """
+        按时间顺序严格切分，并保证同一天不被拆到多个数据集。
+
+        Parameters
+        ----------
+        split_ratios : dict of str to float
+            切分名称到比例的映射，比例合计必须为 1。
+
+        Returns
+        -------
+        pandas.DataFrame or polars.DataFrame
+            与输入类型一致的切分结果。
+        """
         self._validate_ratios(split_ratios)
         if self._engine == "pandas":
             return self._split_by_time_strictly_pandas(split_ratios)
@@ -113,7 +142,25 @@ class MarsModelDataSlicer:
         val_key: str = "val",
         random_seed: int = 42,
     ) -> FrameLike:
-        """Randomly split train/validation inside the modeling window, then keep OOT chronological."""
+        """
+        在建模窗口内随机切分 train/val，其余切片保持时间顺序。
+
+        Parameters
+        ----------
+        split_ratios : dict of str to float
+            切分名称到比例的映射，比例合计必须为 1。
+        train_key : str, default "train"
+            训练集标识。
+        val_key : str, default "val"
+            验证集标识。
+        random_seed : int, default 42
+            随机种子。
+
+        Returns
+        -------
+        pandas.DataFrame or polars.DataFrame
+            与输入类型一致的切分结果。
+        """
         self._validate_ratios(split_ratios)
         self._validate_hybrid_keys(split_ratios, train_key, val_key)
         if self._engine == "pandas":

@@ -1,4 +1,4 @@
-"""Public tuning and replay tools for ``mars.modeling``."""
+"""建模调参与 Top-K replay 工具。"""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ import os
 
 import pandas as pd
 
-from mars.modeling.base import FrameLike, collect_library_versions
-from mars.modeling.report import MarsModelEvaluator, MarsModelingReport, _ModelPredictor
+from mars.modeling.utils import FrameLike, collect_library_versions
+from mars.modeling.evaluation import MarsModelEvaluator
+from mars.modeling.prediction import ModelPredictor
+from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelingRun, MarsReplayRun
 from mars.modeling.spec import ModelingSpec, ReplaySpec
-from mars.modeling.strategies import MarsCatBoostStrategy, MarsLGBStrategy, MarsXGBStrategy
+from mars.modeling.backends import MarsCatBoostStrategy, MarsLGBStrategy, MarsXGBStrategy
 
 
 BACKEND_MAP: Dict[str, Type[Any]] = {
@@ -36,7 +38,23 @@ def _build_spec(
     benchmark_col: Optional[str] = None,
     time_col: Optional[str] = None,
 ) -> ModelingSpec:
-    """Validate modeling configuration and build a shared spec object."""
+    """
+    校验建模配置并构造共享规格对象。
+
+    Parameters
+    ----------
+    model_type : str
+        模型后端类型。
+    features : sequence of str
+        特征列名。
+    target : str
+        目标列名。
+
+    Returns
+    -------
+    ModelingSpec
+        标准化后的建模配置。
+    """
     spec = ModelingSpec(
         model_type=model_type.lower(),
         features=list(features),
@@ -86,7 +104,30 @@ def _build_backend_from_spec(
 
 
 class MarsModelTuner:
-    """Estimator-style tuning tool for binary risk models."""
+    """
+    二分类风险模型调参工具。
+
+    Parameters
+    ----------
+    model_type : str
+        模型后端类型。
+    features : sequence of str
+        参与训练的特征列名。
+    target : str
+        目标变量列名。
+    dataset_flag_col : str, default "dataset_flag"
+        数据集切片标识列。
+    categorical_features : sequence of str, optional
+        需要按类别特征处理的列名。
+    optimize_metric : {"auc", "ks"}, default "ks"
+        trial 最终优化指标。
+    seed : int, default 1206
+        随机种子。
+    benchmark_col : str, optional
+        评估时默认基准分数列。
+    time_col : str, optional
+        评估时默认时间列。
+    """
 
     def __init__(
         self,
@@ -173,7 +214,37 @@ class MarsModelTuner:
         early_stopping_rounds: int = 50,
         save_path: str = "tuner_history.csv",
     ) -> MarsModelingRun:
-        """Tune one model family and return a reusable result object."""
+        """
+        调参训练一个模型族并返回可复用结果对象。
+
+        Parameters
+        ----------
+        df : pandas.DataFrame or polars.DataFrame
+            已带 train/val/oot 标识的建模样本。
+        param_space : mapping, optional
+            覆盖或扩展默认搜索空间。
+        max_diff : float, default 3.0
+            泛化衰减阈值，单位为百分点。
+        use_oot_penalty : bool, default False
+            是否把 OOT 衰减纳入 trial 有效性约束。
+        n_trials : int, default 50
+            Optuna trial 数量。
+        startup_trials : int, default 20
+            剪枝启动前 trial 数。
+        warmup_steps : int, default 100
+            剪枝预热步数。
+        num_boost_round : int, default 500
+            最大 boosting 轮数。
+        early_stopping_rounds : int, default 50
+            早停轮数。
+        save_path : str, default "tuner_history.csv"
+            trial 历史落盘路径。
+
+        Returns
+        -------
+        MarsModelingRun
+            调参结果、最佳模型、训练配置和元数据。
+        """
         try:
             import optuna
         except ImportError as exc:
@@ -267,7 +338,13 @@ class MarsModelTuner:
 
 
 class MarsModelReplay:
-    """Replay and rescore top-ranked tuning candidates on full datasets."""
+    """
+    对调参历史中的 Top-K trial 进行重训、重评分和评估。
+
+    Notes
+    -----
+    replay 默认复用 tuning run 中保存的训练轮数和早停配置；用户显式传入参数时会覆盖。
+    """
 
     def __init__(
         self,
@@ -324,7 +401,27 @@ class MarsModelReplay:
         time_col: Optional[str] = None,
         val_target_col: Optional[str] = None,
     ) -> MarsReplayRun:
-        """Replay top-ranked trials, rescore the dataset, and generate reports."""
+        """
+        执行 Top-K replay 并生成排行榜、模型和评估报告。
+
+        Parameters
+        ----------
+        run : MarsModelingRun
+            调参阶段产出的结果对象。
+        df : pandas.DataFrame or polars.DataFrame
+            需要重训和评分的数据。
+        top_k : int, default 5
+            回放 trial 数量。
+        sort_metric : {"auc", "ks"}, default "ks"
+            排名指标。
+        include_val : bool, default True
+            排名均值是否包含验证集。
+
+        Returns
+        -------
+        MarsReplayRun
+            replay 排名、leaderboard、模型、评分数据和报告。
+        """
         if run.model_type != self.spec.model_type:
             raise ValueError(
                 f"Run model_type {run.model_type!r} does not match replay model_type {self.spec.model_type!r}."
@@ -408,7 +505,7 @@ class MarsModelReplay:
             importance_tables[model_name] = backend.extract_importance(model)
 
             pred_col = f"prob_{model_name}"
-            bench = _ModelPredictor(
+            bench = ModelPredictor(
                 model,
                 feature_list=self.spec.features,
                 categorical_features=self.spec.categorical_features,

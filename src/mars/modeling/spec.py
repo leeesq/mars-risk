@@ -1,4 +1,4 @@
-"""MARS 建模任务工作流的轻量规格对象。"""
+"""建模工作流的轻量配置对象。"""
 
 from __future__ import annotations
 
@@ -14,23 +14,23 @@ class ModelingSpec:
     Parameters
     ----------
     model_type : str
-        底层模型类型。
+        模型后端类型。
     features : list of str
         特征列名。
     target : str
         目标变量列名。
-    dataset_flag_col : str
-        数据集切分标识列名。
-    categorical_features : list of str
+    dataset_flag_col : str, default "dataset_flag"
+        数据集切片标识列名。
+    categorical_features : list of str, optional
         类别特征列名。
-    optimize_metric : str
-        默认优化指标。
-    seed : int
-        默认随机种子。
+    optimize_metric : str, default "ks"
+        优化指标。
+    seed : int, default 1206
+        随机种子。
     benchmark_col : str, optional
-        默认基线分数列名。
+        基准模型分数列。
     time_col : str, optional
-        默认时间列名。
+        时间列名。
     """
 
     model_type: str
@@ -47,7 +47,7 @@ class ModelingSpec:
 @dataclass(slots=True)
 class SplitSpec:
     """
-    数据切分规格。
+    数据切分配置。
 
     Parameters
     ----------
@@ -55,14 +55,14 @@ class SplitSpec:
         时间列名。
     label_col : str
         标签列名。
-    mode : {"strict", "hybrid"}
+    mode : {"strict", "hybrid"}, default "strict"
         切分模式。
-    train_key : str
-        训练集标识名。
-    val_key : str
-        验证集标识名。
-    random_seed : int
-        hybrid 模式下建模区随机切分的随机种子。
+    train_key : str, default "train"
+        训练集标识。
+    val_key : str, default "val"
+        验证集标识。
+    random_seed : int, default 42
+        hybrid 模式下建模窗口随机切分种子。
     """
 
     time_col: str
@@ -76,22 +76,22 @@ class SplitSpec:
 @dataclass(slots=True)
 class ReplaySpec:
     """
-    Top-K 回放重训规格。
+    Top-K replay 配置。
 
     Parameters
     ----------
-    top_k : int
-        需要回放的 Trial 数量。
-    sort_metric : str
+    top_k : int, default 5
+        需要回放的 trial 数量。
+    sort_metric : str, default "ks"
         排序指标。
-    include_val : bool
-        计算排序均值时是否包含验证集。
-    num_boost_round : int
+    include_val : bool, default True
+        排序均值是否包含验证集。
+    num_boost_round : int, default 500
         最大训练轮数。
-    early_stopping_rounds : int
+    early_stopping_rounds : int, default 50
         早停轮数。
-    optimize_metric : str
-        回放阶段的最终优化指标。
+    optimize_metric : str, default "auc"
+        replay 阶段优化指标。
     """
 
     top_k: int = 5

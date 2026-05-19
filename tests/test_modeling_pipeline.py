@@ -7,7 +7,9 @@ pytest.importorskip("xgboost")
 pytest.importorskip("optuna")
 pytest.importorskip("optuna_integration")
 
-from mars.modeling import MarsModelReplay, MarsModelingSession, MarsReplayRun
+from mars.modeling import MarsModelingSession
+from mars.modeling.results import MarsReplayRun
+from mars.modeling.tuning import MarsModelReplay
 
 
 def test_modeling_session_replay_retrains_and_scores(sample_modeling_df, tmp_path: Path):

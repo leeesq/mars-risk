@@ -1,76 +1,42 @@
-"""Reusable result objects for the MARS modeling workflow."""
+"""建模调参和 replay 的可持久化结果对象。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import joblib
 import pandas as pd
 
-from mars.modeling.base import FrameLike
+from mars.modeling.utils import FrameLike
+from mars.modeling.artifacts import load_report_tables, read_json, save_report_tables, write_json
 
 if TYPE_CHECKING:
     from mars.modeling.report import MarsModelingReport
 
 
-def _to_json_safe(value: Any) -> Any:
-    """Convert nested metadata into JSON-serializable Python values."""
-    if isinstance(value, dict):
-        return {str(key): _to_json_safe(inner) for key, inner in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_to_json_safe(inner) for inner in value]
-    if hasattr(value, "item") and callable(getattr(value, "item")):
-        try:
-            return value.item()
-        except Exception:
-            return value
-    return value
-
-
-def _write_json(path: Path, data: Dict[str, Any]) -> None:
-    """Write metadata JSON using UTF-8 with stable formatting."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_to_json_safe(data), ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _read_json(path: Path) -> Dict[str, Any]:
-    """Read metadata JSON and validate that the file exists."""
-    if not path.exists():
-        raise FileNotFoundError(f"Artifact metadata file is missing: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _save_report_tables(reports: Dict[str, "MarsModelingReport"], reports_dir: Path) -> Dict[str, str]:
-    """Persist report summary tables and return a model-to-file mapping."""
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    report_files: Dict[str, str] = {}
-    for model_name, report in reports.items():
-        file_name = f"{model_name}.csv"
-        report.summary_table.to_csv(reports_dir / file_name)
-        report_files[model_name] = file_name
-    return report_files
-
-
-def _load_report_tables(reports_dir: Path, report_files: Dict[str, str]) -> Dict[str, "MarsModelingReport"]:
-    """Rebuild report objects from persisted summary tables."""
-    from mars.modeling.report import MarsModelingReport
-
-    reports: Dict[str, MarsModelingReport] = {}
-    for model_name, file_name in report_files.items():
-        table_path = reports_dir / file_name
-        if not table_path.exists():
-            raise FileNotFoundError(f"Artifact report table is missing: {table_path}")
-        summary_table = pd.read_csv(table_path, header=[0, 1], index_col=0)
-        reports[model_name] = MarsModelingReport(summary_table, caption=f"Model Evaluation by [{summary_table.index.name}]")
-    return reports
-
 
 @dataclass(slots=True)
 class MarsModelingRun:
-    """Structured result object for one tuning workflow."""
+    """
+    单次调参流程的结构化结果对象。
+
+    Attributes
+    ----------
+    best_model : Any
+        验证集最优模型。
+    history_table : pandas.DataFrame
+        trial 级训练历史。
+    importance_table : pandas.DataFrame
+        特征重要性表。
+    training_config : dict
+        可复现训练配置。
+    backend_data_mode : str
+        实际后端数据通道。
+    category_levels : dict
+        类别特征稳定字典。
+    """
 
     model_type: str
     optimize_metric: str
@@ -94,7 +60,19 @@ class MarsModelingRun:
     category_levels: Dict[str, List[Any]] = field(default_factory=dict)
 
     def write_artifact(self, path: str) -> Path:
-        """Write the tuning result into a local artifact directory."""
+        """
+        将调参结果写入本地 artifact 目录。
+
+        Parameters
+        ----------
+        path : str
+            输出目录。
+
+        Returns
+        -------
+        pathlib.Path
+            artifact 目录路径。
+        """
         artifact_dir = Path(path)
         artifact_dir.mkdir(parents=True, exist_ok=True)
         models_dir = artifact_dir / "models"
@@ -132,14 +110,14 @@ class MarsModelingRun:
                 "best_model": str(Path("models") / model_path.name),
             },
         }
-        _write_json(artifact_dir / "metadata.json", metadata)
+        write_json(artifact_dir / "metadata.json", metadata)
         return artifact_dir
 
     @classmethod
     def load_artifact(cls, path: str) -> "MarsModelingRun":
-        """Load a tuning result from a local artifact directory."""
+        """从本地 artifact 目录恢复调参结果。"""
         artifact_dir = Path(path)
-        metadata = _read_json(artifact_dir / "metadata.json")
+        metadata = read_json(artifact_dir / "metadata.json")
         if metadata.get("artifact_type") != "mars_modeling_run":
             raise ValueError(f"Unsupported artifact type for MarsModelingRun: {metadata.get('artifact_type')!r}")
 
@@ -181,7 +159,22 @@ class MarsModelingRun:
 
 @dataclass(slots=True)
 class MarsReplayRun:
-    """Structured result object for one Top-K replay workflow."""
+    """
+    Top-K replay 流程的结构化结果对象。
+
+    Attributes
+    ----------
+    ranking_table : pandas.DataFrame
+        用于选取 Top-K trial 的排名表。
+    leaderboard_table : pandas.DataFrame
+        replay 后的模型排行榜。
+    models : dict
+        replay 训练得到的模型对象。
+    scored_df : pandas.DataFrame or polars.DataFrame, optional
+        追加预测列后的数据。
+    reports : dict
+        每个 replay 模型对应的评估报告。
+    """
 
     model_type: str
     ranking_table: pd.DataFrame
@@ -192,7 +185,21 @@ class MarsReplayRun:
     importance_tables: Dict[str, pd.DataFrame]
 
     def write_artifact(self, path: str, include_scored_df: bool = False) -> Path:
-        """Write the replay result into a local artifact directory."""
+        """
+        将 replay 结果写入本地 artifact 目录。
+
+        Parameters
+        ----------
+        path : str
+            输出目录。
+        include_scored_df : bool, default False
+            是否保存评分后的数据框。
+
+        Returns
+        -------
+        pathlib.Path
+            artifact 目录路径。
+        """
         artifact_dir = Path(path)
         artifact_dir.mkdir(parents=True, exist_ok=True)
         models_dir = artifact_dir / "models"
@@ -220,7 +227,7 @@ class MarsReplayRun:
             table.to_csv(importance_dir / file_name, index=False)
             importance_files[model_name] = file_name
 
-        report_files = _save_report_tables(self.reports, reports_dir)
+        report_files = save_report_tables(self.reports, reports_dir)
 
         scored_df_file: Optional[str] = None
         if include_scored_df and self.scored_df is not None:
@@ -243,14 +250,14 @@ class MarsReplayRun:
                 "reports": report_files,
             },
         }
-        _write_json(artifact_dir / "metadata.json", metadata)
+        write_json(artifact_dir / "metadata.json", metadata)
         return artifact_dir
 
     @classmethod
     def load_artifact(cls, path: str) -> "MarsReplayRun":
-        """Load a replay result from a local artifact directory."""
+        """从本地 artifact 目录恢复 replay 结果。"""
         artifact_dir = Path(path)
-        metadata = _read_json(artifact_dir / "metadata.json")
+        metadata = read_json(artifact_dir / "metadata.json")
         if metadata.get("artifact_type") != "mars_replay_run":
             raise ValueError(f"Unsupported artifact type for MarsReplayRun: {metadata.get('artifact_type')!r}")
 
@@ -284,7 +291,7 @@ class MarsReplayRun:
                 raise FileNotFoundError(f"Artifact scored dataframe is missing: {scored_path}")
             scored_df = pd.read_parquet(scored_path)
 
-        reports = _load_report_tables(artifact_dir / "reports", files.get("reports", {}))
+        reports = load_report_tables(artifact_dir / "reports", files.get("reports", {}))
 
         return cls(
             model_type=metadata["model_type"],

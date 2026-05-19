@@ -6,8 +6,10 @@ pytest.importorskip("catboost")
 pytest.importorskip("optuna")
 pytest.importorskip("optuna_integration")
 
-from mars.modeling import MarsModelEvaluator, MarsModelingRun, MarsModelTuner
-from mars.modeling.report import _ModelPredictor
+from mars.modeling.evaluation import MarsModelEvaluator
+from mars.modeling.prediction import ModelPredictor
+from mars.modeling.results import MarsModelingRun
+from mars.modeling.tuning import MarsModelTuner
 
 
 @pytest.mark.parametrize(
@@ -95,7 +97,7 @@ def test_lightgbm_categorical_levels_are_fixed_for_unseen_categories(sample_mode
     )
 
     assert run.category_levels == {"segment": ["A", "B"]}
-    predictor = _ModelPredictor(
+    predictor = ModelPredictor(
         run.best_model,
         feature_list=run.features,
         categorical_features=run.categorical_features,
