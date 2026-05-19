@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -87,6 +87,10 @@ class MarsModelingRun:
     study: Any
     replay_candidates: List[str]
     importance_table: pd.DataFrame
+    training_config: Dict[str, Any] = field(default_factory=dict)
+    library_versions: Dict[str, Any] = field(default_factory=dict)
+    feature_schema: Dict[str, Any] = field(default_factory=dict)
+    backend_data_mode: str = "unknown"
 
     def write_artifact(self, path: str) -> Path:
         """Write the tuning result into a local artifact directory."""
@@ -116,6 +120,10 @@ class MarsModelingRun:
             "best_score": self.best_score,
             "history_path": self.history_path,
             "replay_candidates": self.replay_candidates,
+            "training_config": self.training_config,
+            "library_versions": self.library_versions,
+            "feature_schema": self.feature_schema,
+            "backend_data_mode": self.backend_data_mode,
             "files": {
                 "history": history_path.name,
                 "importance": importance_path.name,
@@ -161,6 +169,10 @@ class MarsModelingRun:
             study=None,
             replay_candidates=list(metadata.get("replay_candidates", [])),
             importance_table=pd.read_csv(importance_path),
+            training_config=dict(metadata.get("training_config", {})),
+            library_versions=dict(metadata.get("library_versions", {})),
+            feature_schema=dict(metadata.get("feature_schema", {})),
+            backend_data_mode=str(metadata.get("backend_data_mode", "unknown")),
         )
 
 

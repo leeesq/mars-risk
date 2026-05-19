@@ -58,5 +58,8 @@ def test_public_tooling_can_tune_and_evaluate_all_backends(
     assert set(run.importance_table.columns) == {"feature", "importance", "importance_type", "model_type", "rank"}
     if categorical_features:
         assert "segment" in set(run.importance_table["feature"])
+        assert run.backend_data_mode == "pandas_category"
+    elif model_type in {"xgb", "lgb"}:
+        assert run.backend_data_mode == "pandas_numeric"
     report = evaluator.evaluate(sample_modeling_pd.assign(pred_score=sample_modeling_pd["benchmark_score"]), pred_col="pred_score")
     assert ("Target: target", "New KS") in report.summary_table.columns

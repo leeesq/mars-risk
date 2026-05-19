@@ -27,6 +27,23 @@ def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
     assert source_map["utilization"] == "UNMAPPED"
 
 
+def test_stats_selector_preserves_selected_feature_order(sample_credit_df):
+    selector = MarsStatsSelector(
+        target="target",
+        features=["income", "utilization"],
+        white_list=["utilization"],
+        skip_fine_scan=True,
+        rough_binning_params={"method": "quantile", "n_bins": 3, "min_bin_size": 0.1, "merge_small_bins": True},
+    )
+
+    selector.fit(sample_credit_df)
+
+    assert selector.selected_features_ == sorted(
+        selector.selected_features_,
+        key=["income", "utilization"].index,
+    )
+
+
 def test_stats_selector_propagates_feature_start_aware_baseline(feature_start_aware_df):
     selector = MarsStatsSelector(
         target="target",

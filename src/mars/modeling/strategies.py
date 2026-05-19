@@ -7,8 +7,9 @@ import importlib
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
-from mars.modeling.base import MarsBaseModelTuner
+from mars.modeling.base import MarsBaseModelTuner, calculate_ks
 
 
 def _load_module(module_name: str) -> Any:
@@ -100,6 +101,66 @@ def _build_importance_table(
     return importance_df[["feature", "importance", "importance_type", "model_type", "rank"]]
 
 
+def _as_probability(preds: Any) -> np.ndarray:
+    """Return probabilities, applying a sigmoid when a backend exposes raw margins."""
+    arr = np.asarray(preds, dtype=float)
+    if arr.size and (np.nanmin(arr) < 0.0 or np.nanmax(arr) > 1.0):
+        arr = 1.0 / (1.0 + np.exp(-arr))
+    return arr
+
+
+def _xgb_ks_metric(preds: np.ndarray, dmatrix: Any) -> tuple[str, float]:
+    """XGBoost custom evaluation metric for percentage-point KS."""
+    return "ks", calculate_ks(dmatrix.get_label(), _as_probability(preds))
+
+
+def _lgb_ks_metric(preds: np.ndarray, dataset: Any) -> tuple[str, float, bool]:
+    """LightGBM custom evaluation metric for percentage-point KS."""
+    return "ks", calculate_ks(dataset.get_label(), _as_probability(preds)), True
+
+
+class _CatBoostKSMetric:
+    """CatBoost custom evaluation metric for percentage-point KS."""
+
+    def is_max_optimal(self) -> bool:
+        return True
+
+    def evaluate(self, approxes: Any, target: Any, weight: Any) -> tuple[float, float]:
+        preds = _as_probability(approxes[0])
+        return calculate_ks(np.asarray(target), preds) / 100.0, 1.0
+
+    def get_final_error(self, error: float, weight: float) -> float:
+        return float(error) * 100.0
+
+
+def _validate_numeric_polars(X: pl.DataFrame, backend_name: str) -> None:
+    """Ensure an Arrow-native backend path only receives numeric or boolean features."""
+    unsupported = [
+        name
+        for name, dtype in X.schema.items()
+        if not (dtype.is_numeric() or dtype == pl.Boolean)
+    ]
+    if unsupported:
+        raise ValueError(
+            f"{backend_name} Arrow-native path requires numeric or boolean features only. "
+            f"Found unsupported columns: {unsupported}. Pass them as categorical_features when supported."
+        )
+
+
+def _validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
+    """Ensure a pandas numeric backend path only receives numeric or boolean features."""
+    unsupported = [
+        col
+        for col in X.columns
+        if not (pd.api.types.is_numeric_dtype(X[col]) or pd.api.types.is_bool_dtype(X[col]))
+    ]
+    if unsupported:
+        raise ValueError(
+            f"{backend_name} pandas numeric path requires numeric or boolean features only. "
+            f"Found unsupported columns: {unsupported}. Pass them as categorical_features when supported."
+        )
+
+
 class MarsXGBStrategy(MarsBaseModelTuner):
     """
     基于 XGBoost 原生接口的调参策略。
@@ -110,23 +171,47 @@ class MarsXGBStrategy(MarsBaseModelTuner):
         xgb = _load_module("xgboost")
 
         self.dmatrix_dict: Dict[str, Any] = {}
+        self._xgb_use_categorical = self._has_categorical_backend_features()
+        if self._xgb_use_categorical:
+            self.backend_data_mode = (
+                "polars_to_pandas_category" if self._input_is_polars else "pandas_category"
+            )
+        else:
+            self.backend_data_mode = (
+                "polars_arrow_numeric" if self._input_is_polars else "pandas_numeric"
+            )
         for name, df in self.data_dict.items():
-            X = self._get_feature_frame(df, for_categorical_backend=False)
-            non_numeric = [
-                col
-                for col in X.columns
-                if not (
-                    pd.api.types.is_numeric_dtype(X[col])
-                    or pd.api.types.is_bool_dtype(X[col])
+            y = self._get_target_array(df)
+            if self._xgb_use_categorical:
+                X = self._get_feature_frame(df, for_categorical_backend=True)
+                unsupported = [
+                    col
+                    for col in X.columns
+                    if not (
+                        pd.api.types.is_numeric_dtype(X[col])
+                        or pd.api.types.is_bool_dtype(X[col])
+                        or pd.api.types.is_categorical_dtype(X[col])
+                    )
+                ]
+                if unsupported:
+                    raise ValueError(
+                        "MarsXGBStrategy requires non-numeric columns to be declared in categorical_features. "
+                        f"Found unsupported columns: {unsupported}"
+                    )
+                self.dmatrix_dict[name] = xgb.DMatrix(
+                    X,
+                    label=y,
+                    enable_categorical=True,
                 )
-            ]
-            if non_numeric:
-                raise ValueError(
-                    "MarsXGBStrategy requires numeric or boolean features only. "
-                    f"Found unsupported columns: {non_numeric}"
-                )
-
-            self.dmatrix_dict[name] = xgb.DMatrix(X, label=self._get_target_array(df))
+            else:
+                if self._input_is_polars:
+                    X_pl = self._get_feature_polars(df)
+                    _validate_numeric_polars(X_pl, "MarsXGBStrategy")
+                    self.dmatrix_dict[name] = xgb.DMatrix(self._get_feature_arrow(df), label=y)
+                else:
+                    X = self._get_feature_frame(df, for_categorical_backend=False)
+                    _validate_numeric_pandas(X, "MarsXGBStrategy")
+                    self.dmatrix_dict[name] = xgb.DMatrix(X, label=y)
 
     def get_default_space(self) -> Dict[str, Any]:
         """
@@ -191,11 +276,15 @@ class MarsXGBStrategy(MarsBaseModelTuner):
             "objective": "binary:logistic",
             "verbosity": 0,
             "seed": self.seed,
-            "eval_metric": training_metric,
+            "eval_metric": "auc" if training_metric == "ks" else training_metric,
         }
         train_params.update(params)
 
-        return xgb.train(
+        train_kwargs: Dict[str, Any] = {}
+        if training_metric == "ks":
+            train_kwargs["custom_metric"] = _xgb_ks_metric
+
+        model = xgb.train(
             train_params,
             self.dmatrix_dict["train"],
             num_boost_round=self.num_boost_round,
@@ -204,7 +293,13 @@ class MarsXGBStrategy(MarsBaseModelTuner):
             early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=False,
             callbacks=callbacks,
+            **train_kwargs,
         )
+        try:
+            model.set_attr(mars_backend_data_mode=self.backend_data_mode)
+        except Exception:
+            pass
+        return model
 
     def predict_scores(self, model: Any, split_name: str) -> np.ndarray:
         """
@@ -250,17 +345,49 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         lgb = _load_module("lightgbm")
 
         self.dataset_dict: Dict[str, Any] = {}
-        self.predict_frame_dict: Dict[str, pd.DataFrame] = {}
-        for name, df in self.data_dict.items():
-            X = self._get_feature_frame(df, for_categorical_backend=True)
-            y = self._get_target_array(df)
-            self.predict_frame_dict[name] = X
-            self.dataset_dict[name] = lgb.Dataset(
-                X,
-                label=y,
-                categorical_feature=self.categorical_features or "auto",
-                free_raw_data=False,
+        self.predict_frame_dict: Dict[str, Any] = {}
+        self._lgb_use_categorical = self._has_categorical_backend_features()
+        if self._lgb_use_categorical:
+            self.backend_data_mode = (
+                "polars_to_pandas_category" if self._input_is_polars else "pandas_category"
             )
+        else:
+            self.backend_data_mode = (
+                "polars_arrow_numeric" if self._input_is_polars else "pandas_numeric"
+            )
+        for name, df in self.data_dict.items():
+            y = self._get_target_array(df)
+            if self._lgb_use_categorical:
+                X = self._get_feature_frame(df, for_categorical_backend=True)
+                self.predict_frame_dict[name] = X
+                self.dataset_dict[name] = lgb.Dataset(
+                    X,
+                    label=y,
+                    categorical_feature=self.categorical_features or "auto",
+                    free_raw_data=False,
+                )
+            else:
+                if self._input_is_polars:
+                    X_pl = self._get_feature_polars(df)
+                    _validate_numeric_polars(X_pl, "MarsLGBStrategy")
+                    X_arrow = self._get_feature_arrow(df)
+                    self.predict_frame_dict[name] = X_arrow
+                    self.dataset_dict[name] = lgb.Dataset(
+                        X_arrow,
+                        label=y,
+                        feature_name=list(self.features),
+                        free_raw_data=False,
+                    )
+                else:
+                    X = self._get_feature_frame(df, for_categorical_backend=False)
+                    _validate_numeric_pandas(X, "MarsLGBStrategy")
+                    self.predict_frame_dict[name] = X
+                    self.dataset_dict[name] = lgb.Dataset(
+                        X,
+                        label=y,
+                        feature_name=list(self.features),
+                        free_raw_data=False,
+                    )
 
     def get_default_space(self) -> Dict[str, Any]:
         """
@@ -322,12 +449,16 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         # 从而让 KS 优化目标与训练过程解耦。
         train_params = {
             "objective": "binary",
-            "metric": training_metric,
+            "metric": "None" if training_metric == "ks" else training_metric,
             "verbosity": -1,
             "seed": self.seed,
             "feature_pre_filter": False,
         }
         train_params.update(params)
+
+        train_kwargs: Dict[str, Any] = {}
+        if training_metric == "ks":
+            train_kwargs["feval"] = _lgb_ks_metric
 
         return lgb.train(
             train_params,
@@ -336,6 +467,7 @@ class MarsLGBStrategy(MarsBaseModelTuner):
             valid_sets=[self.dataset_dict["train"], self.dataset_dict["val"]],
             valid_names=["train", "val"],
             callbacks=callbacks,
+            **train_kwargs,
         )
 
     def predict_scores(self, model: Any, split_name: str) -> np.ndarray:
@@ -389,6 +521,16 @@ class MarsCatBoostStrategy(MarsBaseModelTuner):
 
         self.pool_dict: Dict[str, Any] = {}
         self.predict_frame_dict: Dict[str, pd.DataFrame] = {}
+        if self._input_is_polars:
+            self.backend_data_mode = (
+                "polars_to_pandas_category"
+                if self._has_categorical_backend_features()
+                else "pandas_numeric"
+            )
+        else:
+            self.backend_data_mode = (
+                "pandas_category" if self._has_categorical_backend_features() else "pandas_numeric"
+            )
         for name, df in self.data_dict.items():
             X = self._get_feature_frame(df, for_categorical_backend=True)
             y = self._get_target_array(df)
@@ -445,9 +587,10 @@ class MarsCatBoostStrategy(MarsBaseModelTuner):
 
         # CatBoost 的训练监控指标同样走 training_metric；
         # 外层若优化 KS，会提前把这里的训练指标切到 AUC。
+        eval_metric = _CatBoostKSMetric() if training_metric == "ks" else training_metric.upper()
         train_params = {
             "loss_function": "Logloss",
-            "eval_metric": training_metric.upper(),
+            "eval_metric": eval_metric,
             "iterations": self.num_boost_round,
             "random_seed": self.seed,
             "verbose": False,

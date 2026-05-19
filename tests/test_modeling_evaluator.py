@@ -20,6 +20,11 @@ def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeli
 
     assert isinstance(report, MarsModelingReport)
     assert ("Target: target", "New KS") in report.summary_table.columns
+    assert ("Target: target", "LogLoss") in report.summary_table.columns
+    assert ("Target: target", "Brier") in report.summary_table.columns
+    assert ("Target: target", "Score PSI") in report.summary_table.columns
+    assert "decile_lift" in report.detail_tables
+    assert "score_psi" in report.detail_tables
     assert ("Time Period", "Start Time") in report.summary_table.columns
     assert report.to_pandas().equals(report.summary_table)
     assert list(report.summary_table.index[:3]) == ["train", "val", "oot1"]
@@ -46,4 +51,6 @@ def test_model_evaluator_generates_same_report_shape(sample_modeling_pd):
 
     assert isinstance(report, MarsModelingReport)
     assert ("Target: target", "New AUC") in report.summary_table.columns
+    assert ("Target: target", "Top 10% Capture") in report.summary_table.columns
+    assert not report.detail_tables["decile_lift"].empty
     assert list(report.summary_table.index[:3]) == ["train", "val", "oot1"]

@@ -8,7 +8,7 @@ import os
 
 import pandas as pd
 
-from mars.modeling.base import FrameLike
+from mars.modeling.base import FrameLike, collect_library_versions
 from mars.modeling.report import MarsModelEvaluator, MarsModelingReport, _ModelPredictor
 from mars.modeling.results import MarsModelingRun, MarsReplayRun
 from mars.modeling.spec import ModelingSpec, ReplaySpec
@@ -194,7 +194,7 @@ class MarsModelTuner:
 
         backend.num_boost_round = int(num_boost_round)
         backend.early_stopping_rounds = int(early_stopping_rounds)
-        backend.training_metric = "auc" if backend.optimize_metric == "ks" else backend.optimize_metric
+        backend.training_metric = backend.optimize_metric
 
         study = optuna.create_study(
             direction="maximize",
@@ -221,6 +221,17 @@ class MarsModelTuner:
             for key in backend.replay_param_keys
             if key in best_trial_row.index and pd.notna(best_trial_row[key])
         }
+        training_config = {
+            "n_trials": int(n_trials),
+            "startup_trials": int(startup_trials),
+            "warmup_steps": int(warmup_steps),
+            "num_boost_round": int(num_boost_round),
+            "early_stopping_rounds": int(early_stopping_rounds),
+            "max_diff": float(max_diff),
+            "use_oot_penalty": bool(use_oot_penalty),
+            "param_space": dict(param_space or {}),
+            "training_metric": backend.training_metric,
+        }
         run = MarsModelingRun(
             model_type=self.spec.model_type,
             optimize_metric=backend.optimize_metric,
@@ -237,6 +248,18 @@ class MarsModelTuner:
             study=study,
             replay_candidates=list(backend.replay_param_keys),
             importance_table=backend.extract_importance(backend.best_model),
+            training_config=training_config,
+            library_versions=collect_library_versions(
+                "polars",
+                "pandas",
+                "pyarrow",
+                "xgboost",
+                "lightgbm",
+                "catboost",
+                "optuna",
+            ),
+            feature_schema=dict(backend.feature_schema),
+            backend_data_mode=backend.backend_data_mode,
         )
         self.last_run = run
         return run
@@ -306,12 +329,23 @@ class MarsModelReplay:
                 f"Run model_type {run.model_type!r} does not match replay model_type {self.spec.model_type!r}."
             )
 
+        run_training_config = dict(getattr(run, "training_config", {}) or {})
+        resolved_num_boost_round = (
+            int(num_boost_round)
+            if num_boost_round != 500 or "num_boost_round" not in run_training_config
+            else int(run_training_config.get("num_boost_round", num_boost_round))
+        )
+        resolved_early_stopping_rounds = (
+            int(early_stopping_rounds)
+            if early_stopping_rounds != 50 or "early_stopping_rounds" not in run_training_config
+            else int(run_training_config.get("early_stopping_rounds", early_stopping_rounds))
+        )
         replay_spec = ReplaySpec(
             top_k=top_k,
             sort_metric=sort_metric.lower(),
             include_val=include_val,
-            num_boost_round=int(num_boost_round),
-            early_stopping_rounds=int(early_stopping_rounds),
+            num_boost_round=resolved_num_boost_round,
+            early_stopping_rounds=resolved_early_stopping_rounds,
             optimize_metric=(optimize_metric or self.spec.optimize_metric).lower(),
         )
 
@@ -339,7 +373,7 @@ class MarsModelReplay:
         )
         backend.num_boost_round = replay_spec.num_boost_round
         backend.early_stopping_rounds = replay_spec.early_stopping_rounds
-        backend.training_metric = "auc" if backend.optimize_metric == "ks" else backend.optimize_metric
+        backend.training_metric = backend.optimize_metric
 
         evaluator = MarsModelEvaluator(
             group_col=self.spec.dataset_flag_col,
@@ -387,6 +421,7 @@ class MarsModelReplay:
                 "trial_num": trial_num,
                 "custom_mean_score": float(row["custom_mean_score"]),
                 "best_iteration": backend.get_best_iteration(model),
+                "backend_data_mode": backend.backend_data_mode,
             }
             for column_name, value in row.items():
                 if column_name == "custom_mean_score" or column_name == "trial_num":
@@ -401,11 +436,26 @@ class MarsModelReplay:
                 [
                     column
                     for column in leaderboard_table.columns
-                    if column not in {"rank", "model_name", "trial_num", "custom_mean_score", "best_iteration"}
+                    if column not in {
+                        "rank",
+                        "model_name",
+                        "trial_num",
+                        "custom_mean_score",
+                        "best_iteration",
+                        "backend_data_mode",
+                    }
                 ]
             )
             leaderboard_table = leaderboard_table[
-                ["rank", "model_name", "trial_num", "custom_mean_score", "best_iteration", *metric_columns]
+                [
+                    "rank",
+                    "model_name",
+                    "trial_num",
+                    "custom_mean_score",
+                    "best_iteration",
+                    "backend_data_mode",
+                    *metric_columns,
+                ]
             ]
 
         return MarsReplayRun(

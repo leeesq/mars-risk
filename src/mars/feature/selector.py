@@ -398,7 +398,13 @@ class MarsStatsSelector(MarsBaseSelector):
                                 prev_count, len(current_features))
 
         # 执行特征集终态覆盖映射
-        self.selected_features_ = list(set(current_features + valid_white_list))
+        selected_features = list(current_features)
+        selected_set = set(selected_features)
+        for feature in valid_white_list:
+            if feature not in selected_set:
+                selected_features.append(feature)
+                selected_set.add(feature)
+        self.selected_features_ = selected_features
         self._record_funnel("Final", "White List Forcing", 
                             {"white_list_len": len(valid_white_list)}, 
                             len(current_features), len(self.selected_features_))

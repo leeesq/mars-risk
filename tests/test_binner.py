@@ -64,7 +64,7 @@ def test_binner_public_signatures_expose_user_visible_parameters():
     assert "kwargs" not in optimal_fit_sig.parameters
 
 
-def test_native_binner_transform_can_explicitly_return_woe(sample_credit_df):
+def test_native_binner_transform_can_explicitly_return_woe(sample_credit_df, recwarn):
     features = sample_credit_df.select(["age", "income", "utilization", "segment"])
     target = sample_credit_df.get_column("target")
 
@@ -78,3 +78,4 @@ def test_native_binner_transform_can_explicitly_return_woe(sample_credit_df):
     transformed = binner.fit_transform(features, target, return_type="woe")
 
     assert {"age_woe", "income_woe", "utilization_woe", "segment_woe"}.issubset(transformed.columns)
+    assert not any("replace" in str(warning.message) for warning in recwarn)

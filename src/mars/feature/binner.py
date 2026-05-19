@@ -752,7 +752,7 @@ class MarsBinnerBase(MarsTransformer):
                     }
                     
                     # 未命中的索引统一记为 0.0，避免原始分箱索引泄露到 WOE 输出。
-                    expr = final_idx_expr.replace(clean_woe_map, default=0.0).cast(pl.Float32)
+                    expr = final_idx_expr.replace_strict(clean_woe_map, default=0.0).cast(pl.Float32)
                 else:
                     # 如果压根没映射表, 保持原样的全列 0.0
                     expr = pl.lit(0.0)

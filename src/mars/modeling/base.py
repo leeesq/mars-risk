@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 import numbers
+import importlib
 import re
 
 import numpy as np
@@ -62,7 +63,16 @@ def to_pandas_frame(df: FrameLike) -> pd.DataFrame:
     raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
 
-def restore_frame_type(df: pd.DataFrame, prefer_polars: bool) -> FrameLike:
+def to_polars_frame(df: FrameLike) -> pl.DataFrame:
+    """Convert a pandas or polars DataFrame into a Polars eager DataFrame."""
+    if isinstance(df, pl.DataFrame):
+        return df.clone()
+    if isinstance(df, pd.DataFrame):
+        return pl.from_pandas(df)
+    raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
+
+
+def restore_frame_type(df: Union[pd.DataFrame, pl.DataFrame], prefer_polars: bool) -> FrameLike:
     """
     按调用方期望的公开类型恢复数据框。
 
@@ -79,8 +89,12 @@ def restore_frame_type(df: pd.DataFrame, prefer_polars: bool) -> FrameLike:
         与调用方输入风格一致的数据框。
     """
     if prefer_polars:
+        if isinstance(df, pl.DataFrame):
+            return df
         return pl.from_pandas(df)
-    return df
+    if isinstance(df, pd.DataFrame):
+        return df
+    return df.to_pandas()
 
 
 def calculate_ks(y_true: Union[np.ndarray, pd.Series], y_pred: Union[np.ndarray, pd.Series]) -> float:
@@ -149,14 +163,59 @@ def split_name_sort_key(split_name: str) -> Tuple[int, int, str]:
         用于排序的稳定键，顺序为 ``train``、``val``、``oot*``、其他。
     """
     normalized = str(split_name).strip().lower()
-    if normalized == "train":
+    if "train" in normalized:
         return (0, 0, normalized)
-    if normalized == "val":
+    if "val" in normalized:
         return (1, 0, normalized)
-    if normalized.startswith("oot"):
+    if "oot" in normalized:
         match = re.search(r"(\d+)", normalized)
         return (2, int(match.group(1)) if match else 10**9, normalized)
     return (3, 0, normalized)
+
+
+def normalize_dataset_flags(flags: Union[pd.Series, pl.Series]) -> pd.Series:
+    """Normalize dataset flag labels before train/val/oot role detection."""
+    if isinstance(flags, pl.Series):
+        flags_pd = flags.to_pandas()
+    else:
+        flags_pd = flags
+    return flags_pd.astype(str).str.strip().str.lower()
+
+
+def validate_dataset_flag_roles(flags: Union[pd.Series, pl.Series]) -> None:
+    """Reject ambiguous split labels that match multiple reserved roles."""
+    normalized = normalize_dataset_flags(flags)
+    unique_flags = sorted(set(normalized.dropna().tolist()))
+    conflicts: List[str] = []
+    for flag in unique_flags:
+        roles = [
+            role
+            for role, matched in {
+                "train": "train" in flag,
+                "val": "val" in flag,
+                "oot": "oot" in flag,
+            }.items()
+            if matched
+        ]
+        if len(roles) > 1:
+            conflicts.append(flag)
+    if conflicts:
+        raise ValueError(
+            "Ambiguous dataset_flag values matched multiple split roles: "
+            f"{conflicts}. Please rename them so each value contains only one of train/val/oot."
+        )
+
+
+def collect_library_versions(*module_names: str) -> Dict[str, Optional[str]]:
+    """Collect optional dependency versions for reproducible modeling artifacts."""
+    versions: Dict[str, Optional[str]] = {}
+    for module_name in module_names:
+        try:
+            module = importlib.import_module(module_name)
+            versions[module_name] = getattr(module, "__version__", None)
+        except Exception:
+            versions[module_name] = None
+    return versions
 
 
 class MarsBaseModelTuner(ABC):
@@ -221,7 +280,18 @@ class MarsBaseModelTuner(ABC):
         categorical_features: Optional[Sequence[str]] = None,
     ) -> None:
         self._input_is_polars: bool = is_polars_dataframe(df)
-        self.df_pd: pd.DataFrame = to_pandas_frame(df)
+        if isinstance(df, pl.DataFrame):
+            self.df_pl: Optional[pl.DataFrame] = df.clone()
+            self.df_pd: Optional[pd.DataFrame] = None
+            self.df_native: FrameLike = self.df_pl
+            native_columns = list(self.df_pl.columns)
+        elif isinstance(df, pd.DataFrame):
+            self.df_pl = None
+            self.df_pd = df.copy()
+            self.df_native = self.df_pd
+            native_columns = list(self.df_pd.columns)
+        else:
+            raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
         self.features: List[str] = list(features)
         self.target: str = target
         self.optimize_metric: str = optimize_metric.lower()
@@ -239,7 +309,7 @@ class MarsBaseModelTuner(ABC):
             )
 
         required_cols = set(self.features + [self.target, self.dataset_flag_col])
-        missing_cols = required_cols.difference(self.df_pd.columns)
+        missing_cols = required_cols.difference(native_columns)
         if missing_cols:
             raise ValueError(f"Input data is missing required columns: {sorted(missing_cols)}")
 
@@ -257,6 +327,19 @@ class MarsBaseModelTuner(ABC):
         self.num_boost_round: int = 500
         self.early_stopping_rounds: int = 50
         self.training_metric: str = "auc"
+        self.backend_data_mode: str = "unset"
+        if self._input_is_polars:
+            assert self.df_pl is not None
+            self.feature_schema = {
+                feature: str(self.df_pl.schema.get(feature))
+                for feature in self.features
+            }
+        else:
+            assert self.df_pd is not None
+            self.feature_schema = {
+                feature: str(self.df_pd.dtypes.get(feature))
+                for feature in self.features
+            }
 
         self._prepare_data()
         self._build_backend_data()
@@ -298,9 +381,49 @@ class MarsBaseModelTuner(ABC):
         ValueError
             当缺少训练集或验证集切片时抛出。
         """
-        flags = self.df_pd[self.dataset_flag_col].astype(str).str.lower()
-        train_mask = flags.str.contains("train", na=False)
-        val_mask = flags.str.contains("val", na=False)
+        if self._input_is_polars:
+            assert self.df_pl is not None
+            flags_pd = normalize_dataset_flags(self.df_pl.get_column(self.dataset_flag_col))
+            validate_dataset_flag_roles(flags_pd)
+            train_mask_pd = flags_pd.str.contains("train", na=False)
+            val_mask_pd = flags_pd.str.contains("val", na=False)
+
+            train_mask = pl.Series("__mask__", train_mask_pd.to_numpy())
+            val_mask = pl.Series("__mask__", val_mask_pd.to_numpy())
+
+            train_df = self.df_pl.filter(train_mask)
+            val_df = self.df_pl.filter(val_mask)
+
+            if train_df.is_empty():
+                raise ValueError("No training rows were found from dataset_flag contains 'train'.")
+            if val_df.is_empty():
+                raise ValueError("No validation rows were found from dataset_flag contains 'val'.")
+
+            self.data_dict: Dict[str, FrameLike] = {
+                "train": train_df,
+                "val": val_df,
+            }
+
+            original_flags = self.df_pl.get_column(self.dataset_flag_col).cast(pl.Utf8).to_list()
+            oot_flags = sorted(
+                {
+                    original_flag
+                    for original_flag in original_flags
+                    if "oot" in str(original_flag).lower()
+                },
+                key=split_name_sort_key,
+            )
+            for flag in oot_flags:
+                self.data_dict[str(flag)] = self.df_pl.filter(
+                    pl.col(self.dataset_flag_col).cast(pl.Utf8) == str(flag)
+                )
+            return
+
+        assert self.df_pd is not None
+        flags_pd = normalize_dataset_flags(self.df_pd[self.dataset_flag_col])
+        validate_dataset_flag_roles(flags_pd)
+        train_mask = flags_pd.str.contains("train", na=False)
+        val_mask = flags_pd.str.contains("val", na=False)
 
         train_df = self.df_pd.loc[train_mask].copy()
         val_df = self.df_pd.loc[val_mask].copy()
@@ -310,15 +433,16 @@ class MarsBaseModelTuner(ABC):
         if val_df.empty:
             raise ValueError("No validation rows were found from dataset_flag contains 'val'.")
 
-        self.data_dict: Dict[str, pd.DataFrame] = {
+        self.data_dict = {
             "train": train_df,
             "val": val_df,
         }
 
+        original_flags = self.df_pd[self.dataset_flag_col].astype(str).tolist()
         oot_flags = sorted(
             {
                 original_flag
-                for original_flag in self.df_pd[self.dataset_flag_col].astype(str).unique().tolist()
+                for original_flag in original_flags
                 if "oot" in str(original_flag).lower()
             },
             key=split_name_sort_key,
@@ -328,7 +452,7 @@ class MarsBaseModelTuner(ABC):
                 self.df_pd[self.dataset_flag_col].astype(str) == str(flag)
             ].copy()
 
-    def _get_feature_frame(self, df: pd.DataFrame, *, for_categorical_backend: bool) -> pd.DataFrame:
+    def _get_feature_frame(self, df: FrameLike, *, for_categorical_backend: bool) -> pd.DataFrame:
         """
         生成后端可直接消费的特征数据框。
 
@@ -344,14 +468,34 @@ class MarsBaseModelTuner(ABC):
         pandas.DataFrame
             后端可直接使用的特征数据框。
         """
-        X = df.loc[:, self.features].copy()
+        if isinstance(df, pd.DataFrame):
+            X = df.loc[:, self.features].copy()
+        elif isinstance(df, pl.DataFrame):
+            X = df.select(self.features).to_pandas()
+        else:
+            raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
         if for_categorical_backend:
             for feature in self.categorical_features:
                 if feature in X.columns:
                     X[feature] = X[feature].astype("category")
         return X
 
-    def _get_target_array(self, df: pd.DataFrame) -> np.ndarray:
+    def _get_feature_polars(self, df: FrameLike) -> pl.DataFrame:
+        """Return selected features as a Polars DataFrame."""
+        if isinstance(df, pl.DataFrame):
+            return df.select(self.features)
+        if isinstance(df, pd.DataFrame):
+            return pl.from_pandas(df.loc[:, self.features])
+        raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
+
+    def _get_feature_arrow(self, df: FrameLike) -> Any:
+        """Return selected features as a PyArrow table for reduced-copy backends."""
+        return self._get_feature_polars(df).to_arrow()
+
+    def _has_categorical_backend_features(self) -> bool:
+        return bool(self.categorical_features)
+
+    def _get_target_array(self, df: FrameLike) -> np.ndarray:
         """
         取出单个切片的目标数组。
 
@@ -365,7 +509,11 @@ class MarsBaseModelTuner(ABC):
         numpy.ndarray
             目标变量数组。
         """
-        return df[self.target].to_numpy()
+        if isinstance(df, pd.DataFrame):
+            return df[self.target].to_numpy()
+        if isinstance(df, pl.DataFrame):
+            return df.get_column(self.target).to_numpy()
+        raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
     def _evaluate_predictions(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
         """
@@ -638,6 +786,14 @@ class MarsBaseModelTuner(ABC):
         best_iteration = getattr(model, "best_iteration", None)
         if isinstance(best_iteration, numbers.Integral):
             return int(best_iteration)
+        get_best_iteration = getattr(model, "get_best_iteration", None)
+        if callable(get_best_iteration):
+            try:
+                best_iteration = get_best_iteration()
+                if isinstance(best_iteration, numbers.Integral):
+                    return int(best_iteration)
+            except Exception:
+                return None
         return None
 
     @abstractmethod

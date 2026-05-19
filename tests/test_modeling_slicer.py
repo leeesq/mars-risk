@@ -20,6 +20,8 @@ def test_model_data_slicer_strict_split_keeps_day_boundaries_and_other_group():
     )
 
     slicer = MarsModelDataSlicer(df, time_col="biz_dt", label_col="target")
+    assert slicer.engine_ == "pandas"
+    assert isinstance(slicer.df, pd.DataFrame)
     out = slicer.split_by_time_strictly({"train": 0.5, "val": 0.25, "oot1": 0.25})
 
     assert isinstance(out, pd.DataFrame)
@@ -29,6 +31,27 @@ def test_model_data_slicer_strict_split_keeps_day_boundaries_and_other_group():
     valid = out[out["dataset_flag"] != "other"].copy()
     date_groups = valid.groupby("biz_dt")["dataset_flag"].nunique()
     assert date_groups.max() == 1
+
+
+def test_model_data_slicer_marks_invalid_dates_as_other():
+    df = pl.DataFrame(
+        {
+            "biz_dt": ["2024-01-01", "bad-date", "2024-01-02", None],
+            "target": [0, 1, 1, 0],
+            "x1": [1, 2, 3, 4],
+        }
+    )
+
+    slicer = MarsModelDataSlicer(df, time_col="biz_dt", label_col="target")
+    assert slicer.engine_ == "polars"
+    out = slicer.split_by_time_strictly({"train": 0.5, "val": 0.5})
+
+    assert isinstance(out, pl.DataFrame)
+    invalid_flags = out.filter(
+        (pl.col("biz_dt") == "bad-date") | pl.col("biz_dt").is_null()
+    )["dataset_flag"].to_list()
+    assert invalid_flags == ["other", "other"]
+    assert "unassigned" not in set(out["dataset_flag"].to_list())
 
 
 def test_model_data_slicer_hybrid_split_preserves_polars_output_type():
@@ -44,6 +67,7 @@ def test_model_data_slicer_hybrid_split_preserves_polars_output_type():
     )
 
     slicer = MarsModelDataSlicer(df, time_col="biz_dt", label_col="target")
+    assert slicer.engine_ == "polars"
     out = slicer.split_hybrid_random_val({"train": 0.5, "val": 0.25, "oot1": 0.25}, random_seed=9)
 
     assert isinstance(out, pl.DataFrame)
@@ -119,3 +143,50 @@ def test_modeling_session_slice_delegates_to_strict_mode():
 
     assert isinstance(out, pd.DataFrame)
     assert "dataset_flag" in out.columns
+
+
+def test_model_data_slicer_pandas_and_polars_strict_are_consistent():
+    df_pd = pd.DataFrame(
+        {
+            "biz_dt": [
+                "2024-01-01", "2024-01-01",
+                "2024-01-02", "2024-01-02",
+                "2024-01-03", "bad-date",
+            ],
+            "target": [0, 1, 0, 1, 0, 1],
+            "x1": [1, 2, 3, 4, 5, 6],
+        }
+    )
+    ratios = {"train": 0.5, "val": 0.25, "oot1": 0.25}
+
+    out_pd = MarsModelDataSlicer(df_pd, time_col="biz_dt", label_col="target").split_by_time_strictly(ratios)
+    out_pl = MarsModelDataSlicer(pl.from_pandas(df_pd), time_col="biz_dt", label_col="target").split_by_time_strictly(ratios)
+
+    assert out_pd["dataset_flag"].tolist() == out_pl["dataset_flag"].to_list()
+
+
+def test_model_data_slicer_pandas_and_polars_hybrid_are_seed_consistent():
+    df_pd = pd.DataFrame(
+        {
+            "biz_dt": [
+                "2024-01-01", "2024-01-01",
+                "2024-01-02", "2024-01-02",
+                "2024-01-03", "2024-01-03",
+                "2024-01-04", "2024-01-04",
+            ],
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+            "x1": [1, 2, 3, 4, 5, 6, 7, 8],
+        }
+    )
+    ratios = {"train": 0.5, "val": 0.25, "oot1": 0.25}
+
+    out_pd = MarsModelDataSlicer(df_pd, time_col="biz_dt", label_col="target").split_hybrid_random_val(
+        ratios,
+        random_seed=99,
+    )
+    out_pl = MarsModelDataSlicer(pl.from_pandas(df_pd), time_col="biz_dt", label_col="target").split_hybrid_random_val(
+        ratios,
+        random_seed=99,
+    )
+
+    assert out_pd["dataset_flag"].tolist() == out_pl["dataset_flag"].to_list()

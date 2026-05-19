@@ -41,12 +41,14 @@ def test_modeling_session_replay_retrains_and_scores(sample_modeling_df, tmp_pat
     )
 
     assert isinstance(result, MarsReplayRun)
+    assert run.backend_data_mode == "polars_arrow_numeric"
     assert len(result.models) == 1
     assert len(result.reports) == 1
     pred_cols = [col for col in result.scored_df.columns if str(col).startswith("prob_top1_trial")]
     assert pred_cols
     assert "custom_mean_score" in result.ranking_table.columns
     assert {"rank", "model_name", "trial_num", "custom_mean_score", "best_iteration"}.issubset(result.leaderboard_table.columns)
+    assert "backend_data_mode" in result.leaderboard_table.columns
     assert list(result.importance_tables.keys()) == list(result.models.keys())
 
 

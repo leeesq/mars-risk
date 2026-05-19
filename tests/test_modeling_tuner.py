@@ -51,6 +51,11 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
     assert "val_ks" in result.history_table.columns
     assert result.history_path.endswith(f"{model_type}_history.csv")
     assert result.replay_candidates
+    assert result.training_config["training_metric"] == "ks"
+    assert result.feature_schema
+    assert result.library_versions
+    if model_type in {"xgb", "lgb"}:
+        assert result.backend_data_mode == "pandas_numeric"
 
 
 def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tmp_path: Path):
@@ -106,6 +111,9 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
     assert loaded.best_params == result.best_params
     assert loaded.history_table.equals(result.history_table)
     assert loaded.importance_table.equals(result.importance_table)
+    assert loaded.training_config == result.training_config
+    assert loaded.feature_schema == result.feature_schema
+    assert loaded.backend_data_mode == result.backend_data_mode
 
 
 def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
@@ -176,3 +184,45 @@ def test_modeling_session_tune_raises_for_invalid_optimize_metric():
             target="target",
             optimize_metric="f1",
         )
+
+
+def test_modeling_session_tune_uses_lowercase_contains_dataset_flags(sample_modeling_pd, tmp_path: Path):
+    df = sample_modeling_pd.copy()
+    df["dataset_flag"] = df["dataset_flag"].map(
+        {
+            "train": "SAMPLE_TRAIN_V1",
+            "val": "Validation_Window",
+            "oot1": "OOT_202403",
+        }
+    )
+
+    result = MarsModelingSession(
+        model_type="xgb",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="ks",
+        seed=33,
+    ).tune(
+        df,
+        max_diff=20.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        save_path=str(tmp_path / "contains_history.csv"),
+    )
+
+    assert "OOT_202403_ks" in result.history_table.columns
+
+
+def test_modeling_session_tune_rejects_ambiguous_dataset_flags(sample_modeling_pd):
+    df = sample_modeling_pd.copy()
+    df.loc[df["dataset_flag"] == "train", "dataset_flag"] = "train_val_mix"
+
+    with pytest.raises(ValueError, match="Ambiguous dataset_flag"):
+        MarsModelingSession(
+            model_type="xgb",
+            features=["x1", "x2", "x3"],
+            target="target",
+        ).tune(df, n_trials=1)
