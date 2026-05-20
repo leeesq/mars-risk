@@ -91,6 +91,18 @@ def test_modeling_report_to_html_writes_single_file(sample_modeling_pd, tmp_path
         feature_cols=["x1", "x2", "x3"],
         importance_table=importance,
     ).evaluate(df, pred_col="pred_score")
+    report.metadata["feature_growth_summary"] = pd.DataFrame(
+        {
+            "feature_count": [1, 2, 3],
+            "status": ["complete", "complete", "complete"],
+            "train_ks": [45.0, 50.0, 52.0],
+            "val_ks": [42.0, 48.0, 47.0],
+            "selection_score": [42.0, 48.0, 47.0],
+            "is_best": [False, True, False],
+        }
+    )
+    report.metadata["feature_growth_selection_metric"] = "ks"
+    report.metadata["feature_growth_best_step"] = 2
 
     scorecard = type(
         "DummyScorecard",
@@ -117,6 +129,7 @@ def test_modeling_report_to_html_writes_single_file(sample_modeling_pd, tmp_path
         "Stability",
         "Explainability",
         "Tuning Audit",
+        "Feature Growth Audit",
         "Scorecard",
     ]:
         assert section_name in html_text

@@ -2,6 +2,7 @@ from pathlib import Path
 import importlib
 
 import numpy as np
+import pandas as pd
 import pytest
 
 pytest.importorskip("xgboost")
@@ -15,6 +16,7 @@ import mars.modeling as modeling
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
 from mars.modeling import MarsModelingSession
+from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
 from mars.modeling.metrics import CatBoostKSMetric, as_probability
 from mars.modeling.results import MarsModelingRun
 from mars.modeling import tuning as tuning_module
@@ -89,6 +91,105 @@ def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tm
     assert tuner.history_table.equals(result.history_table)
 
 
+def test_feature_incremental_tuner_resolves_steps_and_feature_order():
+    tuner = MarsFeatureIncrementalTuner(
+        model_type="xgb",
+        features=["x1", "x2", "x3"],
+        target="target",
+    )
+
+    assert tuner._resolve_steps(
+        total_features=3,
+        steps=[2, 2, 9, 0],
+        min_features=10,
+        max_features=None,
+        step_size=None,
+    ) == [1, 2, 3]
+    assert tuner._resolve_steps(
+        total_features=23,
+        steps=None,
+        min_features=5,
+        max_features=12,
+        step_size=None,
+    ) == [5, 10, 12]
+
+    importance = pd.DataFrame(
+        {
+            "feature": ["x3", "x1"],
+            "rank": [1, 2],
+        }
+    )
+    assert tuner._resolve_feature_order(feature_order=None, importance_table=importance) == ["x3", "x1", "x2"]
+
+    with pytest.raises(ValueError, match="unknown"):
+        tuner._resolve_feature_order(feature_order=["x1", "missing"], importance_table=None)
+
+
+@pytest.mark.parametrize("model_type", ["xgb", "lgb", "cbt"])
+def test_modeling_session_incremental_tune_runs_for_all_backends(sample_modeling_pd, tmp_path: Path, model_type: str):
+    session = MarsModelingSession(
+        model_type=model_type,
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="ks",
+        seed=41,
+    )
+
+    result = session.incremental_tune(
+        sample_modeling_pd,
+        steps=[1, 3],
+        max_diff=100.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        save_path=str(tmp_path / f"{model_type}_feature_growth.csv"),
+    )
+
+    assert isinstance(result, MarsFeatureGrowthRun)
+    assert result.steps == [1, 3]
+    assert set(result.runs) == {1, 3}
+    assert result.best_run is not None
+    assert result.best_run.features == result.best_features
+    assert session.last_feature_growth_run is result
+    assert session.last_run is result.best_run
+    assert result.summary_table["feature_count"].tolist() == [1, 3]
+    assert "val_ks" in result.summary_table.columns
+    assert result.summary_table["is_best"].sum() == 1
+    assert all(Path(path).exists() for path in result.summary_table["history_path"].dropna())
+
+
+def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
+    session = MarsModelingSession(
+        model_type="xgb",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="ks",
+        seed=42,
+    )
+    result = session.incremental_tune(
+        sample_modeling_pd,
+        steps=[2, 3],
+        max_diff=100.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        save_path=str(tmp_path / "artifact_feature_growth.csv"),
+    )
+
+    artifact_dir = result.write_artifact(str(tmp_path / "feature_growth_artifact"))
+    loaded = MarsFeatureGrowthRun.load_artifact(str(artifact_dir))
+
+    assert loaded.best_step == result.best_step
+    assert loaded.steps == result.steps
+    assert loaded.feature_order == result.feature_order
+    assert set(loaded.runs) == set(result.runs)
+    assert loaded.summary_table["feature_count"].tolist() == result.summary_table["feature_count"].tolist()
+
+
 def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
     tuner = MarsModelTuner(
         model_type="xgb",
@@ -130,6 +231,7 @@ def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
 def test_modeling_public_exports_only_include_formal_api():
     assert modeling.__all__ == ["MarsModelingSession"]
     assert hasattr(tuning_module, "MarsModelTuner")
+    assert importlib.import_module("mars.modeling.feature_growth").MarsFeatureIncrementalTuner is MarsFeatureIncrementalTuner
     assert not hasattr(tuning_module, "MarsAutoModelTuner")
     assert not hasattr(report_module, "MarsModelEvaluationReport")
     assert not hasattr(results_module, "MarsTuningResult")

@@ -8,6 +8,7 @@ import pandas as pd
 from mars.modeling.utils import FrameLike
 from mars.modeling.slicing import MarsModelDataSlicer
 from mars.modeling.evaluation import MarsModelEvaluator
+from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelingRun, MarsReplayRun
 from mars.modeling.spec import SplitSpec
@@ -75,6 +76,18 @@ class MarsModelingSession:
             benchmark_col=benchmark_col,
             time_col=time_col,
         )
+        self.feature_growth_tuner = MarsFeatureIncrementalTuner(
+            model_type=model_type,
+            features=features,
+            target=target,
+            dataset_flag_col=dataset_flag_col,
+            categorical_features=categorical_features,
+            optimize_metric=optimize_metric,
+            seed=seed,
+            benchmark_col=benchmark_col,
+            time_col=time_col,
+        )
+        self._last_feature_growth_run: Optional[MarsFeatureGrowthRun] = None
 
     @property
     def last_run(self) -> Optional[MarsModelingRun]:
@@ -100,6 +113,11 @@ class MarsModelingSession:
     def history_table(self) -> pd.DataFrame:
         """Return the structured history table from the latest tuning run."""
         return self.tuner.history_table
+
+    @property
+    def last_feature_growth_run(self) -> Optional[MarsFeatureGrowthRun]:
+        """返回最近一次逐步增加特征调参结果。"""
+        return self._last_feature_growth_run
 
     def slice(
         self,
@@ -169,6 +187,68 @@ class MarsModelingSession:
         """调用调参工具训练并返回结构化调参结果。"""
         return self.tuner.tune(df, **kwargs)
 
+    def incremental_tune(
+        self,
+        df: FrameLike,
+        *,
+        steps: Optional[Sequence[int]] = None,
+        feature_order: Optional[Sequence[str]] = None,
+        importance_table: Optional[pd.DataFrame] = None,
+        min_features: int = 10,
+        max_features: Optional[int] = None,
+        step_size: Optional[int] = None,
+        mode: str = "prefix",
+        selection_metric: Optional[str] = None,
+        **tune_kwargs: Any,
+    ) -> MarsFeatureGrowthRun:
+        """
+        按特征数量逐步扩展并执行多轮调参。
+
+        Parameters
+        ----------
+        df : pandas.DataFrame or polars.DataFrame
+            已带 train/val/OOT 标识的建模样本。
+        steps : sequence of int, optional
+            显式指定每轮使用的前 N 个特征数量。
+        feature_order : sequence of str, optional
+            人工指定的稳定特征顺序。
+        importance_table : pandas.DataFrame, optional
+            特征重要性表；若提供且未指定 ``feature_order``，按重要性或 rank 排序。
+        min_features : int, default 10
+            自动生成 step 时的起始特征数。
+        max_features : int, optional
+            自动生成 step 时的最大特征数。
+        step_size : int, optional
+            自动生成 step 时的步长。
+        mode : {"prefix"}, default "prefix"
+            特征增长模式。当前版本只支持前缀扩展。
+        selection_metric : {"auc", "ks"}, optional
+            跨 step 选择推荐模型时使用的 validation 指标。
+        **tune_kwargs : Any
+            透传给 ``MarsModelTuner.tune`` 的参数。
+
+        Returns
+        -------
+        MarsFeatureGrowthRun
+            包含 step 汇总表、每个成功 step 的 tuning run 和推荐模型。
+        """
+        result = self.feature_growth_tuner.tune(
+            df,
+            steps=steps,
+            feature_order=feature_order,
+            importance_table=importance_table,
+            min_features=min_features,
+            max_features=max_features,
+            step_size=step_size,
+            mode=mode,
+            selection_metric=selection_metric,
+            **tune_kwargs,
+        )
+        self._last_feature_growth_run = result
+        if result.best_run is not None:
+            self.tuner.last_run = result.best_run
+        return result
+
     def evaluate(
         self,
         df: FrameLike,
@@ -232,6 +312,16 @@ class MarsModelingSession:
                     "optimize_metric": run.optimize_metric,
                     "best_score": run.best_score,
                     "best_iteration": run.best_iteration,
+                }
+            )
+        if self._last_feature_growth_run is not None:
+            report.metadata.update(
+                {
+                    "feature_growth_summary": self._last_feature_growth_run.summary_table.copy(),
+                    "feature_growth_steps": list(self._last_feature_growth_run.steps),
+                    "feature_growth_best_step": self._last_feature_growth_run.best_step,
+                    "feature_growth_selection_metric": self._last_feature_growth_run.selection_metric,
+                    "feature_growth_metadata": dict(self._last_feature_growth_run.metadata),
                 }
             )
         return report

@@ -6,7 +6,7 @@ import base64
 from io import BytesIO
 import html
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -61,6 +61,7 @@ class _ModelReportHtmlRenderer:
         self.history_table = self._coerce_optional_frame(
             history_table if history_table is not None else self.metadata.get("history_table")
         )
+        self.feature_growth_summary = self._coerce_optional_frame(self.metadata.get("feature_growth_summary"))
 
     @staticmethod
     def _coerce_optional_frame(value: Any) -> Optional[pd.DataFrame]:
@@ -297,6 +298,47 @@ class _ModelReportHtmlRenderer:
         ax.legend(loc="best", fontsize=7)
         return self._figure_to_img(fig, dpi=self.dpi)
 
+    def _feature_growth_chart(self, summary: Optional[pd.DataFrame]) -> str:
+        if summary is None or summary.empty or "feature_count" not in summary.columns:
+            return '<div class="mars-empty">Feature growth data is unavailable.</div>'
+        metric = str(
+            self.metadata.get(
+                "feature_growth_selection_metric",
+                self.metadata.get("optimize_metric", "ks"),
+            )
+        ).lower()
+        y_cols = [col for col in [f"train_{metric}", f"val_{metric}", "selection_score"] if col in summary.columns]
+        oot_cols = [
+            col for col in summary.columns
+            if str(col).lower().startswith("oot") and str(col).lower().endswith(f"_{metric}")
+        ]
+        y_cols.extend(oot_cols[:3])
+        if not y_cols:
+            return '<div class="mars-empty">No plottable feature growth metrics were found.</div>'
+
+        if "status" in summary.columns:
+            plot_df = summary[summary["status"].astype(str) == "complete"].copy()
+        else:
+            plot_df = summary.copy()
+        if plot_df.empty:
+            return '<div class="mars-empty">No successful feature growth step was found.</div>'
+        plt = self._require_pyplot()
+        fig, ax = plt.subplots(figsize=(7.2, 4.2))
+        x = pd.to_numeric(plot_df["feature_count"], errors="coerce")
+        for col in y_cols:
+            y = pd.to_numeric(plot_df[col], errors="coerce")
+            if y.notna().any():
+                ax.plot(x, y, marker="o", linewidth=1.6, markersize=4, label=str(col))
+        best_step = self.metadata.get("feature_growth_best_step")
+        if best_step is not None:
+            ax.axvline(float(best_step), color="#ef4444", linestyle="--", linewidth=1.2, label="best step")
+        ax.set_title("Feature Growth Audit")
+        ax.set_xlabel("Feature count")
+        ax.set_ylabel(metric.upper())
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="best", fontsize=7)
+        return self._figure_to_img(fig, dpi=self.dpi)
+
     def _summary_cards_html(self) -> str:
         summary = self.report.summary_table
         cards: List[Tuple[str, str]] = []
@@ -475,6 +517,11 @@ class _ModelReportHtmlRenderer:
         if not metadata_df.empty:
             audit += "<h3>Training Metadata</h3>" + self._table_html(metadata_df, table_id="metadata-table")
         body_parts.append(self._section("Tuning Audit", audit, "tuning-audit", open_by_default=False))
+
+        if self.feature_growth_summary is not None and not self.feature_growth_summary.empty:
+            growth = self._feature_growth_chart(self.feature_growth_summary)
+            growth += self._table_html(self.feature_growth_summary, table_id="feature-growth-table", max_rows=300)
+            body_parts.append(self._section("Feature Growth Audit", growth, "feature-growth-audit", open_by_default=False))
 
         scorecard_section = self._scorecard_section()
         if scorecard_section:
