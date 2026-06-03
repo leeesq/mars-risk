@@ -10,12 +10,21 @@ import pandas as pd
 from mars.modeling.backends.base import MarsBaseModelTuner
 from mars.modeling.backends.common import (
     build_importance_table as _build_importance_table,
+)
+from mars.modeling.backends.common import (
     load_backend_module as _load_module,
+)
+from mars.modeling.backends.common import (
     load_optuna_callback as _load_optuna_callback,
+)
+from mars.modeling.backends.common import (
     validate_numeric_pandas as _validate_numeric_pandas,
+)
+from mars.modeling.backends.common import (
     validate_numeric_polars as _validate_numeric_polars,
 )
 from mars.modeling.metrics import lgb_ks_metric as _lgb_ks_metric
+
 
 class MarsLGBStrategy(MarsBaseModelTuner):
     """

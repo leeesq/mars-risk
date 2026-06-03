@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -13,10 +13,13 @@ from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import (
     FrameLike,
     is_polars_dataframe,
-    optional_import as _optional_import,
     restore_frame_type,
     to_pandas_frame,
 )
+from mars.modeling.utils import (
+    optional_import as _optional_import,
+)
+
 
 class ModelPredictor:
     """
@@ -38,8 +41,8 @@ class ModelPredictor:
         self,
         model: Any,
         feature_list: Sequence[str],
-        categorical_features: Optional[Sequence[str]] = None,
-        category_levels: Optional[Dict[str, Sequence[Any]]] = None,
+        categorical_features: Sequence[str] | None = None,
+        category_levels: Dict[str, Sequence[Any]] | None = None,
     ) -> None:
         self.model: Any = model
         self.features: List[str] = list(feature_list)
@@ -156,9 +159,9 @@ class ModelPredictor:
         group_col: str,
         target_col: str,
         *,
-        time_col: Optional[str] = None,
-        val_target_col: Optional[str] = None,
-        benchmark_col: Optional[str] = None,
+        time_col: str | None = None,
+        val_target_col: str | None = None,
+        benchmark_col: str | None = None,
         pred_col_name: str = "pred_score",
     ) -> MarsModelingReport:
         """评分后立即生成评估报告。"""

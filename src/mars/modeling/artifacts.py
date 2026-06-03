@@ -30,7 +30,7 @@ def to_json_safe(value: Any) -> Any:
         return {str(key): to_json_safe(inner) for key, inner in value.items()}
     if isinstance(value, (list, tuple)):
         return [to_json_safe(inner) for inner in value]
-    if hasattr(value, "item") and callable(getattr(value, "item")):
+    if hasattr(value, "item") and callable(value.item):
         try:
             return value.item()
         except Exception:
@@ -77,7 +77,7 @@ def read_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def save_report_tables(reports: Dict[str, "MarsModelingReport"], reports_dir: Path) -> Dict[str, str]:
+def save_report_tables(reports: Dict[str, MarsModelingReport], reports_dir: Path) -> Dict[str, str]:
     """
     保存 replay 评估报告表，并返回模型名到文件名的映射。
 
@@ -102,7 +102,7 @@ def save_report_tables(reports: Dict[str, "MarsModelingReport"], reports_dir: Pa
     return report_files
 
 
-def load_report_tables(reports_dir: Path, report_files: Dict[str, str]) -> Dict[str, "MarsModelingReport"]:
+def load_report_tables(reports_dir: Path, report_files: Dict[str, str]) -> Dict[str, MarsModelingReport]:
     """
     从 replay artifact 中恢复评估报告对象。
 

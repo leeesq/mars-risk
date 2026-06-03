@@ -1,5 +1,5 @@
-from pathlib import Path
 import importlib
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -13,13 +13,13 @@ pytest.importorskip("optuna_integration")
 
 import mars
 import mars.modeling as modeling
+from mars.modeling import MarsModelingSession
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
-from mars.modeling import MarsModelingSession
+from mars.modeling import tuning as tuning_module
 from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
 from mars.modeling.metrics import CatBoostKSMetric, as_probability
 from mars.modeling.results import MarsModelingRun
-from mars.modeling import tuning as tuning_module
 from mars.modeling.tuning import MarsModelTuner
 
 

@@ -509,7 +509,7 @@ MarsBinEvaluator(..., bining_type="native")
 | `plot` | `matplotlib`、`seaborn`，用于风险趋势图绘制 |
 | `notebook` | `jupyterlab`，用于 Notebook 交互体验 |
 | `ml` | `xgboost`、`lightgbm`、`catboost` |
-| `dev` | pytest、格式化、导出、绘图与基准测试相关依赖 |
+| `dev` | pytest、Ruff、Mypy、格式化、导出、绘图与基准测试相关依赖 |
 
 ## 测试与开发
 
@@ -521,10 +521,28 @@ MarsBinEvaluator(..., bining_type="native")
 - 多目标场景和 Pandas/Polars 返回类型约定
 - Excel 模板资源与导出烟测
 
+本地运行静态检查：
+
+```bash
+python -m ruff check src tests
+python -m mypy src/mars
+```
+
 本地运行测试：
 
 ```bash
-python -m pytest -q
+MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp-codex
+```
+
+如果只想先跑核心功能的聚焦回归：
+
+```bash
+MPLBACKEND=Agg python -m pytest -q \
+  tests/test_evaluator.py \
+  tests/test_plotter.py \
+  tests/test_binner.py \
+  tests/test_selector.py \
+  --basetemp .pytest-tmp-codex
 ```
 
 运行轻量 benchmark：

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 import re
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import pandas as pd
 import polars as pl
@@ -230,7 +230,7 @@ def require_optional_module(module_name: str) -> Any:
         ) from exc
 
 
-def collect_library_versions(*module_names: str) -> Dict[str, Optional[str]]:
+def collect_library_versions(*module_names: str) -> Dict[str, str | None]:
     """
     收集可选依赖版本，写入可复现实验元数据。
 
@@ -244,7 +244,7 @@ def collect_library_versions(*module_names: str) -> Dict[str, Optional[str]]:
     dict of str to str or None
         模块名到版本号的映射；导入失败时值为 ``None``。
     """
-    versions: Dict[str, Optional[str]] = {}
+    versions: Dict[str, str | None] = {}
     for module_name in module_names:
         try:
             module = importlib.import_module(module_name)

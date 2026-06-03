@@ -2,15 +2,17 @@
 
 import logging
 import sys
-from typing import Union, Dict
+from typing import Dict, Union
 
 # 尝试导入 colorlog 以支持彩色日志输出
 # 如果环境中未安装 colorlog，将自动回退到标准无色日志
+HAS_COLORLOG: bool = False
 try:
     import colorlog
-    HAS_COLORLOG: bool = True
 except ImportError:
-    HAS_COLORLOG: bool = False
+    pass
+else:
+    HAS_COLORLOG = True
 
 # 定义单例 Logger 的名称，确保整个项目使用的是同一个日志实例
 LOGGER_NAME: str = "mars"
@@ -93,13 +95,13 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     -----
     1. **单例模式**: 如果该名称的 Logger 已经存在且包含处理器，则直接返回，不重复添加 Handler。
     2. **独立性**: 设置 `propagate=False` 防止日志向上传播到根记录器，避免被其他库的配置污染。
-    3. **样式**: 
+    3. **样式**:
        - 彩色模式: [MARS] 时间 - 级别 - 消息 (不同级别不同颜色)
        - 普通模式: [MARS] 时间 - 级别 - 消息
     """
     # 获取指定名称的 logger 实例
     logger = logging.getLogger(LOGGER_NAME)
-    
+
     # ---------------------------------------------------------
     # 1. 幂等性检查 (Idempotency Check)
     # ---------------------------------------------------------
@@ -129,7 +131,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
             'ERROR':    'red',       # 错误：红色
             'CRITICAL': 'bold_red',  # 严重：加粗红
         }
-        
+
         # 使用 colorlog 进行带颜色的格式化
         # %(log_color)s ... 切换颜色
         # %(reset)s ... 重置颜色
@@ -149,10 +151,10 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
 
     # 将格式化器应用到处理器
     console_handler.setFormatter(formatter)
-    
+
     # 将处理器添加到 logger
     logger.addHandler(console_handler)
-    
+
     # ---------------------------------------------------------
     # 4. 传播控制 (Propagation Control)
     # ---------------------------------------------------------
@@ -183,7 +185,7 @@ def set_log_level(level: Union[str, int]) -> None:
     >>> set_log_level('INFO')   # 恢复正常模式
     """
     logger = logging.getLogger(LOGGER_NAME)
-    
+
     # 如果传入的是字符串，尝试将其转换为 logging 的整数常量
     if isinstance(level, str):
         level_str = level.upper()
@@ -199,10 +201,10 @@ def set_log_level(level: Union[str, int]) -> None:
         final_level = levels.get(level_str, logging.INFO)
     else:
         final_level = level
-        
+
     # 修改 logger 自身的级别
     logger.setLevel(final_level)
-    
+
     # 同时修改所有 Handlers 的级别，确保过滤规则立即生效
     # 有些情况下 handler 的级别可能比 logger 高，导致修改 logger 级别无效
     for handler in logger.handlers:

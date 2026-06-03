@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import joblib
 import pandas as pd
 
-from mars.modeling.utils import FrameLike
 from mars.modeling.artifacts import load_report_tables, read_json, save_report_tables, write_json
+from mars.modeling.utils import FrameLike
 
 if TYPE_CHECKING:
     from mars.modeling.report import MarsModelingReport
@@ -45,7 +45,7 @@ class MarsModelingRun:
     dataset_flag_col: str
     categorical_features: List[str]
     best_params: Dict[str, Any]
-    best_iteration: Optional[int]
+    best_iteration: int | None
     best_model: Any
     best_score: float
     history_table: pd.DataFrame
@@ -114,7 +114,7 @@ class MarsModelingRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls, path: str) -> "MarsModelingRun":
+    def load_artifact(cls: type[MarsModelingRun], path: str) -> MarsModelingRun:
         """从本地 artifact 目录恢复调参结果。"""
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
@@ -180,8 +180,8 @@ class MarsReplayRun:
     ranking_table: pd.DataFrame
     leaderboard_table: pd.DataFrame
     models: Dict[str, Any]
-    scored_df: Optional[FrameLike]
-    reports: Dict[str, "MarsModelingReport"]
+    scored_df: FrameLike | None
+    reports: Dict[str, MarsModelingReport]
     importance_tables: Dict[str, pd.DataFrame]
 
     def write_artifact(self, path: str, include_scored_df: bool = False) -> Path:
@@ -229,7 +229,7 @@ class MarsReplayRun:
 
         report_files = save_report_tables(self.reports, reports_dir)
 
-        scored_df_file: Optional[str] = None
+        scored_df_file: str | None = None
         if include_scored_df and self.scored_df is not None:
             scored_df_file = "scored_df.parquet"
             if isinstance(self.scored_df, pd.DataFrame):
@@ -254,7 +254,7 @@ class MarsReplayRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls, path: str) -> "MarsReplayRun":
+    def load_artifact(cls: type[MarsReplayRun], path: str) -> MarsReplayRun:
         """从本地 artifact 目录恢复 replay 结果。"""
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
@@ -283,7 +283,7 @@ class MarsReplayRun:
                 raise FileNotFoundError(f"Artifact importance table is missing: {table_path}")
             importance_tables[model_name] = pd.read_csv(table_path)
 
-        scored_df: Optional[pd.DataFrame] = None
+        scored_df: pd.DataFrame | None = None
         scored_df_file = files.get("scored_df")
         if scored_df_file:
             scored_path = artifact_dir / scored_df_file

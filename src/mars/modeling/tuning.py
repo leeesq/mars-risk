@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence, Type
 import os
+from pathlib import Path
+from typing import Any, Dict, Mapping, Sequence, Type
 
 import pandas as pd
 
-from mars.modeling.utils import FrameLike, collect_library_versions
+from mars.modeling.backends import MarsCatBoostStrategy, MarsLGBStrategy, MarsXGBStrategy
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.prediction import ModelPredictor
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelingRun, MarsReplayRun
 from mars.modeling.spec import ModelingSpec, ReplaySpec
-from mars.modeling.backends import MarsCatBoostStrategy, MarsLGBStrategy, MarsXGBStrategy
-
+from mars.modeling.utils import FrameLike, collect_library_versions
 
 BACKEND_MAP: Dict[str, Type[Any]] = {
     "xgb": MarsXGBStrategy,
@@ -32,11 +31,11 @@ def _build_spec(
     features: Sequence[str],
     target: str,
     dataset_flag_col: str = "dataset_flag",
-    categorical_features: Optional[Sequence[str]] = None,
+    categorical_features: Sequence[str] | None = None,
     optimize_metric: str = "ks",
     seed: int = 1206,
-    benchmark_col: Optional[str] = None,
-    time_col: Optional[str] = None,
+    benchmark_col: str | None = None,
+    time_col: str | None = None,
 ) -> ModelingSpec:
     """
     校验建模配置并构造共享规格对象。
@@ -81,11 +80,11 @@ def _build_backend_from_spec(
     spec: ModelingSpec,
     df: FrameLike,
     *,
-    param_space: Optional[Mapping[str, Any]] = None,
+    param_space: Mapping[str, Any] | None = None,
     max_diff: float = 3.0,
     use_oot_penalty: bool = False,
-    optimize_metric: Optional[str] = None,
-    seed: Optional[int] = None,
+    optimize_metric: str | None = None,
+    seed: int | None = None,
 ) -> Any:
     """Create a backend strategy instance from a modeling spec."""
     backend_cls = BACKEND_MAP[spec.model_type]
@@ -136,11 +135,11 @@ class MarsModelTuner:
         features: Sequence[str],
         target: str,
         dataset_flag_col: str = "dataset_flag",
-        categorical_features: Optional[Sequence[str]] = None,
+        categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
     ) -> None:
         self.spec: ModelingSpec = _build_spec(
             model_type=model_type,
@@ -153,7 +152,7 @@ class MarsModelTuner:
             benchmark_col=benchmark_col,
             time_col=time_col,
         )
-        self.last_run: Optional[MarsModelingRun] = None
+        self.last_run: MarsModelingRun | None = None
 
     @property
     def best_model(self) -> Any:
@@ -161,12 +160,12 @@ class MarsModelTuner:
         return None if self.last_run is None else self.last_run.best_model
 
     @property
-    def best_score(self) -> Optional[float]:
+    def best_score(self) -> float | None:
         """Return the best validation score from the latest tuning run."""
         return None if self.last_run is None else self.last_run.best_score
 
     @property
-    def best_params(self) -> Optional[Dict[str, Any]]:
+    def best_params(self) -> Dict[str, Any] | None:
         """Return the best parameter set from the latest tuning run."""
         if self.last_run is None:
             return None
@@ -183,11 +182,11 @@ class MarsModelTuner:
         self,
         df: FrameLike,
         *,
-        param_space: Optional[Mapping[str, Any]] = None,
+        param_space: Mapping[str, Any] | None = None,
         max_diff: float = 3.0,
         use_oot_penalty: bool = False,
-        optimize_metric: Optional[str] = None,
-        seed: Optional[int] = None,
+        optimize_metric: str | None = None,
+        seed: int | None = None,
     ) -> Any:
         """Build a concrete backend strategy for one tuning or replay job."""
         return _build_backend_from_spec(
@@ -204,7 +203,7 @@ class MarsModelTuner:
         self,
         df: FrameLike,
         *,
-        param_space: Optional[Mapping[str, Any]] = None,
+        param_space: Mapping[str, Any] | None = None,
         max_diff: float = 3.0,
         use_oot_penalty: bool = False,
         n_trials: int = 50,
@@ -353,11 +352,11 @@ class MarsModelReplay:
         features: Sequence[str],
         target: str,
         dataset_flag_col: str = "dataset_flag",
-        categorical_features: Optional[Sequence[str]] = None,
+        categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
     ) -> None:
         self.spec: ModelingSpec = _build_spec(
             model_type=model_type,
@@ -375,8 +374,8 @@ class MarsModelReplay:
         self,
         df: FrameLike,
         *,
-        optimize_metric: Optional[str] = None,
-        seed: Optional[int] = None,
+        optimize_metric: str | None = None,
+        seed: int | None = None,
     ) -> Any:
         """Build the backend used to replay tuned parameter sets."""
         return _build_backend_from_spec(
@@ -396,10 +395,10 @@ class MarsModelReplay:
         include_val: bool = True,
         num_boost_round: int = 500,
         early_stopping_rounds: int = 50,
-        optimize_metric: Optional[str] = None,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
-        val_target_col: Optional[str] = None,
+        optimize_metric: str | None = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
+        val_target_col: str | None = None,
     ) -> MarsReplayRun:
         """
         执行 Top-K replay 并生成排行榜、模型和评估报告。
@@ -448,7 +447,9 @@ class MarsModelReplay:
         )
 
         history_df = run.history_table.copy()
-        valid_df = history_df[(history_df["trial_state"] == "COMPLETE") & (history_df["is_valid"] == True)].copy()
+        valid_df = history_df[
+            (history_df["trial_state"] == "COMPLETE") & history_df["is_valid"]
+        ].copy()
         if valid_df.empty:
             raise ValueError("No valid completed trials are available for replay.")
 

@@ -72,6 +72,8 @@ tuning = [
 # 开发与测试环境
 dev = [
     "pytest>=7.4.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
     "black>=23.0.0",
     "openpyxl>=3.1.0",
     "xlsxwriter>=3.1.0",
@@ -88,4 +90,94 @@ dev = [
 where = ["src"]
 include = ["mars*"]  
 [tool.setuptools.package-data]
+"mars" = ["py.typed"]
 "mars.analysis" = ["*.xlsx"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # The codebase still contains HTML/CSS/JS templates and generated report strings.
+    # Keep line-length visible in editor tooling, but do not block CI on E501 yet.
+    "E501",
+    # Gradual Python 3.10 typing migration: touched files should use native syntax,
+    # but the historical baseline still contains typing.List/Dict/Optional/Union.
+    "UP006",
+    "UP007",
+    "UP035",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mars"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "src"
+files = ["src/mars"]
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+ignore_missing_imports = true
+allow_redefinition = true
+show_error_codes = true
+pretty = true
+exclude = [
+    "^examples/",
+    "^tutorial/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "catboost.*",
+    "lightgbm.*",
+    "matplotlib.*",
+    "optbinning.*",
+    "optuna.*",
+    "seaborn.*",
+    "sklearn.*",
+    "xgboost.*",
+    "xlwings.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "mars.analysis.evaluator",
+    "mars.analysis.profiler",
+    "mars.analysis.report",
+    "mars.core.base",
+    "mars.feature.binner",
+    "mars.feature.selector",
+]
+disable_error_code = [
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "call-arg",
+    "has-type",
+    "index",
+    "misc",
+    "no-any-return",
+    "override",
+    "return-value",
+    "union-attr",
+    "var-annotated",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "mars.modeling.*",
+    "mars.scoring.scorecard",
+]
+disable_error_code = [
+    "no-any-return",
+    "union-attr",
+    "var-annotated",
+]

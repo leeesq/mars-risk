@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
+
 @dataclass
 class MarsProfileConfig:
     """
@@ -26,7 +27,7 @@ class MarsProfileConfig:
     psi_include_special : bool
         计算 PSI 时是否包含特殊值箱。
     """
-    
+
     # "psi", "mean", "std", "min", "max", "p25", "median", "p75", "skew", "kurtosis"
     stat_metrics: List[str] = field(default_factory=lambda: ["psi", "mean", "std", "min", "max", "p25", "median", "p75", "skew", "kurtosis"])
     dq_metrics: List[str] = field(default_factory=lambda: ["missing", "zeros", "unique", "top1"])
@@ -34,6 +35,6 @@ class MarsProfileConfig:
     enable_sparkline: bool = True # 是否启用迷你分布图
     sparkline_bins: int = 8  # 分布图分箱数
     sparkline_sample_size: int = 200_000 # 采样上限
-    
+
     psi_include_missing: bool = False  # 计算 PSI 时是否包含缺失值箱
     psi_include_special: bool = False  # 计算 PSI 时是否包含特殊值箱

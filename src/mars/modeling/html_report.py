@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import base64
-from io import BytesIO
 import html
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from io import BytesIO
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,7 @@ import polars as pl
 
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import optional_import as _optional_import
+
 
 class _ModelReportHtmlRenderer:
     """
@@ -30,10 +31,10 @@ class _ModelReportHtmlRenderer:
         *,
         report: MarsModelingReport,
         title: str,
-        run: Optional[Any],
-        scorecard: Optional[Any],
-        importance_table: Optional[pd.DataFrame],
-        history_table: Optional[pd.DataFrame],
+        run: Any | None,
+        scorecard: Any | None,
+        importance_table: pd.DataFrame | None,
+        history_table: pd.DataFrame | None,
         top_features: int,
         dpi: int,
     ) -> None:
@@ -64,7 +65,7 @@ class _ModelReportHtmlRenderer:
         self.feature_growth_summary = self._coerce_optional_frame(self.metadata.get("feature_growth_summary"))
 
     @staticmethod
-    def _coerce_optional_frame(value: Any) -> Optional[pd.DataFrame]:
+    def _coerce_optional_frame(value: Any) -> pd.DataFrame | None:
         if value is None:
             return None
         if isinstance(value, pd.DataFrame):
@@ -87,7 +88,12 @@ class _ModelReportHtmlRenderer:
             return False
 
     @classmethod
-    def _format_value(cls, value: Any, *, percent: bool = False) -> str:
+    def _format_value(
+        cls: type[_ModelReportHtmlRenderer],
+        value: Any,
+        *,
+        percent: bool = False,
+    ) -> str:
         if cls._is_missing(value):
             return "-"
         if isinstance(value, (pd.Timestamp, np.datetime64)):
@@ -118,12 +124,12 @@ class _ModelReportHtmlRenderer:
 
     @classmethod
     def _table_html(
-        cls,
-        df: Optional[pd.DataFrame],
+        cls: type[_ModelReportHtmlRenderer],
+        df: pd.DataFrame | None,
         *,
         table_id: str,
         empty_text: str = "No data available.",
-        max_rows: Optional[int] = None,
+        max_rows: int | None = None,
     ) -> str:
         if df is None or df.empty:
             return f'<div class="mars-empty">{cls._escape(empty_text)}</div>'
@@ -263,7 +269,7 @@ class _ModelReportHtmlRenderer:
         ax2.legend(lines + lines2, labels + labels2, loc="best", fontsize=7)
         return self._figure_to_img(fig, dpi=self.dpi)
 
-    def _importance_chart(self, importance: Optional[pd.DataFrame]) -> str:
+    def _importance_chart(self, importance: pd.DataFrame | None) -> str:
         if importance is None or importance.empty or not {"feature", "importance"}.issubset(importance.columns):
             return '<div class="mars-empty">Feature importance data is unavailable.</div>'
         plot_df = importance.sort_values("importance", ascending=False).head(self.top_features).iloc[::-1]
@@ -275,7 +281,7 @@ class _ModelReportHtmlRenderer:
         ax.grid(axis="x", alpha=0.25)
         return self._figure_to_img(fig, dpi=self.dpi)
 
-    def _tuning_chart(self, history: Optional[pd.DataFrame]) -> str:
+    def _tuning_chart(self, history: pd.DataFrame | None) -> str:
         if history is None or history.empty or "trial_num" not in history.columns:
             return '<div class="mars-empty">Tuning history data is unavailable.</div>'
         metric_cols = [
@@ -298,7 +304,7 @@ class _ModelReportHtmlRenderer:
         ax.legend(loc="best", fontsize=7)
         return self._figure_to_img(fig, dpi=self.dpi)
 
-    def _feature_growth_chart(self, summary: Optional[pd.DataFrame]) -> str:
+    def _feature_growth_chart(self, summary: pd.DataFrame | None) -> str:
         if summary is None or summary.empty or "feature_count" not in summary.columns:
             return '<div class="mars-empty">Feature growth data is unavailable.</div>'
         metric = str(

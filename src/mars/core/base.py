@@ -1,8 +1,8 @@
 """MARS 核心估计器、转换器与筛选器基类。"""
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Union
 import re
+from abc import ABC, abstractmethod
+from typing import Any, List, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -105,7 +105,9 @@ class MarsBaseEstimator(BaseEstimator):
             try:
                 X_pl = pl.from_pandas(X)
             except Exception as exc:
-                raise DataTypeError(f"Failed to convert Pandas DataFrame to Polars: {exc}")
+                raise DataTypeError(
+                    f"Failed to convert Pandas DataFrame to Polars: {exc}"
+                ) from exc
 
             self._validate_conversion(X, X_pl)
             return X_pl
@@ -119,7 +121,7 @@ class MarsBaseEstimator(BaseEstimator):
         self,
         y: pl.Series | pd.Series | np.ndarray | list | None,
         name: str = "target",
-    ) -> Optional[pl.Series]:
+    ) -> pl.Series | None:
         """确保标签 ``y`` 被转换为 Polars Series。"""
         if y is None:
             return None
@@ -262,9 +264,9 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         当前实例是否已完成拟合。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.feature_names_in_: List[str] = []
+        self.feature_names_in_: list[str] = []
         self._is_fitted: bool = False
 
     def __sklearn_is_fitted__(self) -> bool:
@@ -276,7 +278,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         if not self._is_fitted:
             raise NotFittedError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")
 
-    def get_feature_names_out(self, input_features=None) -> List[str]:
+    def get_feature_names_out(self, input_features: Any | None = None) -> list[str]:
         """
         返回输出特征名列表。
 
@@ -296,7 +298,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     def fit(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        y: Optional[pl.Series | pd.Series | np.ndarray | list[Any]] = None,
+        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
     ) -> "MarsTransformer":
         """
         拟合转换器并缓存输入特征信息。
@@ -370,7 +372,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     def fit_transform(
         self,
         X: Union[pl.DataFrame, pd.DataFrame],
-        y: Optional[Any] = None,
+        y: Any | None = None,
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """
         先拟合再返回转换结果。
@@ -395,7 +397,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         return self.fit(X, y).transform(X)
 
     @abstractmethod
-    def _fit_impl(self, X: pl.DataFrame, y=None):
+    def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
         """子类必须实现的核心拟合逻辑。"""
 
     @abstractmethod
@@ -438,19 +440,19 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         当前筛选器是否已完成拟合。
     """
 
-    def __init__(self, target: str):
+    def __init__(self, target: str) -> None:
         super().__init__()
         self.target = target
-        self.selected_features_: List[str] = []
+        self.selected_features_: list[str] = []
         self.n_features_in_: int = 0
-        self.report_records_: List[Dict[str, Any]] = []
+        self.report_records_: list[dict[str, Any]] = []
         self._is_fitted: bool = False
 
     @abstractmethod
     def fit(
         self,
         X: Union[pl.DataFrame, pd.DataFrame],
-        y: Optional[Any] = None,
+        y: Any | None = None,
     ) -> "MarsBaseSelector":
         """
         执行特征筛选拟合。
@@ -495,8 +497,8 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
     def fit_transform(
         self,
         X: Union[pl.DataFrame, pd.DataFrame],
-        y: Optional[Any] = None,
-        **kwargs,
+        y: Any | None = None,
+        **kwargs: Any,
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """
         先拟合再返回筛选后的结果。
@@ -559,7 +561,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         reason: str = "",
         value: float = -1.0,
         desc: str = "",
-        data_source: Optional[str] = None,
+        data_source: str | None = None,
     ) -> None:
         """
         记录单个特征在筛选过程中的决策结果。

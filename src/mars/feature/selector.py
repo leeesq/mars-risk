@@ -1,17 +1,17 @@
 from __future__ import annotations
-import os
-import json
-from typing import List, Optional, Union, Any, Literal, Dict, Tuple, TYPE_CHECKING
-import polars as pl
-import pandas as pd
-import numpy as np
-from tqdm.auto import tqdm
 
-from mars.core.base import MarsBaseSelector
-from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBinner
+import json
+import os
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union
+
+import pandas as pd
+import polars as pl
+
 from mars.analysis.report import MarsEvaluationReport
-from mars.utils.logger import logger
+from mars.core.base import MarsBaseSelector
+from mars.feature.binner import MarsBinnerBase, MarsNativeBinner
 from mars.utils.decorators import time_it
+from mars.utils.logger import logger
 
 if TYPE_CHECKING:
     from mars.analysis.evaluator import MarsBinEvaluator
@@ -92,7 +92,7 @@ class MarsStatsSelector(MarsBaseSelector):
         向量化计算执行时的特征列并发分块大小，防范底层查询优化器 (Query Planner) 解析耗时爆炸。
     n_jobs : int, default -1
         并行计算的分配核心数限制。
-        
+
     Attributes
     ----------
     selected_features_ : list of str
@@ -106,50 +106,50 @@ class MarsStatsSelector(MarsBaseSelector):
 
     Notes
     -----
-    评估器内部持有了最优分箱规则状态。在调用 `fit` 完成特征筛选后，系统会自动触发 
+    评估器内部持有了最优分箱规则状态。在调用 `fit` 完成特征筛选后，系统会自动触发
     `prune` 方法裁剪冗余的非入模特征状态，以收敛序列化后的模型体积。
     """
     def __init__(
         self,
         *,
         target: str,
-        features: Optional[List[str]] = None,        
-        feature_data_source: Optional[Dict[str, List[str]]] = None,
-        time_col: Optional[str] = None,
-        profile_by: Optional[str] = None, 
+        features: List[str] | None = None,
+        feature_data_source: Dict[str, List[str]] | None = None,
+        time_col: str | None = None,
+        profile_by: str | None = None,
         feature_start_aware_baseline: bool = False,
-        
+
         missing_thr: float = 0.90,
-        zeros_thr: float = 0.90,  
+        zeros_thr: float = 0.90,
         mode_thr: float = 0.90,
-        
-        iv_thr: float = 0.01, 
-        lift_thr: Optional[float] = 1.2,      
-        min_sample_rate: float = 0.05,               
-        
-        psi_thr: Optional[float] = 0.25,      
-        rc_thr: Optional[float] = 0.5,           
-        corr_thr: Optional[float] = 0.95,    
+
+        iv_thr: float = 0.01,
+        lift_thr: float | None = 1.2,
+        min_sample_rate: float = 0.05,
+
+        psi_thr: float | None = 0.25,
+        rc_thr: float | None = 0.5,
+        corr_thr: float | None = 0.95,
 
         skip_rough_scan: bool = False,
-        skip_fine_scan: bool = False, 
+        skip_fine_scan: bool = False,
         rough_iv_thr: float = 0.01,
         rough_lift_thr: float = 1.2,
-        rough_min_sample_rate: float = 0.02,  
-        
-        white_list: Optional[List[str]] = None,
-        black_list: Optional[List[str]] = None,
+        rough_min_sample_rate: float = 0.02,
 
-        missing_values: Optional[List[Any]] = None,   
-        special_values: Optional[List[Any]] = None,  
-        
-        binning_params: Optional[Dict[str, Any]] = None,    
-        rough_binning_params: Optional[Dict[str, Any]] = None,  
+        white_list: List[str] | None = None,
+        black_list: List[str] | None = None,
 
-        max_samples: Optional[int] = None,
-        batch_size: Optional[int] = 100,    
-        n_jobs: int = -1
-    ):
+        missing_values: List[Any] | None = None,
+        special_values: List[Any] | None = None,
+
+        binning_params: Dict[str, Any] | None = None,
+        rough_binning_params: Dict[str, Any] | None = None,
+
+        max_samples: int | None = None,
+        batch_size: int | None = 100,
+        n_jobs: int = -1,
+    ) -> None:
         """
         初始化统计筛选器配置。
 
@@ -215,7 +215,7 @@ class MarsStatsSelector(MarsBaseSelector):
             并行任务数量。
         """
         super().__init__(target=target)
-        
+
         self.features = features
         self.feature_data_source = feature_data_source or {}
         self.time_col = time_col
@@ -223,52 +223,52 @@ class MarsStatsSelector(MarsBaseSelector):
         self.feature_start_aware_baseline = feature_start_aware_baseline
         self.white_list = white_list if white_list else []
         self.black_list = black_list if black_list else []
-        
+
         self.missing_values = missing_values if missing_values else []
         self.special_values = special_values if special_values else []
-        
+
         self.missing_thr = missing_thr
         self.mode_thr = mode_thr
-        self.zeros_thr = zeros_thr  
-        
+        self.zeros_thr = zeros_thr
+
         self.skip_rough_scan = skip_rough_scan
         self.rough_binning_params = rough_binning_params or {
-            "method": "quantile", 
-            "n_bins": 20, 
-            "min_bin_size": 0.01, 
+            "method": "quantile",
+            "n_bins": 20,
+            "min_bin_size": 0.01,
             "merge_small_bins": True
         }
         self.rough_iv_thr = rough_iv_thr
         self.rough_lift_thr = rough_lift_thr
         self.rough_min_sample_rate = rough_min_sample_rate
-        
-        self.skip_fine_scan = skip_fine_scan 
+
+        self.skip_fine_scan = skip_fine_scan
         self.binning_params = binning_params or {
-            "prebinning_method": "cart", 
-            "n_bins": 10, 
+            "prebinning_method": "cart",
+            "n_bins": 10,
             "min_bin_size": 0.05,
         }
         self.iv_thr = iv_thr
         self.lift_thr = lift_thr
         self.min_sample_rate = min_sample_rate
-        
+
         self.psi_thr = psi_thr
         self.rc_thr = rc_thr
         self.corr_thr = corr_thr
-        
+
         self.max_samples = max_samples
         self.batch_size = batch_size
         self.n_jobs = n_jobs
 
-        self._rough_binner: Optional[MarsNativeBinner] = None 
-        self._stage3_binner: Optional[MarsBinnerBase] = None
-        self._feature_iv_dict: Dict[str, float] = {}  
+        self._rough_binner: MarsNativeBinner | None = None
+        self._stage3_binner: MarsBinnerBase | None = None
+        self._feature_iv_dict: Dict[str, float] = {}
         self._feature_source_map: Dict[str, str] = {}
-        
+
         self._funnel_stats = []
 
     @time_it
-    def fit(self, X: pl.DataFrame, y: Optional[Any] = None) -> "MarsStatsSelector":
+    def fit(self, X: pl.DataFrame, y: Any | None = None) -> MarsStatsSelector:
         """
         触发自动化特征筛选流程。
 
@@ -294,62 +294,64 @@ class MarsStatsSelector(MarsBaseSelector):
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
 
         X = self._ensure_polars_dataframe(X)
-        self._funnel_stats = [] 
-        self._feature_iv_dict = {} 
-        
+        self._funnel_stats = []
+        self._feature_iv_dict = {}
+
         # 初始化候选特征空间，剥离非特征维度
         exclude_cols = {self.target}
-        if self.time_col: exclude_cols.add(self.time_col)
-        if self.profile_by: exclude_cols.add(self.profile_by)
-        
-        candidate_features = [c for c in (self.features if self.features else X.columns) 
+        if self.time_col:
+            exclude_cols.add(self.time_col)
+        if self.profile_by:
+            exclude_cols.add(self.profile_by)
+
+        candidate_features = [c for c in (self.features if self.features else X.columns)
                               if c in X.columns and c not in exclude_cols]
         self._feature_source_map = self._normalize_feature_data_source(candidate_features)
-        
+
         # 校准白名单，剔除数据集中不存在的幽灵声明
         valid_white_list = [f for f in self.white_list if f in candidate_features]
 
         # 应用静态黑名单约束
         current_features = [c for c in candidate_features if c not in self.black_list]
-        self._record_funnel("Init", "Blacklist & Exclusions", 
-                            {"black_list_len": len(self.black_list)}, 
+        self._record_funnel("Init", "Blacklist & Exclusions",
+                            {"black_list_len": len(self.black_list)},
                             len(candidate_features), len(current_features))
 
         # 执行数据质量探查
         if current_features:
             prev_count = len(current_features)
             current_features = self._filter_quality(X, current_features)
-            
+
             thr_msg = (
                 f"miss < {self.missing_thr} & "
                 f"zero < {self.zeros_thr} & "
                 f"mode < {self.mode_thr}"
             )
             self._record_funnel(
-                stage="Stage 1", 
-                description="Data Quality Check", 
-                thresholds=thr_msg, 
-                count_before=prev_count, 
+                stage="Stage 1",
+                description="Data Quality Check",
+                thresholds=thr_msg,
+                count_before=prev_count,
                 count_after=len(current_features)
             )
 
         # 执行轻量级分布区间探查
         if not self.skip_rough_scan and current_features:
             prev_count = len(current_features)
-            
+
             if not self.skip_fine_scan:
                 # 动态路由分配：白名单特征旁路以缩减运算开销
                 scan_features = [f for f in current_features if not self._should_bypass_filter(f)]
                 white_features = [f for f in current_features if self._should_bypass_filter(f)]
-                
+
                 if scan_features:
                     scan_features = self._filter_rough(X, scan_features)
-                
+
                 current_features = scan_features + white_features
             else:
                 # 探查流水线终点：白名单特征强制并入获取分箱实体
                 current_features = self._filter_rough(X, current_features)
-                
+
             thr_msg = f"iv >= {self.rough_iv_thr} | (lift >= {self.rough_lift_thr} & sample >= {self.rough_min_sample_rate})"
             self._record_funnel("Stage 2", "Rough Scan (Native)", thr_msg, prev_count, len(current_features))
 
@@ -359,7 +361,7 @@ class MarsStatsSelector(MarsBaseSelector):
             current_features = self._filter_fine(X, current_features)
             thr_msg = f"iv >= {self.iv_thr} | (lift >= {self.lift_thr} & sample >= {self.min_sample_rate})"
             self._record_funnel("Stage 3", "Fine Scan (Optimal)", thr_msg, prev_count, len(current_features))
-        
+
         # 跨阶段分箱器实例继承机制
         elif self.skip_fine_scan:
             logger.info("Fine Scan skipped. Promoting Rough Scan Binner to main pipeline.")
@@ -370,10 +372,10 @@ class MarsStatsSelector(MarsBaseSelector):
             prev_count = len(current_features)
             current_features = self._filter_psi(X, current_features)
             self._record_funnel(
-                stage="Stage 4", 
-                description="Stability Check (PSI)", 
-                thresholds={"psi": self.psi_thr}, 
-                count_before=prev_count, 
+                stage="Stage 4",
+                description="Stability Check (PSI)",
+                thresholds={"psi": self.psi_thr},
+                count_before=prev_count,
                 count_after=len(current_features)
             )
 
@@ -382,10 +384,10 @@ class MarsStatsSelector(MarsBaseSelector):
             prev_count = len(current_features)
             current_features = self._filter_rc(X, current_features)
             self._record_funnel(
-                stage="Stage 5", 
-                description="Risk Consistency (RiskCorr)", 
-                thresholds={"rc": self.rc_thr}, 
-                count_before=prev_count, 
+                stage="Stage 5",
+                description="Risk Consistency (RiskCorr)",
+                thresholds={"rc": self.rc_thr},
+                count_before=prev_count,
                 count_after=len(current_features)
             )
 
@@ -393,8 +395,8 @@ class MarsStatsSelector(MarsBaseSelector):
         if current_features and self.corr_thr is not None:
             prev_count = len(current_features)
             current_features = self._filter_corr(X, current_features)
-            self._record_funnel("Stage 6", "Correlation Filter", 
-                                {"corr": self.corr_thr}, 
+            self._record_funnel("Stage 6", "Correlation Filter",
+                                {"corr": self.corr_thr},
                                 prev_count, len(current_features))
 
         # 执行特征集终态覆盖映射
@@ -405,8 +407,8 @@ class MarsStatsSelector(MarsBaseSelector):
                 selected_features.append(feature)
                 selected_set.add(feature)
         self.selected_features_ = selected_features
-        self._record_funnel("Final", "White List Forcing", 
-                            {"white_list_len": len(valid_white_list)}, 
+        self._record_funnel("Final", "White List Forcing",
+                            {"white_list_len": len(valid_white_list)},
                             len(current_features), len(self.selected_features_))
 
         # 触发底层引擎缓存销毁与空间压缩
@@ -463,8 +465,15 @@ class MarsStatsSelector(MarsBaseSelector):
             desc,
             data_source=self._feature_source_for(feature),
         )
-    
-    def _record_funnel(self, stage: str, description: str, thresholds: Union[Dict, str], count_before: int, count_after: int):
+
+    def _record_funnel(
+        self,
+        stage: str,
+        description: str,
+        thresholds: dict[str, Any] | str,
+        count_before: int,
+        count_after: int,
+    ) -> None:
         """内部方法：序列化记录筛选节点的快照度量。"""
         if not hasattr(self, "_initial_feature_count") or self._initial_feature_count == 0:
             self._initial_feature_count = count_before
@@ -484,8 +493,8 @@ class MarsStatsSelector(MarsBaseSelector):
             "Retention %": f"{(count_after / count_before * 100):.1f}%" if count_before > 0 else "0%",
             "Cumulative %": f"{(count_after / self._initial_feature_count * 100):.1f}%" if self._initial_feature_count > 0 else "0%"
         })
-    
-    def show_summary(self):
+
+    def show_summary(self) -> None:
         """
         展示特征筛选漏斗摘要。
 
@@ -498,47 +507,74 @@ class MarsStatsSelector(MarsBaseSelector):
             return
 
         df_summary = pd.DataFrame(self._funnel_stats)
-        
-        def _color_retention(val):
+
+        def _color_retention(val: str) -> str:
             """为留存率文本生成条件样式。"""
             try:
                 p = float(val.rstrip('%'))
-                if p < 30: return 'color: #d32f2f; font-weight: bold;'
-                if p < 70: return 'color: #ed6c02; font-weight: bold;'
+                if p < 30:
+                    return 'color: #d32f2f; font-weight: bold;'
+                if p < 70:
+                    return 'color: #ed6c02; font-weight: bold;'
                 return 'color: #2e7d32; font-weight: bold;'
-            except: return 'color: #757575;'
+            except ValueError:
+                return 'color: #757575;'
 
-        def _style_logic_text(v):
+        def _style_logic_text(v: Any) -> str:
             """为阈值逻辑文本生成高亮样式。"""
-            if not isinstance(v, str): return ''
+            if not isinstance(v, str):
+                return ''
             logic_ops = ['&', '|', '<', '>', '=']
             if any(op in v for op in logic_ops):
                 return 'color: #7b1fa2; font-weight: bold; font-family: "Courier New", Courier, monospace;'
             return ''
 
+        dropped_style = 'color: #d32f2f; font-weight: bold;'
+        muted_style = 'color: #999;'
+        remaining_style = 'color: #1565c0; font-weight: bold;'
+        cumulative_style = 'font-weight: bold; color: #1b5e20; background-color: #f1f8e9;'
+        table_styles: list[dict[str, Any]] = [
+            {
+                'selector': 'th',
+                'props': [
+                    ('background-color', '#f5f5f5'),
+                    ('color', '#333'),
+                    ('border-bottom', '2px solid #ddd'),
+                    ('padding', '12px'),
+                    ('text-align', 'center'),
+                ],
+            },
+            {
+                'selector': 'th.col0, th.col1, th.col2',
+                'props': [('text-align', 'left')],
+            },
+            {
+                'selector': 'caption',
+                'props': [
+                    ('font-size', '18px'),
+                    ('font-weight', 'bold'),
+                    ('padding', '12px'),
+                    ('color', '#1a237e'),
+                    ('text-align', 'left'),
+                ],
+            },
+        ]
         styler = (
             df_summary.style
             .set_caption("Mars Stats Selector: Feature Selection Funnel")
             .bar(subset=['Dropped'], color='#ffdbdb', vmin=0)
             .bar(subset=['Remaining'], color='#e1f5fe', vmin=0)
             .set_properties(**{'text-align': 'left'}, subset=['Stage', 'Description', 'Thresholds'])
-            .set_properties(**{'text-align': 'center'}, 
-                            subset=['Input', 'Dropped', 'Remaining', 'Retention %', 'Cumulative %'])
-            .map(lambda v: 'color: #d32f2f; font-weight: bold;' if v > 0 else 'color: #999;', subset=['Dropped'])
-            .map(lambda v: 'color: #1565c0; font-weight: bold;', subset=['Remaining'])
+            .set_properties(
+                **{'text-align': 'center'},
+                subset=['Input', 'Dropped', 'Remaining', 'Retention %', 'Cumulative %'],
+            )
+            .map(lambda v: dropped_style if v > 0 else muted_style, subset=['Dropped'])
+            .map(lambda v: remaining_style, subset=['Remaining'])
             .map(_color_retention, subset=['Retention %'])
-            .map(lambda v: 'font-weight: bold; color: #1b5e20; background-color: #f1f8e9;', subset=['Cumulative %'])
+            .map(lambda v: cumulative_style, subset=['Cumulative %'])
             .map(_style_logic_text, subset=['Thresholds'])
-            .set_table_styles([
-                {'selector': 'th', 'props': [
-                    ('background-color', '#f5f5f5'), ('color', '#333'), ('border-bottom', '2px solid #ddd'),
-                    ('padding', '12px'), ('text-align', 'center')
-                ]},
-                {'selector': 'th.col0, th.col1, th.col2', 'props': [('text-align', 'left')]},
-                {'selector': 'caption', 'props': [
-                    ('font-size', '18px'), ('font-weight', 'bold'), ('padding', '12px'), ('color', '#1a237e'), ('text-align', 'left')
-                ]}
-            ])
+            .set_table_styles(table_styles)
         )
 
         try:
@@ -550,7 +586,7 @@ class MarsStatsSelector(MarsBaseSelector):
     def _should_bypass_filter(self, feat: str) -> bool:
         """内部方法：解析特征实体是否命中免检逻辑池。"""
         return feat in self.white_list
-    
+
     def clear_cache(self) -> None:
         """
         释放缓存的分箱器上下文。
@@ -561,17 +597,17 @@ class MarsStatsSelector(MarsBaseSelector):
         """
         if self._stage3_binner is not None:
             self._stage3_binner.clear_cache()
-            
+
         import gc
         gc.collect()
         logger.debug("Selector cache cleared.")
 
     def _filter_quality(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：计算并核验数据质量约束向量。"""
-        
+
         from mars.analysis.profiler import MarsDataProfiler
         profiler = MarsDataProfiler(
-            df, 
+            df,
             features=features,
             missing_values=self.missing_values,
             special_values=self.special_values
@@ -583,18 +619,18 @@ class MarsStatsSelector(MarsBaseSelector):
                 "enable_sparkline": False
             }
         )
-        
+
         stats_records = report.overview_table.select([
             "feature", "missing_rate", "top1_ratio", "zeros_rate"
         ]).to_dicts()
         kept_features = []
-        
+
         for row in stats_records:
             feat = row["feature"]
             missing = row["missing_rate"]
             mode_rate = row["top1_ratio"]
             zeros_rate = row["zeros_rate"]
-            
+
             # 实施特定属性旁路绕过数据分布的边界校验
             if self._should_bypass_filter(feat):
                 self._register_feature_decision(feat, "Selected", "Quality", "White List", missing)
@@ -610,12 +646,12 @@ class MarsStatsSelector(MarsBaseSelector):
             else:
                 self._register_feature_decision(feat, "Selected", "Quality", "Pass", missing)
                 kept_features.append(feat)
-                
+
         return kept_features
 
     def _filter_rough(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：执行基于高并发原生分箱器的粗略信息增益下限校验。"""
-        
+
         if not features:
             return []
 
@@ -626,7 +662,7 @@ class MarsStatsSelector(MarsBaseSelector):
             logger.info(f"Native Binner will also evaluate {len(cat_features)} categorical features.")
 
         binner = MarsNativeBinner(
-            features=features, 
+            features=features,
             cat_features=cat_features,
             missing_values=self.missing_values,
             special_values=self.special_values,
@@ -635,36 +671,36 @@ class MarsStatsSelector(MarsBaseSelector):
         )
         target = df.get_column(self.target)
         binner.fit(df, target)
-        
+
         self._rough_binner = binner
-        
+
         stats_df = binner.profile_bin_performance(df, target, update_woe=False)
-        
+
         lift_recall_cond = (pl.col("Lift") > self.rough_lift_thr) & (pl.col("count_dist") > self.rough_min_sample_rate)
         feat_stats = (
             stats_df.group_by("feature")
             .agg([
                 pl.col("IV").max().alias("IV_total"),
                 lift_recall_cond.any().alias("has_high_lift"),
-                pl.col("Lift").max().alias("max_lift") 
+                pl.col("Lift").max().alias("max_lift")
             ])
         ).to_dicts()
-        
+
         kept_features = []
-        
+
         for row in feat_stats:
             feat, iv, has_high_lift, max_lift = row["feature"], row["IV_total"], row["has_high_lift"], row["max_lift"]
-            
+
             if self._should_bypass_filter(feat):
                 kept_features.append(feat)
-                self._feature_iv_dict[feat] = iv 
+                self._feature_iv_dict[feat] = iv
                 continue
-                
+
             if iv > self.rough_iv_thr or has_high_lift:
                 reason = f"Pass (IV={iv:.3f})" if iv > self.rough_iv_thr else f"Pass (Lift={max_lift:.2f})"
                 self._register_feature_decision(feat, "Selected", "Rough_Scan", reason, iv)
                 kept_features.append(feat)
-                self._feature_iv_dict[feat] = iv 
+                self._feature_iv_dict[feat] = iv
             else:
                 self._register_feature_decision(feat, "Dropped", "Rough_Scan", "Low IV & Low Lift", iv)
 
@@ -686,32 +722,34 @@ class MarsStatsSelector(MarsBaseSelector):
         cat_features = [c for c in features if df.schema[c] in cat_types]
 
         evaluator = MarsBinEvaluator(
-            target=self.target, 
-            bining_type="opt", 
+            target=self.target,
+            bining_type="opt",
             feature_data_source=self.feature_data_source,
             cat_features=cat_features,
-            missing_values=self.missing_values, 
+            missing_values=self.missing_values,
             special_values=self.special_values,
             **self.binning_params
         )
-        
+
         report = evaluator.evaluate(
-            df, 
-            features=features, 
-            dt_col=self.time_col, 
+            df,
+            features=features,
+            dt_col=self.time_col,
             profile_by=self.profile_by,
             batch_size=self.batch_size,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
-        
+
         self._stage3_binner = evaluator.binner
 
         lift_recall_set = set()
         if self.lift_thr is not None:
             group_col = report.group_col
-            lift_cond = (pl.col("lift") > self.lift_thr) & \
-                        (pl.col("pct") > self.min_sample_rate)
-            
+            lift_cond = (
+                (pl.col("lift") > self.lift_thr)
+                & (pl.col("pct") > self.min_sample_rate)
+            )
+
             lift_passed = report.detail_table.filter(
                 (pl.col(group_col) == "Total") & lift_cond
             )
@@ -720,7 +758,7 @@ class MarsStatsSelector(MarsBaseSelector):
         kept_features = []
         for row in report.summary_table.to_dicts():
             feat = row["feature"]
-            iv_total = row.get("iv", 0.0) 
+            iv_total = row.get("iv", 0.0)
 
             if self._should_bypass_filter(feat):
                 self._feature_iv_dict[feat] = iv_total
@@ -733,7 +771,7 @@ class MarsStatsSelector(MarsBaseSelector):
             if is_iv_ok or is_lift_recall:
                 decision_reason = "Pass (IV)" if is_iv_ok else "Pass (Lift Recall)"
                 self._register_feature_decision(feat, "Selected", "Fine_Scan", decision_reason, iv_total)
-                
+
                 self._feature_iv_dict[feat] = iv_total
                 kept_features.append(feat)
             else:
@@ -748,17 +786,17 @@ class MarsStatsSelector(MarsBaseSelector):
                 self._register_feature_decision(f, "Selected", "Fine_Scan", "White List (Binner Fallback)", 0.0)
 
         return kept_features
-    
+
     def _filter_psi(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：跨维度投射特征区间计算群体偏移极值。"""
-        
+
         from mars.analysis.evaluator import MarsBinEvaluator
         evaluator = MarsBinEvaluator(
             target=self.target,
             feature_data_source=self.feature_data_source,
-            binner=self._stage3_binner 
+            binner=self._stage3_binner
         )
-        
+
         report = evaluator.evaluate(
             df,
             features=features,
@@ -767,13 +805,13 @@ class MarsStatsSelector(MarsBaseSelector):
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
         psi_map = {r["feature"]: r["psi_max"] for r in report.summary_table.select(["feature", "psi_max"]).to_dicts()}
-        
+
         kept_features = []
         for feat in features:
             if self._should_bypass_filter(feat):
                 kept_features.append(feat)
                 continue
-                
+
             psi_val = psi_map.get(feat, 0.0)
             if psi_val < self.psi_thr:
                 self._register_feature_decision(feat, "Selected", "Stability", "Stable PSI", psi_val)
@@ -785,14 +823,14 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_rc(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：追踪特征序列区间逻辑相关性的变异下限。"""
-        
+
         from mars.analysis.evaluator import MarsBinEvaluator
         evaluator = MarsBinEvaluator(
             target=self.target,
             feature_data_source=self.feature_data_source,
-            binner=self._stage3_binner 
+            binner=self._stage3_binner
         )
-        
+
         report = evaluator.evaluate(
             df,
             features=features,
@@ -800,19 +838,19 @@ class MarsStatsSelector(MarsBaseSelector):
             profile_by=self.profile_by,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
-        
+
         if "rc_min" in report.summary_table.columns:
             rc_map = {r["feature"]: r["rc_min"] for r in report.summary_table.select(["feature", "rc_min"]).to_dicts()}
         else:
             rc_map = {}
             logger.warning("rc_min metric not found in report. Skipping RC check.")
-        
+
         kept_features = []
         for feat in features:
             if self._should_bypass_filter(feat):
                 kept_features.append(feat)
                 continue
-                
+
             rc_val = rc_map.get(feat, 1.0)
             if rc_val is None or rc_val >= self.rc_thr:
                 self._register_feature_decision(feat, "Selected", "RiskCorr", "Stable Logic", rc_val if rc_val is not None else 1.0)
@@ -824,7 +862,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_corr(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：执行目标感知导向的共线性惩罚计算。"""
-        
+
         if len(features) < 2:
             return features
 
@@ -837,8 +875,8 @@ class MarsStatsSelector(MarsBaseSelector):
         )
 
         sorted_feats = sorted(
-            features, 
-            key=lambda f: (-self._feature_iv_dict.get(f, 0.0), f) 
+            features,
+            key=lambda f: (-self._feature_iv_dict.get(f, 0.0), f)
         )
 
         kept_features_set = set()
@@ -848,20 +886,20 @@ class MarsStatsSelector(MarsBaseSelector):
             if self._should_bypass_filter(feat):
                 kept_features_set.add(feat)
                 continue
-                
+
             if feat in dropped_features:
                 continue
-            
+
             kept_features_set.add(feat)
             self._register_feature_decision(feat, "Selected", "Corr_Filter", "Independent", self._feature_iv_dict.get(feat, 0))
-            
+
             target_woe_name = f"{feat}_woe"
             high_corr_row = corr_matrix_with_names.filter(pl.col("feature_name") == target_woe_name)
-            
+
             for other_feat_woe in woe_cols:
                 if other_feat_woe == target_woe_name:
                     continue
-                    
+
                 corr_val = abs(high_corr_row.get_column(other_feat_woe)[0])
                 if corr_val > self.corr_thr:
                     orig_f = other_feat_woe[:-4]
@@ -871,7 +909,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         return [f for f in features if f in kept_features_set]
 
-    def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> Tuple["MarsEvaluationReport", "MarsBinEvaluator"]:
+    def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> Tuple[MarsEvaluationReport, MarsBinEvaluator]:
         """
         基于当前筛选结果生成最终评估报告。
 
@@ -891,14 +929,14 @@ class MarsStatsSelector(MarsBaseSelector):
             当当前选择器尚未拟合，或没有任何入选特征时抛出。
         """
         self._check_is_fitted()
-        
+
         if not self.selected_features_:
             raise ValueError("No selected features found. Cannot generate report.")
-            
+
         X_pl = self._ensure_polars_dataframe(df)
-        
+
         from mars.analysis.evaluator import MarsBinEvaluator
-        
+
         if self._stage3_binner is not None:
             evaluator = MarsBinEvaluator(
                 target=self.target,
@@ -909,10 +947,10 @@ class MarsStatsSelector(MarsBaseSelector):
             logger.warning("Cached binner not found. Re-fitting Binner for the selected features...")
             cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
             cat_features = [c for c in self.selected_features_ if X_pl.schema[c] in cat_types]
-            
+
             bining_type = "native" if self.skip_fine_scan else "opt"
             binning_params = self.rough_binning_params if self.skip_fine_scan else self.binning_params
-            
+
             evaluator = MarsBinEvaluator(
                 target=self.target,
                 bining_type=bining_type,
@@ -922,21 +960,21 @@ class MarsStatsSelector(MarsBaseSelector):
                 special_values=self.special_values,
                 **binning_params
             )
-            
+
         if self._return_pandas:
             evaluator.set_output("pandas")
 
         logger.info(f"Generating final evaluation report for {len(self.selected_features_)} selected features...")
-        
+
         report: MarsEvaluationReport = evaluator.evaluate(
-            X_pl, 
-            features=self.selected_features_, 
-            dt_col=self.time_col, 
+            X_pl,
+            features=self.selected_features_,
+            dt_col=self.time_col,
             profile_by=self.profile_by,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
             feature_data_source=self.feature_data_source,
         )
-        
+
         return report, evaluator
 
     def export_selector_report(self, path: str = "mars_selector_report.xlsx") -> None:
@@ -959,7 +997,7 @@ class MarsStatsSelector(MarsBaseSelector):
                 logger.warning("No report to export.")
                 return
             pd_df = report_df.to_pandas()
-            
+
         logger.info(f"Exporting Selection Report to {path}...")
 
         if path.endswith(".csv"):
@@ -974,14 +1012,14 @@ class MarsStatsSelector(MarsBaseSelector):
             except Exception as e:
                 logger.warning(f"Failed to export styled excel, falling back to basic export. Error: {e}")
                 pd_df.to_excel(path, index=False)
-                
+
         logger.info("Export Complete.")
 
     def save_selector_lists(
-        self, 
-        path: str = "mars_lists.json", 
-        blacklist_stages: Optional[List[str]] = None
-    ):
+        self,
+        path: str = "mars_lists.json",
+        blacklist_stages: List[str] | None = None
+    ) -> None:
         """
         保存当前筛选结果中的白名单与黑名单。
 
@@ -998,7 +1036,7 @@ class MarsStatsSelector(MarsBaseSelector):
         用户预设黑名单的并集。
         """
         self._check_is_fitted()
-        
+
         if blacklist_stages:
             patterns = [p.lower() for p in blacklist_stages]
         else:
@@ -1012,23 +1050,26 @@ class MarsStatsSelector(MarsBaseSelector):
             return any(p in actual_stage_lower for p in patterns)
 
         dropped_records = [
-            r["feature"] for r in self.report_records_ 
+            r["feature"] for r in self.report_records_
             if r["status"] == "Dropped" and is_stage_matched(r["stage"])
         ]
-        
+
         data = {
             "white_list": self.selected_features_,
             "black_list": list(set(dropped_records + self.black_list))
         }
-        
+
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
-            
+
         match_msg = f"matching {blacklist_stages}" if blacklist_stages else "from all stages"
         logger.info(f"Black/White lists saved to {path}. (Blacklisted features {match_msg})")
 
     @classmethod
-    def load_lists_from_json(cls, path: str) -> Dict[str, List[str]]:
+    def load_lists_from_json(
+        cls: type[MarsStatsSelector],
+        path: str,
+    ) -> Dict[str, List[str]]:
         """
         从 JSON 文件加载白名单与黑名单。
 
@@ -1045,11 +1086,11 @@ class MarsStatsSelector(MarsBaseSelector):
         if not os.path.exists(path):
             logger.warning(f"File {path} not found. Returning empty lists.")
             return {"white_list": [], "black_list": []}
-            
-        with open(path, 'r', encoding='utf-8') as f:
+
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
-        
-    def print_stats(self, iv_thresholds: Optional[List[float]] = None) -> None:
+
+    def print_stats(self, iv_thresholds: List[float] | None = None) -> None:
         """
         打印最终入选特征的统计摘要。
 
@@ -1067,32 +1108,32 @@ class MarsStatsSelector(MarsBaseSelector):
         if iv_thresholds is None:
             iv_thresholds = [0.02, 0.05, 0.10]
         else:
-            iv_thresholds = sorted(iv_thresholds) 
+            iv_thresholds = sorted(iv_thresholds)
 
         final_ivs = [self._feature_iv_dict.get(f, 0.0) for f in self.selected_features_]
         total = len(self.selected_features_)
-        
+
         max_iv = max(final_ivs) if final_ivs else 0.0
         mean_iv = sum(final_ivs) / total if total > 0 else 0.0
-        
+
         stats_msg = [
             f"\n{'='*50}",
-            f"Mars Feature Selection Final Stats",
+            "Mars Feature Selection Final Stats",
             f"{'-'*50}",
             f"Survived Features : {total}",
             f"Maximum IV        : {max_iv:.4f}",
             f"Average IV        : {mean_iv:.4f}"
         ]
-        
+
         for thr in iv_thresholds:
             count = sum(1 for iv in final_ivs if iv >= thr)
             stats_msg.append(f"IV >= {thr:<13} : {count} ({count/total:.1%})")
-            
+
         stats_msg.append(f"{'='*50}")
-        
+
         logger.info("\n%s", "\n".join(stats_msg))
-    
-    
+
+
 class MarsLinearSelector(MarsBaseSelector):
     """
     线性模型场景下的特征筛选器占位实现。
@@ -1111,22 +1152,22 @@ class MarsLinearSelector(MarsBaseSelector):
         enable_corr_filter: bool = True,
         corr_thr: float = 0.8,         # 相关性 > 0.8 视为冗余
         corr_method: str = "spearman",       # 推荐 spearman (分箱后是非线性的)
-        
+
         # --- Stage 2: 多重共线性筛查 (VIF Filter) ---
         # 作用: 解决多重线性依赖 (A = B + C)
         # 注意: 计算矩阵逆非常慢，建议只对 < 1000 个特征开启
         enable_vif_filter: bool = False,
         vif_threshold: float = 5.0,          # 业界通常取 5.0 或 10.0
-        
+
         # --- Stage 3: 逐步回归 (Stepwise Selection) ---
         # 作用: 基于 AIC/BIC 的包裹式筛选
         enable_stepwise: bool = False,
         stepwise_direction: str = "forward", # forward (快) / backward (慢但准)
         stepwise_criterion: str = "aic",     # 优化目标: aic / bic
-        max_features: Optional[int] = None,  # 限制最终入模特征数
-        
-        n_jobs: int = -1
-    ):
+        max_features: int | None = None,  # 限制最终入模特征数
+
+        n_jobs: int = -1,
+    ) -> None:
         """
         初始化线性筛选器配置。
 
@@ -1157,7 +1198,7 @@ class MarsLinearSelector(MarsBaseSelector):
         """
         super().__init__(target=target)
         # ...
-        
+
 
 class MarsImportanceSelector(MarsBaseSelector):
     """
@@ -1171,35 +1212,35 @@ class MarsImportanceSelector(MarsBaseSelector):
     def __init__(
         self,
         target: str,
-        
+
         # --- 模型配置 (Estimator) ---
         # 支持字符串简写，也支持传入实例化好的 sklearn/lgbm 对象
         estimator: Union[str, Any] = "lgbm", # lgbm, xgb, cat, rf, extra_trees
-        estimator_params: Optional[dict] = None, # 比如 {'learning_rate': 0.05, 'n_estimators': 100}
-        
+        estimator_params: dict | None = None, # 比如 {'learning_rate': 0.05, 'n_estimators': 100}
+
         # --- 筛选策略 (Method) ---
         # 1. importance: 使用模型自带的 feature_importances_ (gain/split)
         # 2. shap: 训练后计算 SHAP mean values (更准但更慢)
         # 3. rfe: 递归特征消除 (反复训练剔除尾部，最慢但效果最好)
         # 4. sfm: SelectFromModel (基于阈值的一次性筛选)
         method: Literal["importance", "shap", "rfe", "sfm"] = "importance",
-        
+
         # --- 阈值控制 (Criteria) ---
         # 决定保留多少特征
         selection_mode: Literal["top_k", "threshold", "percentile"] = "top_k",
-        selection_threshold: Union[int, float, str] = 50, 
+        selection_threshold: Union[int, float, str] = 50,
         # 解释:
         # - top_k: 保留前 50 个 (最常用)
         # - threshold: 重要性 > 0.01
         # - percentile: 保留前 20%
-        
+
         # --- 交叉验证 (CV) ---
         # 是否使用 CV 后的平均重要性来减少随机性 (建议开启)
-        cv: int = 3, 
-        
+        cv: int = 3,
+
         n_jobs: int = -1,
-        random_state: int = 42
-    ):
+        random_state: int = 42,
+    ) -> None:
         """
         初始化重要性筛选器配置。
 

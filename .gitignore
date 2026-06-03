@@ -19,6 +19,13 @@ dist/
 build/
 *.egg-info/
 .pytest_cache/
+.pytest-tmp/
+.pytest-tmp*/
+.ruff_cache/
+.mypy_cache/
+.cache/
+*.tmp
+*.log
 
 # 数据与隐私 
 *.csv
@@ -28,6 +35,7 @@ data/
 output/
 secret_config.py
 .env
+*.local
 
 # Jupyter Notebooks
 *.ipynb
@@ -36,6 +44,12 @@ secret_config.py
 # 示例文件
 examples/
 modeling_artifacts/
+*_report.html
+*_report.xlsx
+mars_profile.html
+mars_profile.xlsx
+mars_selector_report.xlsx
+mars_lists.json
 
 # 测试与教程运行产物
 tests/_artifacts/

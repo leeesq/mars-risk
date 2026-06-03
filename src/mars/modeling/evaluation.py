@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,7 @@ import pandas as pd
 from mars.modeling.metrics import calculate_auc, calculate_ks
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import FrameLike, split_name_sort_key, to_pandas_frame
+
 
 class MarsModelEvaluator:
     """
@@ -56,19 +57,19 @@ class MarsModelEvaluator:
         *,
         group_col: str,
         target_col: str,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
-        val_target_col: Optional[str] = None,
-        feature_cols: Optional[Sequence[str]] = None,
-        importance_table: Optional[pd.DataFrame] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
+        val_target_col: str | None = None,
+        feature_cols: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | None = None,
     ) -> None:
         self.group_col: str = group_col
         self.target_col: str = target_col
-        self.benchmark_col: Optional[str] = benchmark_col
-        self.time_col: Optional[str] = time_col
-        self.val_target_col: Optional[str] = val_target_col
+        self.benchmark_col: str | None = benchmark_col
+        self.time_col: str | None = time_col
+        self.val_target_col: str | None = val_target_col
         self.feature_cols: List[str] = list(feature_cols or [])
-        self.importance_table: Optional[pd.DataFrame] = None if importance_table is None else importance_table.copy()
+        self.importance_table: pd.DataFrame | None = None if importance_table is None else importance_table.copy()
 
     def _validate_frame(self, df: pd.DataFrame, pred_col: str) -> pd.DataFrame:
         """校验必需列，并在配置时间列时统一转换为 datetime。"""
@@ -95,8 +96,8 @@ class MarsModelEvaluator:
         *,
         pred_col: str,
         target_col: str,
-        section_label: Optional[str] = None,
-        score_psi: Optional[float] = None,
+        section_label: str | None = None,
+        score_psi: float | None = None,
     ) -> Dict[Tuple[str, str], Any]:
         """Build one target block for the grouped evaluation report."""
         y_true = pd.to_numeric(sub_df[target_col], errors="coerce")
@@ -205,7 +206,7 @@ class MarsModelEvaluator:
         remaining_columns = [col for col in available_columns if col not in ordered_columns]
         return ordered_columns + remaining_columns
 
-    def _build_score_bins(self, baseline_scores: pd.Series) -> Optional[np.ndarray]:
+    def _build_score_bins(self, baseline_scores: pd.Series) -> np.ndarray | None:
         """Build stable decile cut points from the first available group."""
         clean_scores = pd.to_numeric(baseline_scores, errors="coerce").dropna()
         if clean_scores.nunique() < 2:
@@ -365,7 +366,12 @@ class MarsModelEvaluator:
             fpr = np.r_[0.0, np.cumsum(1.0 - y_sorted) / neg, 1.0]
             threshold = np.r_[np.inf, score_sorted, -np.inf]
             thinned = self._thin_arrays(500, fpr=fpr, tpr=tpr, threshold=threshold)
-            for fpr_val, tpr_val, threshold_val in zip(thinned["fpr"], thinned["tpr"], thinned["threshold"]):
+            for fpr_val, tpr_val, threshold_val in zip(
+                thinned["fpr"],
+                thinned["tpr"],
+                thinned["threshold"],
+                strict=False,
+            ):
                 rows.append(
                     {
                         self.group_col: group,

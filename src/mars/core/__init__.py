@@ -1,5 +1,5 @@
 from .base import MarsBaseEstimator, MarsTransformer
-from .exceptions import MarsError, NotFittedError, DataTypeError
+from .exceptions import DataTypeError, MarsError, NotFittedError
 
 __all__ = [
     "MarsBaseEstimator",

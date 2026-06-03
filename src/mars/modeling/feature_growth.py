@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-import json
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 import pandas as pd
 
@@ -69,8 +69,8 @@ class MarsFeatureGrowthRun:
     selection_metric: str
     summary_table: pd.DataFrame
     runs: Dict[int, MarsModelingRun]
-    best_step: Optional[int] = None
-    best_run: Optional[MarsModelingRun] = None
+    best_step: int | None = None
+    best_run: MarsModelingRun | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -79,7 +79,7 @@ class MarsFeatureGrowthRun:
         return None if self.best_run is None else self.best_run.best_model
 
     @property
-    def best_score(self) -> Optional[float]:
+    def best_score(self) -> float | None:
         """返回推荐 step 的 validation 分数。"""
         return None if self.best_run is None else float(self.best_run.best_score)
 
@@ -136,7 +136,7 @@ class MarsFeatureGrowthRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls, path: str) -> "MarsFeatureGrowthRun":
+    def load_artifact(cls: type[MarsFeatureGrowthRun], path: str) -> MarsFeatureGrowthRun:
         """
         从本地 artifact 目录恢复特征增长实验结果。
 
@@ -179,7 +179,7 @@ class MarsFeatureGrowthRun:
             summary_table=pd.read_csv(summary_path),
             runs=runs,
             best_step=best_step,
-            best_run=runs.get(best_step),
+            best_run=runs.get(best_step) if best_step is not None else None,
             metadata=dict(metadata.get("metadata", {})),
         )
 
@@ -217,11 +217,11 @@ class MarsFeatureIncrementalTuner:
         features: Sequence[str],
         target: str,
         dataset_flag_col: str = "dataset_flag",
-        categorical_features: Optional[Sequence[str]] = None,
+        categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
     ) -> None:
         self.spec = _build_spec(
             model_type=model_type,
@@ -238,8 +238,8 @@ class MarsFeatureIncrementalTuner:
     def _resolve_feature_order(
         self,
         *,
-        feature_order: Optional[Sequence[str]],
-        importance_table: Optional[pd.DataFrame],
+        feature_order: Sequence[str] | None,
+        importance_table: pd.DataFrame | None,
     ) -> List[str]:
         """解析增量实验使用的特征顺序。"""
         base_features = list(self.spec.features)
@@ -273,10 +273,10 @@ class MarsFeatureIncrementalTuner:
     def _resolve_steps(
         *,
         total_features: int,
-        steps: Optional[Sequence[int]],
+        steps: Sequence[int] | None,
         min_features: int,
-        max_features: Optional[int],
-        step_size: Optional[int],
+        max_features: int | None,
+        step_size: int | None,
     ) -> List[int]:
         """解析每轮前缀特征数量。"""
         if total_features <= 0:
@@ -309,7 +309,7 @@ class MarsFeatureIncrementalTuner:
         return str(path.with_name(f"{path.stem}_features_{feature_count}{suffix}"))
 
     @staticmethod
-    def _select_history_row(history: pd.DataFrame, metric: str) -> Optional[pd.Series]:
+    def _select_history_row(history: pd.DataFrame, metric: str) -> pd.Series | None:
         """选择某个 step 中用于汇总展示的最佳有效 trial。"""
         if history.empty:
             return None
@@ -375,7 +375,7 @@ class MarsFeatureIncrementalTuner:
         }
 
     @staticmethod
-    def _choose_best(summary_table: pd.DataFrame, runs: Mapping[int, MarsModelingRun], metric: str) -> tuple[Optional[int], Optional[MarsModelingRun]]:
+    def _choose_best(summary_table: pd.DataFrame, runs: Mapping[int, MarsModelingRun], metric: str) -> tuple[int | None, MarsModelingRun | None]:
         """按 validation 指标选择推荐 step。"""
         if summary_table.empty:
             return None, None
@@ -397,14 +397,14 @@ class MarsFeatureIncrementalTuner:
         self,
         df: FrameLike,
         *,
-        steps: Optional[Sequence[int]] = None,
-        feature_order: Optional[Sequence[str]] = None,
-        importance_table: Optional[pd.DataFrame] = None,
+        steps: Sequence[int] | None = None,
+        feature_order: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | None = None,
         min_features: int = 10,
-        max_features: Optional[int] = None,
-        step_size: Optional[int] = None,
+        max_features: int | None = None,
+        step_size: int | None = None,
         mode: str = "prefix",
-        selection_metric: Optional[str] = None,
+        selection_metric: str | None = None,
         **tune_kwargs: Any,
     ) -> MarsFeatureGrowthRun:
         """

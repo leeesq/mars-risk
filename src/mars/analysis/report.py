@@ -1,21 +1,19 @@
 # mars/analysis/report.py
 
+import html
+import importlib.util
+import json
 import os
 import sys
-import html
-import json
 from copy import copy
-from importlib import resources
-import polars as pl
-import pandas as pd
-import numpy as np
-from typing import Dict, Tuple, Optional, Union, List, Any, NamedTuple
-from mars.utils.logger import logger
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
-try:
-    from IPython.display import display, HTML
-except ImportError:
-    display = None
+import numpy as np
+import pandas as pd
+import polars as pl
+
+from mars.analysis._html_assets import build_html_runtime_script, build_html_styles
+from mars.utils.logger import logger
 
 
 def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
@@ -35,7 +33,7 @@ def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
     if isinstance(df, pl.DataFrame):
         return df.to_pandas()
     return df
-    
+
 class ProfileData(NamedTuple):
     """画像报告底层数据对象集合。"""
 
@@ -47,7 +45,7 @@ class MarsProfileReport:
     """
     数据特征画像与质量评估报告容器。
 
-    作为数据探查（EDA）流水线的标准输出载体，该组件负责统一管理并呈现由 
+    作为数据探查（EDA）流水线的标准输出载体，该组件负责统一管理并呈现由
     `MarsDataProfiler` 产出的高维特征统计指标与多维趋势矩阵。系统封装了对底层
     数据帧的只读访问接口、面向 Jupyter 环境的交互式富文本渲染，以及携带高保真
     条件格式的跨平台电子表格（Excel）持久化导出能力。
@@ -56,11 +54,11 @@ class MarsProfileReport:
     ----------
     overview : DataFrame
         全量特征概览宽表。包含全体特征的全局数据质量（DQ）度量与统计分布特征计算结果。
-        
+
     dq_tables : dict of str to DataFrame
         数据质量指标的分组趋势透视表字典。键为具体的度量名称（如 'missing', 'zeros', 'unique'），
         值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
-        
+
     stats_tables : dict of str to DataFrame
         统计分布指标的分组趋势透视表字典。键为具体的度量名称（如 'mean', 'max', 'p25'），
         值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
@@ -69,10 +67,10 @@ class MarsProfileReport:
     ----------
     overview_table : DataFrame
         内部持有的全量特征概览宽表上下文引用。
-        
+
     dq_tables : dict of str to DataFrame
         内部持有的数据质量指标趋势字典上下文引用。
-        
+
     stats_tables : dict of str to DataFrame
         内部持有的统计分布指标趋势字典上下文引用。
 
@@ -90,20 +88,20 @@ class MarsProfileReport:
     >>> from mars.analysis import MarsDataProfiler
     >>> profiler = MarsDataProfiler(df)
     >>> report = profiler.generate_profile(profile_by="month")
-    >>> 
+    >>>
     >>> # 1. 触发交互式富文本视图渲染
     >>> report.show_overview(sort_by="missing_rate")
     >>> report.show_trend("missing", features=["age", "income"])
-    >>> 
+    >>>
     >>> # 2. 剥离并获取底层物理数据帧以执行二次开发
     >>> overview_df, dq_dict, stat_dict = report.get_profile_data()
-    >>> 
+    >>>
     >>> # 3. 执行携带条件格式映射的跨平台报表持久化导出
     >>> report.write_excel("mars_data_health_audit.xlsx")
     """
 
     def __init__(
-        self, 
+        self,
         overview: Union[pl.DataFrame, pd.DataFrame],
         dq_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         stats_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
@@ -123,7 +121,7 @@ class MarsProfileReport:
         self.overview_table = overview
         self.dq_tables = dq_tables
         self.stats_tables = stats_tables
-        
+
         # 建立索引：将所有指标名映射到对应的数据源类型 ('dq' 或 'stat')
         # 这允许我们在 show_trend 中快速定位
         self._metric_index: Dict[str, str] = {}
@@ -153,7 +151,7 @@ class MarsProfileReport:
         """
         df_ov = self.overview_table
         n_feats = len(df_ov) if hasattr(df_ov, "__len__") else df_ov.height
-        
+
         dq_keys = list(self.dq_tables.keys())
         stat_keys = list(self.stats_tables.keys())
 
@@ -168,13 +166,14 @@ class MarsProfileReport:
             "background-color: #f0f0f0; padding: 2px 4px; border-radius: 3px; "
             "font-family: monospace; color: #e74c3c; font-weight: bold;"
         )
-        
+
         # 辅助函数：生成指标徽章列表
-        def _fmt_pills(keys):
+        def _fmt_pills(keys: list[str]) -> str:
             """将指标名称渲染为 HTML 胶囊标签。"""
-            if not keys: return "<span style='color:#ccc'>None</span>"
+            if not keys:
+                return "<span style='color:#ccc'>None</span>"
             # 为了防止指标太多撑爆屏幕，限制显示数量 (例如只显示前 20 个，后面加 ...)
-            display_keys = keys[:30] 
+            display_keys = keys[:30]
             pills = "".join([f"<span style='{pill_style}'>'{k}'</span>" for k in display_keys])
             if len(keys) > 30:
                 pills += f"<span style='color:#999; font-size:0.8em'> (+{len(keys)-30} more)</span>"
@@ -183,7 +182,7 @@ class MarsProfileReport:
         # 组装 HTML
         return f"""
         <div style="border: 1px solid #e0e0e0; border-left: 5px solid #2980b9; border-radius: 4px; background: white; max-width: 900px; font-family: 'Segoe UI', sans-serif;">
-            
+
             <div style="padding: 12px 15px; background-color: #f8f9fa; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center;">
                 <div style="font-weight: bold; color: #2c3e50; font-size: 1.1em;">
                     📊 Mars Data Profile
@@ -196,7 +195,7 @@ class MarsProfileReport:
             </div>
 
             <div style="padding: 15px;">
-                
+
                 <div style="margin-bottom: 15px;">
                     <div style="font-size: 0.8em; text-transform: uppercase; color: #95a5a6; font-weight: bold; margin-bottom: 5px;">Quick Actions</div>
                     <div style="display: flex; gap: 20px; font-size: 0.95em;">
@@ -210,14 +209,14 @@ class MarsProfileReport:
                     <div style="font-size: 0.8em; text-transform: uppercase; color: #95a5a6; font-weight: bold; margin-bottom: 8px;">
                         Trend Analysis <span style="font-weight:normal; text-transform:none; color:#bbb">(Use <code>.show_trend('metric_name')</code>)</span>
                     </div>
-                    
+
                     <div style="display: flex; margin-bottom: 8px; align-items: baseline;">
                         <div style="width: 80px; font-weight: bold; color: #27ae60; font-size: 0.9em;">DQ:</div>
                         <div style="flex: 1; line-height: 1.6;">
                             {_fmt_pills(dq_keys)}
                         </div>
                     </div>
-                    
+
                     <div style="display: flex; align-items: baseline;">
                         <div style="width: 80px; font-weight: bold; color: #2980b9; font-size: 0.9em;">Stats:</div>
                         <div style="flex: 1; line-height: 1.6;">
@@ -227,16 +226,16 @@ class MarsProfileReport:
                 </div>
 
             </div>
-            
+
             <div style="padding: 6px 15px; background-color: #fff8e1; border-top: 1px solid #fae5b0; font-size: 0.8em; color: #d35400;">
                 💡 <b>Pro Tip:</b> Use <span style="{code_style}">.show_trend('psi')</span> to detect population stability drift.
             </div>
         </div>
         """
 
-    def show_overview(self, 
-                      features: Optional[Union[str, List[str]]] = None, 
-                      sort_by: Optional[Union[str, List[str]]] = None, 
+    def show_overview(self,
+                      features: Union[str, List[str]] | None = None,
+                      sort_by: Union[str, List[str]] | None = None,
                       sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
         """
         展示特征概览宽表。
@@ -257,7 +256,7 @@ class MarsProfileReport:
         """
         # 转换为 Pandas 副本以进行切片
         df = _as_pandas_frame(self.overview_table).copy()
-        
+
         # 特征筛选逻辑
         if features is not None:
             if isinstance(features, str):
@@ -266,20 +265,20 @@ class MarsProfileReport:
 
         return self._get_styler(
             df,
-            title="Dataset Overview", 
-            cmap="RdYlGn_r", 
+            title="Dataset Overview",
+            cmap="RdYlGn_r",
             sort_by= ["dtype"] + (["missing_rate"] if sort_by is None else ([sort_by] if isinstance(sort_by, str) else sort_by)),
-            sort_ascending=sort_ascending, 
+            sort_ascending=sort_ascending,
             # 指定哪些列应用“红绿灯”配色 (高值=红)
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "top1_ratio"],
             fmt_as_pct=False # 概览表混合了多种类型，不强制全转百分比，由内部逻辑细分
         )
 
-    def show_trend(self, 
-                   metric: str, 
-                   features: Optional[Union[str, List[str]]] = None, 
-                   group_ascending: bool = True, 
-                   sort_by: Union[List[str], str] = "total", 
+    def show_trend(self,
+                   metric: str,
+                   features: Union[str, List[str]] | None = None,
+                   group_ascending: bool = True,
+                   sort_by: Union[List[str], str] = "total",
                    sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
         """
         展示指定指标的分组趋势。
@@ -321,7 +320,7 @@ class MarsProfileReport:
             cmap = "RdYlGn_r"  # 红色代表高风险 (高缺失)
             fmt_pct = True     # DQ 指标通常是率 (Rate/Ratio)
             vmin, vmax = 0, 1  # 率通常在 0~1 之间
-            
+
         else: # source_type == "stat"
             df_raw = self.stats_tables[metric]
             # Stats 默认配置
@@ -334,7 +333,7 @@ class MarsProfileReport:
             cmap = "RdYlGn_r" # PSI 高了是坏事
             fmt_pct = False   # PSI 是数值不是百分比
             vmin, vmax = 0.0, 0.5 # 锚定阈值
-        
+
         df = _as_pandas_frame(df_raw).copy()
 
         # 特征筛选逻辑
@@ -352,7 +351,7 @@ class MarsProfileReport:
             title=f"Trend Analysis: {metric}",
             cmap=cmap,
             fmt_as_pct=fmt_pct,
-            vmin=vmin, 
+            vmin=vmin,
             vmax=vmax,
             add_bars=True # 所有趋势表都允许显示 CV 条
         )
@@ -362,22 +361,24 @@ class MarsProfileReport:
         # 定义元数据列和末尾统计列
         meta_cols = ["feature", "dtype", "distribution", "top1_value"]
         stat_cols = ["total", "group_mean", "group_var", "group_cv"]
-        
+
         # 识别中间的分组列（如时间列）
         all_cols = df.columns.tolist()
         group_cols = [c for c in all_cols if c not in meta_cols + stat_cols]
-        
+
         # 排序分组列 (受 group_ascending 控制)
         group_cols_sorted = sorted(group_cols, reverse=not group_ascending)
-        
+
         # 组合最终顺序
-        final_order = [c for c in meta_cols if c in all_cols] + \
-                      group_cols_sorted + \
-                      [c for c in stat_cols if c in all_cols]
+        final_order = (
+            [c for c in meta_cols if c in all_cols]
+            + group_cols_sorted
+            + [c for c in stat_cols if c in all_cols]
+        )
         return df[final_order]
 
-    def write_excel(self, 
-                    path: str = "mars_report.xlsx", 
+    def write_excel(self,
+                    path: str = "mars_report.xlsx",
                     group_ascending: bool = True,
                     sort_by: Union[str, List[str]] = "total",
                     sort_ascending: bool = False) -> None:
@@ -400,11 +401,9 @@ class MarsProfileReport:
         该方法依赖 ``xlsxwriter`` 导出带样式的多工作表 Excel 文件。
         """
         logger.info(f"Exporting report to: {path}...")
-        
+
         # 1. 依赖检查
-        try:
-            import xlsxwriter
-        except ImportError:
+        if importlib.util.find_spec("xlsxwriter") is None:
             logger.error("'xlsxwriter' is required for Excel export. Install it via: pip install xlsxwriter")
             return
 
@@ -416,32 +415,32 @@ class MarsProfileReport:
                 overview_styler = self.show_overview()
                 if overview_styler is not None:
                     overview_styler.to_excel(writer, sheet_name="Overview", index=False)
-                
+
                 #--------------------------------------------------------
                 # 2. 统一导出所有趋势页 (Trend & DQ)
                 #--------------------------------------------------------
                 dq_keys = list(self.dq_tables.keys())
                 stat_keys = list(self.stats_tables.keys())
                 all_metrics = dq_keys + stat_keys
-                
+
                 for metric in all_metrics:
                     # 保证导出的表结构与 Notebook 展示完全一致
                     styler = self.show_trend(
-                        metric, 
-                        group_ascending=group_ascending, 
-                        sort_by=sort_by, 
+                        metric,
+                        group_ascending=group_ascending,
+                        sort_by=sort_by,
                         sort_ascending=sort_ascending
                     )
-                    
+
                     if styler is not None:
                         prefix = "DQ" if metric in self.dq_tables else "Trend"
                         sheet_name = f"{prefix}_{metric.capitalize()}"[:31]
-                        
+
                         styler.to_excel(writer, sheet_name=sheet_name, index=False)
-                        
+
                         # 确保条件格式锚定的列与导出的表完全吻合
                         self._apply_excel_formatting(
-                            writer, sheet_name, metric, 
+                            writer, sheet_name, metric,
                             group_ascending=group_ascending,
                             sort_by=sort_by,
                             sort_ascending=sort_ascending
@@ -450,19 +449,21 @@ class MarsProfileReport:
                 # 3. 自动列宽调整
                 for sheet in writer.sheets.values():
                     sheet.autofit()
-                    
+
             logger.info("Report exported successfully.")
 
         except Exception as e:
             logger.error(f"Failed to export Excel: {e}", exc_info=True)
 
-    def _apply_excel_formatting(self, 
-                                writer, 
-                                sheet_name: str, 
-                                metric: str, 
-                                group_ascending: bool,
-                                sort_by: Union[str, List[str]],
-                                sort_ascending: bool):
+    def _apply_excel_formatting(
+        self,
+        writer: Any,
+        sheet_name: str,
+        metric: str,
+        group_ascending: bool,
+        sort_by: str | list[str],
+        sort_ascending: bool,
+    ) -> None:
         """
         为导出的趋势工作表应用条件格式。
         """
@@ -470,26 +471,26 @@ class MarsProfileReport:
             raw_df = self.dq_tables[metric]
         else:
             raw_df = self.stats_tables[metric]
-            
+
         # 必须和 show_trend 的内部重排逻辑一模一样，否则 Excel 样式会错位
         df_pd: pd.DataFrame = _as_pandas_frame(raw_df).copy()
-        
+
         # 匹配行排序
         if sort_by in df_pd.columns or (isinstance(sort_by, list) and all(c in df_pd.columns for c in sort_by)):
             df_pd = df_pd.sort_values(by=sort_by, ascending=sort_ascending)
-            
+
         # 匹配列排序
         df_pd = self._reorder_trend_cols(df_pd, group_ascending=group_ascending)
-        
+
         # 动态识别趋势列范围，避免依赖固定列位置。
         meta_and_stat = set(["feature", "dtype", "distribution", "top1_value", "total", "group_mean", "group_var", "group_cv"])
         time_cols = [c for c in df_pd.columns if c not in meta_and_stat]
-        
+
         if not time_cols:
             return
 
         worksheet = writer.sheets[sheet_name]
-        
+
         # PSI 专用三色阶 (红绿灯)
         if metric == "psi":
             meta_cols = ["feature", "dtype", "distribution", "top1_value"]
@@ -498,9 +499,9 @@ class MarsProfileReport:
                 if col not in meta_cols:
                     start_col = i
                     break
-            
+
             end_col = len(df_pd.columns) - 1
-            
+
             worksheet.conditional_format(1, start_col, len(df_pd), end_col, {
                 'type': '3_color_scale',
                 'min_type': 'num', 'min_value': 0.05, 'min_color': '#63BE7B', # Green
@@ -512,25 +513,25 @@ class MarsProfileReport:
         if "group_cv" in df_pd.columns:
             col_idx = df_pd.columns.get_loc("group_cv")
             worksheet.conditional_format(1, col_idx, len(df_pd), col_idx, {
-                'type': 'data_bar', 
-                'bar_color': '#638EC6', 
+                'type': 'data_bar',
+                'bar_color': '#638EC6',
                 'bar_solid': True,
-                'min_type': 'num', 'min_value': 0, 
+                'min_type': 'num', 'min_value': 0,
                 'max_type': 'num', 'max_value': 1
             })
 
     def _get_styler(
-        self, 
-        df_input: Any, 
-        title: str, 
-        cmap: str, 
-        sort_by: Optional[List[str]] = None,
+        self,
+        df_input: Any,
+        title: str,
+        cmap: str,
+        sort_by: List[str] | None = None,
         sort_ascending: bool = False, # 统一内部 API 命名
-        subset_cols: Optional[List[str]] = None, 
-        add_bars: bool = False, 
+        subset_cols: List[str] | None = None,
+        add_bars: bool = False,
         fmt_as_pct: bool = False,
-        vmin: Optional[float] = None, 
-        vmax: Optional[float] = None
+        vmin: float | None = None,
+        vmax: float | None = None
     ) -> Optional["pd.io.formats.style.Styler"]:
         """
         生成统一的 Pandas Styler 样式对象。
@@ -545,12 +546,12 @@ class MarsProfileReport:
 
         # 元数据排除列表
         exclude_meta: List[str] = [
-            "feature", "dtype", 
+            "feature", "dtype",
             "group_mean", "group_var", "group_cv",
             "distribution",
             "top1_value"
             ]
-        
+
         # 确定色彩渐变范围
         if subset_cols:
             gradient_cols: List[str] = [c for c in subset_cols if c in df.columns]
@@ -558,17 +559,17 @@ class MarsProfileReport:
             gradient_cols = [c for c in df.columns if c not in exclude_meta]
 
         styler = df.style.set_caption(f"<b>{title}</b>").hide(axis="index")
-        
+
         # 应用热力图
         if gradient_cols:
             styler = styler.background_gradient(
-                cmap=cmap, 
-                subset=gradient_cols, 
+                cmap=cmap,
+                subset=gradient_cols,
                 axis=None,
                 vmin=vmin,
                 vmax=vmax
             )
-        
+
         # 应用数据条
         if add_bars and "group_cv" in df.columns:
             styler = styler.bar(subset=["group_cv"], color='#ff9999', vmin=0, vmax=1, width=90)
@@ -578,7 +579,7 @@ class MarsProfileReport:
         num_cols: pd.Index = df.select_dtypes(include=['number']).columns
         data_cols: List[str] = [c for c in num_cols if c not in ["group_var", "group_cv", "distribution"]]
 
-        pct_format: str = "{:.2%}"  
+        pct_format: str = "{:.2%}"
         float_format: str = "{:.2f}"
 
         if fmt_as_pct:
@@ -586,23 +587,23 @@ class MarsProfileReport:
                 styler = styler.format(pct_format, subset=data_cols)
         else:
             pct_cols: List[str] = [
-                c for c in df.columns 
+                c for c in df.columns
                 if ("rate" in c or "ratio" in c) and (c in num_cols)
             ]
-            
+
             if pct_cols:
                 styler = styler.format(pct_format, subset=pct_cols)
-            
+
             float_cols: List[str] = [c for c in data_cols if c not in pct_cols]
             if float_cols:
                 styler = styler.format(float_format, subset=float_cols)
-        
+
         # 分布迷你图样式
         if "distribution" in df.columns:
             styler = styler.set_table_styles([
                 {'selector': '.col_distribution', 'props': [
                     # 优先使用 Consolas (Win) 或 Menlo (Mac)，最后 fallback 到 monospace
-                    ('font-family', '"Consolas", "Menlo", "Courier New", monospace'), 
+                    ('font-family', '"Consolas", "Menlo", "Courier New", monospace'),
                     ('color', '#1f77b4'),
                     ('white-space', 'pre'), # [关键] 防止 HTML 自动压缩连续空格
                     ('font-weight', 'bold'),
@@ -613,22 +614,22 @@ class MarsProfileReport:
         # 全局表格外观
         styler = styler.set_table_styles([
             {
-                'selector': 'th', 
+                'selector': 'th',
                 'props': [('text-align', 'left'), ('background-color', '#f0f2f5'), ('color', '#333')]
             },
             {
-                'selector': 'caption', 
+                'selector': 'caption',
                 'props': [('font-size', '1.2em'), ('padding', '10px 0'), ('color', '#2c3e50')]
             }
         ], overwrite=False)
 
         return styler
-    
+
 class MarsEvaluationReport:
     """
     特征效能与稳定性评估报告容器。
 
-    作为风控特征工程流水线的标准输出载体，该组件负责统一管理并呈现由 `MarsBinEvaluator` 
+    作为风控特征工程流水线的标准输出载体，该组件负责统一管理并呈现由 `MarsBinEvaluator`
     产出的高维特征评估度量与多维趋势矩阵。系统封装了对底层评估数据帧的只读访问接口、
     面向交互式分析环境的富文本视图渲染，以及跨平台的高保真电子表格持久化导出能力，
     以支撑特征区分度审计与跨期分布漂移监控。
@@ -640,7 +641,7 @@ class MarsEvaluationReport:
         （如最大 PSI, 最小风险逻辑一致性相关系数）的核心度量数据。
 
     trend_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-        核心评估指标的跨期趋势字典。键为具体风控指标名称（如 'psi', 'auc', 'iv', 'bad_rate', 
+        核心评估指标的跨期趋势字典。键为具体风控指标名称（如 'psi', 'auc', 'iv', 'bad_rate',
         'risk_corr'），值为对应特征在各时间切片或客群维度下的交叉透视矩阵。
 
     detail_table : Union[pl.DataFrame, pd.DataFrame]
@@ -663,19 +664,19 @@ class MarsEvaluationReport:
     ----------
     summary_table : DataFrame
         内部持有的特征级汇总评估宽表引用。
-        
+
     trend_tables : dict of str to DataFrame
         内部持有的核心评估指标趋势字典引用。
-        
+
     detail_table : DataFrame
         内部持有的细粒度分箱明细表引用。
-        
+
     group_col : str
         内部挂载的分组维度标识。
 
     Notes
     -----
-    该容器提供了针对特征评估诊断的统一交互层 API。其暴露的 `show_summary` 与 `show_trend` 
+    该容器提供了针对特征评估诊断的统一交互层 API。其暴露的 `show_summary` 与 `show_trend`
     方法通过动态构建样式渲染器（Pandas Styler），支持直接将风控指标梯度映射为预警色带
     与数据条，以加速区分度缺陷与单调性倒挂的物理识别。
     执行持久化导出时，底层引擎严格还原交互式视图中的条件格式与业务阈值规则，确保离线
@@ -686,28 +687,28 @@ class MarsEvaluationReport:
     >>> from mars.analysis import MarsBinEvaluator
     >>> evaluator = MarsBinEvaluator(target="is_bad")
     >>> report = evaluator.evaluate(df, profile_by="month")
-    >>> 
+    >>>
     >>> # 触发交互式特征汇总审计视图
     >>> core_features = ["age", "debt_ratio", "revolving_util"]
     >>> report.show_summary(features=core_features)
-    >>> 
+    >>>
     >>> # 追踪特定指标的时间序列漂移轨迹
     >>> report.show_trend("psi", sort_by="Total", sort_ascending=False, group_ascending=True)
-    >>> 
+    >>>
     >>> # 执行包含全量分箱明细的监控报表持久化导出
     >>> report.write_excel("mars_feature_evaluation.xlsx")
     """
 
     def __init__(
-        self, 
+        self,
         summary_table: Union[pl.DataFrame, pd.DataFrame],
         trend_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         detail_table: Union[pl.DataFrame, pd.DataFrame],
-        group_col: Optional[str] = None,
-        feature_data_source: Optional[Dict[str, str]] = None,
-        dt_col: Optional[str] = None,
-        missing_by_day_table: Optional[Union[pl.DataFrame, pd.DataFrame]] = None,
-        report_meta: Optional[Dict[str, Any]] = None,
+        group_col: str | None = None,
+        feature_data_source: Dict[str, str] | None = None,
+        dt_col: str | None = None,
+        missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
+        report_meta: Dict[str, Any] | None = None,
     ) -> None:
         """
         初始化报告容器。
@@ -735,12 +736,12 @@ class MarsEvaluationReport:
         self._summary = summary_table
         self._trend_dict = trend_tables
         self._detail = detail_table
-        self.group_col = group_col 
+        self.group_col = group_col
         self.feature_data_source = feature_data_source or {}
         self.dt_col = dt_col
         self._missing_by_day = missing_by_day_table
         self._report_meta = report_meta or {}
-        
+
     @property
     def summary_table(self) -> Union[pl.DataFrame, pd.DataFrame]:
         """
@@ -778,7 +779,7 @@ class MarsEvaluationReport:
         return self._detail
 
     @property
-    def missing_by_day_table(self) -> Optional[Union[pl.DataFrame, pd.DataFrame]]:
+    def missing_by_day_table(self) -> Union[pl.DataFrame, pd.DataFrame] | None:
         """
         返回按日聚合的缺失明细表。
 
@@ -802,8 +803,8 @@ class MarsEvaluationReport:
         return self._report_meta
 
     def get_evaluation_data(self) -> Tuple[
-        Union[pl.DataFrame, pd.DataFrame], 
-        Dict[str, Union[pl.DataFrame, pd.DataFrame]], 
+        Union[pl.DataFrame, pd.DataFrame],
+        Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         Union[pl.DataFrame, pd.DataFrame]
     ]:
         """
@@ -824,7 +825,7 @@ class MarsEvaluationReport:
         # 内部展示逻辑统一转为 Pandas 处理
         df_summary_pd = _as_pandas_frame(self.summary_table)
         n_feats = len(df_summary_pd)
-        
+
         # 简单统计报警数 (修正为新的小写列名 psi_max)
         high_risk_psi = 0
         if "psi_max" in df_summary_pd.columns:
@@ -835,7 +836,7 @@ class MarsEvaluationReport:
             "background-color: #e8f4f8; color: #2980b9; border: 1px solid #bce0eb; "
             "padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.9em; margin-right: 4px;"
         )
-        
+
         # 动态生成 Trend 链接
         trend_keys = list(self.trend_tables.keys())
         trend_pills = "".join([f"<span style='{pill_style}'>'{k}'</span>" for k in trend_keys])
@@ -844,7 +845,7 @@ class MarsEvaluationReport:
         # 查看类操作
         lines.append('👉 <code>.show_summary()</code> &nbsp;<span style="color:#7f8c8d">View Feature Ranking</span>')
         lines.append(f'👉 <code>.show_trend(metric)</code> <span style="color:#7f8c8d">metric: {trend_pills}</span>')
-        
+
         # 数据访问与导出入口
         lines.append('<hr style="margin: 8px 0; border: 0; border-top: 1px dashed #ccc;">')
         lines.append('📥 <code>.get_evaluation_data()</code> &nbsp;<span style="color:#7f8c8d">Get Raw Data (summary, trends, detail)</span>')
@@ -853,13 +854,13 @@ class MarsEvaluationReport:
         return f"""
         <div style="border-left: 5px solid #8e44ad; background-color: #f4f6f7; padding: 15px; border-radius: 0 5px 5px 0; font-family: 'Segoe UI', sans-serif;">
             <h3 style="margin:0 0 10px 0; color:#2c3e50;">📉 Mars Feature Evaluation</h3>
-            
+
             <div style="display: flex; gap: 30px; margin-bottom: 12px; font-size: 0.95em;">
                 <div><strong>🏷️ Features:</strong> {n_feats}</div>
                 <div><strong>🚨 High PSI (>0.25):</strong> <span style="color: {'red' if high_risk_psi > 0 else 'green'}; font-weight:bold;">{high_risk_psi}</span></div>
                 <div><strong>📅 Group By:</strong> {self.group_col if self.group_col else 'None (Total Only)'}</div>
             </div>
-            
+
             <div style="font-size:0.9em; line-height:1.8; color:#2c3e50; background: white; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
                 { "<br>".join(lines) }
             </div>
@@ -873,7 +874,7 @@ class MarsEvaluationReport:
         return slug or "section"
 
     @staticmethod
-    def _wrap_html_section(title: str, body: str, section_id: str, subtitle: Optional[str] = None, open_by_default: bool = True) -> str:
+    def _wrap_html_section(title: str, body: str, section_id: str, subtitle: str | None = None, open_by_default: bool = True) -> str:
         open_attr = " open" if open_by_default else ""
         subtitle_html = f'<div class="mars-section-subtitle">{html.escape(subtitle)}</div>' if subtitle else ""
         return f"""
@@ -897,7 +898,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _format_html_value(
-        cls,
+        cls: type["MarsEvaluationReport"],
         value: Any,
         *,
         as_percent: bool = False,
@@ -923,10 +924,10 @@ class MarsEvaluationReport:
 
     @classmethod
     def _is_percent_column(
-        cls,
+        cls: type["MarsEvaluationReport"],
         col_name: Any,
         *,
-        metric_name: Optional[str] = None,
+        metric_name: str | None = None,
     ) -> bool:
         col_lower = str(col_name).strip().lower()
         metric_lower = str(metric_name or "").strip().lower()
@@ -958,7 +959,12 @@ class MarsEvaluationReport:
         )
 
     @classmethod
-    def _three_color_rgb(cls, ratio: float, *, reverse: bool = False) -> Tuple[int, int, int]:
+    def _three_color_rgb(
+        cls: type["MarsEvaluationReport"],
+        ratio: float,
+        *,
+        reverse: bool = False,
+    ) -> Tuple[int, int, int]:
         ratio = max(0.0, min(1.0, ratio))
         low = (248, 105, 107) if not reverse else (99, 190, 123)
         mid = (255, 235, 132)
@@ -968,11 +974,11 @@ class MarsEvaluationReport:
         return cls._interpolate_rgb(mid, high, (ratio - 0.5) * 2.0)
 
     @classmethod
-    def _column_colspan(cls, col_name: Any) -> int:
+    def _column_colspan(cls: type["MarsEvaluationReport"], col_name: Any) -> int:
         return max(1, str(col_name).count("|") + 1)
 
     @classmethod
-    def _format_sort_value(cls, value: Any, sort_type: str) -> str:
+    def _format_sort_value(cls: type["MarsEvaluationReport"], value: Any, sort_type: str) -> str:
         if cls._is_missing_html_value(value):
             return ""
 
@@ -1042,7 +1048,7 @@ class MarsEvaluationReport:
         """
 
     @staticmethod
-    def _resolve_chart_sort_column(summary_df: pd.DataFrame, requested: str) -> Optional[str]:
+    def _resolve_chart_sort_column(summary_df: pd.DataFrame, requested: str) -> str | None:
         if requested in summary_df.columns:
             return requested
         if "psi_max" in summary_df.columns:
@@ -1070,7 +1076,7 @@ class MarsEvaluationReport:
         return html.escape("" if value is None else str(value), quote=True)
 
     @staticmethod
-    def _trend_style_rule(metric: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _trend_style_rule(metric: str | None) -> Dict[str, Any] | None:
         metric_key = str(metric or "").lower()
         purple_rgb = (160, 98, 196)
         green = (99, 190, 123)
@@ -1089,7 +1095,10 @@ class MarsEvaluationReport:
         return rules.get(metric_key)
 
     @classmethod
-    def _summary_style_rule(cls, metric: Optional[str]) -> Optional[Dict[str, Any]]:
+    def _summary_style_rule(
+        cls: type["MarsEvaluationReport"],
+        metric: str | None,
+    ) -> Dict[str, Any] | None:
         metric_key = str(metric or "").lower()
         if metric_key in {"iv", "ks", "auc", "psi_max", "rc_min", "lift_max", "missing", "missing_min", "missing_max"}:
             mapped = {
@@ -1124,7 +1133,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_threshold_legend_html(
-        cls,
+        cls: type["MarsEvaluationReport"],
         items: List[Tuple[str, str]],
         *,
         legend_id: str,
@@ -1138,7 +1147,10 @@ class MarsEvaluationReport:
         return f'<div id="{legend_id}" class="mars-legend">{chips}</div>'
 
     @classmethod
-    def _build_dataset_overview_html(cls, report_meta: Dict[str, Any]) -> str:
+    def _build_dataset_overview_html(
+        cls: type["MarsEvaluationReport"],
+        report_meta: Dict[str, Any],
+    ) -> str:
         if not report_meta:
             return ""
 
@@ -1188,7 +1200,10 @@ class MarsEvaluationReport:
         return f'<section id="dataset-overview" class="mars-overview-grid">{card_html}</section>'
 
     @classmethod
-    def _build_feature_jump_html(cls, features: List[str]) -> str:
+    def _build_feature_jump_html(
+        cls: type["MarsEvaluationReport"],
+        features: List[str],
+    ) -> str:
         feature_values = sorted({str(feature) for feature in features if str(feature).strip()})
         if not feature_values:
             return ""
@@ -1214,7 +1229,7 @@ class MarsEvaluationReport:
         )
 
     @staticmethod
-    def _table_sticky_role(column_name: Any) -> Optional[str]:
+    def _table_sticky_role(column_name: Any) -> str | None:
         column_lower = str(column_name).strip().lower()
         if column_lower == "feature":
             return "feature"
@@ -1223,13 +1238,13 @@ class MarsEvaluationReport:
         return None
 
     @staticmethod
-    def _sticky_class_for_role(role: Optional[str]) -> str:
+    def _sticky_class_for_role(role: str | None) -> str:
         if not role:
             return ""
         return f" mars-sticky-col mars-{role}-col"
 
     @staticmethod
-    def _sticky_inner_class_for_role(role: Optional[str]) -> str:
+    def _sticky_inner_class_for_role(role: str | None) -> str:
         if not role:
             return ""
         return " mars-sticky-cell-inner"
@@ -1242,954 +1257,20 @@ class MarsEvaluationReport:
         )
 
     @classmethod
-    def _build_html_styles(cls) -> str:
-        return """
-                :root { --bg:#f5f7fb; --panel:#fff; --panel-soft:#f9fbfd; --ink:#203040; --muted:#607080; --line:#d9e3eb; --line-soft:#ebf1f6; --accent:#3b87ad; --danger:#c44f4f; --shadow:0 16px 36px rgba(51,82,108,.08); }
-                body { margin:0; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:radial-gradient(circle at top right,#edf6fb 0%,#f5f7fb 40%,#f8fbfd 100%); color:var(--ink); }
-                .mars-page { max-width:1640px; margin:0 auto; padding:22px; }
-                .mars-hero,.mars-section { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); }
-                .mars-hero { padding:22px 24px; margin-bottom:16px; position:relative; overflow:hidden; }
-                .mars-hero::after { content:""; position:absolute; inset:auto -80px -90px auto; width:240px; height:240px; background:radial-gradient(circle, rgba(59,135,173,.14) 0%, rgba(59,135,173,0) 72%); pointer-events:none; }
-                .mars-hero h1 { margin:0 0 8px 0; font-size:30px; }
-                #mars-page-top { position:relative; top:0; }
-                .mars-hero p,.mars-footnote,.mars-section-subtitle,.mars-search-error,.mars-view-label,.mars-pivot-source-title,.mars-result-status,.mars-export-helper { color:var(--muted); position:relative; z-index:1; }
-                .mars-meta,.mars-nav,.mars-inline-controls { display:flex; flex-wrap:wrap; gap:10px; }
-                .mars-meta { margin-top:12px; position:relative; z-index:1; }
-                .mars-pill,.mars-nav a { border:1px solid var(--line); background:#f7fbff; border-radius:999px; padding:6px 12px; font-size:13px; color:#36546d; text-decoration:none; }
-                .mars-global-tools { margin-top:16px; display:grid; grid-template-columns:minmax(280px,420px) auto minmax(240px,340px) minmax(280px,1fr) minmax(180px,240px); gap:10px; align-items:start; position:relative; z-index:1; }
-                .mars-filter-input,.mars-select-group select,.mars-clear-button,.mars-mini-button { border:1px solid var(--line); border-radius:12px; background:#fff; font-size:14px; }
-                .mars-filter-input { padding:10px 12px; width:100%; box-sizing:border-box; }
-                .mars-search-cluster { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
-                .mars-select-group { display:inline-flex; gap:8px; align-items:center; font-size:13px; }
-                .mars-select-group select { padding:8px 10px; }
-                .mars-source-panel { border:1px solid var(--line); border-radius:14px; background:#fff; padding:10px 12px; min-width:280px; }
-                .mars-source-header,.mars-source-options { display:flex; flex-wrap:wrap; gap:8px; }
-                .mars-source-header { align-items:center; justify-content:space-between; margin-bottom:10px; }
-                .mars-source-header strong { font-size:13px; color:#355b74; }
-                .mars-source-link { border:0; background:transparent; color:var(--accent); cursor:pointer; font-size:12px; padding:0; }
-                .mars-source-option { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line-soft); border-radius:999px; padding:5px 10px; background:#f9fbfe; font-size:13px; }
-                .mars-clear-button,.mars-mini-button { padding:9px 12px; cursor:pointer; }
-                .mars-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; }
-                .mars-export-block { display:grid; gap:6px; align-content:start; }
-                .mars-export-helper { font-size:12px; line-height:1.35; }
-                .mars-nav { margin:14px 0 18px 0; }
-                .mars-overview-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; }
-                .mars-kpi-card { border:1px solid var(--line-soft); border-radius:14px; background:linear-gradient(180deg,#fbfdff 0%,#f7fbff 100%); padding:14px; }
-                .mars-kpi-label { font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
-                .mars-kpi-value { font-size:16px; font-weight:700; color:#244258; line-height:1.35; word-break:break-word; }
-                .mars-legend { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-                .mars-legend-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line-soft); border-radius:999px; padding:6px 10px; background:#fff; font-size:12px; color:#436179; }
-                .mars-section { margin-bottom:16px; overflow:hidden; }
-                .mars-section>summary,.mars-metric-block>summary { cursor:pointer; list-style:none; font-weight:700; }
-                .mars-section>summary { padding:16px 18px; background:#f7fbff; border-bottom:1px solid var(--line-soft); }
-                .mars-section>summary::-webkit-details-marker,.mars-metric-block>summary::-webkit-details-marker { display:none; }
-                .mars-section-body { padding:14px 18px 18px 18px; }
-                .mars-section-subtitle { padding:12px 18px 0 18px; font-size:13px; }
-                .mars-metric-block { border:1px solid var(--line-soft); border-radius:14px; background:var(--panel-soft); margin-bottom:12px; padding:12px; }
-                .mars-metric-block>summary { margin-bottom:10px; color:#355b74; }
-                .mars-table-wrap { min-width:0; }
-                .mars-table-toolbar { display:grid; grid-template-columns:minmax(240px,360px); gap:6px; margin-bottom:10px; }
-                .mars-chart-controls { display:grid; grid-template-columns:minmax(240px,360px) auto; gap:10px; align-items:start; }
-                .mars-chart-search { min-width:240px; }
-                .mars-summary-filter { border:1px solid var(--line-soft); border-radius:14px; background:#fbfdff; padding:12px; margin-bottom:10px; }
-                .mars-summary-filter-label { display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#355b74; }
-                .mars-result-status { min-height:16px; font-size:12px; margin:6px 0 10px 0; }
-                .mars-table-scroll { position:relative; overflow:auto; border:1px solid var(--line-soft); border-radius:14px; background:#fff; }
-                .mars-data-table { width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
-                .mars-th,.mars-td { border-bottom:1px solid var(--line-soft); padding:8px 10px; white-space:nowrap; text-align:left; vertical-align:top; }
-                .mars-th { position:sticky; top:0; background:#eef6fb; z-index:1; }
-                .mars-td { position:relative; z-index:0; }
-                .mars-sticky-col { position:sticky; background-clip:padding-box; overflow:hidden; }
-                .mars-feature-col { min-width:var(--mars-feature-col-width, 220px); width:var(--mars-feature-col-width, 220px); max-width:var(--mars-feature-col-width, 220px); box-sizing:border-box; }
-                .mars-secondary-col { min-width:var(--mars-secondary-col-width, 110px); width:var(--mars-secondary-col-width, 110px); max-width:var(--mars-secondary-col-width, 110px); box-sizing:border-box; }
-                .mars-bin-col { min-width:var(--mars-bin-col-width, 140px); width:var(--mars-bin-col-width, 140px); max-width:var(--mars-bin-col-width, 140px); box-sizing:border-box; }
-                .mars-data-table .mars-td.mars-feature-col,
-                .mars-data-table .mars-td.mars-secondary-col,
-                .mars-pivot-table .mars-td.mars-bin-col { background:#fff; }
-                .mars-data-table .mars-th.mars-feature-col,
-                .mars-data-table .mars-th.mars-secondary-col,
-                .mars-pivot-table .mars-th.mars-bin-col { background:#eef6fb; }
-                .mars-data-table .mars-th.mars-feature-col { left:0; z-index:6; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-data-table .mars-td.mars-feature-col { left:0; z-index:4; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-data-table .mars-th.mars-secondary-col { left:var(--mars-feature-col-width, 220px); z-index:5; box-shadow:2px 0 0 rgba(217,227,235,.72); }
-                .mars-data-table .mars-td.mars-secondary-col { left:var(--mars-feature-col-width, 220px); z-index:3; box-shadow:2px 0 0 rgba(217,227,235,.72); }
-                .mars-pivot-table .mars-th.mars-feature-col { left:0; z-index:7; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-pivot-table .mars-td.mars-feature-col { left:0; z-index:5; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-pivot-table .mars-th.mars-bin-col { left:var(--mars-feature-col-width, 220px); z-index:6; padding-right:18px; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-pivot-table .mars-td.mars-bin-col { left:var(--mars-feature-col-width, 220px); z-index:4; box-shadow:2px 0 0 rgba(217,227,235,.85); }
-                .mars-th.is-numeric,.mars-td.is-numeric { text-align:right; }
-                .mars-sort-button { width:100%; min-width:0; overflow:hidden; border:0; background:transparent; padding:0; margin:0; color:inherit; font:inherit; display:inline-flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; }
-                .mars-sort-label { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }
-                .mars-cell-text { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-                .mars-sticky-cell-inner { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-                .mars-th.mars-feature-col { padding-right:18px; }
-                .mars-resize-handle { position:absolute; top:0; right:0; width:10px; height:100%; cursor:col-resize; user-select:none; touch-action:none; }
-                .mars-resize-handle::after { content:""; position:absolute; top:20%; bottom:20%; left:4px; width:2px; border-radius:2px; background:rgba(53,91,116,.22); }
-                .mars-feature-jump { min-width:240px; }
-                .mars-pivot-table .mars-th, .mars-pivot-table .mars-td { background-clip:padding-box; }
-                .mars-jump-highlight { animation:mars-jump-pulse 1.2s ease-out 1; }
-                .mars-jump-highlight-cell { animation:mars-jump-pulse 1.2s ease-out 1; }
-                .mars-table-ownership-sentinel { height:0; margin:0; padding:0; pointer-events:none; }
-                .mars-floating-header-host { position:fixed; top:0; left:0; width:0; display:none; border:0; border-radius:14px; background:#fff; box-shadow:0 14px 32px rgba(32,48,64,.16), inset 0 0 0 1px var(--line-soft); overflow:hidden; z-index:60; }
-                .mars-floating-header-host.is-visible { display:block; }
-                .mars-floating-header-scroll { overflow:hidden; background:#fff; }
-                .mars-floating-header-table { width:max-content; min-width:100%; margin:0; table-layout:fixed; }
-                .mars-floating-header-table tbody { display:none; }
-                .mars-floating-header-table .mars-th { top:0; z-index:8; }
-                .mars-floating-header-table .mars-th.mars-feature-col { z-index:10; }
-                .mars-floating-header-table .mars-th.mars-secondary-col,
-                .mars-floating-header-table .mars-th.mars-bin-col { z-index:9; }
-                .mars-back-to-top { position:fixed; right:24px; bottom:24px; border:1px solid rgba(53,91,116,.18); border-radius:999px; background:rgba(255,255,255,.96); color:#355b74; box-shadow:0 14px 28px rgba(32,48,64,.14); padding:11px 16px; font-size:13px; font-weight:600; cursor:pointer; opacity:0; transform:translateY(12px); pointer-events:none; transition:opacity .18s ease, transform .18s ease, box-shadow .18s ease; z-index:70; }
-                .mars-back-to-top.is-visible { opacity:1; transform:translateY(0); pointer-events:auto; }
-                .mars-back-to-top:hover,.mars-back-to-top:focus-visible { box-shadow:0 18px 34px rgba(32,48,64,.2); outline:none; }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td { position:relative; z-index:2; filter:saturate(1.08) brightness(.98); box-shadow:inset 0 0 0 9999px rgba(255,237,177,.34), inset 0 2px 0 rgba(233,153,49,.86), inset 0 -2px 0 rgba(233,153,49,.86) !important; transition:box-shadow .32s ease, filter .32s ease, outline-color .32s ease; }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td:first-child { border-left:3px solid rgba(233,153,49,.86); }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td:last-child { border-right:3px solid rgba(233,153,49,.86); }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td .mars-cell-text { font-weight:600; }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td.mars-feature-col { color:#122636; }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td.mars-jump-highlight-cell { outline:2px solid rgba(245,158,11,.48); outline-offset:-2px; box-shadow:inset 0 0 0 9999px rgba(255,247,213,.82), inset 6px 0 0 #f59e0b, inset 0 2px 0 rgba(233,153,49,.9), inset 0 -2px 0 rgba(233,153,49,.9) !important; filter:saturate(1.12) brightness(1); }
-                .mars-data-table tbody tr.mars-jump-highlight > .mars-td.mars-jump-highlight-cell .mars-cell-text { font-weight:700; color:#0f2131; text-shadow:0 1px 0 rgba(255,255,255,.55); }
-                .mars-sort-indicator::before { content:"\\2195"; color:#8aa1b3; font-size:11px; }
-                th[data-sort-dir="asc"] .mars-sort-indicator::before { content:"\\2191"; color:var(--accent); }
-                th[data-sort-dir="desc"] .mars-sort-indicator::before { content:"\\2193"; color:var(--accent); }
-                .mars-empty { border:1px dashed var(--line); border-radius:14px; padding:16px; background:#fbfdff; font-size:13px; }
-                .mars-scope-empty { margin-top:10px; }
-                .mars-scope-empty[hidden] { display:none !important; }
-                .mars-chart-card { border:1px solid var(--line-soft); border-radius:14px; background:#fff; padding:12px; margin-bottom:12px; box-shadow:0 8px 20px rgba(51,82,108,.05); }
-                .mars-pivot-source-title-cell { background:#edf6fb; color:#355b74; font-weight:700; letter-spacing:.02em; }
-                .mars-pivot-feature { font-weight:600; color:#2f495e; }
-                .mars-pivot-feature-blank .mars-cell-text { visibility:hidden; }
-                .mars-pivot-spacer-row td { border-bottom:0; padding:5px 0; background:linear-gradient(180deg,transparent 0%,rgba(233,239,245,.65) 100%); }
-                .mars-chart-card h4 { margin:0 0 10px 0; font-size:16px; }
-                .mars-footnote { font-size:12px; margin-top:12px; }
-        """.strip()
+    def _build_html_styles(cls: type["MarsEvaluationReport"]) -> str:
+        return build_html_styles()
 
     @classmethod
-    def _build_html_runtime_script(cls, *, summary_filter_columns: List[str]) -> str:
-        template = """
-                const marsSummaryFilterColumns = new Set(__SUMMARY_FILTER_COLUMNS__);
-                const marsState = {
-                    globalQuery:"",
-                    regexMode:false,
-                    localQueries:{},
-                    selectedSources:[],
-                    appliedSummaryExpression:"",
-                    summaryAllowedFeatures:null,
-                    refreshScheduled:false,
-                    refreshFrameId:null,
-                    postPaintFrameId:null,
-                    refreshTimerId:null,
-                    pendingRefreshTokens:[],
-                    pendingLayoutToken:null,
-                    layoutFrameId:null,
-                    resizeState:null,
-                    resizeFrameScheduled:false,
-                    floatingHeaderTableId:"",
-                    floatingHeaderScrollBox:null,
-                    floatingHeaderFrameId:null,
-                    jumpHighlightTimerId:null,
-                    jumpHighlightArmTimerId:null,
-                    jumpHighlightNode:null,
-                    jumpHighlightCell:null
-                };
-                function marsBuildMatcher(query) { const q=(query||"").trim(); if(!q) return {ok:true,match:()=>true}; if(marsState.regexMode) { try { const regex=new RegExp(q,"i"); return {ok:true,match:(text)=>regex.test(text||"")}; } catch(err) { return {ok:false,error:err.message}; } } const terms=q.toLowerCase().split(/\\s+/).filter(Boolean); return {ok:true,match:(text)=>terms.every((term)=>(text||"").toLowerCase().includes(term))}; }
-                function marsSetError(id, message) { const node=document.getElementById(id); if(node) node.textContent=message||""; }
-                function marsNormalizeFeatureValue(value) { return (value||"").trim().toLowerCase(); }
-                function marsResolveLocalScope(scopeId) { return scopeId==="mars-chart-cards" ? "charts" : `table:${scopeId}`; }
-                function marsMergeRefreshToken(scopeToken) {
-                    const token=(scopeToken||"all").trim() || "all";
-                    if(token==="all") { marsState.pendingRefreshTokens=["all"]; return; }
-                    if(marsState.pendingRefreshTokens.includes("all")) return;
-                    if(!marsState.pendingRefreshTokens.includes(token)) marsState.pendingRefreshTokens.push(token);
-                }
-                function marsMergeLayoutToken(scopeToken) {
-                    const token=(scopeToken||"all").trim() || "all";
-                    if(token==="all" || marsState.pendingLayoutToken==="all" || !marsState.pendingLayoutToken) {
-                        marsState.pendingLayoutToken = token==="all" ? "all" : marsState.pendingLayoutToken || token;
-                        return;
-                    }
-                    if(marsState.pendingLayoutToken!==token) marsState.pendingLayoutToken="all";
-                }
-                function marsQueueRefresh(scopeToken="all", delayMs=0) {
-                    marsMergeRefreshToken(scopeToken);
-                    if(marsState.refreshFrameId) window.cancelAnimationFrame(marsState.refreshFrameId);
-                    if(marsState.postPaintFrameId) window.cancelAnimationFrame(marsState.postPaintFrameId);
-                    if(marsState.refreshTimerId) window.clearTimeout(marsState.refreshTimerId);
-                    marsState.refreshScheduled = true;
-                    marsState.refreshFrameId = window.requestAnimationFrame(() => {
-                        marsState.refreshFrameId = null;
-                        marsState.postPaintFrameId = window.requestAnimationFrame(() => {
-                            marsState.postPaintFrameId = null;
-                            marsState.refreshTimerId = window.setTimeout(() => {
-                                marsState.refreshTimerId = null;
-                                marsState.refreshScheduled = false;
-                                marsFlushRefreshQueue();
-                            }, Math.max(0, Number(delayMs) || 0));
-                        });
-                    });
-                }
-                function marsQueueTextRefresh(scopeToken="all") { marsQueueRefresh(scopeToken, 80); }
-                function marsQueueLayoutSync(scopeToken="all") {
-                    marsMergeLayoutToken(scopeToken);
-                    if(marsState.layoutFrameId) return;
-                    marsState.layoutFrameId = window.requestAnimationFrame(() => {
-                        marsState.layoutFrameId = null;
-                        const token = marsState.pendingLayoutToken || "all";
-                        marsState.pendingLayoutToken = null;
-                        marsSyncScopeLayouts(token);
-                    });
-                }
-                function marsSetGlobalQuery(value) { marsState.globalQuery=value||""; marsQueueTextRefresh("all"); }
-                function marsSetLocalQuery(scopeId, value) { marsState.localQueries[scopeId]=value||""; marsQueueTextRefresh(marsResolveLocalScope(scopeId)); }
-                function marsSetRegexMode(enabled) { marsState.regexMode=!!enabled; marsQueueRefresh("all"); }
-                function marsSetDataSources() { const boxes=Array.from(document.querySelectorAll(".mars-source-checkbox")); marsState.selectedSources=boxes.filter((box)=>box.checked).map((box)=>box.value); marsQueueRefresh("all"); }
-                function marsHandleDataSourceToggle() { marsSetDataSources(); }
-                function marsHandlePivotTargetChange() { marsQueueRefresh("pivot"); marsQueueLayoutSync("pivot"); }
-                function marsHandleChartTargetChange() { marsQueueRefresh("charts"); }
-                function marsSelectAllSources() { document.querySelectorAll(".mars-source-checkbox").forEach((box)=>{ box.checked=true; }); marsSetDataSources(); }
-                function marsClearSources() { document.querySelectorAll(".mars-source-checkbox").forEach((box)=>{ box.checked=false; }); marsSetDataSources(); }
-                function marsClearGlobalSearch() { const input=document.getElementById("mars-global-search"); if(input) input.value=""; marsState.globalQuery=""; marsQueueTextRefresh("all"); }
-                function marsTokenizeSummaryExpression(expr) {
-                    const text=(expr||"").trim();
-                    if(!text) return {ok:true,tokens:[]};
-                    const tokenPattern=/\\s*(>=|<=|==|!=|>|<|\\&|\\||\\(|\\)|-?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?|[A-Za-z_][A-Za-z0-9_]*)\\s*/gy;
-                    const tokens=[];
-                    let cursor=0;
-                    while(cursor < text.length) {
-                        tokenPattern.lastIndex = cursor;
-                        const match=tokenPattern.exec(text);
-                        if(!match) return {ok:false,error:"Invalid expression syntax."};
-                        tokens.push(match[1]);
-                        if(tokenPattern.lastIndex<=cursor) return {ok:false,error:"Invalid expression syntax."};
-                        cursor=tokenPattern.lastIndex;
-                    }
-                    return {ok:true,tokens};
-                }
-                function marsParseSummaryExpression(expr) {
-                    const tokenResult=marsTokenizeSummaryExpression(expr);
-                    if(!tokenResult.ok) return tokenResult;
-                    const tokens=tokenResult.tokens;
-                    if(!tokens.length) return {ok:true,ast:null};
-                    let idx=0;
-                    function peek() { return tokens[idx]; }
-                    function consume(expected) {
-                        const token=tokens[idx];
-                        if(expected && token!==expected) throw new Error(`Expected '${expected}'`);
-                        idx+=1;
-                        return token;
-                    }
-                    function parsePrimary() {
-                        const token=peek();
-                        if(token===undefined) throw new Error("Unexpected end of expression.");
-                        if(token==="(") { consume("("); const node=parseOr(); if(peek()!==")") throw new Error("Missing closing parenthesis."); consume(")"); return node; }
-                        if(/^-?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?$/.test(token)) { consume(); return {type:"number", value:Number(token)}; }
-                        if(/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {
-                            if(!marsSummaryFilterColumns.has(token)) throw new Error(`Unknown metric: ${token}`);
-                            consume();
-                            return {type:"identifier", value:token};
-                        }
-                        throw new Error(`Unexpected token: ${token}`);
-                    }
-                    function parseComparison() {
-                        const left=parsePrimary();
-                        const token=peek();
-                        if(["<", "<=", ">", ">=", "==", "!="].includes(token)) {
-                            consume();
-                            const right=parsePrimary();
-                            return {type:"compare", op:token, left, right};
-                        }
-                        if(!["identifier", "compare", "and", "or"].includes(left.type)) throw new Error("Standalone values must be metric names.");
-                        return left;
-                    }
-                    function parseAnd() {
-                        let node=parseComparison();
-                        while(peek()==="&") { consume("&"); node={type:"and", left:node, right:parseComparison()}; }
-                        return node;
-                    }
-                    function parseOr() {
-                        let node=parseAnd();
-                        while(peek()==="|") { consume("|"); node={type:"or", left:node, right:parseAnd()}; }
-                        return node;
-                    }
-                    try {
-                        const ast=parseOr();
-                        if(idx!==tokens.length) throw new Error(`Unexpected token: ${peek()}`);
-                        return {ok:true,ast};
-                    } catch(err) {
-                        return {ok:false,error:err.message};
-                    }
-                }
-                function marsEvaluateSummaryNode(node, metrics) {
-                    if(!node) return true;
-                    if(node.type==="number") return node.value;
-                    if(node.type==="identifier") return Number(metrics?.[node.value]);
-                    if(node.type==="compare") {
-                        const left=Number(marsEvaluateSummaryNode(node.left, metrics));
-                        const right=Number(marsEvaluateSummaryNode(node.right, metrics));
-                        if(!Number.isFinite(left) || !Number.isFinite(right)) return false;
-                        return node.op===">" ? left>right : node.op===">=" ? left>=right : node.op==="<" ? left<right : node.op==="<=" ? left<=right : node.op==="==" ? left===right : left!==right;
-                    }
-                    if(node.type==="and") return Boolean(marsEvaluateSummaryNode(node.left, metrics)) && Boolean(marsEvaluateSummaryNode(node.right, metrics));
-                    if(node.type==="or") return Boolean(marsEvaluateSummaryNode(node.left, metrics)) || Boolean(marsEvaluateSummaryNode(node.right, metrics));
-                    return false;
-                }
-                function marsSetSummaryExpression(value) {
-                    const expr=(value||"").trim();
-                    if(!expr) {
-                        marsState.appliedSummaryExpression="";
-                        marsSetError("mars-summary-expression-error", "");
-                        marsQueueTextRefresh("all");
-                        return;
-                    }
-                    const parsed=marsParseSummaryExpression(expr);
-                    if(!parsed.ok) {
-                        marsSetError("mars-summary-expression-error", parsed.error || "Invalid expression.");
-                        marsQueueTextRefresh("all");
-                        return;
-                    }
-                    marsState.appliedSummaryExpression=expr;
-                    marsSetError("mars-summary-expression-error", "");
-                    marsQueueTextRefresh("all");
-                }
-                function marsUpdateTableSpecialRows(table) { const rows=Array.from(table.querySelectorAll("tbody tr")); const visibleBySource=new Set(); const visibleByFeatureSource=new Set(); rows.forEach((row)=>{ const role=row.dataset.role||"data"; if(role==="data"&&row.style.display!=="none") { const source=row.dataset.dataSource||""; const feature=row.dataset.feature||""; visibleBySource.add(source); visibleByFeatureSource.add(`${source}||${feature}`); } }); rows.forEach((row)=>{ const role=row.dataset.role||"data"; if(role==="source") { row.style.display=visibleBySource.has(row.dataset.dataSource||"")?"":"none"; } else if(role==="spacer") { const key=`${row.dataset.dataSource||""}||${row.dataset.feature||""}`; row.style.display=visibleByFeatureSource.has(key)?"":"none"; } }); }
-                function marsSourceSelected(source) { if(source==="__aggregate__") return true; const hasBoxes=document.querySelectorAll(".mars-source-checkbox").length>0; if(!hasBoxes) return true; return marsState.selectedSources.includes(source||"UNMAPPED"); }
-                function marsReadRowMetrics(row) { let metrics={}; try { metrics=JSON.parse(row.dataset.metrics||"{}"); } catch(err) { metrics={}; } return metrics; }
-                function marsSummaryRowAllowedWithoutLocal(row, globalMatcher=null, summaryParsed=null) {
-                    if(!row) return false;
-                    const matcher=globalMatcher||marsBuildMatcher(marsState.globalQuery);
-                    if(!matcher.ok) return false;
-                    const parsed=summaryParsed||marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(!parsed.ok) return false;
-                    const source=row.dataset.dataSource||"UNMAPPED";
-                    const text=row.dataset.searchText||row.textContent||"";
-                    return marsSourceSelected(source) && matcher.match(text) && marsEvaluateSummaryNode(parsed.ast, marsReadRowMetrics(row));
-                }
-                function marsGetSummaryFeatureAllowSet() {
-                    const table=document.getElementById("mars-summary-table");
-                    if(!table) return null;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    if(!globalMatcher.ok) return null;
-                    const parsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(!parsed.ok) return marsState.summaryAllowedFeatures;
-                    const features=new Set();
-                    table.querySelectorAll("tbody tr[data-feature]").forEach((row)=>{
-                        const feature=row.dataset.feature||"";
-                        if(feature && marsSummaryRowAllowedWithoutLocal(row, globalMatcher, parsed)) features.add(feature);
-                    });
-                    return features;
-                }
-                function marsFeatureAllowed(feature) { if(!(marsState.summaryAllowedFeatures instanceof Set)) return true; return marsState.summaryAllowedFeatures.has(feature||""); }
-                function marsSetScopeStatus(scopeId, visibleCount, totalCount, noun) {
-                    const node=document.getElementById(`${scopeId}-status`);
-                    if(!node) return;
-                    const visible=Math.max(0, Number(visibleCount) || 0);
-                    const total=Math.max(0, Number(totalCount) || 0);
-                    if(total===0 || visible===0) { node.textContent=`0 ${noun} matched current filters.`; return; }
-                    if(visible===total) { node.textContent=`${visible} ${noun} shown.`; return; }
-                    node.textContent=`${visible} of ${total} ${noun} shown.`;
-                }
-                function marsToggleScopeEmpty(scopeId, visible) {
-                    const node=document.getElementById(`${scopeId}-empty`);
-                    if(node) node.hidden=!visible;
-                }
-                function marsUpdateTableFeedback(tableId, totalCount, visibleCount) {
-                    marsSetScopeStatus(tableId, visibleCount, totalCount, "rows");
-                    marsToggleScopeEmpty(tableId, visibleCount===0);
-                }
-                function marsApplyTableFilter(tableId) {
-                    const table=document.getElementById(tableId);
-                    if(!table) return;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    if(!globalMatcher.ok) { marsSetError("mars-global-error", `Invalid regex: ${globalMatcher.error}`); return; }
-                    marsSetError("mars-global-error", "");
-                    const localMatcher=marsBuildMatcher(marsState.localQueries[tableId]||"");
-                    if(!localMatcher.ok) { marsSetError(`${tableId}-error`, `Invalid regex: ${localMatcher.error}`); return; }
-                    marsSetError(`${tableId}-error`, "");
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    const isSummary=table.dataset.tableKind==="summary";
-                    const dataRows = Array.from(table.querySelectorAll("tbody tr")).filter((row)=>(row.dataset.role||"data")==="data");
-                    dataRows.forEach((row)=>{
-                        const source=row.dataset.dataSource||"UNMAPPED";
-                        const feature=row.dataset.feature||"";
-                        const text=row.dataset.searchText||row.textContent||"";
-                        const globalVisible=marsSourceSelected(source)&&globalMatcher.match(text);
-                        if(!globalVisible) { row.style.display="none"; return; }
-                        const summaryVisible=isSummary
-                            ? (summaryParsed.ok ? marsSummaryRowAllowedWithoutLocal(row, globalMatcher, summaryParsed) : true)
-                            : marsFeatureAllowed(feature);
-                        const visible=summaryVisible&&localMatcher.match(text);
-                        row.style.display=visible?"":"none";
-                    });
-                    marsUpdateTableSpecialRows(table);
-                    const visibleCount = dataRows.filter((row)=>row.style.display!=="none").length;
-                    marsUpdateTableFeedback(tableId, dataRows.length, visibleCount);
-                }
-                function marsSortTable(tableId, trigger) { const table=document.getElementById(tableId); if(!table) return; const th=trigger.closest("th"); const colIndex=Number(th.dataset.colIndex||Array.from(th.parentNode.children).indexOf(th)); if(colIndex<0) return; const sourceHeader=table.querySelector(`thead th[data-col-index="${colIndex}"]`) || th; const tbody=table.querySelector("tbody"); const rows=Array.from(tbody.querySelectorAll("tr")).filter((row)=>(row.dataset.role||"data")==="data"); let nextDir="asc"; if(table.dataset.sortCol===String(colIndex)) nextDir=table.dataset.sortDir==="asc"?"desc":"asc"; const sortType=sourceHeader.dataset.sortType||th.dataset.sortType||"text"; rows.sort((a,b)=>{ const va=a.children[colIndex]?.dataset.sortValue||""; const vb=b.children[colIndex]?.dataset.sortValue||""; if(sortType==="number") { const na=Number(va), nb=Number(vb); const sa=Number.isFinite(na)?na:(nextDir==="asc"?Infinity:-Infinity); const sb=Number.isFinite(nb)?nb:(nextDir==="asc"?Infinity:-Infinity); return nextDir==="asc"?sa-sb:sb-sa; } return nextDir==="asc"?va.localeCompare(vb,undefined,{numeric:true,sensitivity:"base"}):vb.localeCompare(va,undefined,{numeric:true,sensitivity:"base"}); }); rows.forEach((row)=>tbody.appendChild(row)); table.dataset.sortCol=String(colIndex); table.dataset.sortDir=nextDir; table.querySelectorAll("thead th[data-sort-dir]").forEach((cell)=>cell.removeAttribute("data-sort-dir")); sourceHeader.dataset.sortDir=nextDir; marsApplyTableFilter(tableId); marsQueueLayoutSync(`table:${tableId}`); marsScheduleViewportRefresh(); }
-                function marsUpdatePivotViews() {
-                    const targetValue=document.getElementById("mars-pivot-target")?.value||null;
-                    document.querySelectorAll(".mars-pivot-view").forEach((view)=>{
-                        const sameTarget=!targetValue||view.dataset.yValue===targetValue;
-                        view.style.display=sameTarget?"":"none";
-                    });
-                }
-                function marsUpdateChartViews() {
-                    const targetValue=document.getElementById("mars-chart-target")?.value||null;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    const localMatcher=marsBuildMatcher(marsState.localQueries["mars-chart-cards"]||"");
-                    if(!globalMatcher.ok) { marsSetError("mars-global-error", `Invalid regex: ${globalMatcher.error}`); return; }
-                    marsSetError("mars-global-error", "");
-                    if(!localMatcher.ok) { marsSetError("mars-chart-cards-error", `Invalid regex: ${localMatcher.error}`); return; }
-                    marsSetError("mars-chart-cards-error", "");
-                    let totalCards=0;
-                    let visibleCards=0;
-                    document.querySelectorAll(".mars-chart-view").forEach((view)=>{
-                        const visibleTarget=!targetValue||view.dataset.yValue===targetValue;
-                        view.style.display=visibleTarget?"":"none";
-                        if(!visibleTarget) return;
-                        view.querySelectorAll(".mars-chart-card").forEach((card)=>{
-                            totalCards += 1;
-                            const source=card.dataset.dataSource||"UNMAPPED";
-                            const feature=card.dataset.feature||"";
-                            const text=card.dataset.searchText||card.textContent||"";
-                            const globalVisible=marsSourceSelected(source)&&globalMatcher.match(text)&&marsFeatureAllowed(feature);
-                            const visible=globalVisible&&localMatcher.match(text);
-                            card.style.display=visible?"":"none";
-                            if(visible) visibleCards += 1;
-                        });
-                    });
-                    marsSetScopeStatus("mars-chart-cards", visibleCards, totalCards, "charts");
-                    marsToggleScopeEmpty("mars-chart-cards", visibleCards===0);
-                }
-                function marsBuildExportFeatureMap() {
-                    const table=document.getElementById("mars-summary-table");
-                    if(!table) return {};
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    const featureMap=new Map();
-                    const sourceOrder=Array.from(document.querySelectorAll(".mars-source-checkbox")).map((box)=>box.value);
-                    table.querySelectorAll("tbody tr[data-feature]").forEach((row)=>{
-                        const source=row.dataset.dataSource||"UNMAPPED";
-                        const feature=row.dataset.feature||"";
-                        if(!feature || !marsSourceSelected(source)) return;
-                        if(summaryParsed.ok && !marsEvaluateSummaryNode(summaryParsed.ast, marsReadRowMetrics(row))) return;
-                        if(!featureMap.has(source)) featureMap.set(source, new Set());
-                        featureMap.get(source).add(feature);
-                    });
-                    const payload={};
-                    const assignedSources=new Set();
-                    sourceOrder.forEach((source)=>{
-                        const values=featureMap.has(source) ? Array.from(featureMap.get(source)).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"})) : [];
-                        if(values.length) {
-                            payload[source]=values;
-                            assignedSources.add(source);
-                        }
-                    });
-                    featureMap.forEach((features, source)=>{
-                        if(assignedSources.has(source)) return;
-                        const values=Array.from(features).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
-                        if(values.length) payload[source]=values;
-                    });
-                    return payload;
-                }
-                function marsDownloadTextFile(text, fileName) { const blob=new Blob([text], {type:"text/plain;charset=utf-8"}); const link=document.createElement("a"); link.href=URL.createObjectURL(blob); link.download=fileName; link.click(); URL.revokeObjectURL(link.href); }
-                function marsExportFeatures() { const featureMap=marsBuildExportFeatureMap(); marsDownloadTextFile(JSON.stringify(featureMap, null, 2), "mars_features.txt"); }
-                function marsGetFloatingHeaderHost() { return document.getElementById("mars-floating-header-host"); }
-                function marsGetFloatingHeaderScroll() { return document.getElementById("mars-floating-header-scroll"); }
-                function marsGetTableScrollBox(table) { return table?.closest(".mars-table-scroll") || null; }
-                function marsAncestorsDetailsOpen(node) {
-                    let parent=node?.closest("details");
-                    while(parent) {
-                        if(!parent.open) return false;
-                        parent=parent.parentElement?.closest("details");
-                    }
-                    return true;
-                }
-                function marsHasClientRects(node) {
-                    return Boolean(node?.getClientRects && node.getClientRects().length);
-                }
-                function marsIntersectsViewport(rect) {
-                    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
-                }
-                function marsTableIsActuallyVisible(table, scrollBox, thead) {
-                    if(!table || !scrollBox || !thead) return false;
-                    if(!marsAncestorsDetailsOpen(scrollBox)) return false;
-                    if(!marsHasClientRects(scrollBox) || !marsHasClientRects(table) || !marsHasClientRects(thead)) return false;
-                    const scrollRect=scrollBox.getBoundingClientRect();
-                    const tableRect=table.getBoundingClientRect();
-                    const theadRect=thead.getBoundingClientRect();
-                    if(scrollRect.width <= 0 || scrollRect.height <= 0 || tableRect.width <= 0 || tableRect.height <= 0 || theadRect.width <= 0 || theadRect.height <= 0) return false;
-                    return marsIntersectsViewport(scrollRect) && marsIntersectsViewport(tableRect);
-                }
-                function marsHideFloatingHeader() {
-                    const host=marsGetFloatingHeaderHost();
-                    const scrollHost=marsGetFloatingHeaderScroll();
-                    if(scrollHost) scrollHost.innerHTML="";
-                    if(host) {
-                        host.hidden=true;
-                        host.classList.remove("is-visible");
-                        host.style.left="0px";
-                        host.style.width="0px";
-                        host.removeAttribute("data-table-id");
-                    }
-                    marsState.floatingHeaderTableId="";
-                    marsState.floatingHeaderScrollBox=null;
-                }
-                function marsGetFirstVisibleDataRowTop(table) {
-                    const rows=Array.from(table?.querySelectorAll("tbody tr") || []).filter((row) => {
-                        if(row.offsetParent===null || row.style.display==="none") return false;
-                        return (row.dataset.role || "data")==="data";
-                    });
-                    for(const row of rows) {
-                        const rect=row.getBoundingClientRect();
-                        if(rect.bottom > 0) return rect.top;
-                    }
-                    if(rows.length) return rows[0].getBoundingClientRect().top;
-                    const tbody=table?.querySelector("tbody");
-                    if(tbody) return tbody.getBoundingClientRect().top;
-                    return table?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
-                }
-                function marsCollectLeafColumnWidths(table) {
-                    const thead=table?.querySelector("thead");
-                    const rows=Array.from(thead?.rows || []);
-                    if(!rows.length) return [];
-                    const occupancy=[];
-                    const leafColumns=[];
-                    const totalRows=rows.length;
-                    rows.forEach((row, rowIndex) => {
-                        occupancy[rowIndex] = occupancy[rowIndex] || [];
-                        let colIndex=0;
-                        Array.from(row.cells).forEach((cell) => {
-                            while(occupancy[rowIndex][colIndex]) colIndex += 1;
-                            const colSpan=Math.max(1, Number(cell.colSpan) || 1);
-                            const rowSpan=Math.max(1, Number(cell.rowSpan) || 1);
-                            for(let r=rowIndex; r<Math.min(totalRows, rowIndex + rowSpan); r += 1) {
-                                occupancy[r] = occupancy[r] || [];
-                                for(let c=colIndex; c<colIndex + colSpan; c += 1) occupancy[r][c]=true;
-                            }
-                            if(rowIndex + rowSpan >= totalRows) {
-                                const baseWidth=Math.max(1, Number(cell.getBoundingClientRect().width || cell.offsetWidth || 0));
-                                const sharedWidth=baseWidth / colSpan;
-                                for(let c=0; c<colSpan; c += 1) {
-                                    leafColumns[colIndex + c] = Math.max(1, Math.ceil(sharedWidth));
-                                }
-                            }
-                            colIndex += colSpan;
-                        });
-                    });
-                    return leafColumns.filter((width)=>Number.isFinite(width) && width > 0);
-                }
-                function marsBuildFloatingHeaderColGroup(table) {
-                    const widths=marsCollectLeafColumnWidths(table);
-                    if(!widths.length) return null;
-                    const colgroup=document.createElement("colgroup");
-                    widths.forEach((width) => {
-                        const col=document.createElement("col");
-                        col.style.width=`${width}px`;
-                        col.style.minWidth=`${width}px`;
-                        col.style.maxWidth=`${width}px`;
-                        colgroup.appendChild(col);
-                    });
-                    return colgroup;
-                }
-                function marsCloneFloatingHeader(table) {
-                    const host=marsGetFloatingHeaderHost();
-                    const scrollHost=marsGetFloatingHeaderScroll();
-                    const sourceScrollBox=marsGetTableScrollBox(table);
-                    const thead=table?.querySelector("thead");
-                    const colgroup=marsBuildFloatingHeaderColGroup(table);
-                    if(!host || !scrollHost || !sourceScrollBox || !thead || !colgroup) {
-                        marsHideFloatingHeader();
-                        return;
-                    }
-                    const cloneTable=document.createElement("table");
-                    cloneTable.className=`${table.className} mars-floating-header-table`;
-                    cloneTable.setAttribute("aria-hidden", "true");
-                    const inlineStyle=table.getAttribute("style");
-                    if(inlineStyle) cloneTable.setAttribute("style", inlineStyle);
-                    cloneTable.appendChild(colgroup);
-                    cloneTable.appendChild(thead.cloneNode(true));
-                    scrollHost.innerHTML="";
-                    scrollHost.appendChild(cloneTable);
-                    host.hidden=false;
-                    host.classList.add("is-visible");
-                    host.dataset.tableId=table.id;
-                    marsState.floatingHeaderTableId=table.id;
-                    marsState.floatingHeaderScrollBox=sourceScrollBox;
-                    marsSyncFloatingHeaderMetrics(table);
-                }
-                function marsSyncFloatingHeaderMetrics(table) {
-                    const host=marsGetFloatingHeaderHost();
-                    const scrollHost=marsGetFloatingHeaderScroll();
-                    const sourceScrollBox=marsGetTableScrollBox(table);
-                    const cloneTable=scrollHost?.querySelector("table");
-                    const thead=table?.querySelector("thead");
-                    if(!host || !scrollHost || !sourceScrollBox || !cloneTable || !thead) {
-                        marsHideFloatingHeader();
-                        return;
-                    }
-                    const scrollRect=sourceScrollBox.getBoundingClientRect();
-                    const headerRect=thead.getBoundingClientRect();
-                    if(scrollRect.width <= 0 || headerRect.height <= 0) {
-                        marsHideFloatingHeader();
-                        return;
-                    }
-                    const colgroup=marsBuildFloatingHeaderColGroup(table);
-                    if(!colgroup) {
-                        marsHideFloatingHeader();
-                        return;
-                    }
-                    const existingColgroup=cloneTable.querySelector("colgroup");
-                    if(existingColgroup) cloneTable.replaceChild(colgroup, existingColgroup);
-                    else cloneTable.insertBefore(colgroup, cloneTable.firstChild);
-                    const contentLeft=scrollRect.left + (sourceScrollBox.clientLeft || 0);
-                    const visibleWidth=Math.max(0, Math.ceil(sourceScrollBox.clientWidth || scrollRect.width || 0));
-                    host.style.left=`${Math.max(0, contentLeft)}px`;
-                    host.style.width=`${visibleWidth}px`;
-                    host.style.top="0px";
-                    scrollHost.style.height=`${Math.ceil(headerRect.height)}px`;
-                    const inlineStyle=table.getAttribute("style");
-                    if(inlineStyle) cloneTable.setAttribute("style", inlineStyle);
-                    const tableWidth=Math.max(
-                        colgroup.childElementCount
-                            ? Array.from(colgroup.children).reduce((sum, col) => sum + (parseFloat(col.style.width) || 0), 0)
-                            : 0,
-                        Math.ceil(table.scrollWidth || 0),
-                        Math.ceil(table.getBoundingClientRect().width || 0),
-                    );
-                    cloneTable.style.width=`${tableWidth}px`;
-                    cloneTable.style.minWidth=`${tableWidth}px`;
-                    cloneTable.style.maxWidth=`${tableWidth}px`;
-                    scrollHost.scrollLeft=sourceScrollBox.scrollLeft;
-                }
-                function marsResolveFloatingHeaderOwner() {
-                    const visibleTables=[];
-                    document.querySelectorAll(".mars-table-scroll[data-table-id]").forEach((scrollBox) => {
-                        const table=scrollBox.querySelector("table.mars-data-table[id]");
-                        const thead=table?.querySelector("thead");
-                        if(!marsTableIsActuallyVisible(table, scrollBox, thead)) return;
-                        const theadRect=thead.getBoundingClientRect();
-                        const tableRect=table.getBoundingClientRect();
-                        visibleTables.push({
-                            table,
-                            scrollBox,
-                            theadTop:theadRect.top,
-                            headerHeight:Math.max(1, Math.ceil(theadRect.height || 0)),
-                            tableBottom:tableRect.bottom,
-                            firstDataRowTop:marsGetFirstVisibleDataRowTop(table),
-                        });
-                    });
-                    if(!visibleTables.length) return null;
-                    const hostHeight=Math.ceil(marsGetFloatingHeaderHost()?.getBoundingClientRect().height || 0);
-                    const hasVisibleReadingTable=visibleTables.some(({ theadTop, firstDataRowTop, tableBottom, headerHeight }) => {
-                        const readingBandBottom=Math.max(1, hostHeight || headerHeight);
-                        return tableBottom > 0 && (theadTop <= readingBandBottom || firstDataRowTop <= readingBandBottom);
-                    });
-                    if(!hasVisibleReadingTable) return null;
-                    const ownerCandidates=visibleTables.filter(({ theadTop, tableBottom, headerHeight }) => {
-                        const floatingHeaderHeight=Math.max(1, hostHeight || headerHeight);
-                        return theadTop <= 0 && tableBottom > floatingHeaderHeight;
-                    });
-                    if(!ownerCandidates.length) return null;
-                    ownerCandidates.sort((a,b)=>b.theadTop-a.theadTop);
-                    const owner=ownerCandidates[0];
-                    const readingLine=Math.max(1, hostHeight || owner.headerHeight) + 1;
-                    const shouldReleaseOwner=visibleTables.some((item) => {
-                        if(item.table.id===owner.table.id) return false;
-                        return item.theadTop > 0 && item.firstDataRowTop <= readingLine;
-                    });
-                    if(shouldReleaseOwner) return null;
-                    return owner;
-                }
-                function marsRefreshFloatingHeader() {
-                    const candidate=marsResolveFloatingHeaderOwner();
-                    if(!candidate) {
-                        marsHideFloatingHeader();
-                        return;
-                    }
-                    if(marsState.floatingHeaderTableId!==candidate.table.id) {
-                        marsCloneFloatingHeader(candidate.table);
-                        return;
-                    }
-                    marsState.floatingHeaderScrollBox=candidate.scrollBox;
-                    marsSyncFloatingHeaderMetrics(candidate.table);
-                }
-                function marsScheduleViewportRefresh() {
-                    if(marsState.floatingHeaderFrameId) return;
-                    marsState.floatingHeaderFrameId=window.requestAnimationFrame(() => {
-                        marsState.floatingHeaderFrameId=null;
-                        marsRefreshFloatingHeader();
-                        marsUpdateBackToTopVisibility();
-                    });
-                }
-                function marsHandleTableHorizontalScroll(event) {
-                    const scrollBox=event.currentTarget;
-                    if(scrollBox!==marsState.floatingHeaderScrollBox) return;
-                    const scrollHost=marsGetFloatingHeaderScroll();
-                    if(scrollHost) scrollHost.scrollLeft=scrollBox.scrollLeft;
-                }
-                function marsRegisterTableScrollListeners() {
-                    document.querySelectorAll(".mars-table-scroll[data-table-id]").forEach((scrollBox) => {
-                        if(scrollBox.dataset.headerScrollBound==="1") return;
-                        scrollBox.dataset.headerScrollBound="1";
-                        scrollBox.addEventListener("scroll", marsHandleTableHorizontalScroll, {passive:true});
-                    });
-                }
-                function marsBackToTop() {
-                    const anchor=document.getElementById("mars-page-top");
-                    if(anchor) {
-                        anchor.scrollIntoView({behavior:"smooth", block:"start"});
-                        return;
-                    }
-                    window.scrollTo({top:0, behavior:"smooth"});
-                }
-                function marsUpdateBackToTopVisibility() {
-                    const button=document.getElementById("mars-back-to-top");
-                    if(!button) return;
-                    button.classList.toggle("is-visible", window.scrollY > 600);
-                }
-                function marsColumnWidthProperty(columnKey) { return columnKey==="feature" ? "--mars-feature-col-width" : columnKey==="secondary" ? "--mars-secondary-col-width" : "--mars-bin-col-width"; }
-                function marsColumnDefaultWidth(columnKey) { return columnKey==="feature" ? 220 : columnKey==="secondary" ? 110 : 140; }
-                function marsColumnMinWidth(columnKey) { return columnKey==="feature" ? 140 : 90; }
-                function marsApplyColumnWidth(table, columnKey, width) {
-                    if(!table) return;
-                    const safeWidth=Math.max(marsColumnMinWidth(columnKey), Number(width)||marsColumnDefaultWidth(columnKey));
-                    table.style.setProperty(marsColumnWidthProperty(columnKey), `${safeWidth}px`);
-                }
-                function marsSyncStickyLayout(table) {
-                    if(!table) return;
-                    const featureHeader=table.querySelector("thead .mars-feature-col");
-                    if(featureHeader) {
-                        const featureWidth=Math.max(140, Math.ceil(featureHeader.getBoundingClientRect().width || marsColumnDefaultWidth("feature")));
-                        marsApplyColumnWidth(table, "feature", featureWidth);
-                    }
-                    const secondaryHeader=table.querySelector("thead .mars-secondary-col");
-                    if(secondaryHeader) {
-                        const secondaryWidth=Math.max(90, Math.ceil(secondaryHeader.getBoundingClientRect().width || marsColumnDefaultWidth("secondary")));
-                        marsApplyColumnWidth(table, "secondary", secondaryWidth);
-                    }
-                    const binHeader=table.querySelector("thead .mars-bin-col");
-                    if(binHeader) {
-                        const binWidth=Math.max(90, Math.ceil(binHeader.getBoundingClientRect().width || marsColumnDefaultWidth("bin")));
-                        marsApplyColumnWidth(table, "bin", binWidth);
-                    }
-                }
-                function marsTablesForScope(scopeToken) {
-                    if(scopeToken==="all") return Array.from(document.querySelectorAll("table.mars-data-table[id]"));
-                    if(scopeToken==="pivot") return Array.from(document.querySelectorAll("table.mars-pivot-table[id]"));
-                    if(scopeToken.startsWith("table:")) {
-                        const table=document.getElementById(scopeToken.slice(6));
-                        return table ? [table] : [];
-                    }
-                    return [];
-                }
-                function marsSyncScopeLayouts(scopeToken="all") {
-                    marsTablesForScope(scopeToken).forEach((table)=>marsSyncStickyLayout(table));
-                    marsRegisterTableScrollListeners();
-                    marsRefreshFloatingHeader();
-                }
-                function marsOpenAncestorSections(node) {
-                    let parent=node?.closest("details");
-                    while(parent) {
-                        parent.open=true;
-                        parent=parent.parentElement?.closest("details");
-                    }
-                }
-                function marsFindSummaryFeatureNode(feature, visibleOnly=false) {
-                    const target=marsNormalizeFeatureValue(feature);
-                    const nodes=Array.from(document.querySelectorAll("#mars-summary-table tbody tr[data-feature]"));
-                    const candidateNodes=visibleOnly ? nodes.filter((node)=>node.style.display!=="none" && node.offsetParent!==null) : nodes;
-                    for(const node of candidateNodes) {
-                        if(marsNormalizeFeatureValue(node.dataset.feature)===target) return node;
-                    }
-                    for(const node of candidateNodes) {
-                        if(marsNormalizeFeatureValue(node.dataset.feature).includes(target)) return node;
-                    }
-                    return null;
-                }
-                function marsClearSummaryLocalQuery() {
-                    marsState.localQueries["mars-summary-table"]="";
-                    const input=document.getElementById("mars-summary-table-query");
-                    if(input) input.value="";
-                }
-                function marsClearJumpHighlight() {
-                    if(marsState.jumpHighlightArmTimerId) {
-                        window.clearTimeout(marsState.jumpHighlightArmTimerId);
-                        marsState.jumpHighlightArmTimerId=null;
-                    }
-                    if(marsState.jumpHighlightTimerId) {
-                        window.clearTimeout(marsState.jumpHighlightTimerId);
-                        marsState.jumpHighlightTimerId=null;
-                    }
-                    if(marsState.jumpHighlightNode) marsState.jumpHighlightNode.classList.remove("mars-jump-highlight");
-                    if(marsState.jumpHighlightCell) marsState.jumpHighlightCell.classList.remove("mars-jump-highlight-cell");
-                    marsState.jumpHighlightNode=null;
-                    marsState.jumpHighlightCell=null;
-                }
-                function marsActivateJumpHighlight(node, featureCell) {
-                    marsClearJumpHighlight();
-                    if(!node) return;
-                    marsState.jumpHighlightNode=node;
-                    marsState.jumpHighlightCell=featureCell||null;
-                    node.classList.add("mars-jump-highlight");
-                    if(featureCell) featureCell.classList.add("mars-jump-highlight-cell");
-                    marsState.jumpHighlightTimerId=window.setTimeout(() => {
-                        if(marsState.jumpHighlightNode===node) {
-                            node.classList.remove("mars-jump-highlight");
-                            if(featureCell) featureCell.classList.remove("mars-jump-highlight-cell");
-                            marsState.jumpHighlightTimerId=null;
-                            marsState.jumpHighlightNode=null;
-                            marsState.jumpHighlightCell=null;
-                        }
-                    }, 3000);
-                }
-                function marsFocusSummaryFeature(node) {
-                    if(!node) return;
-                    const featureCell=node.querySelector(".mars-feature-col");
-                    const scrollBox=node.closest(".mars-table-scroll");
-                    marsOpenAncestorSections(node);
-                    marsClearJumpHighlight();
-                    window.requestAnimationFrame(() => {
-                        node.scrollIntoView({behavior:"smooth", block:"center", inline:"nearest"});
-                        if(featureCell) featureCell.scrollIntoView({behavior:"smooth", block:"nearest", inline:"start"});
-                        if(scrollBox) scrollBox.scrollTo({left:0, behavior:"smooth"});
-                        marsState.jumpHighlightArmTimerId=window.setTimeout(() => {
-                            marsState.jumpHighlightArmTimerId=null;
-                            marsActivateJumpHighlight(node, featureCell);
-                        }, 140);
-                    });
-                }
-                function marsJumpToFeature() {
-                    const input=document.getElementById("mars-feature-jump-input");
-                    const value=(input?.value||"").trim();
-                    if(!value) {
-                        marsSetError("mars-feature-jump-error", "Enter a feature name to jump.");
-                        return;
-                    }
-                    let node=marsFindSummaryFeatureNode(value, true);
-                    if(node) {
-                        marsSetError("mars-feature-jump-error", "");
-                        marsFocusSummaryFeature(node);
-                        return;
-                    }
-                    node=marsFindSummaryFeatureNode(value, false);
-                    if(!node) {
-                        marsSetError("mars-feature-jump-error", `Feature "${value}" does not exist in Summary.`);
-                        return;
-                    }
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(marsSummaryRowAllowedWithoutLocal(node, globalMatcher, summaryParsed)) {
-                        marsClearSummaryLocalQuery();
-                        marsQueueRefresh("table:mars-summary-table");
-                        window.requestAnimationFrame(() => {
-                            window.requestAnimationFrame(() => {
-                                const refreshedNode=marsFindSummaryFeatureNode(value, true) || marsFindSummaryFeatureNode(value, false);
-                                marsSetError("mars-feature-jump-error", "");
-                                marsFocusSummaryFeature(refreshedNode);
-                            });
-                        });
-                        return;
-                    }
-                    marsSetError("mars-feature-jump-error", `Feature "${value}" is hidden by data source, global search, or summary filter.`);
-                }
-                function marsStartColumnResize(event, tableId, columnKey) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const table=document.getElementById(tableId);
-                    if(!table) return;
-                    const property=marsColumnWidthProperty(columnKey);
-                    const computed=getComputedStyle(table);
-                    const startWidth=parseFloat(computed.getPropertyValue(property)) || marsColumnDefaultWidth(columnKey);
-                    marsState.resizeState={ tableId, columnKey, property, startX:event.clientX, startWidth, pendingWidth:startWidth };
-                    document.body.style.cursor="col-resize";
-                    document.body.style.userSelect="none";
-                }
-                function marsHandleColumnResize(event) {
-                    if(!marsState.resizeState) return;
-                    const { startX, startWidth, columnKey } = marsState.resizeState;
-                    const table=document.getElementById(marsState.resizeState.tableId);
-                    if(!table) return;
-                    const minWidth=marsColumnMinWidth(columnKey);
-                    const nextWidth=Math.max(minWidth, startWidth + (event.clientX - startX));
-                    marsState.resizeState.pendingWidth=nextWidth;
-                    if(marsState.resizeFrameScheduled) return;
-                    marsState.resizeFrameScheduled=true;
-                    window.requestAnimationFrame(() => {
-                        marsState.resizeFrameScheduled=false;
-                        if(!marsState.resizeState) return;
-                        const activeTable=document.getElementById(marsState.resizeState.tableId);
-                        marsApplyColumnWidth(activeTable, marsState.resizeState.columnKey, marsState.resizeState.pendingWidth);
-                        marsRefreshFloatingHeader();
-                    });
-                }
-                function marsStopColumnResize() {
-                    if(!marsState.resizeState) return;
-                    const table=document.getElementById(marsState.resizeState.tableId);
-                    if(table) marsSyncStickyLayout(table);
-                    marsState.resizeState=null;
-                    document.body.style.cursor="";
-                    document.body.style.userSelect="";
-                    marsScheduleViewportRefresh();
-                }
-                function marsRefreshSummaryContext() {
-                    const summaryFeatures=marsGetSummaryFeatureAllowSet();
-                    marsState.summaryAllowedFeatures=summaryFeatures instanceof Set ? summaryFeatures : null;
-                }
-                function marsRefreshSummaryTable() { marsApplyTableFilter("mars-summary-table"); }
-                function marsRefreshGenericTables() {
-                    document.querySelectorAll("table.mars-data-table[id]").forEach((table)=>{
-                        if(table.id==="mars-summary-table" || table.classList.contains("mars-pivot-table")) return;
-                        marsApplyTableFilter(table.id);
-                    });
-                }
-                function marsRefreshPivotScope() {
-                    marsUpdatePivotViews();
-                    document.querySelectorAll("table.mars-pivot-table[id]").forEach((table)=>marsApplyTableFilter(table.id));
-                    marsQueueLayoutSync("pivot");
-                }
-                function marsRefreshScopeToken(scopeToken) {
-                    if(scopeToken==="all") {
-                        marsRefreshSummaryContext();
-                        marsRefreshSummaryTable();
-                        marsRefreshGenericTables();
-                        marsRefreshPivotScope();
-                        marsUpdateChartViews();
-                        return;
-                    }
-                    if(scopeToken==="pivot") { marsRefreshPivotScope(); return; }
-                    if(scopeToken==="charts") { marsUpdateChartViews(); return; }
-                    if(scopeToken==="summary") { marsRefreshSummaryTable(); return; }
-                    if(scopeToken.startsWith("table:")) { marsApplyTableFilter(scopeToken.slice(6)); }
-                }
-                function marsFlushRefreshQueue() {
-                    const tokens = marsState.pendingRefreshTokens.length ? marsState.pendingRefreshTokens.slice() : ["all"];
-                    marsState.pendingRefreshTokens = [];
-                    if(tokens.includes("all")) {
-                        marsRefreshScopeToken("all");
-                        marsScheduleViewportRefresh();
-                        return;
-                    }
-                    tokens.forEach((token)=>marsRefreshScopeToken(token));
-                    marsScheduleViewportRefresh();
-                }
-                window.addEventListener("mousemove", marsHandleColumnResize);
-                window.addEventListener("mouseup", marsStopColumnResize);
-                window.addEventListener("resize", () => { marsQueueLayoutSync("all"); marsScheduleViewportRefresh(); });
-                window.addEventListener("scroll", marsScheduleViewportRefresh, {passive:true});
-                document.addEventListener("toggle", () => { marsHideFloatingHeader(); marsQueueLayoutSync("all"); marsScheduleViewportRefresh(); }, true);
-                window.addEventListener("DOMContentLoaded", () => {
-                    marsRegisterTableScrollListeners();
-                    marsSetDataSources();
-                    marsQueueLayoutSync("all");
-                    marsQueueRefresh("all");
-                    marsUpdateBackToTopVisibility();
-                    marsRefreshFloatingHeader();
-                });
-        """
-        return template.replace("__SUMMARY_FILTER_COLUMNS__", json.dumps(summary_filter_columns, ensure_ascii=False))
+    def _build_html_runtime_script(
+        cls: type["MarsEvaluationReport"],
+        *,
+        summary_filter_columns: list[str],
+    ) -> str:
+        return build_html_runtime_script(summary_filter_columns)
 
     @classmethod
     def _build_html_document(
-        cls,
+        cls: type["MarsEvaluationReport"],
         *,
         report_name: str,
         styles: str,
@@ -2225,7 +1306,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_global_tools_html(
-        cls,
+        cls: type["MarsEvaluationReport"],
         *,
         feature_jump_html: str,
         source_options: str,
@@ -2265,7 +1346,7 @@ __RUNTIME_SCRIPT__
         feature_sources: Dict[str, str],
         sort_by: str,
         ascending: bool,
-    ) -> Optional[str]:
+    ) -> str | None:
         if summary_pd.empty:
             return None
 
@@ -2328,7 +1409,7 @@ __RUNTIME_SCRIPT__
         self,
         *,
         trend_pd_map: Dict[str, pd.DataFrame],
-        missing_by_day_pd: Optional[pd.DataFrame],
+        missing_by_day_pd: pd.DataFrame | None,
         feature_sources: Dict[str, str],
     ) -> List[Tuple[str, str, str]]:
         sections: List[Tuple[str, str, str]] = []
@@ -2427,11 +1508,17 @@ __RUNTIME_SCRIPT__
         max_plots: int,
         sort_by: str,
         ascending: bool,
-    ) -> Optional[str]:
+    ) -> str | None:
         if detail_pd.empty:
             return None
 
-        chart_y_values = [str(v) for v in detail_pd["y"].dropna().astype(str).drop_duplicates().tolist()] if "y" in detail_pd.columns else ["Target"]
+        if "y" in detail_pd.columns:
+            chart_y_values = [
+                str(value)
+                for value in detail_pd["y"].dropna().astype(str).drop_duplicates().tolist()
+            ]
+        else:
+            chart_y_values = ["Target"]
         chart_controls = (
             '<div class="mars-inline-controls mars-chart-controls">'
             '<input class="mars-filter-input mars-chart-search" type="search" '
@@ -2440,8 +1527,15 @@ __RUNTIME_SCRIPT__
             '<div id="mars-chart-cards-error" class="mars-search-error"></div>'
         )
         if len(chart_y_values) > 1:
-            chart_options = "".join(f'<option value="{html.escape(y_val)}">{html.escape(y_val)}</option>' for y_val in chart_y_values)
-            chart_controls += f'<label class="mars-select-group">Chart Target<select id="mars-chart-target" onchange="marsHandleChartTargetChange()">{chart_options}</select></label>'
+            chart_options = "".join(
+                f'<option value="{html.escape(y_val)}">{html.escape(y_val)}</option>'
+                for y_val in chart_y_values
+            )
+            chart_controls += (
+                '<label class="mars-select-group">Chart Target'
+                '<select id="mars-chart-target" onchange="marsHandleChartTargetChange()">'
+                f'{chart_options}</select></label>'
+            )
         chart_controls += "</div>"
 
         chart_views: List[str] = []
@@ -2449,8 +1543,17 @@ __RUNTIME_SCRIPT__
             from mars.utils.plotter import MarsPlotter
 
             for y_val in chart_y_values:
-                chart_detail_pd = detail_pd[detail_pd["y"].astype(str) == y_val].copy() if "y" in detail_pd.columns else detail_pd.copy()
-                chart_summary_pd = summary_pd[summary_pd["target"].astype(str) == y_val].copy() if "target" in summary_pd.columns else summary_pd.copy()
+                if "y" in detail_pd.columns:
+                    chart_detail_pd = detail_pd[detail_pd["y"].astype(str) == y_val].copy()
+                else:
+                    chart_detail_pd = detail_pd.copy()
+
+                if "target" in summary_pd.columns:
+                    chart_summary_pd = summary_pd[
+                        summary_pd["target"].astype(str) == y_val
+                    ].copy()
+                else:
+                    chart_summary_pd = summary_pd.copy()
                 chart_sort_col = self._resolve_chart_sort_column(chart_summary_pd, sort_by)
                 if not chart_summary_pd.empty and chart_sort_col:
                     chart_summary_pd = chart_summary_pd.sort_values(chart_sort_col, ascending=ascending)
@@ -2499,7 +1602,11 @@ __RUNTIME_SCRIPT__
         )
 
     @classmethod
-    def _build_threshold_style(cls, value: float, rule: Dict[str, Any]) -> str:
+    def _build_threshold_style(
+        cls: type["MarsEvaluationReport"],
+        value: float,
+        rule: Dict[str, Any],
+    ) -> str:
         anchors = tuple(float(v) for v in rule["anchors"])
         colors = tuple(rule["colors"])
         purple_above = rule.get("purple_above")
@@ -2533,13 +1640,13 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _cell_style(
-        cls,
+        cls: type["MarsEvaluationReport"],
         value: Any,
         *,
         semantic: str,
-        vmin: Optional[float],
-        vmax: Optional[float],
-        style_rule: Optional[Dict[str, Any]] = None,
+        vmin: float | None,
+        vmax: float | None,
+        style_rule: Dict[str, Any] | None = None,
         data_bar: bool = False,
     ) -> str:
         if cls._is_missing_html_value(value):
@@ -2592,16 +1699,16 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_enhanced_table_html(
-        cls,
+        cls: type["MarsEvaluationReport"],
         df: pd.DataFrame,
         table_id: str,
         *,
         search_placeholder: str,
-        feature_sources: Optional[Dict[str, str]] = None,
-        semantic_map: Optional[Dict[str, str]] = None,
-        data_bar_cols: Optional[List[str]] = None,
-        percent_cols: Optional[List[str]] = None,
-        style_rule_map: Optional[Dict[str, Dict[str, Any]]] = None,
+        feature_sources: Dict[str, str] | None = None,
+        semantic_map: Dict[str, str] | None = None,
+        data_bar_cols: List[str] | None = None,
+        percent_cols: List[str] | None = None,
+        style_rule_map: Dict[str, Dict[str, Any]] | None = None,
         extra_toolbar_html: str = "",
         table_kind: str = "generic",
         empty_text: str = "No data available.",
@@ -2724,7 +1831,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_grouped_pivot_section_html(
-        cls,
+        cls: type["MarsEvaluationReport"],
         detail_pd: pd.DataFrame,
         *,
         group_col: str,
@@ -3732,10 +2839,22 @@ __RUNTIME_SCRIPT__
         _ = include_detail
         feature_sources = dict(self.feature_data_source or {})
         if not feature_sources and not summary_pd.empty and {"feature", "data_source"}.issubset(summary_pd.columns):
-            feature_sources = dict(zip(summary_pd["feature"].astype(str), summary_pd["data_source"].astype(str)))
+            feature_sources = dict(
+                zip(
+                    summary_pd["feature"].astype(str),
+                    summary_pd["data_source"].astype(str),
+                    strict=False,
+                )
+            )
         if not feature_sources and not detail_pd.empty and {"feature", "data_source"}.issubset(detail_pd.columns):
             source_df = detail_pd[["feature", "data_source"]].dropna().drop_duplicates()
-            feature_sources = dict(zip(source_df["feature"].astype(str), source_df["data_source"].astype(str)))
+            feature_sources = dict(
+                zip(
+                    source_df["feature"].astype(str),
+                    source_df["data_source"].astype(str),
+                    strict=False,
+                )
+            )
 
         n_features = len(summary_pd) if not summary_pd.empty else detail_pd["feature"].nunique() if "feature" in detail_pd.columns else 0
         group_label = self.group_col if self.group_col else "None (Total Only)"
@@ -3783,8 +2902,20 @@ __RUNTIME_SCRIPT__
                 nav_items.append((section_id, label))
 
         if not detail_pd.empty:
-            pivot_body = self._build_grouped_pivot_section_html(detail_pd, group_col=self.group_col or "mars_group", feature_sources=feature_sources)
-            html_parts.append(self._wrap_html_section("Grouped Pivot", pivot_body, "pivot-section", subtitle="Binned distribution and risk comparison across groups.", open_by_default=False))
+            pivot_body = self._build_grouped_pivot_section_html(
+                detail_pd,
+                group_col=self.group_col or "mars_group",
+                feature_sources=feature_sources,
+            )
+            html_parts.append(
+                self._wrap_html_section(
+                    "Grouped Pivot",
+                    pivot_body,
+                    "pivot-section",
+                    subtitle="Binned distribution and risk comparison across groups.",
+                    open_by_default=False,
+                )
+            )
             nav_items.append(("pivot-section", "Grouped Pivot"))
 
         if include_charts:
@@ -3800,7 +2931,10 @@ __RUNTIME_SCRIPT__
                 html_parts.append(chart_html)
                 nav_items.append(("chart-section", "Charts"))
 
-        nav_html = "".join(f'<a href="#{html.escape(section_id)}">{html.escape(label)}</a>' for section_id, label in nav_items)
+        nav_html = "".join(
+            f'<a href="#{html.escape(section_id)}">{html.escape(label)}</a>'
+            for section_id, label in nav_items
+        )
         source_options = "".join(
             f'<label class="mars-source-option"><input type="checkbox" class="mars-source-checkbox" '
             f'value="{html.escape(source)}" checked onchange="marsHandleDataSourceToggle()" />'
@@ -3808,561 +2942,6 @@ __RUNTIME_SCRIPT__
             for source in all_sources
         )
 
-        """Legacy inline template retained temporarily during report.py cleanup.
-        <!DOCTYPE html>
-        <html lang="zh">
-        <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>{html.escape(safe_report_name)}</title>
-            <style>
-                :root {{ --bg:#f5f7fb; --panel:#fff; --panel-soft:#f9fbfd; --ink:#203040; --muted:#607080; --line:#d9e3eb; --line-soft:#ebf1f6; --accent:#3b87ad; --danger:#c44f4f; --shadow:0 16px 36px rgba(51,82,108,.08); }}
-                body {{ margin:0; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:radial-gradient(circle at top right,#edf6fb 0%,#f5f7fb 40%,#f8fbfd 100%); color:var(--ink); }}
-                .mars-page {{ max-width:1640px; margin:0 auto; padding:22px; }}
-                .mars-hero,.mars-section {{ background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow); }}
-                .mars-hero {{ padding:22px 24px; margin-bottom:16px; position:relative; overflow:hidden; }}
-                .mars-hero::after {{ content:""; position:absolute; inset:auto -80px -90px auto; width:240px; height:240px; background:radial-gradient(circle, rgba(59,135,173,.14) 0%, rgba(59,135,173,0) 72%); pointer-events:none; }}
-                .mars-hero h1 {{ margin:0 0 8px 0; font-size:30px; }}
-                .mars-hero p,.mars-footnote,.mars-section-subtitle,.mars-search-error,.mars-view-label,.mars-pivot-source-title {{ color:var(--muted); position:relative; z-index:1; }}
-                .mars-meta,.mars-nav,.mars-inline-controls {{ display:flex; flex-wrap:wrap; gap:10px; }}
-                .mars-meta {{ margin-top:12px; position:relative; z-index:1; }}
-                .mars-pill,.mars-nav a {{ border:1px solid var(--line); background:#f7fbff; border-radius:999px; padding:6px 12px; font-size:13px; color:#36546d; text-decoration:none; }}
-                .mars-global-tools {{ margin-top:16px; display:grid; grid-template-columns:minmax(280px,420px) auto minmax(240px,340px) minmax(280px,1fr) auto; gap:10px; align-items:start; position:relative; z-index:1; }}
-                .mars-filter-input,.mars-select-group select,.mars-clear-button,.mars-mini-button {{ border:1px solid var(--line); border-radius:12px; background:#fff; font-size:14px; }}
-                .mars-filter-input {{ padding:10px 12px; width:100%; box-sizing:border-box; }}
-                .mars-search-cluster {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }}
-                .mars-select-group {{ display:inline-flex; gap:8px; align-items:center; font-size:13px; }}
-                .mars-select-group select {{ padding:8px 10px; }}
-                .mars-source-panel {{ border:1px solid var(--line); border-radius:14px; background:#fff; padding:10px 12px; min-width:280px; }}
-                .mars-source-header,.mars-source-options {{ display:flex; flex-wrap:wrap; gap:8px; }}
-                .mars-source-header {{ align-items:center; justify-content:space-between; margin-bottom:10px; }}
-                .mars-source-header strong {{ font-size:13px; color:#355b74; }}
-                .mars-source-link {{ border:0; background:transparent; color:var(--accent); cursor:pointer; font-size:12px; padding:0; }}
-                .mars-source-option {{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line-soft); border-radius:999px; padding:5px 10px; background:#f9fbfe; font-size:13px; }}
-                .mars-clear-button,.mars-mini-button {{ padding:9px 12px; cursor:pointer; }}
-                .mars-toggle {{ display:inline-flex; align-items:center; gap:8px; font-size:13px; }}
-                .mars-nav {{ margin:14px 0 18px 0; }}
-                .mars-overview-grid {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; }}
-                .mars-kpi-card {{ border:1px solid var(--line-soft); border-radius:14px; background:linear-gradient(180deg,#fbfdff 0%,#f7fbff 100%); padding:14px; }}
-                .mars-kpi-label {{ font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }}
-                .mars-kpi-value {{ font-size:16px; font-weight:700; color:#244258; line-height:1.35; word-break:break-word; }}
-                .mars-legend {{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }}
-                .mars-legend-chip {{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line-soft); border-radius:999px; padding:6px 10px; background:#fff; font-size:12px; color:#436179; }}
-                .mars-section {{ margin-bottom:16px; overflow:hidden; }}
-                .mars-section>summary,.mars-metric-block>summary {{ cursor:pointer; list-style:none; font-weight:700; }}
-                .mars-section>summary {{ padding:16px 18px; background:#f7fbff; border-bottom:1px solid var(--line-soft); }}
-                .mars-section>summary::-webkit-details-marker,.mars-metric-block>summary::-webkit-details-marker {{ display:none; }}
-                .mars-section-body {{ padding:14px 18px 18px 18px; }}
-                .mars-section-subtitle {{ padding:12px 18px 0 18px; font-size:13px; }}
-                .mars-metric-block {{ border:1px solid var(--line-soft); border-radius:14px; background:var(--panel-soft); margin-bottom:12px; padding:12px; }}
-                .mars-metric-block>summary {{ margin-bottom:10px; color:#355b74; }}
-                .mars-table-toolbar {{ display:grid; grid-template-columns:minmax(240px,360px); gap:6px; margin-bottom:10px; }}
-                .mars-chart-controls {{ display:grid; grid-template-columns:minmax(240px,360px) auto; gap:10px; align-items:start; }}
-                .mars-chart-search {{ min-width:240px; }}
-                .mars-summary-filter {{ border:1px solid var(--line-soft); border-radius:14px; background:#fbfdff; padding:12px; margin-bottom:10px; }}
-                .mars-summary-filter-label {{ display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#355b74; }}
-                .mars-table-scroll {{ overflow:auto; border:1px solid var(--line-soft); border-radius:14px; background:#fff; }}
-                .mars-data-table {{ width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }}
-                .mars-th,.mars-td {{ border-bottom:1px solid var(--line-soft); padding:8px 10px; white-space:nowrap; text-align:left; vertical-align:top; }}
-                .mars-th {{ position:sticky; top:0; background:#eef6fb; z-index:1; }}
-                .mars-feature-col {{ min-width:var(--mars-feature-col-width, 220px); width:var(--mars-feature-col-width, 220px); max-width:var(--mars-feature-col-width, 220px); box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; background-clip:padding-box; }}
-                .mars-secondary-col {{ min-width:var(--mars-secondary-col-width, 110px); width:var(--mars-secondary-col-width, 110px); max-width:var(--mars-secondary-col-width, 110px); box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; background-clip:padding-box; }}
-                .mars-bin-col {{ min-width:var(--mars-bin-col-width, 140px); width:var(--mars-bin-col-width, 140px); max-width:var(--mars-bin-col-width, 140px); box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; background-clip:padding-box; }}
-                .mars-data-table .mars-td.mars-feature-col, .mars-data-table .mars-td.mars-secondary-col, .mars-pivot-table .mars-td.mars-bin-col {{ background:#fff; }}
-                .mars-data-table .mars-th.mars-feature-col, .mars-data-table .mars-th.mars-secondary-col, .mars-pivot-table .mars-th.mars-bin-col {{ background:#eef6fb; }}
-                .mars-data-table .mars-th.mars-feature-col, .mars-data-table .mars-td.mars-feature-col {{ position:sticky; left:0; z-index:3; box-shadow:2px 0 0 rgba(217,227,235,.85); }}
-                .mars-data-table .mars-th.mars-secondary-col, .mars-data-table .mars-td.mars-secondary-col {{ position:sticky; left:var(--mars-feature-col-width, 220px); z-index:2; box-shadow:2px 0 0 rgba(217,227,235,.72); }}
-                .mars-pivot-table .mars-th-sticky-left-2, .mars-pivot-table .mars-bin-col {{ position:sticky; left:var(--mars-feature-col-width, 220px); box-shadow:2px 0 0 rgba(217,227,235,.85); background-clip:padding-box; }}
-                .mars-th.is-numeric,.mars-td.is-numeric {{ text-align:right; }}
-                .mars-sort-button {{ width:100%; min-width:0; overflow:hidden; border:0; background:transparent; padding:0; margin:0; color:inherit; font:inherit; display:inline-flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; }}
-                .mars-sort-label {{ display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; }}
-                .mars-cell-text {{ display:block; overflow:hidden; text-overflow:ellipsis; }}
-                .mars-th.mars-feature-col, .mars-th.mars-bin-col {{ position:sticky; }}
-                .mars-th.mars-feature-col {{ padding-right:18px; }}
-                .mars-resize-handle {{ position:absolute; top:0; right:0; width:10px; height:100%; cursor:col-resize; user-select:none; touch-action:none; }}
-                .mars-resize-handle::after {{ content:""; position:absolute; top:20%; bottom:20%; left:4px; width:2px; border-radius:2px; background:rgba(53,91,116,.22); }}
-                .mars-feature-jump {{ min-width:240px; }}
-                .mars-pivot-table .mars-th, .mars-pivot-table .mars-td {{ position:relative; background-clip:padding-box; }}
-                .mars-pivot-table .mars-th.mars-feature-col {{ z-index:5; }}
-                .mars-pivot-table .mars-td.mars-feature-col {{ z-index:4; }}
-                .mars-pivot-table .mars-th.mars-bin-col {{ z-index:4; padding-right:18px; }}
-                .mars-pivot-table .mars-td.mars-bin-col {{ z-index:3; }}
-                .mars-pivot-table .mars-td.mars-feature-col, .mars-pivot-table .mars-td.mars-bin-col {{ background:#fff; }}
-                .mars-jump-highlight {{ animation:mars-jump-pulse 1.2s ease-out 1; }}
-                .mars-jump-highlight-cell {{ animation:mars-jump-pulse 1.2s ease-out 1; }}
-                @keyframes mars-jump-pulse {{ 0% {{ box-shadow:0 0 0 0 rgba(59,135,173,.35); background-color:rgba(208,234,246,.68); }} 100% {{ box-shadow:0 0 0 14px rgba(59,135,173,0); background-color:inherit; }} }}
-                .mars-sort-indicator::before {{ content:"↕"; color:#8aa1b3; font-size:11px; }}
-                th[data-sort-dir="asc"] .mars-sort-indicator::before {{ content:"↑"; color:var(--accent); }}
-                th[data-sort-dir="desc"] .mars-sort-indicator::before {{ content:"↓"; color:var(--accent); }}
-                .mars-empty {{ border:1px dashed var(--line); border-radius:14px; padding:16px; background:#fbfdff; font-size:13px; }}
-                .mars-sort-indicator::before {{ content:"\\2195"; color:#8aa1b3; font-size:11px; }}
-                th[data-sort-dir="asc"] .mars-sort-indicator::before {{ content:"\\2191"; color:var(--accent); }}
-                th[data-sort-dir="desc"] .mars-sort-indicator::before {{ content:"\\2193"; color:var(--accent); }}
-                .mars-chart-card {{ border:1px solid var(--line-soft); border-radius:14px; background:#fff; padding:12px; margin-bottom:12px; box-shadow:0 8px 20px rgba(51,82,108,.05); }}
-                .mars-pivot-source-title-cell {{ background:#edf6fb; color:#355b74; font-weight:700; letter-spacing:.02em; }}
-                .mars-pivot-feature {{ font-weight:600; color:#2f495e; }}
-                .mars-pivot-feature-blank .mars-cell-text {{ visibility:hidden; }}
-                .mars-pivot-spacer-row td {{ border-bottom:0; padding:5px 0; background:linear-gradient(180deg,transparent 0%,rgba(233,239,245,.65) 100%); }}
-                .mars-chart-card h4 {{ margin:0 0 10px 0; font-size:16px; }}
-                .mars-footnote {{ font-size:12px; margin-top:12px; }}
-            </style>
-        </head>
-        <body>
-            <div class="mars-page">
-                <div class="mars-hero">
-                    <h1>{html.escape(safe_report_name)}</h1>
-                    <p>Interactive monitoring report with source-aware tables, Excel-like color scales, grouped pivot views, and shared trend charts.</p>
-                <div class="mars-meta">
-                    <div class="mars-pill">Features: {n_features}</div>
-                    <div class="mars-pill">Trend Metrics: {len(trend_pd_map)}</div>
-                    <div class="mars-pill">Group By: {html.escape(str(group_label))}</div>
-                </div>
-                <div class="mars-global-tools">
-                    <div class="mars-search-cluster">
-                        <input id="mars-global-search" class="mars-filter-input" type="search" placeholder="Global search across tables and charts..." oninput="marsSetGlobalQuery(this.value)" />
-                        <button type="button" class="mars-clear-button" onclick="marsClearGlobalSearch()">Clear Search</button>
-                    </div>
-                    <label class="mars-toggle"><input id="mars-regex-mode" type="checkbox" onchange="marsSetRegexMode(this.checked)" /> Regex Mode</label>
-                    {feature_jump_html}
-                    <div class="mars-source-panel">
-                        <div class="mars-source-header">
-                            <strong>Data Source</strong>
-                            <div>
-                                <button type="button" class="mars-source-link" onclick="marsSelectAllSources()">All</button>
-                                    <button type="button" class="mars-source-link" onclick="marsClearSources()">Clear</button>
-                                </div>
-                        </div>
-                        <div id="mars-data-source-group" class="mars-source-options">{source_options}</div>
-                    </div>
-                    <button type="button" class="mars-clear-button" onclick="marsExportFeatures()">Export Feature List</button>
-                </div>
-                    <div id="mars-global-error" class="mars-search-error"></div>
-                </div>
-                <div class="mars-nav">{nav_html}</div>
-                {"".join(html_parts)}
-                <div class="mars-footnote">HTML export is self-contained. detail_table remains available in Python and Excel workflows.</div>
-            </div>
-            <script>
-                const marsSummaryFilterColumns = new Set({json.dumps(summary_filter_columns, ensure_ascii=False)});
-                const marsState = {{
-                    globalQuery:"",
-                    regexMode:false,
-                    localQueries:{{}},
-                    activeTableId:null,
-                    selectedSources:[],
-                    appliedSummaryExpression:"",
-                    summaryAllowedFeatures:null,
-                    refreshScheduled:false,
-                    refreshFrameId:null,
-                    postPaintFrameId:null,
-                    refreshTimerId:null,
-                    resizeState:null,
-                    resizeFrameScheduled:false
-                }};
-                function marsBuildMatcher(query) {{ const q=(query||"").trim(); if(!q) return {{ok:true,match:()=>true}}; if(marsState.regexMode) {{ try {{ const regex=new RegExp(q,"i"); return {{ok:true,match:(text)=>regex.test(text||"")}}; }} catch(err) {{ return {{ok:false,error:err.message}}; }} }} const terms=q.toLowerCase().split(/\\s+/).filter(Boolean); return {{ok:true,match:(text)=>terms.every((term)=>(text||"").toLowerCase().includes(term))}}; }}
-                function marsSetError(id, message) {{ const node=document.getElementById(id); if(node) node.textContent=message||""; }}
-                function marsNormalizeFeatureValue(value) {{ return (value||"").trim().toLowerCase(); }}
-                function marsSetActiveScope(scopeId) {{ marsState.activeTableId=scopeId||null; }}
-                function marsSetActiveTable(tableId) {{ marsSetActiveScope(tableId); }}
-                function marsQueueRefresh(delayMs=0) {{
-                    if(marsState.refreshFrameId) window.cancelAnimationFrame(marsState.refreshFrameId);
-                    if(marsState.postPaintFrameId) window.cancelAnimationFrame(marsState.postPaintFrameId);
-                    if(marsState.refreshTimerId) window.clearTimeout(marsState.refreshTimerId);
-                    marsState.refreshScheduled = true;
-                    marsState.refreshFrameId = window.requestAnimationFrame(() => {{
-                        marsState.refreshFrameId = null;
-                        marsState.postPaintFrameId = window.requestAnimationFrame(() => {{
-                            marsState.postPaintFrameId = null;
-                            marsState.refreshTimerId = window.setTimeout(() => {{
-                                marsState.refreshTimerId = null;
-                                marsState.refreshScheduled = false;
-                                marsRefreshFilters();
-                            }}, Math.max(0, Number(delayMs) || 0));
-                        }});
-                    }});
-                }}
-                function marsQueueTextRefresh() {{ marsQueueRefresh(80); }}
-                function marsSetGlobalQuery(value) {{ marsState.globalQuery=value||""; marsQueueTextRefresh(); }}
-                function marsSetLocalQuery(scopeId, value) {{ marsState.localQueries[scopeId]=value||""; marsState.activeTableId=scopeId; marsQueueTextRefresh(); }}
-                function marsSetRegexMode(enabled) {{ marsState.regexMode=!!enabled; marsQueueRefresh(); }}
-                function marsSetDataSources() {{ const boxes=Array.from(document.querySelectorAll(".mars-source-checkbox")); marsState.selectedSources=boxes.filter((box)=>box.checked).map((box)=>box.value); marsQueueRefresh(); }}
-                function marsHandleDataSourceToggle() {{ marsSetDataSources(); }}
-                function marsHandlePivotTargetChange() {{ marsQueueRefresh(); }}
-                function marsHandleChartTargetChange() {{ marsQueueRefresh(); }}
-                function marsSelectAllSources() {{ document.querySelectorAll(".mars-source-checkbox").forEach((box)=>{{ box.checked=true; }}); marsSetDataSources(); }}
-                function marsClearSources() {{ document.querySelectorAll(".mars-source-checkbox").forEach((box)=>{{ box.checked=false; }}); marsSetDataSources(); }}
-                function marsClearGlobalSearch() {{ const input=document.getElementById("mars-global-search"); if(input) input.value=""; marsState.globalQuery=""; marsQueueTextRefresh(); }}
-                function marsTokenizeSummaryExpression(expr) {{
-                    const text=(expr||"").trim();
-                    if(!text) return {{ok:true,tokens:[]}};
-                    const tokenPattern=/\\s*(>=|<=|==|!=|>|<|\\&|\\||\\(|\\)|-?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?|[A-Za-z_][A-Za-z0-9_]*)\\s*/gy;
-                    const tokens=[];
-                    let match;
-                    while((match=tokenPattern.exec(text))!==null) {{
-                        tokens.push(match[1]);
-                    }}
-                    if(tokenPattern.lastIndex!==text.length) {{
-                        return {{ok:false,error:"Invalid expression syntax."}};
-                    }}
-                    return {{ok:true,tokens}};
-                }}
-                function marsParseSummaryExpression(expr) {{
-                    const tokenResult=marsTokenizeSummaryExpression(expr);
-                    if(!tokenResult.ok) return tokenResult;
-                    const tokens=tokenResult.tokens;
-                    if(!tokens.length) return {{ok:true,ast:null}};
-                    let idx=0;
-                    function peek() {{ return tokens[idx]; }}
-                    function consume(expected) {{
-                        const token=tokens[idx];
-                        if(expected && token!==expected) throw new Error(`Expected '${{expected}}'`);
-                        idx+=1;
-                        return token;
-                    }}
-                    function parsePrimary() {{
-                        const token=peek();
-                        if(token===undefined) throw new Error("Unexpected end of expression.");
-                        if(token==="(") {{ consume("("); const node=parseOr(); if(peek()!==")") throw new Error("Missing closing parenthesis."); consume(")"); return node; }}
-                        if(/^-?(?:\\d+\\.\\d*|\\d*\\.\\d+|\\d+)(?:[eE][+-]?\\d+)?$/.test(token)) {{ consume(); return {{type:"number", value:Number(token)}}; }}
-                        if(/^[A-Za-z_][A-Za-z0-9_]*$/.test(token)) {{
-                            if(!marsSummaryFilterColumns.has(token)) throw new Error(`Unknown metric: ${{token}}`);
-                            consume();
-                            return {{type:"identifier", value:token}};
-                        }}
-                        throw new Error(`Unexpected token: ${{token}}`);
-                    }}
-                    function parseComparison() {{
-                        const left=parsePrimary();
-                        const token=peek();
-                        if(["<", "<=", ">", ">=", "==", "!="].includes(token)) {{
-                            consume();
-                            const right=parsePrimary();
-                            return {{type:"compare", op:token, left, right}};
-                        }}
-                        if(left.type!=="identifier") throw new Error("Standalone values must be metric names.");
-                        return left;
-                    }}
-                    function parseAnd() {{
-                        let node=parseComparison();
-                        while(peek()==="&") {{ consume("&"); node={{type:"and", left:node, right:parseComparison()}}; }}
-                        return node;
-                    }}
-                    function parseOr() {{
-                        let node=parseAnd();
-                        while(peek()==="|") {{ consume("|"); node={{type:"or", left:node, right:parseAnd()}}; }}
-                        return node;
-                    }}
-                    try {{
-                        const ast=parseOr();
-                        if(idx!==tokens.length) throw new Error(`Unexpected token: ${{peek()}}`);
-                        return {{ok:true,ast}};
-                    }} catch(err) {{
-                        return {{ok:false,error:err.message}};
-                    }}
-                }}
-                function marsEvaluateSummaryNode(node, metrics) {{
-                    if(!node) return true;
-                    if(node.type==="number") return node.value;
-                    if(node.type==="identifier") return Number(metrics?.[node.value]);
-                    if(node.type==="compare") {{
-                        const left=Number(marsEvaluateSummaryNode(node.left, metrics));
-                        const right=Number(marsEvaluateSummaryNode(node.right, metrics));
-                        if(!Number.isFinite(left) || !Number.isFinite(right)) return false;
-                        return node.op===">" ? left>right : node.op===">=" ? left>=right : node.op==="<" ? left<right : node.op==="<=" ? left<=right : node.op==="==" ? left===right : left!==right;
-                    }}
-                    if(node.type==="and") return Boolean(marsEvaluateSummaryNode(node.left, metrics)) && Boolean(marsEvaluateSummaryNode(node.right, metrics));
-                    if(node.type==="or") return Boolean(marsEvaluateSummaryNode(node.left, metrics)) || Boolean(marsEvaluateSummaryNode(node.right, metrics));
-                    return false;
-                }}
-                function marsSetSummaryExpression(value) {{
-                    const expr=(value||"").trim();
-                    if(!expr) {{
-                        marsState.appliedSummaryExpression="";
-                        marsSetError("mars-summary-expression-error", "");
-                        marsQueueTextRefresh();
-                        return;
-                    }}
-                    const parsed=marsParseSummaryExpression(expr);
-                    if(!parsed.ok) {{
-                        marsSetError("mars-summary-expression-error", parsed.error || "Invalid expression.");
-                        marsQueueTextRefresh();
-                        return;
-                    }}
-                    marsState.appliedSummaryExpression=expr;
-                    marsSetError("mars-summary-expression-error", "");
-                    marsQueueTextRefresh();
-                }}
-                function marsUpdateTableSpecialRows(table) {{ const rows=Array.from(table.querySelectorAll("tbody tr")); const visibleBySource=new Set(); const visibleByFeatureSource=new Set(); rows.forEach((row)=>{{ const role=row.dataset.role||"data"; if(role==="data"&&row.style.display!=="none") {{ const source=row.dataset.dataSource||""; const feature=row.dataset.feature||""; visibleBySource.add(source); visibleByFeatureSource.add(`${{source}}||${{feature}}`); }} }}); rows.forEach((row)=>{{ const role=row.dataset.role||"data"; if(role==="source") {{ row.style.display=visibleBySource.has(row.dataset.dataSource||"")?"":"none"; }} else if(role==="spacer") {{ const key=`${{row.dataset.dataSource||""}}||${{row.dataset.feature||""}}`; row.style.display=visibleByFeatureSource.has(key)?"":"none"; }} }}); }}
-                function marsSourceSelected(source) {{ if(source==="__aggregate__") return true; const hasBoxes=document.querySelectorAll(".mars-source-checkbox").length>0; if(!hasBoxes) return true; return marsState.selectedSources.includes(source||"UNMAPPED"); }}
-                function marsReadRowMetrics(row) {{ let metrics={{}}; try {{ metrics=JSON.parse(row.dataset.metrics||"{{}}"); }} catch(err) {{ metrics={{}}; }} return metrics; }}
-                function marsSummaryRowAllowedWithoutLocal(row, globalMatcher=null, summaryParsed=null) {{
-                    if(!row) return false;
-                    const matcher=globalMatcher||marsBuildMatcher(marsState.globalQuery);
-                    if(!matcher.ok) return false;
-                    const parsed=summaryParsed||marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(!parsed.ok) return false;
-                    const source=row.dataset.dataSource||"UNMAPPED";
-                    const text=row.dataset.searchText||row.textContent||"";
-                    return marsSourceSelected(source) && matcher.match(text) && marsEvaluateSummaryNode(parsed.ast, marsReadRowMetrics(row));
-                }}
-                function marsGetSummaryFeatureAllowSet() {{
-                    const table=document.getElementById("mars-summary-table");
-                    if(!table) return null;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    if(!globalMatcher.ok) return null;
-                    const parsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(!parsed.ok) return marsState.summaryAllowedFeatures;
-                    const features=new Set();
-                    table.querySelectorAll("tbody tr[data-feature]").forEach((row)=>{{
-                        const feature=row.dataset.feature||"";
-                        if(feature && marsSummaryRowAllowedWithoutLocal(row, globalMatcher, parsed)) features.add(feature);
-                    }});
-                    return features;
-                }}
-                function marsFeatureAllowed(feature) {{ if(!(marsState.summaryAllowedFeatures instanceof Set)) return true; return marsState.summaryAllowedFeatures.has(feature||""); }}
-                function marsApplyTableFilter(tableId) {{
-                    const table=document.getElementById(tableId);
-                    if(!table) return;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    if(!globalMatcher.ok) {{ marsSetError("mars-global-error", `Invalid regex: ${{globalMatcher.error}}`); return; }}
-                    marsSetError("mars-global-error", "");
-                    const localMatcher=marsBuildMatcher(marsState.localQueries[tableId]||"");
-                    if(!localMatcher.ok) {{ marsSetError(`${{tableId}}-error`, `Invalid regex: ${{localMatcher.error}}`); return; }}
-                    marsSetError(`${{tableId}}-error`, "");
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    const isSummary=table.dataset.tableKind==="summary";
-                    table.querySelectorAll("tbody tr").forEach((row)=>{{
-                        const role=row.dataset.role||"data";
-                        if(role!=="data") {{ row.style.display="none"; return; }}
-                        const source=row.dataset.dataSource||"UNMAPPED";
-                        const feature=row.dataset.feature||"";
-                        const text=row.dataset.searchText||row.textContent||"";
-                        const globalVisible=marsSourceSelected(source)&&globalMatcher.match(text);
-                        if(!globalVisible) {{ row.style.display="none"; return; }}
-                        const summaryVisible=isSummary
-                            ? (summaryParsed.ok ? marsSummaryRowAllowedWithoutLocal(row, globalMatcher, summaryParsed) : true)
-                            : marsFeatureAllowed(feature);
-                        const visible=summaryVisible&&localMatcher.match(text);
-                        row.style.display=visible?"":"none";
-                    }});
-                    marsUpdateTableSpecialRows(table);
-                }}
-                function marsSortTable(tableId, trigger) {{ const table=document.getElementById(tableId); if(!table) return; const th=trigger.closest("th"); const colIndex=Number(th.dataset.colIndex||Array.from(th.parentNode.children).indexOf(th)); if(colIndex<0) return; const tbody=table.querySelector("tbody"); const rows=Array.from(tbody.querySelectorAll("tr")).filter((row)=>(row.dataset.role||"data")==="data"); let nextDir="asc"; if(table.dataset.sortCol===String(colIndex)) nextDir=table.dataset.sortDir==="asc"?"desc":"asc"; const sortType=th.dataset.sortType||"text"; rows.sort((a,b)=>{{ const va=a.children[colIndex]?.dataset.sortValue||""; const vb=b.children[colIndex]?.dataset.sortValue||""; if(sortType==="number") {{ const na=Number(va), nb=Number(vb); const sa=Number.isFinite(na)?na:(nextDir==="asc"?Infinity:-Infinity); const sb=Number.isFinite(nb)?nb:(nextDir==="asc"?Infinity:-Infinity); return nextDir==="asc"?sa-sb:sb-sa; }} return nextDir==="asc"?va.localeCompare(vb,undefined,{{numeric:true,sensitivity:"base"}}):vb.localeCompare(va,undefined,{{numeric:true,sensitivity:"base"}}); }}); rows.forEach((row)=>tbody.appendChild(row)); table.dataset.sortCol=String(colIndex); table.dataset.sortDir=nextDir; th.dataset.sortDir=nextDir; marsApplyTableFilter(tableId); }}
-                function marsUpdatePivotViews() {{ const targetValue=document.getElementById("mars-pivot-target")?.value||null; document.querySelectorAll(".mars-pivot-view").forEach((view)=>{{ const sameTarget=!targetValue||view.dataset.yValue===targetValue; view.style.display=sameTarget?"":"none"; }}); }}
-                function marsUpdateChartViews() {{
-                    const targetValue=document.getElementById("mars-chart-target")?.value||null;
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    const localMatcher=marsBuildMatcher(marsState.localQueries["mars-chart-cards"]||"");
-                    if(!globalMatcher.ok) {{ marsSetError("mars-global-error", `Invalid regex: ${{globalMatcher.error}}`); return; }}
-                    marsSetError("mars-global-error", "");
-                    if(!localMatcher.ok) {{ marsSetError("mars-chart-cards-error", `Invalid regex: ${{localMatcher.error}}`); return; }}
-                    marsSetError("mars-chart-cards-error", "");
-                    document.querySelectorAll(".mars-chart-view").forEach((view)=>{{
-                        const visibleTarget=!targetValue||view.dataset.yValue===targetValue;
-                        view.style.display=visibleTarget?"":"none";
-                        if(!visibleTarget) return;
-                        view.querySelectorAll(".mars-chart-card").forEach((card)=>{{
-                            const source=card.dataset.dataSource||"UNMAPPED";
-                            const feature=card.dataset.feature||"";
-                            const text=card.dataset.searchText||card.textContent||"";
-                            const globalVisible=marsSourceSelected(source)&&globalMatcher.match(text)&&marsFeatureAllowed(feature);
-                            const visible=globalVisible&&localMatcher.match(text);
-                            card.style.display=visible?"":"none";
-                        }});
-                    }});
-                }}
-                function marsBuildExportFeatureMap() {{
-                    const table=document.getElementById("mars-summary-table");
-                    if(!table) return {{}};
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    const featureMap=new Map();
-                    const sourceOrder=Array.from(document.querySelectorAll(".mars-source-checkbox")).map((box)=>box.value);
-                    table.querySelectorAll("tbody tr[data-feature]").forEach((row)=>{{
-                        const source=row.dataset.dataSource||"UNMAPPED";
-                        const feature=row.dataset.feature||"";
-                        if(!feature || !marsSourceSelected(source)) return;
-                        if(summaryParsed.ok && !marsEvaluateSummaryNode(summaryParsed.ast, marsReadRowMetrics(row))) return;
-                        if(!featureMap.has(source)) featureMap.set(source, new Set());
-                        featureMap.get(source).add(feature);
-                    }});
-                    const payload={{}};
-                    const assignedSources=new Set();
-                    sourceOrder.forEach((source)=>{{
-                        const values=featureMap.has(source) ? Array.from(featureMap.get(source)).sort((a,b)=>a.localeCompare(b, undefined, {{numeric:true, sensitivity:"base"}})) : [];
-                        if(values.length) {{
-                            payload[source]=values;
-                            assignedSources.add(source);
-                        }}
-                    }});
-                    featureMap.forEach((features, source)=>{{
-                        if(assignedSources.has(source)) return;
-                        const values=Array.from(features).sort((a,b)=>a.localeCompare(b, undefined, {{numeric:true, sensitivity:"base"}}));
-                        if(values.length) payload[source]=values;
-                    }});
-                    return payload;
-                }}
-                function marsDownloadTextFile(text, fileName) {{ const blob=new Blob([text], {{type:"text/plain;charset=utf-8"}}); const link=document.createElement("a"); link.href=URL.createObjectURL(blob); link.download=fileName; link.click(); URL.revokeObjectURL(link.href); }}
-                function marsExportFeatures() {{ const featureMap=marsBuildExportFeatureMap(); marsDownloadTextFile(JSON.stringify(featureMap, null, 2), "mars_features.txt"); }}
-                function marsColumnWidthProperty(columnKey) {{ return columnKey==="feature" ? "--mars-feature-col-width" : columnKey==="secondary" ? "--mars-secondary-col-width" : "--mars-bin-col-width"; }}
-                function marsColumnDefaultWidth(columnKey) {{ return columnKey==="feature" ? 220 : columnKey==="secondary" ? 110 : 140; }}
-                function marsColumnMinWidth(columnKey) {{ return columnKey==="feature" ? 140 : 90; }}
-                function marsApplyColumnWidth(table, columnKey, width) {{
-                    if(!table) return;
-                    const safeWidth=Math.max(marsColumnMinWidth(columnKey), Number(width)||marsColumnDefaultWidth(columnKey));
-                    table.style.setProperty(marsColumnWidthProperty(columnKey), `${{safeWidth}}px`);
-                }}
-                function marsSyncStickyLayout(table) {{
-                    if(!table) return;
-                    const featureHeader=table.querySelector("thead .mars-feature-col");
-                    if(featureHeader) {{
-                        const featureWidth=Math.max(140, Math.ceil(featureHeader.getBoundingClientRect().width || marsColumnDefaultWidth("feature")));
-                        marsApplyColumnWidth(table, "feature", featureWidth);
-                    }}
-                    const secondaryHeader=table.querySelector("thead .mars-secondary-col");
-                    if(secondaryHeader) {{
-                        const secondaryWidth=Math.max(90, Math.ceil(secondaryHeader.getBoundingClientRect().width || marsColumnDefaultWidth("secondary")));
-                        marsApplyColumnWidth(table, "secondary", secondaryWidth);
-                    }}
-                    const binHeader=table.querySelector("thead .mars-bin-col");
-                    if(binHeader) {{
-                        const binWidth=Math.max(90, Math.ceil(binHeader.getBoundingClientRect().width || marsColumnDefaultWidth("bin")));
-                        marsApplyColumnWidth(table, "bin", binWidth);
-                    }}
-                }}
-                function marsOpenAncestorSections(node) {{
-                    let parent=node?.closest("details");
-                    while(parent) {{
-                        parent.open=true;
-                        parent=parent.parentElement?.closest("details");
-                    }}
-                }}
-                function marsFindSummaryFeatureNode(feature, visibleOnly=false) {{
-                    const target=marsNormalizeFeatureValue(feature);
-                    const nodes=Array.from(document.querySelectorAll("#mars-summary-table tbody tr[data-feature]"));
-                    const candidateNodes=visibleOnly ? nodes.filter((node)=>node.style.display!=="none" && node.offsetParent!==null) : nodes;
-                    for(const node of candidateNodes) {{
-                        if(marsNormalizeFeatureValue(node.dataset.feature)===target) return node;
-                    }}
-                    for(const node of candidateNodes) {{
-                        if(marsNormalizeFeatureValue(node.dataset.feature).includes(target)) return node;
-                    }}
-                    return null;
-                }}
-                function marsClearSummaryLocalQuery() {{
-                    marsState.localQueries["mars-summary-table"]="";
-                    const input=document.getElementById("mars-summary-table-query");
-                    if(input) input.value="";
-                }}
-                function marsFocusSummaryFeature(node) {{
-                    if(!node) return;
-                    const featureCell=node.querySelector(".mars-feature-col");
-                    const scrollBox=node.closest(".mars-table-scroll");
-                    marsOpenAncestorSections(node);
-                    window.requestAnimationFrame(() => {{
-                        node.scrollIntoView({{behavior:"smooth", block:"center", inline:"nearest"}});
-                        if(featureCell) featureCell.scrollIntoView({{behavior:"smooth", block:"nearest", inline:"start"}});
-                        if(scrollBox) scrollBox.scrollTo({{left:0, behavior:"smooth"}});
-                        node.classList.remove("mars-jump-highlight");
-                        if(featureCell) featureCell.classList.remove("mars-jump-highlight-cell");
-                        window.setTimeout(() => {{
-                            node.classList.add("mars-jump-highlight");
-                            if(featureCell) featureCell.classList.add("mars-jump-highlight-cell");
-                        }}, 10);
-                        window.setTimeout(() => {{
-                            node.classList.remove("mars-jump-highlight");
-                            if(featureCell) featureCell.classList.remove("mars-jump-highlight-cell");
-                        }}, 1500);
-                    }});
-                }}
-                function marsJumpToFeature() {{
-                    const input=document.getElementById("mars-feature-jump-input");
-                    const value=(input?.value||"").trim();
-                    if(!value) {{
-                        marsSetError("mars-feature-jump-error", "Enter a feature name to jump.");
-                        return;
-                    }}
-                    let node=marsFindSummaryFeatureNode(value, true);
-                    if(node) {{
-                        marsSetError("mars-feature-jump-error", "");
-                        marsFocusSummaryFeature(node);
-                        return;
-                    }}
-                    node=marsFindSummaryFeatureNode(value, false);
-                    if(!node) {{
-                        marsSetError("mars-feature-jump-error", `Feature "${{value}}" is not shown in Summary.`);
-                        return;
-                    }}
-                    const globalMatcher=marsBuildMatcher(marsState.globalQuery);
-                    const summaryParsed=marsParseSummaryExpression(marsState.appliedSummaryExpression);
-                    if(marsSummaryRowAllowedWithoutLocal(node, globalMatcher, summaryParsed)) {{
-                        marsClearSummaryLocalQuery();
-                        marsQueueRefresh();
-                        window.requestAnimationFrame(() => {{
-                            window.requestAnimationFrame(() => {{
-                                const refreshedNode=marsFindSummaryFeatureNode(value, true) || marsFindSummaryFeatureNode(value, false);
-                                marsSetError("mars-feature-jump-error", "");
-                                marsFocusSummaryFeature(refreshedNode);
-                            }});
-                        }});
-                        return;
-                    }}
-                    marsSetError("mars-feature-jump-error", `Feature "${{value}}" is hidden by data source, global search, or summary filter.`);
-                }}
-                function marsStartColumnResize(event, tableId, columnKey) {{
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const table=document.getElementById(tableId);
-                    if(!table) return;
-                    const property=marsColumnWidthProperty(columnKey);
-                    const computed=getComputedStyle(table);
-                    const startWidth=parseFloat(computed.getPropertyValue(property)) || marsColumnDefaultWidth(columnKey);
-                    marsState.resizeState={{ tableId, columnKey, property, startX:event.clientX, startWidth, pendingWidth:startWidth }};
-                    document.body.style.cursor="col-resize";
-                    document.body.style.userSelect="none";
-                }}
-                function marsHandleColumnResize(event) {{
-                    if(!marsState.resizeState) return;
-                    const {{tableId, startX, startWidth, columnKey}} = marsState.resizeState;
-                    const table=document.getElementById(tableId);
-                    if(!table) return;
-                    const minWidth=marsColumnMinWidth(columnKey);
-                    const nextWidth=Math.max(minWidth, startWidth + (event.clientX - startX));
-                    marsState.resizeState.pendingWidth=nextWidth;
-                    if(marsState.resizeFrameScheduled) return;
-                    marsState.resizeFrameScheduled=true;
-                    window.requestAnimationFrame(() => {{
-                        marsState.resizeFrameScheduled=false;
-                        if(!marsState.resizeState) return;
-                        const activeTable=document.getElementById(marsState.resizeState.tableId);
-                        marsApplyColumnWidth(activeTable, marsState.resizeState.columnKey, marsState.resizeState.pendingWidth);
-                    }});
-                }}
-                function marsStopColumnResize() {{
-                    if(!marsState.resizeState) return;
-                    const table=document.getElementById(marsState.resizeState.tableId);
-                    if(table) marsSyncStickyLayout(table);
-                    marsState.resizeState=null;
-                    document.body.style.cursor="";
-                    document.body.style.userSelect="";
-                }}
-                function marsRefreshFilters() {{
-                    const summaryFeatures=marsGetSummaryFeatureAllowSet();
-                    marsState.summaryAllowedFeatures=summaryFeatures instanceof Set ? summaryFeatures : null;
-                    marsUpdatePivotViews();
-                    marsUpdateChartViews();
-                    document.querySelectorAll("table.mars-data-table[id]").forEach((table)=>marsApplyTableFilter(table.id));
-                }}
-                window.addEventListener("mousemove", marsHandleColumnResize);
-                window.addEventListener("mouseup", marsStopColumnResize);
-                window.addEventListener("DOMContentLoaded", () => {{
-                    document.querySelectorAll("table.mars-data-table[id]").forEach((table)=>marsSyncStickyLayout(table));
-                    marsSetDataSources();
-                    marsQueueRefresh();
-                }});
-            </script>
-        </body>
-        </html>
-        """
 
         sections_html = "".join(html_parts)
         global_tools_html = self._build_global_tools_html(
@@ -4404,8 +2983,8 @@ __RUNTIME_SCRIPT__
 
         logger.info("Exported evaluation report to HTML: %s", path)
 
-    def show_summary(self, 
-                     features: Optional[Union[str, List[str]]] = None
+    def show_summary(self,
+                     features: Union[str, List[str]] | None = None
                      ) -> "pd.io.formats.style.Styler":
         """
         展示特征汇总评分表。
@@ -4421,13 +3000,13 @@ __RUNTIME_SCRIPT__
             样式化后的特征汇总表。
         """
         df: pd.DataFrame = _as_pandas_frame(self.summary_table).copy()
-        
+
         # 特征筛选逻辑
         if features is not None:
             if isinstance(features, str):
                 features = [features]
             df = df[df["feature"].isin(features)]
-        
+
         # 多目标模式下，将 target 列提前，便于快速按目标查看结果。
         for t_col in ["target", "target_col", "y"]:
             if t_col in df.columns:
@@ -4436,14 +3015,14 @@ __RUNTIME_SCRIPT__
                 break
 
         styler = df.style.set_caption("<b>Feature Performance Summary</b>").hide(axis="index")
-        
+
         # 异常熔断：如果筛选后为空，直接返回表框架，避免底图渲染报错
         if df.empty:
             return styler
-        
+
         if "psi_max" in df.columns:
             styler = styler.background_gradient(cmap="RdYlGn_r", subset=["psi_max"], vmin=0, vmax=0.25)
-            
+
         if "iv" in df.columns:
             styler = styler.background_gradient(cmap="RdYlGn", subset=["iv"], vmin=0.02, vmax=0.2)
         if "auc" in df.columns:
@@ -4453,18 +3032,18 @@ __RUNTIME_SCRIPT__
 
         if "rc_min" in df.columns:
             styler = styler.background_gradient(cmap="RdYlGn", subset=["rc_min"], vmin=0.5, vmax=1.0)
-            
+
         if "mono" in df.columns:
             # coolwarm 色带: -1 为深蓝(单调递减)，0 为灰白(无单调性)，1 为深红(单调递增)
             styler = styler.background_gradient(cmap="coolwarm", subset=["mono"], vmin=-1, vmax=1)
 
         return styler.format("{:.4f}", subset=df.select_dtypes("number").columns)
 
-    def show_trend(self, 
-                   metric: str, 
-                   features: Optional[Union[str, List[str]]] = None,
-                   group_ascending: bool = True, 
-                   sort_by: Union[str, List[str]] = "Total", 
+    def show_trend(self,
+                   metric: str,
+                   features: Union[str, List[str]] | None = None,
+                   group_ascending: bool = True,
+                   sort_by: Union[str, List[str]] = "Total",
                    sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
         """
         展示指定指标的时间趋势热力图。
@@ -4499,10 +3078,10 @@ __RUNTIME_SCRIPT__
         """
         if metric not in self.trend_tables:
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
-        
+
         # 转换为 Pandas 副本进行安全的样式处理
         df: pd.DataFrame = _as_pandas_frame(self.trend_tables[metric]).copy()
-        
+
         # 特征筛选逻辑
         if features is not None:
             if isinstance(features, str):
@@ -4512,19 +3091,21 @@ __RUNTIME_SCRIPT__
         # 行排序：紧跟 sort_by 和 sort_ascending 语义
         if sort_by in df.columns or (isinstance(sort_by, list) and all(c in df.columns for c in sort_by)):
             df = df.sort_values(by=sort_by, ascending=sort_ascending)
-        
+
         # 识别列类型并重排时间切片列
         meta_cols = ["feature", "dtype"]
         special_cols = ["Total"]
         time_cols = [c for c in df.columns if c not in meta_cols + special_cols]
-        
+
         # 列排序：受 group_ascending 控制
         time_cols_sorted = sorted(time_cols, reverse=not group_ascending)
 
         # 组装最终的列顺序：元数据 -> 时间切片 -> 汇总列
-        final_cols = [c for c in meta_cols if c in df.columns] + \
-                     time_cols_sorted + \
-                     [c for c in special_cols if c in df.columns]
+        final_cols = (
+            [c for c in meta_cols if c in df.columns]
+            + time_cols_sorted
+            + [c for c in special_cols if c in df.columns]
+        )
         df = df[final_cols]
 
         # 基础表格样式初始化
@@ -4581,11 +3162,11 @@ __RUNTIME_SCRIPT__
             raise ValueError(f"不支持的 engine: '{engine}'，请从 {valid_engines} 中选择。")
 
         # 智能定位模板路径
-        package_name = "mars.analysis" 
+        package_name = "mars.analysis"
         template_name_xlwings = "mars_bin_report_win_mac.xlsx"
         template_name_openpyxl = "mars_bin_report_linux.xlsx"
-        
-        def get_template_path(fname):
+
+        def get_template_path(fname: str) -> str:
             """解析 Excel 模板文件的物理路径。"""
             try:
                 import importlib.resources as resources
@@ -4623,7 +3204,10 @@ __RUNTIME_SCRIPT__
             except Exception as e:
                 if engine == "xlwings":
                     # 用户强制要求但失败，直接抛错
-                    raise RuntimeError(f"强制使用 xlwings 引擎失败，请确认系统已正确安装 Excel 及 xlwings 库。\n报错详情: {e}")
+                    raise RuntimeError(
+                        "强制使用 xlwings 引擎失败，请确认系统已正确安装 Excel 及 xlwings 库。"
+                        f"\n报错详情: {e}"
+                    ) from e
                 else:
                     # auto 模式下失败，降级处理
                     logger.warning("xlwings 启动失败，将降级使用 openpyxl 引擎: %s", e)
@@ -4650,18 +3234,18 @@ __RUNTIME_SCRIPT__
                 app = xw.App(visible=False, add_book=False)
                 app.display_alerts = False
                 app.screen_updating = False
-                
+
                 wb = app.books.open(template_path)
                 ws = wb.sheets[SHEET_NAME]
-                
+
                 # 防止 Excel 将长数字字符串转为科学计数法
                 if 'mars_group' in df_pd.columns:
                     df_pd['mars_group'] = "'" + df_pd['mars_group'].astype(str)
-                
+
                 # 写入数据
                 ws.range((START_WRITE_ROW, 1)).value = df_pd.values
                 final_row = START_WRITE_ROW + len(df_pd) - 1
-                
+
                 # 样式格式刷 (跨平台原生写法)
                 if final_row >= START_WRITE_ROW:
                     src_row = int(STYLE_SOURCE_ROW)
@@ -4671,21 +3255,21 @@ __RUNTIME_SCRIPT__
 
                     source_range = ws.range((src_row, 1), (src_row, max_col))
                     data_range = ws.range((start_row, 1), (end_row, max_col))
-                    
+
                     source_range.copy()
-                    data_range.paste(paste='formats') 
-                
+                    data_range.paste(paste='formats')
+
                 # 统一字体 (跨平台原生写法)
                 full_range = ws.range((1, 1), (final_row, total_cols))
                 full_range.font.name = FONT_NAME
                 full_range.font.size = FONT_SIZE
-                
+
                 # 更新超级表 ListObject (跨平台原生写法)
                 if len(ws.tables) > 0:
                     table = ws.tables[0]
                     new_ref_range = ws.range((1, 1), (final_row, total_cols))
                     table.resize(new_ref_range)
-                
+
                 # 清理旧数据 (跨平台原生写法)
                 last_used_row = ws.used_range.last_cell.row
                 if last_used_row > final_row:
@@ -4696,20 +3280,22 @@ __RUNTIME_SCRIPT__
 
             except Exception as e:
                 logger.exception("xlwings 导出过程出错。")
-                raise RuntimeError(f"xlwings 导出过程出错: {e}")
+                raise RuntimeError(f"xlwings 导出过程出错: {e}") from e
             finally:
-                if 'wb' in locals() and wb: wb.close()
-                if app: app.quit() 
+                if "wb" in locals() and wb:
+                    wb.close()
+                if app:
+                    app.quit()
 
         # ================= 路径 B: openpyxl 写入 (Linux 等无界面的兜底方案) =================
         else:
             wb = openpyxl.load_workbook(template_path)
             ws = wb[SHEET_NAME]
-            
+
             mars_group_idx = -1
             if "mars_group" in df_pd.columns:
                 mars_group_idx = list(df_pd.columns).index("mars_group") + 1
-            
+
             # 提取并缓存样式模板
             style_map = {}
             for c in range(1, total_cols + 1):
@@ -4729,7 +3315,7 @@ __RUNTIME_SCRIPT__
                 for c_offset, value in enumerate(row_data):
                     c_idx = c_offset + 1
                     cell = ws.cell(row=current_row, column=c_idx, value=value)
-                    
+
                     # 应用样式
                     if c_idx in style_map:
                         s = style_map[c_idx]
@@ -4738,7 +3324,7 @@ __RUNTIME_SCRIPT__
                         cell.fill = s["fill"]
                         cell.alignment = s["alignment"]
                         cell.number_format = s["number_format"]
-                    
+
                     # 日期列单独处理
                     if c_idx == mars_group_idx:
                         cell.number_format = "yyyy-mm-dd"
@@ -4750,7 +3336,7 @@ __RUNTIME_SCRIPT__
                 new_ref = f"A1:{get_column_letter(total_cols)}{final_row}"
                 for tbl_name in list(ws.tables.keys()):
                     tbl_obj = ws.tables[tbl_name]
-                    
+
                     if hasattr(tbl_obj, 'ref'):
                         tbl_obj.ref = new_ref
                     else:

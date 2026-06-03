@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, Sequence
+
 import pandas as pd
 
-from mars.modeling.utils import FrameLike
-from mars.modeling.slicing import MarsModelDataSlicer
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelingRun, MarsReplayRun
+from mars.modeling.slicing import MarsModelDataSlicer
 from mars.modeling.spec import SplitSpec
 from mars.modeling.tuning import MarsModelReplay, MarsModelTuner
+from mars.modeling.utils import FrameLike
 
 
 class MarsModelingSession:
@@ -48,11 +49,11 @@ class MarsModelingSession:
         features: Sequence[str],
         target: str,
         dataset_flag_col: str = "dataset_flag",
-        categorical_features: Optional[Sequence[str]] = None,
+        categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
     ) -> None:
         self.tuner = MarsModelTuner(
             model_type=model_type,
@@ -87,10 +88,10 @@ class MarsModelingSession:
             benchmark_col=benchmark_col,
             time_col=time_col,
         )
-        self._last_feature_growth_run: Optional[MarsFeatureGrowthRun] = None
+        self._last_feature_growth_run: MarsFeatureGrowthRun | None = None
 
     @property
-    def last_run(self) -> Optional[MarsModelingRun]:
+    def last_run(self) -> MarsModelingRun | None:
         """返回当前会话最近一次调参结果。"""
         return self.tuner.last_run
 
@@ -100,12 +101,12 @@ class MarsModelingSession:
         return self.tuner.best_model
 
     @property
-    def best_score(self) -> Optional[float]:
+    def best_score(self) -> float | None:
         """Return the best validation score from the latest tuning run."""
         return self.tuner.best_score
 
     @property
-    def best_params(self) -> Optional[dict[str, Any]]:
+    def best_params(self) -> dict[str, Any] | None:
         """Return the best parameter set from the latest tuning run."""
         return self.tuner.best_params
 
@@ -115,7 +116,7 @@ class MarsModelingSession:
         return self.tuner.history_table
 
     @property
-    def last_feature_growth_run(self) -> Optional[MarsFeatureGrowthRun]:
+    def last_feature_growth_run(self) -> MarsFeatureGrowthRun | None:
         """返回最近一次逐步增加特征调参结果。"""
         return self._last_feature_growth_run
 
@@ -125,7 +126,7 @@ class MarsModelingSession:
         *,
         time_col: str,
         split_ratios: Mapping[str, float],
-        label_col: Optional[str] = None,
+        label_col: str | None = None,
         mode: str = "strict",
         train_key: str = "train",
         val_key: str = "val",
@@ -191,14 +192,14 @@ class MarsModelingSession:
         self,
         df: FrameLike,
         *,
-        steps: Optional[Sequence[int]] = None,
-        feature_order: Optional[Sequence[str]] = None,
-        importance_table: Optional[pd.DataFrame] = None,
+        steps: Sequence[int] | None = None,
+        feature_order: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | None = None,
         min_features: int = 10,
-        max_features: Optional[int] = None,
-        step_size: Optional[int] = None,
+        max_features: int | None = None,
+        step_size: int | None = None,
         mode: str = "prefix",
-        selection_metric: Optional[str] = None,
+        selection_metric: str | None = None,
         **tune_kwargs: Any,
     ) -> MarsFeatureGrowthRun:
         """
@@ -254,11 +255,11 @@ class MarsModelingSession:
         df: FrameLike,
         *,
         pred_col: str,
-        benchmark_col: Optional[str] = None,
-        time_col: Optional[str] = None,
-        val_target_col: Optional[str] = None,
-        feature_cols: Optional[Sequence[str]] = None,
-        importance_table: Optional[pd.DataFrame] = None,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
+        val_target_col: str | None = None,
+        feature_cols: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | None = None,
     ) -> MarsModelingReport:
         """
         基于预测分数生成模型评估报告。

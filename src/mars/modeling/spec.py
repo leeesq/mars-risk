@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 
 @dataclass(slots=True)
@@ -40,8 +40,8 @@ class ModelingSpec:
     categorical_features: List[str] = field(default_factory=list)
     optimize_metric: str = "ks"
     seed: int = 1206
-    benchmark_col: Optional[str] = None
-    time_col: Optional[str] = None
+    benchmark_col: str | None = None
+    time_col: str | None = None
 
 
 @dataclass(slots=True)

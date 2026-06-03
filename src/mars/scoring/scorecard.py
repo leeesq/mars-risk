@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import log
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import pandas as pd
 import polars as pl
@@ -92,7 +92,7 @@ class MarsScorecard:
             return str(int(value_float))
         return f"{value_float:.6f}"
 
-    def to_integer(self, round_decimals: int = 0, rebalance: bool = True) -> "MarsScorecard":
+    def to_integer(self, round_decimals: int = 0, rebalance: bool = True) -> MarsScorecard:
         """Return a rounded scorecard, optionally rebalancing rounding drift into base points."""
         decimals = int(round_decimals)
         table_is_polars = isinstance(self.points_table, pl.DataFrame)
@@ -236,7 +236,7 @@ class MarsScorecard:
     def generate_sql(
         self,
         *,
-        features: Optional[List[str]] = None,
+        features: List[str] | None = None,
         table_prefix: str = "t",
         score_name: str = "score",
         include_base_points: bool = True,

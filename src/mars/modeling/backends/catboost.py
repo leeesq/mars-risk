@@ -10,9 +10,12 @@ import pandas as pd
 from mars.modeling.backends.base import MarsBaseModelTuner
 from mars.modeling.backends.common import (
     build_importance_table as _build_importance_table,
+)
+from mars.modeling.backends.common import (
     load_backend_module as _load_module,
 )
 from mars.modeling.metrics import CatBoostKSMetric
+
 
 class MarsCatBoostStrategy(MarsBaseModelTuner):
     """

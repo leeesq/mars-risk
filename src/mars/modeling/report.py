@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
 
@@ -28,8 +28,8 @@ class MarsModelingReport:
         self,
         summary_table: pd.DataFrame,
         caption: str = "MARS Model Evaluation",
-        detail_tables: Optional[Dict[str, pd.DataFrame]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        detail_tables: Dict[str, pd.DataFrame] | None = None,
+        metadata: Dict[str, Any] | None = None,
     ) -> None:
         self.summary_table: pd.DataFrame = summary_table
         self.caption: str = caption
@@ -95,7 +95,7 @@ class MarsModelingReport:
         """返回汇总表副本。"""
         return self.summary_table.copy()
 
-    def write_excel(self, path: str = "mars_model_evaluation.xlsx", engine: Optional[str] = None) -> None:
+    def write_excel(self, path: str = "mars_model_evaluation.xlsx", engine: str | None = None) -> None:
         """
         将汇总表和明细表写入 Excel 工作簿。
 
@@ -120,11 +120,11 @@ class MarsModelingReport:
         self,
         path: str = "mars_model_report.html",
         *,
-        title: Optional[str] = None,
-        run: Optional[Any] = None,
-        scorecard: Optional[Any] = None,
-        importance_table: Optional[pd.DataFrame] = None,
-        history_table: Optional[pd.DataFrame] = None,
+        title: str | None = None,
+        run: Any | None = None,
+        scorecard: Any | None = None,
+        importance_table: pd.DataFrame | None = None,
+        history_table: pd.DataFrame | None = None,
         top_features: int = 20,
         dpi: int = 150,
     ) -> Path:

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import numbers
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
-import numbers
+from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -13,14 +13,15 @@ import polars as pl
 
 from mars.modeling.metrics import calculate_auc, calculate_ks
 from mars.modeling.utils import (
-    FrameLike,
     HISTORY_BASE_COLUMNS,
     METRIC_NAMES,
+    FrameLike,
     is_polars_dataframe,
     normalize_dataset_flags,
     split_name_sort_key,
     validate_dataset_flag_roles,
 )
+
 
 class MarsBaseModelTuner(ABC):
     """
@@ -76,17 +77,17 @@ class MarsBaseModelTuner(ABC):
         target: str,
         *,
         optimize_metric: str = "ks",
-        param_space: Optional[Mapping[str, Any]] = None,
+        param_space: Mapping[str, Any] | None = None,
         max_diff: float = 3.0,
         seed: int = 1206,
         use_oot_penalty: bool = False,
         dataset_flag_col: str = "dataset_flag",
-        categorical_features: Optional[Sequence[str]] = None,
+        categorical_features: Sequence[str] | None = None,
     ) -> None:
         self._input_is_polars: bool = is_polars_dataframe(df)
         if isinstance(df, pl.DataFrame):
-            self.df_pl: Optional[pl.DataFrame] = df.clone()
-            self.df_pd: Optional[pd.DataFrame] = None
+            self.df_pl: pl.DataFrame | None = df.clone()
+            self.df_pd: pd.DataFrame | None = None
             self.df_native: FrameLike = self.df_pl
             native_columns = list(self.df_pl.columns)
         elif isinstance(df, pd.DataFrame):
@@ -556,7 +557,7 @@ class MarsBaseModelTuner(ABC):
             is_valid = val_diff <= self.max_diff
             max_penalty_diff = val_diff
 
-            max_oot_diff: Optional[float] = None
+            max_oot_diff: float | None = None
             if oot_scores:
                 max_oot_diff = round(train_score - min(oot_scores), 6)
                 if self.use_oot_penalty:
@@ -605,7 +606,7 @@ class MarsBaseModelTuner(ABC):
             self.history.append(record)
             self._sync_to_disk(record, save_path)
 
-    def get_best_iteration(self, model: Any) -> Optional[int]:
+    def get_best_iteration(self, model: Any) -> int | None:
         """
         返回模型的最佳迭代轮次。
 

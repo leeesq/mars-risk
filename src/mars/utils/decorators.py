@@ -3,10 +3,7 @@
 import functools
 import time
 import warnings
-from typing import Callable, Any, TypeVar, cast
-
-import pandas as pd
-import polars as pl
+from typing import Any, Callable, TypeVar, cast
 
 try:
     from .logger import get_mars_logger
@@ -38,13 +35,13 @@ def time_it(func: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         """执行被装饰函数并记录耗时。"""
         start = time.time()
-        
+
         # 执行业务逻辑
         result = func(*args, **kwargs)
-        
+
         end = time.time()
         duration = end - start
-        
+
         # 智能名称解析
         # 如果第一个参数是对象实例且包含 __class__ 属性，通常意味着这是个方法
         if args and hasattr(args[0], '__class__') and not isinstance(args[0], (str, int, float, list, dict)):
@@ -53,10 +50,10 @@ def time_it(func: F) -> F:
         else:
             # 格式: function_name
             name = func.__name__
-            
+
         logger.info(f"[TIMER] [{name}] finished in {duration:.4f}s")
         return result
-    
+
     return cast(F, wrapper)
 
 def deprecated(reason: str) -> Callable[[F], F]:
@@ -74,7 +71,7 @@ def deprecated(reason: str) -> Callable[[F], F]:
     -------
     Callable
         装饰器函数。
-        
+
     Examples
     --------
     @deprecated("Use 'new_method' instead.")
@@ -89,7 +86,7 @@ def deprecated(reason: str) -> Callable[[F], F]:
             """执行目标函数前发出弃用警告。"""
             warnings.warn(
                 f"Function '{func.__name__}' is deprecated. {reason}",
-                category=FutureWarning, 
+                category=FutureWarning,
                 stacklevel=2
             )
             return func(*args, **kwargs)

@@ -1,13 +1,13 @@
 """Public package exports for MARS."""
 
 from .analysis import (
+    MarsBinEvaluator,
     MarsDataProfiler,
+    MarsEvaluationReport,
     MarsProfileConfig,
     MarsProfileReport,
-    MarsBinEvaluator,
-    MarsEvaluationReport,
-    profile_stats,
     profile_risk,
+    profile_stats,
 )
 from .feature import MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
 from .modeling import MarsModelingSession
@@ -16,20 +16,20 @@ from .utils import logger, set_log_level
 
 __version__ = "0.0.15"
 
-_BANNER = r"""
+_BANNER = rf"""
     __________________________________________________________________________
        __  ___ ___    ____  _____
       /  |/  //   |  / __ \/ ___/
-     / /|_/ // /| | / /_/ /\__ \ 
-    / /  / // ___ |/ _, _/___/ / 
-   /_/  /_//_/  |_/_/ |_|/____/  
-                                 
-    MODELING ANALYSIS RISK SCORE 
+     / /|_/ // /| | / /_/ /\__ \
+    / /  / // ___ |/ _, _/___/ /
+   /_/  /_//_/  |_/_/ |_|/____/
+
+    MODELING ANALYSIS RISK SCORE
     __________________________________________________________________________
-    Version: {ver} | Copyright (c) 2026 Christian Li
+    Version: {__version__} | Copyright (c) 2026 Christian Li
     High-performance Risk Modeling Toolkit powered by Polars
     __________________________________________________________________________
-""".format(ver=__version__)
+"""
 
 
 def __repr__() -> str:

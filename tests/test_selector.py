@@ -21,7 +21,7 @@ def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
             for row in report.select(["feature", "data_source"]).unique().to_dicts()
         }
     else:
-        source_map = dict(zip(report["feature"], report["data_source"]))
+        source_map = dict(zip(report["feature"], report["data_source"], strict=False))
 
     assert source_map["income"] == "EXT_SOURCE_1"
     assert source_map["utilization"] == "UNMAPPED"
