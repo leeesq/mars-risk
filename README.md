@@ -14,16 +14,16 @@
  __________________________________________________________________________
 ```
 
-**A risk-modeling cockpit for profile, binning, evaluation, selection, scorecard and export.**
+**A fast risk-modeling cockpit for profile, binning, evaluation, selection, modeling, scorecard and export.**
 
 [![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=for-the-badge&color=2f6f8f)](https://pypi.org/project/mars-risk/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=for-the-badge&color=364f6b)](https://pypi.org/project/mars-risk/)
 [![CI](https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=for-the-badge&label=CI&color=1f7a5a)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
 [![License](https://img.shields.io/github/license/leeesq/mars-risk?style=for-the-badge&color=6c5ce7)](LICENSE)
 
-`Profile -> Bin -> Evaluate -> Select -> Score -> Export`
+`Profile -> Bin -> Evaluate -> Select -> Model -> Score -> Export`
 
-[快速开始](#快速开始) · [能力地图](#能力地图) · [公开-api-概览](#公开-api-概览) · [测试与开发](#测试与开发)
+[护城河](#护城河polars-first-性能底座) · [能力地图](#能力地图) · [快速开始](#快速开始) · [自动建模舱](#自动建模舱) · [公开 API](#公开-api-概览)
 
 </div>
 
@@ -37,9 +37,23 @@ flowchart LR
     B --> C["Binning / WOE"]
     C --> D["Risk Evaluation"]
     D --> E["Feature Selection"]
-    E --> F["Scorecard / Modeling"]
-    F --> G["Excel / HTML / SQL"]
+    E --> F["Modeling / Replay"]
+    F --> G["Scorecard"]
+    G --> H["Excel / HTML / SQL"]
 ```
+
+## 护城河：Polars-first 性能底座
+
+MARS 最大的护城河不是“多包一层 API”，而是把风控建模的高频计算尽量落在 `polars` 这套更现代的列式执行底座上。面对宽表画像、批量分箱、WOE 映射、IV/KS/AUC/PSI 评估和跨期稳定性分析时，传统 pandas/toad 风格链路很容易退化成大量逐列循环和重复扫描；MARS 的设计目标是把这些动作改写成更批量、更少 Python 解释器参与的计算流程。
+
+| 性能来自哪里 | 设计取向 |
+| --- | --- |
+| 列式执行 | 核心统计优先使用 `polars` 表达式，少做逐列 Python 循环 |
+| 批量评估 | 分箱、WOE、IV、KS、AUC、PSI 尽量批量化，减少重复扫描 |
+| 漏斗筛选 | 粗筛、精筛、稳定性、相关性分阶段推进，先用低成本规则压缩特征空间 |
+| 结果沉淀 | 报告对象直接沉淀 Excel、HTML、SQL，减少“算完再手工拼表”的时间 |
+
+所以 MARS 不是只想做一个漂亮报告工具。它真正想做的是一条基于 Polars 的风控建模工程链路：同样是画像、分箱、评估、筛选和导出，尽量让底层计算更接近列式批处理，而不是把时间耗在一层层 Python 循环里。
 
 ## 能力地图
 
@@ -50,7 +64,7 @@ flowchart LR
 | 风险评估 | `MarsBinEvaluator` / `profile_risk` | IV、KS、AUC、PSI、单调性、趋势报表 | `MarsEvaluationReport` |
 | 特征筛选 | `MarsStatsSelector` | 质量筛选、粗筛、精筛、稳定性、相关性漏斗 | `selected_features_`、筛选报告 |
 | 自动建模 | `MarsModelingSession` | 切分、调参、评估、回放 | `MarsModelingRun`、`MarsModelingReport` |
-| 评分卡 | `build_scorecard` | LR 系数转评分卡、分数表、SQL | `MarsScorecard` |
+| 评分卡与导出 | `build_scorecard` | LR 系数转评分卡、分数表、SQL | `MarsScorecard` |
 
 ## 为什么值得一试
 
@@ -300,6 +314,60 @@ selector.save_selector_lists("mars_lists.json")
 - 风险一致性过滤
 - 相关性去重
 
+## 自动建模舱
+
+自动建模是 MARS 主链路的一部分，不是附属能力。顶层 `MarsModelingSession` 负责把 `slice -> tune -> evaluate -> replay` 串起来；低层对象则放在 `mars.modeling.tuning`、`mars.modeling.evaluation`、`mars.modeling.report` 等显式模块里，方便你按需要拆开用。
+
+| 对象 | 角色 |
+| --- | --- |
+| `MarsModelingSession` | 会话级入口，适合一条链路跑通切分、调参、评估和回放 |
+| `MarsModelTuner` | 低层调参器，适合需要更细控制的场景 |
+| `MarsModelReplay` | 基于调参历史回放候选模型 |
+| `MarsModelEvaluator` | 汇总验证集、OOT、时间切片等模型表现 |
+| `MarsModelingRun` / `MarsReplayRun` | 可复用的结果对象 |
+
+```python
+from mars.modeling import MarsModelingSession
+from mars.modeling.evaluation import MarsModelEvaluator
+from mars.modeling.tuning import MarsModelReplay, MarsModelTuner
+
+tuner = MarsModelTuner(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+
+tuning_run = tuner.tune(scored_df, n_trials=20)
+
+replay = MarsModelReplay(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+replay_run = replay.run(tuning_run, scored_df, top_k=3, sort_metric="ks")
+
+evaluator = MarsModelEvaluator(
+    group_col="dataset_flag",
+    target_col="target",
+    time_col="biz_dt",
+)
+top_pred_col = next(
+    col for col in replay_run.scored_df.columns if str(col).startswith("prob_top1_trial")
+)
+report = evaluator.evaluate(replay_run.scored_df, pred_col=top_pred_col)
+
+session = MarsModelingSession(
+    model_type="xgb",
+    features=["income", "utilization"],
+    target="target",
+    optimize_metric="ks",
+)
+same_run = session.tune(scored_df, n_trials=20)
+same_report = session.evaluate(scored_df, pred_col="pred_score")
+```
+
 ## 输入输出约定
 
 这是 README 里最值得提前讲清楚的一部分。
@@ -429,6 +497,18 @@ report, evaluator = profile_risk(
 | `MarsNativeBinner` | 原生高性能分箱器 |
 | `MarsOptimalBinner` | 带约束的最优分箱器 |
 | `MarsStatsSelector` | 漏斗式特征筛选器 |
+
+### `mars.modeling`
+
+| API | 说明 |
+| --- | --- |
+| `MarsModelingSession` | 顶层会话入口，组织切分、调参、评估和回放 |
+| `mars.modeling.tuning.MarsModelTuner` | 显式调参器 |
+| `mars.modeling.tuning.MarsModelReplay` | 调参历史回放器 |
+| `mars.modeling.evaluation.MarsModelEvaluator` | 模型效果评估器 |
+| `mars.modeling.results.MarsModelingRun` | 调参结果对象 |
+| `mars.modeling.results.MarsReplayRun` | 回放结果对象 |
+| `mars.modeling.feature_growth.MarsFeatureIncrementalTuner` | 增量特征建模实验器 |
 
 ### `mars.scoring`
 
@@ -573,60 +653,6 @@ MARS 现在更像一个已经进入“可持续打磨期”的 `0.x` 项目：
 - 提出你希望优先补的示例、教程或导出能力
 
 如果你在使用中踩到了 API 不一致、报表体验不顺、Polars 性能问题，或者只是觉得 README 还不够清楚，这类反馈都很有价值。
-
-## 自动建模舱
-
-MARS 的建模 API 刻意保持小而清楚：顶层用 `MarsModelingSession` 组织 `slice -> tune -> evaluate -> replay`，底层能力则放在 `mars.modeling.tuning`、`mars.modeling.evaluation`、`mars.modeling.report` 等明确模块里。
-
-| 对象 | 角色 |
-| --- | --- |
-| `MarsModelingSession` | 会话级入口，适合一条链路跑通调参、评估和回放 |
-| `MarsModelTuner` | 低层调参器，适合需要更细控制的场景 |
-| `MarsModelReplay` | 基于调参历史回放候选模型 |
-| `MarsModelEvaluator` | 汇总验证集、OOT、时间切片等模型表现 |
-| `MarsModelingRun` / `MarsReplayRun` | 可复用的结果对象 |
-
-```python
-from mars.modeling import MarsModelingSession
-from mars.modeling.evaluation import MarsModelEvaluator
-from mars.modeling.tuning import MarsModelReplay, MarsModelTuner
-
-tuner = MarsModelTuner(
-    model_type="xgb",
-    features=["income", "utilization"],
-    target="target",
-    optimize_metric="ks",
-)
-
-tuning_run = tuner.tune(scored_df, n_trials=20)
-
-replay = MarsModelReplay(
-    model_type="xgb",
-    features=["income", "utilization"],
-    target="target",
-    optimize_metric="ks",
-)
-replay_run = replay.run(tuning_run, scored_df, top_k=3, sort_metric="ks")
-
-evaluator = MarsModelEvaluator(
-    group_col="dataset_flag",
-    target_col="target",
-    time_col="biz_dt",
-)
-top_pred_col = next(
-    col for col in replay_run.scored_df.columns if str(col).startswith("prob_top1_trial")
-)
-report = evaluator.evaluate(replay_run.scored_df, pred_col=top_pred_col)
-
-session = MarsModelingSession(
-    model_type="xgb",
-    features=["income", "utilization"],
-    target="target",
-    optimize_metric="ks",
-)
-same_run = session.tune(scored_df, n_trials=20)
-same_report = session.evaluate(scored_df, pred_col="pred_score")
-```
 
 ## 许可证
 
