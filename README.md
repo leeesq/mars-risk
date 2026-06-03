@@ -2,18 +2,6 @@
 
 <div align="center">
 
-**Modeling Analysis Risk Score**
-
-从 `Data Profile`、`Binning`、`Evaluation`、`Selection` 到 `Excel Export`  
-一套围绕 `polars`、评分卡与信贷风控工作流打造的 Python 工具链
-
-[![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=flat-square)](https://pypi.org/project/mars-risk/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square)](https://pypi.org/project/mars-risk/)
-[![CI](https://github.com/leeesq/mars-risk/actions/workflows/test.yml/badge.svg)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
-[![License](https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square)](LICENSE)
-
-</div>
-
 ```text
  __________________________________________________________________________
     __  ___ ___    ____  _____
@@ -26,125 +14,98 @@
  __________________________________________________________________________
 ```
 
-> `Profile -> Bin -> Evaluate -> Select -> Export`
->
-> MARS 同时承担 `AutoML` 框架能力与风控建模日常工作台角色。  
-> 它用 `sklearn` 风格 API 组织调参、评估、回放、分箱、筛选与评分卡流程，并把结果沉淀为可复用的显式对象。
+**A risk-modeling cockpit for profile, binning, evaluation, selection, scorecard and export.**
 
-## MARS 是什么
+[![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=for-the-badge&color=2f6f8f)](https://pypi.org/project/mars-risk/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=for-the-badge&color=364f6b)](https://pypi.org/project/mars-risk/)
+[![CI](https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=for-the-badge&label=CI&color=1f7a5a)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
+[![License](https://img.shields.io/github/license/leeesq/mars-risk?style=for-the-badge&color=6c5ce7)](LICENSE)
 
-MARS 是一个面向信贷风控、评分卡建模和特征稳定性监控的 Python 工具库，目标很明确：
+`Profile -> Bin -> Evaluate -> Select -> Score -> Export`
 
-1. 用 `polars` 做更快、更整洁的数据与特征处理。
-2. 用 sklearn 风格 API 组织分箱、评估、筛选等核心流程。
-3. 把风控工作中高频但分散的动作，收敛成一套能复用、能导出、能落地的工具链。
+[快速开始](#快速开始) · [能力地图](#能力地图) · [公开-api-概览](#公开-api-概览) · [测试与开发](#测试与开发)
 
-如果你的日常工作里经常出现这些动作：
+</div>
 
-- 看数据质量和画像趋势
-- 做数值/类别特征分箱
-- 算 IV、KS、AUC、PSI、单调性、风险一致性
-- 评估一批候选特征并导出 Excel 报表
-- 做一轮可解释、可回放的特征筛选
+## 一句话
 
-那 MARS 想解决的就是这一整段链路。
+MARS 是一个面向信贷风控、评分卡建模和特征稳定性监控的 Python 工具库。它把日常建模里最分散、最反复、最容易沉在 Excel 和脚本里的动作，收敛成一条可以复用、可以导出、可以回放的工程链路。
 
-## 为什么是 MARS
+```mermaid
+flowchart LR
+    A["Raw Data"] --> B["Data Profile"]
+    B --> C["Binning / WOE"]
+    C --> D["Risk Evaluation"]
+    D --> E["Feature Selection"]
+    E --> F["Scorecard / Modeling"]
+    F --> G["Excel / HTML / SQL"]
+```
 
-### 1. Polars-first，但不强迫你放弃 Pandas
+## 能力地图
 
-- 核心计算优先走 `polars`
-- 支持直接传入 Pandas DataFrame
-- 对于核心报告对象，遵循“输入是什么，输出就尽量保持什么”的约定
-- 展示层和 Excel 导出层内部按需回退到 Pandas，不把这种回退扩散到计算层
-
-### 2. 更贴近风控工作流
-
-MARS 不只做“一个分箱器”或“一个 PSI 函数”，而是把常见风控流程拆成四类组件：
-
-| 工作阶段 | 主 API | 解决什么问题 | 典型产出 |
+| 模块 | 主 API | 解决什么问题 | 产出 |
 | --- | --- | --- | --- |
-| 数据画像 | `MarsDataProfiler` | 缺失、零值、众数、分布、趋势、PSI | `MarsProfileReport` |
-| 分箱转换 | `MarsNativeBinner` / `MarsOptimalBinner` | 连续/类别分箱、WOE 映射、SQL 生成 | 分箱结果、映射表、SQL |
-| 特征评估 | `MarsBinEvaluator` / `profile_risk` | IV、KS、AUC、PSI、单调性、趋势报表 | `MarsEvaluationReport` |
-| 特征筛选 | `MarsStatsSelector` | 质量筛选、粗筛、精筛、稳定性、相关性漏斗 | `selected_features_`、筛选报表 |
+| 数据画像 | `MarsDataProfiler` / `profile_stats` | 缺失、零值、众数、分布、趋势、PSI | `MarsProfileReport` |
+| 分箱转换 | `MarsNativeBinner` / `MarsOptimalBinner` | 连续/类别分箱、WOE 映射、SQL 生成 | 分箱规则、映射表、SQL |
+| 风险评估 | `MarsBinEvaluator` / `profile_risk` | IV、KS、AUC、PSI、单调性、趋势报表 | `MarsEvaluationReport` |
+| 特征筛选 | `MarsStatsSelector` | 质量筛选、粗筛、精筛、稳定性、相关性漏斗 | `selected_features_`、筛选报告 |
+| 自动建模 | `MarsModelingSession` | 切分、调参、评估、回放 | `MarsModelingRun`、`MarsModelingReport` |
+| 评分卡 | `build_scorecard` | LR 系数转评分卡、分数表、SQL | `MarsScorecard` |
 
-### 3. 不只算指标，还重视“拿去用”
+## 为什么值得一试
 
-- 报告对象支持 `show_*` 交互式查看
-- 支持 Excel 导出
-- 分箱器支持导出 SQL `CASE WHEN`
-- 结果对象保留后续复用能力，而不是“一次性函数输出”
+### Polars-first
+
+- 核心计算优先走 `polars`，适合更宽、更大的特征表。
+- 仍然支持直接传入 Pandas DataFrame，不强迫你一次性迁移。
+- 展示层和 Excel 导出层按需转 Pandas，计算层尽量保持轻快。
+
+### 风控工作流优先
+
+- 不只是一个分箱器，也不只是一个 PSI 函数。
+- 从画像、分箱、评估、筛选到导出，尽量贴近日常风控建模节奏。
+- 报告对象保留明细表、汇总表、趋势表和上下文，结果不是一次性输出。
+
+### 可落地
+
+- Excel、HTML、SQL 都能作为交付出口。
+- 分箱器可复用，评估器可回放，筛选器能沉淀名单。
+- API 风格靠近 `sklearn`，适合接进已有建模脚本。
 
 ## 适合什么场景
 
-MARS 目前尤其适合这些任务：
+- 信贷风控特征初筛与特征健康巡检。
+- 评分卡开发中的分箱、WOE、IV、KS、PSI 和单调性检查。
+- 月度、周度或客群维度的特征稳定性监控。
+- 将分析结果导出给业务、策略、模型管理或审计团队。
+- Pandas 项目逐步迁移到 Polars 的中间阶段。
 
-- 信贷风控特征初筛
-- 评分卡开发中的分箱、WOE、特征监控
-- 月度/周度的特征稳定性巡检
-- 风控分析结果导出给业务、策略、模型管理或审计团队
-- 在 Pandas 项目中逐步迁移到 Polars 的中间阶段
+## 当前状态
 
-## 当前项目状态
-
-MARS 当前仍处于 `0.x` 阶段。
-
-这意味着：
-
-- API 已经可以用于实际分析和日常工作
-- 项目已经补上了 pytest、CI、教程、README、extras 和一批开箱问题修复
-- 但它还在持续做“开源成熟化”工作，尤其是：
-  - 深化测试覆盖
-  - 继续清理带有 Pandas 风格的 Polars 实现
-  - 统一文档、注释和输出体验
-
-如果你想找的是一个“已经有成熟社区和稳定大版本承诺”的项目，MARS 还没走到那个阶段。  
-如果你想找的是一个“风控向、能用、可改、可继续打磨”的工具库，它已经进入一个挺值得继续投入的区间。
+MARS 仍处于 `0.x` 阶段，但主链路已经可以支撑实际分析和日常工作。当前仓库已经补上 pytest、Ruff、Mypy、CI、typed package、extras、教程和核心 README。后续重点会继续放在测试覆盖、文档一致性和 Polars 实现的工程化打磨上。
 
 ## 安装
 
-### 基础安装
+`Python >= 3.10`
 
 ```bash
 pip install mars-risk
 ```
 
-### 安装带 Excel 导出的能力
-
-```bash
-pip install "mars-risk[excel]"
-```
-
-### 安装带绘图能力
-
-```bash
-pip install "mars-risk[plot]"
-```
-
-### 安装 Notebook 支持
-
-```bash
-pip install "mars-risk[notebook]"
-```
-
-### 安装建模调参与树模型支持
-
-```bash
-pip install "mars-risk[ml,tuning]"
-```
-
-### 安装完整开发环境
+| 场景 | 命令 |
+| --- | --- |
+| 基础能力 | `pip install mars-risk` |
+| Excel 导出 | `pip install "mars-risk[excel]"` |
+| 绘图报告 | `pip install "mars-risk[plot]"` |
+| Notebook 交互 | `pip install "mars-risk[notebook]"` |
+| 建模调参与树模型 | `pip install "mars-risk[ml,tuning]"` |
+| 本地开发 | `pip install -e ".[dev,ml,tuning]"` |
 
 ```bash
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
 pip install -e ".[dev,ml,tuning]"
 ```
-
-### Python 版本要求
-
-- `Python >= 3.10`
 
 ## 快速开始
 
@@ -290,6 +251,8 @@ sql = binner.generate_sql(
     return_type="woe",
 )
 ```
+
+### 5. 生成评分卡
 
 ```python
 from mars.scoring import build_scorecard
@@ -611,13 +574,17 @@ MARS 现在更像一个已经进入“可持续打磨期”的 `0.x` 项目：
 
 如果你在使用中踩到了 API 不一致、报表体验不顺、Polars 性能问题，或者只是觉得 README 还不够清楚，这类反馈都很有价值。
 
-## Modeling
+## 自动建模舱
 
-MARS now keeps the top-level modeling API intentionally small:
+MARS 的建模 API 刻意保持小而清楚：顶层用 `MarsModelingSession` 组织 `slice -> tune -> evaluate -> replay`，底层能力则放在 `mars.modeling.tuning`、`mars.modeling.evaluation`、`mars.modeling.report` 等明确模块里。
 
-- `MarsModelingSession` is the session-level workflow entrypoint for `slice -> tune -> evaluate -> replay`.
-- Lower-level tools live under explicit modules, for example `mars.modeling.tuning`, `mars.modeling.evaluation`, and `mars.modeling.report`.
-- `MarsModelingRun`, `MarsModelingReport`, and `MarsReplayRun` remain reusable result objects, but they are imported from their owning modules.
+| 对象 | 角色 |
+| --- | --- |
+| `MarsModelingSession` | 会话级入口，适合一条链路跑通调参、评估和回放 |
+| `MarsModelTuner` | 低层调参器，适合需要更细控制的场景 |
+| `MarsModelReplay` | 基于调参历史回放候选模型 |
+| `MarsModelEvaluator` | 汇总验证集、OOT、时间切片等模型表现 |
+| `MarsModelingRun` / `MarsReplayRun` | 可复用的结果对象 |
 
 ```python
 from mars.modeling import MarsModelingSession
@@ -661,6 +628,6 @@ same_run = session.tune(scored_df, n_trials=20)
 same_report = session.evaluate(scored_df, pred_col="pred_score")
 ```
 
-## License
+## 许可证
 
 See [LICENSE](LICENSE).
