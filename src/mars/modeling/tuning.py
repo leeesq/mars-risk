@@ -394,6 +394,35 @@ class MarsModelReplay:
     """
     对调参历史中的 Top-K trial 进行重训、重评分和评估。
 
+    Parameters
+    ----------
+    model_type : str
+        模型后端类型，需与原始 tuning run 保持一致。
+    features : sequence of str
+        replay 时参与训练和评分的特征列名。
+    target : str
+        二分类目标列名。
+    dataset_flag_col : str, default "dataset_flag"
+        训练集、验证集和 OOT 样本切片标识列。
+    categorical_features : sequence of str, optional
+        需要按类别特征处理的列名。
+    optimize_metric : {"auc", "ks"}, default "ks"
+        replay 排名和评估使用的默认优化指标。
+    seed : int, default 1206
+        随机种子。
+    benchmark_col : str, optional
+        评估报告默认对比的基准分数列。
+    time_col : str, optional
+        评估报告默认使用的时间列。
+    lr_feature_mode : {"numeric", "woe"}, default "numeric"
+        LR replay 的特征预处理模式。
+    lr_binning_type : {"native", "opt", "optimal"}, default "native"
+        LR WOE 模式下的分箱器类型。
+    lr_binner_kwargs : mapping, optional
+        LR WOE 模式下传给内部分箱器的参数。
+    lr_binner : Any, optional
+        LR WOE 模式下复用的已配置或已拟合分箱器。
+
     Notes
     -----
     replay 默认复用 tuning run 中保存的训练轮数和早停配置；用户显式传入参数时会覆盖。

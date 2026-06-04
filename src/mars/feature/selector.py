@@ -1139,36 +1139,61 @@ class MarsStatsSelector(MarsBaseSelector):
 
 class MarsLinearSelector(MarsBaseSelector):
     """
-    线性模型场景下的特征筛选器占位实现。
+    面向传统 LR 建模的线性特征筛选器。
 
-    Notes
-    -----
-    当前类主要用于固定接口与参数语义，具体筛选流程仍待实现。
+    该选择器按相关性过滤、VIF 过滤和逐步回归三个阶段收敛候选特征。
+    输入可以是 Polars 或 Pandas；统计建模边界会转换为 Pandas/NumPy，
+    以复用 statsmodels 的 Logit、AIC/BIC 和 VIF 实现。
+
+    Parameters
+    ----------
+    target : str
+        二分类目标列名。若 ``fit`` 未显式传入 ``y``，输入数据必须包含该列。
+    enable_corr_filter : bool, default True
+        是否启用高相关特征去重。
+    corr_thr : float, default 0.8
+        绝对相关系数阈值。超过阈值时保留与目标关联更强的一侧。
+    corr_method : str, default "spearman"
+        Pandas correlation 方法，常用 ``"spearman"`` 或 ``"pearson"``。
+    enable_vif_filter : bool, default False
+        是否启用 VIF 迭代过滤。
+    vif_threshold : float, default 5.0
+        最大允许 VIF。
+    enable_stepwise : bool, default False
+        是否启用基于信息准则的逐步回归。
+    stepwise_direction : {"forward", "backward", "both"}, default "forward"
+        逐步回归方向。
+    stepwise_criterion : {"aic", "bic"}, default "aic"
+        逐步回归优化准则。
+    max_features : int, optional
+        最终保留特征数上限。
+    n_jobs : int, default -1
+        预留并行参数，当前版本不改变统计建模的单进程执行路径。
+
+    Attributes
+    ----------
+    selected_features_ : list of str
+        最终入选特征。
+    coef_table_ : pandas.DataFrame
+        最终 Logit 模型的系数、标准误和 p-value。
+    vif_table_ : pandas.DataFrame
+        VIF 阶段的最终候选特征 VIF 表。
+    stepwise_history_ : pandas.DataFrame
+        逐步回归每一步的 add/drop 决策记录。
     """
 
     def __init__(
         self,
         target: str,
-
-        # --- Stage 1: 相关性去重 (Correlation Filter) ---
-        # 作用: 快速去除高度相关的特征 (如 app_count_7d vs app_count_30d)
         enable_corr_filter: bool = True,
-        corr_thr: float = 0.8,         # 相关性 > 0.8 视为冗余
-        corr_method: str = "spearman",       # 推荐 spearman (分箱后是非线性的)
-
-        # --- Stage 2: 多重共线性筛查 (VIF Filter) ---
-        # 作用: 解决多重线性依赖 (A = B + C)
-        # 注意: 计算矩阵逆非常慢，建议只对 < 1000 个特征开启
+        corr_thr: float = 0.8,
+        corr_method: str = "spearman",
         enable_vif_filter: bool = False,
-        vif_threshold: float = 5.0,          # 业界通常取 5.0 或 10.0
-
-        # --- Stage 3: 逐步回归 (Stepwise Selection) ---
-        # 作用: 基于 AIC/BIC 的包裹式筛选
+        vif_threshold: float = 5.0,
         enable_stepwise: bool = False,
-        stepwise_direction: str = "forward", # forward (快) / backward (慢但准)
-        stepwise_criterion: str = "aic",     # 优化目标: aic / bic
-        max_features: int | None = None,  # 限制最终入模特征数
-
+        stepwise_direction: str = "forward",
+        stepwise_criterion: str = "aic",
+        max_features: int | None = None,
         n_jobs: int = -1,
     ) -> None:
         """
@@ -1622,43 +1647,56 @@ class MarsLinearSelector(MarsBaseSelector):
 
 class MarsImportanceSelector(MarsBaseSelector):
     """
-    基于模型重要性的特征筛选器占位实现。
+    基于模型重要性或 SHAP 的特征筛选器。
 
-    Notes
-    -----
-    当前类用于固定接口与参数语义，具体训练与筛选流程仍待实现。
+    该选择器支持直接消费已有 importance table，也可以训练 sklearn/树模型
+    读取 ``feature_importances_`` 或 ``coef_``。当 ``method="shap"`` 时，
+    选择器计算 mean absolute SHAP value 并统一输出 MARS importance table。
+
+    Parameters
+    ----------
+    target : str
+        二分类目标列名。若 ``fit`` 未显式传入 ``y``，输入数据必须包含该列。
+    estimator : str or Any, default "lgbm"
+        底层模型类型或已实例化 estimator。字符串支持 ``"rf"``,
+        ``"extra_trees"``, ``"lr"``, ``"lgbm"``, ``"xgb"`` 和 ``"cat"``。
+    estimator_params : dict, optional
+        构造 estimator 时透传的参数。
+    importance_table : pandas.DataFrame or polars.DataFrame, optional
+        已计算好的重要性表，至少包含 ``feature`` 与 ``importance`` 列。
+    method : {"importance", "shap", "rfe", "sfm"}, default "importance"
+        筛选策略。``"rfe"`` 与 ``"sfm"`` 在 v1 中保留接口但暂不实现。
+    selection_mode : {"top_k", "threshold", "percentile"}, default "top_k"
+        按排名、绝对阈值或百分位保留特征。
+    selection_threshold : int, float or str, default 50
+        与 ``selection_mode`` 对应的阈值。百分位模式支持 ``"20%"``。
+    cv : int, default 3
+        预留交叉验证参数，当前版本不改变单次 estimator 训练路径。
+    n_jobs : int, default -1
+        透传给支持并行的 estimator。
+    random_state : int, default 42
+        estimator 的随机种子。
+
+    Attributes
+    ----------
+    selected_features_ : list of str
+        最终入选特征。
+    importance_table_ : pandas.DataFrame
+        标准化后的重要性表。
+    estimator_ : Any or None
+        由选择器训练得到的 estimator；使用外部 importance table 时为 ``None``。
     """
 
     def __init__(
         self,
         target: str,
-
-        # --- 模型配置 (Estimator) ---
-        # 支持字符串简写，也支持传入实例化好的 sklearn/lgbm 对象
-        estimator: Union[str, Any] = "lgbm", # lgbm, xgb, cat, rf, extra_trees
-        estimator_params: dict | None = None, # 比如 {'learning_rate': 0.05, 'n_estimators': 100}
+        estimator: Union[str, Any] = "lgbm",
+        estimator_params: dict | None = None,
         importance_table: pd.DataFrame | pl.DataFrame | None = None,
-
-        # --- 筛选策略 (Method) ---
-        # 1. importance: 使用模型自带的 feature_importances_ (gain/split)
-        # 2. shap: 训练后计算 SHAP mean values (更准但更慢)
-        # 3. rfe: 递归特征消除 (反复训练剔除尾部，最慢但效果最好)
-        # 4. sfm: SelectFromModel (基于阈值的一次性筛选)
         method: Literal["importance", "shap", "rfe", "sfm"] = "importance",
-
-        # --- 阈值控制 (Criteria) ---
-        # 决定保留多少特征
         selection_mode: Literal["top_k", "threshold", "percentile"] = "top_k",
         selection_threshold: Union[int, float, str] = 50,
-        # 解释:
-        # - top_k: 保留前 50 个 (最常用)
-        # - threshold: 重要性 > 0.01
-        # - percentile: 保留前 20%
-
-        # --- 交叉验证 (CV) ---
-        # 是否使用 CV 后的平均重要性来减少随机性 (建议开启)
         cv: int = 3,
-
         n_jobs: int = -1,
         random_state: int = 42,
     ) -> None:

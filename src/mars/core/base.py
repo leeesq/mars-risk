@@ -18,6 +18,11 @@ class MarsBaseEstimator(BaseEstimator):
     """
     MARS 估计器基类。
 
+    Parameters
+    ----------
+    None
+        该基类不暴露初始化参数，子类通过自身构造函数声明业务配置。
+
     Attributes
     ----------
     _return_pandas : bool
@@ -255,6 +260,11 @@ class MarsBaseEstimator(BaseEstimator):
 class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     """
     MARS 转换器抽象基类。
+
+    Parameters
+    ----------
+    None
+        该抽象基类不暴露初始化参数，子类负责声明自身的转换配置。
 
     Attributes
     ----------

@@ -48,9 +48,15 @@ def write_json(path: Path, data: Dict[str, Any]) -> None:
         输出路径。
     data : dict
         元数据字典。
+
+    Returns
+    -------
+    None
+        函数仅产生文件写入副作用。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(to_json_safe(data), ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(to_json_safe(data), ensure_ascii=False, indent=2)
+    path.write_text(payload, encoding="utf-8")
 
 
 def read_json(path: Path) -> Dict[str, Any]:

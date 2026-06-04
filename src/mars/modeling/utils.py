@@ -155,6 +155,11 @@ def validate_dataset_flag_roles(flags: pd.Series | pl.Series) -> None:
     flags : pandas.Series or polars.Series
         原始或标准化后的数据集标识。
 
+    Returns
+    -------
+    None
+        校验通过时不返回值。
+
     Raises
     ------
     ValueError

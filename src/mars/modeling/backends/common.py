@@ -100,7 +100,10 @@ def build_importance_table(
         for feature in features
     ]
     importance_df = pd.DataFrame(rows)
-    importance_df = importance_df.sort_values(["importance", "feature"], ascending=[False, True]).reset_index(drop=True)
+    importance_df = importance_df.sort_values(
+        ["importance", "feature"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
     importance_df["rank"] = np.arange(1, len(importance_df) + 1, dtype=int)
     return importance_df[["feature", "importance", "importance_type", "model_type", "rank"]]
 
@@ -115,8 +118,22 @@ def validate_numeric_polars(X: pl.DataFrame, backend_name: str) -> None:
         特征数据框。
     backend_name : str
         后端名称，用于错误提示。
+
+    Returns
+    -------
+    None
+        校验通过时不返回值。
+
+    Raises
+    ------
+    ValueError
+        存在非数值且非布尔特征时抛出。
     """
-    unsupported = [name for name, dtype in X.schema.items() if not (dtype.is_numeric() or dtype == pl.Boolean)]
+    unsupported = [
+        name
+        for name, dtype in X.schema.items()
+        if not (dtype.is_numeric() or dtype == pl.Boolean)
+    ]
     if unsupported:
         raise ValueError(
             f"{backend_name} Arrow-native path requires numeric or boolean features only. "
@@ -134,6 +151,16 @@ def validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
         特征数据框。
     backend_name : str
         后端名称，用于错误提示。
+
+    Returns
+    -------
+    None
+        校验通过时不返回值。
+
+    Raises
+    ------
+    ValueError
+        存在非数值且非布尔特征时抛出。
     """
     unsupported = [
         col
