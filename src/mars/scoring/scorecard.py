@@ -1,3 +1,5 @@
+"""MARS 评分卡构建、取整、导出与 SQL 生成工具。"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +16,7 @@ def _ensure_binner_scorecard_artifacts(
     binner: MarsBinnerBase,
     features: List[str],
 ) -> None:
+    """确保分箱器已具备评分卡所需的映射表和 WOE 字典。"""
     missing_mappings = [feature for feature in features if feature not in binner.bin_mappings_]
     missing_woes = [feature for feature in features if not binner.bin_woes_.get(feature)]
 
@@ -35,8 +38,7 @@ def _ensure_binner_scorecard_artifacts(
     if not target_features:
         raise ValueError("None of the requested scorecard features are available in cached binner data.")
 
-    # Reuse the binner's profiling path so mappings and WOE values are generated
-    # with the same business rules as the rest of the package.
+    # 复用分箱器的画像路径，确保映射表和 WOE 使用同一套业务规则生成。
     binner.profile_bin_performance(
         binner._cache_X.select(target_features),
         binner._cache_y,
@@ -51,6 +53,29 @@ class MarsScorecard:
 
     该对象封装了由已拟合分箱器和逻辑回归系数推导出的分值明细表，
     同时保留评分卡刻度参数，便于导出 CSV、Excel 或生成部署 SQL。
+
+    Parameters
+    ----------
+    points_table : pl.DataFrame or pd.DataFrame
+        评分卡分值明细表，包含特征、分箱、WOE、系数与最终分值。
+    base_points : float
+        基础分。
+    factor : float
+        评分卡缩放因子。
+    offset : float
+        评分卡偏移量。
+    pdo : float
+        Points to Double the Odds 参数。
+    base_score : float
+        基准分数。
+    base_odds : float
+        基准赔率。
+    intercept : float
+        逻辑回归截距项。
+    coefficients : dict of str to float
+        特征系数字典。
+    _binner : MarsBinnerBase
+        生成评分卡时使用的已拟合分箱器。
 
     Attributes
     ----------
@@ -72,6 +97,23 @@ class MarsScorecard:
         逻辑回归截距项。
     coefficients : dict of str to float
         特征系数字典。
+
+    Examples
+    --------
+    >>> card = MarsScorecard(
+    ...     points_table=pl.DataFrame({"feature": ["age"], "bin_index": [0], "points": [12.0]}),
+    ...     base_points=600.0,
+    ...     factor=28.85,
+    ...     offset=600.0,
+    ...     pdo=20.0,
+    ...     base_score=600.0,
+    ...     base_odds=50.0,
+    ...     intercept=0.0,
+    ...     coefficients={"age": 0.3},
+    ...     _binner=None,
+    ... )
+    >>> card.base_points
+    600.0
     """
 
     points_table: Union[pl.DataFrame, pd.DataFrame]
@@ -87,13 +129,46 @@ class MarsScorecard:
 
     @staticmethod
     def _format_score_value(value: float) -> str:
+        """将 SQL 分值格式化为稳定的整数或小数字符串。"""
         value_float = float(value)
         if value_float.is_integer():
             return str(int(value_float))
         return f"{value_float:.6f}"
 
     def to_integer(self, round_decimals: int = 0, rebalance: bool = True) -> MarsScorecard:
-        """Return a rounded scorecard, optionally rebalancing rounding drift into base points."""
+        """
+        返回分值取整后的评分卡副本。
+
+        Parameters
+        ----------
+        round_decimals : int, default 0
+            分值保留的小数位数。为 ``0`` 时，分箱分值列会转为整数。
+        rebalance : bool, default True
+            是否把四舍五入产生的总分漂移回补到基础分。
+
+        Returns
+        -------
+        MarsScorecard
+            取整后的新评分卡对象，原对象不被修改。
+
+        Examples
+        --------
+        >>> card = MarsScorecard(
+        ...     points_table=pl.DataFrame({"feature": ["age"], "bin_index": [0], "points": [12.4]}),
+        ...     base_points=600.0,
+        ...     factor=28.85,
+        ...     offset=600.0,
+        ...     pdo=20.0,
+        ...     base_score=600.0,
+        ...     base_odds=50.0,
+        ...     intercept=0.0,
+        ...     coefficients={"age": 0.3},
+        ...     _binner=None,
+        ... )
+        >>> rounded = card.to_integer()
+        >>> isinstance(rounded, MarsScorecard)
+        True
+        """
         decimals = int(round_decimals)
         table_is_polars = isinstance(self.points_table, pl.DataFrame)
         table_pd = self.points_table.to_pandas() if table_is_polars else self.points_table.copy()
@@ -139,6 +214,33 @@ class MarsScorecard:
         ----------
         path : str, default "mars_scorecard.csv"
             输出文件路径。
+
+        Returns
+        -------
+        None
+            函数仅产生 CSV 文件写入副作用。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> card = MarsScorecard(
+        ...     points_table=pl.DataFrame({"feature": ["age"], "bin_index": [0], "points": [12.0]}),
+        ...     base_points=600.0,
+        ...     factor=28.85,
+        ...     offset=600.0,
+        ...     pdo=20.0,
+        ...     base_score=600.0,
+        ...     base_odds=50.0,
+        ...     intercept=0.0,
+        ...     coefficients={"age": 0.3},
+        ...     _binner=None,
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "scorecard.csv"
+        ...     card.write_csv(str(path))
+        ...     path.exists()
+        True
         """
         df = self.points_table.to_pandas() if isinstance(self.points_table, pl.DataFrame) else self.points_table
         df.to_csv(path, index=False)
@@ -152,10 +254,37 @@ class MarsScorecard:
         path : str, default "mars_scorecard.xlsx"
             输出文件路径。
 
+        Returns
+        -------
+        None
+            函数仅产生 Excel 文件写入副作用。
+
         Notes
         -----
         导出结果包含 ``Config`` 与 ``Points`` 两个工作表，分别记录评分卡参数
         与分值明细。若环境缺少 ``xlsxwriter``，会自动回退到 ``openpyxl``。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> card = MarsScorecard(
+        ...     points_table=pl.DataFrame({"feature": ["age"], "bin_index": [0], "points": [12.0]}),
+        ...     base_points=600.0,
+        ...     factor=28.85,
+        ...     offset=600.0,
+        ...     pdo=20.0,
+        ...     base_score=600.0,
+        ...     base_odds=50.0,
+        ...     intercept=0.0,
+        ...     coefficients={"age": 0.3},
+        ...     _binner=None,
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "scorecard.xlsx"
+        ...     card.write_excel(str(path))
+        ...     path.exists()
+        True
         """
         df = self.points_table.to_pandas() if isinstance(self.points_table, pl.DataFrame) else self.points_table
         config_df = pd.DataFrame(
@@ -182,6 +311,7 @@ class MarsScorecard:
             df.to_excel(writer, sheet_name="Points", index=False)
 
     def _get_points_map(self, feature: str) -> Dict[int, float]:
+        """提取单个特征的 bin_index 到 points 映射。"""
         table_pd = self.points_table.to_pandas() if isinstance(self.points_table, pl.DataFrame) else self.points_table
         feat_df = table_pd[table_pd["feature"] == feature]
         return {
@@ -190,6 +320,12 @@ class MarsScorecard:
         }
 
     def _generate_feature_points_case(self, feature: str, table_prefix: str) -> str:
+        """
+        为单个特征生成分箱得分的 SQL ``CASE WHEN`` 表达式。
+
+        方法会复用分箱器中的数值切点或类别分组规则，并将缺失、特殊值和
+        Other 箱映射到对应分值。
+        """
         point_map = self._get_points_map(feature)
         mappings = self._binner.bin_mappings_.get(feature, {})
         col_name = f"{table_prefix}.{feature}" if table_prefix else feature
@@ -259,6 +395,24 @@ class MarsScorecard:
         -------
         str
             可直接嵌入 ``SELECT`` 语句的 SQL 片段。若没有任何有效特征，则返回空字符串。
+
+        Examples
+        --------
+        >>> from mars.feature import MarsNativeBinner
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> y = pl.Series("target", [0, 0, 1, 1])
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> scorecard = build_scorecard(
+        ...     binner,
+        ...     {"age": 0.3},
+        ...     intercept=-1.2,
+        ...     pdo=20,
+        ...     base_score=600,
+        ...     base_odds=50,
+        ... )
+        >>> sql = scorecard.generate_sql(features=["age"], table_prefix="t")
+        >>> "age_points" in sql
+        True
         """
         target_features = features or list(self.coefficients.keys())
         valid_features = [f for f in target_features if f in self.coefficients]
@@ -316,6 +470,16 @@ def build_scorecard(
     ValueError
         当 ``pdo`` 或 ``base_odds`` 非正，``coefficients`` 为空，
         或分箱器缺少构建评分卡所需的映射信息时抛出。
+
+    Examples
+    --------
+    >>> from mars.feature import MarsNativeBinner
+    >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+    >>> y = pl.Series("target", [0, 0, 1, 1])
+    >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+    >>> card = build_scorecard(binner, {"age": 0.3}, intercept=-1.2, pdo=20, base_score=600, base_odds=50)
+    >>> isinstance(card, MarsScorecard)
+    True
     """
     binner._check_is_fitted()
 
@@ -335,6 +499,7 @@ def build_scorecard(
     base_points = float(offset - factor * intercept)
 
     def _sort_key(bin_index: int) -> tuple[int, int]:
+        """确保普通箱在前，缺失和兜底箱在后稳定排序。"""
         if bin_index >= 0:
             return (0, bin_index)
         if bin_index == MarsBinnerBase.IDX_MISSING:

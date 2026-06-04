@@ -201,6 +201,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ------
         ValueError
             当真实目标列存在但取值少于两个类别时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+        >>> evaluator = MarsBinEvaluator(target="y", binning_type="native")
+        >>> report = evaluator.evaluate(df, features=["age"])
+        >>> "age" in report.summary_table.get_column("feature").to_list()
+        True
         """
 
         # 上下文准备
@@ -873,7 +882,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             (pl.col("good") / (pl.col("total_good") + epsilon)).alias("good_dist"),
             (pl.col("bad") / (pl.col("count") + epsilon)).alias("bad_rate"),
 
-            # PSI
+            # PSI 概率基准
             # 计算归一化后的 Actual% (只针对有效箱)
             (pl.col("count") / (pl.col("total_count_psi") + epsilon)).alias("act_prob_clean"),
             # 计算归一化后的 Expected% (只针对有效箱)
@@ -881,7 +890,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             (pl.col("expected_dist") / (pl.col("total_expected_dist_psi") + epsilon)).alias("exp_prob_clean")
         ])
 
-        # PSI bin contribution
+        # 计算 PSI 分箱贡献
         base_df = base_df.with_columns([
             # 仅在有效箱上计算 PSI，无效箱置为 None
             pl.when(psi_valid_cond)
@@ -893,7 +902,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .otherwise(None)
             .alias("psi_bin"),
 
-            # Lift
+            # 计算 Lift
             (
                 pl.col("bad_rate")
                 /
@@ -1020,6 +1029,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
         feature_data_source: Dict[str, List[str]] | None,
         features: List[str],
     ) -> Dict[str, str]:
+        """
+        将外部数据源到特征列表的映射标准化为特征到数据源的字典。
+
+        未显式映射的特征会标记为 ``"UNMAPPED"``；若外部映射包含当前评估
+        特征集合之外的字段，则立即抛出异常，避免报告中出现不可追溯来源。
+        """
         feature_set = set(features)
         if not feature_data_source:
             return {feature: "UNMAPPED" for feature in features}
@@ -1049,6 +1064,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         dt_col: str | None,
         output_kind: str,
     ) -> Union[pl.DataFrame, pd.DataFrame] | None:
+        """构建按日缺失率趋势表，失败时降级为不输出该附表。"""
         if not dt_col or dt_col not in df.columns:
             return None
 
@@ -1086,6 +1102,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
     @staticmethod
     def _is_time_granularity(profile_by: str | None) -> bool:
+        """判断分组配置是否表示内置或 Nd 形式的时间粒度。"""
         if profile_by in {"day", "week", "month"}:
             return True
         return isinstance(profile_by, str) and re.match(r"^\d+d$", profile_by.lower()) is not None
@@ -1098,6 +1115,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         sustain_window: int = 3,
         sustain_active_ratio: float = 2.0 / 3.0,
     ) -> int | None:
+        """识别特征从长期未覆盖状态切换到持续有效覆盖的首个位置。"""
         if not inactive_flags:
             return None
 
@@ -1129,6 +1147,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         default_expected_dist: pl.DataFrame,
         feature_expected_dist: pl.DataFrame,
     ) -> pl.DataFrame:
+        """用特征级基准分布覆盖全局默认基准分布。"""
         if feature_expected_dist.is_empty():
             return default_expected_dist
 
@@ -1141,6 +1160,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         default_df: pl.DataFrame,
         override_df: pl.DataFrame | None,
     ) -> pl.DataFrame:
+        """按 feature 维度用覆盖表替换默认表中的同名特征记录。"""
         if override_df is None or override_df.is_empty():
             return default_df
 
@@ -1159,6 +1179,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
         group_col: str,
         weights_col: str | None,
     ) -> Dict[str, Any] | None:
+        """
+        基于特征上线起始日推导 PSI 基准分布覆盖表。
+
+        当存在时间列且可识别特征从长期缺失转为持续活跃时，该方法会为
+        相关特征构造独立的 expected distribution 与 bad rate 基准。
+        若时间列不可解析或没有可用起始点，则返回 ``None``。
+        """
         _ = missing_by_day_table
 
         if dt_col not in df_binned.columns:
@@ -1373,7 +1400,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         }
 
     def _build_bin_label_map(self, stats_long: pl.DataFrame) -> pl.DataFrame:
-        """Build the feature/bin-index label lookup used by detail reports."""
+        """构建明细报告使用的特征和分箱索引到标签的映射。"""
         map_rows: list[dict[str, Any]] = []
         features = set(stats_long["feature"].unique().to_list())
 
@@ -1479,10 +1506,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 # 构建排序辅助列 (0:Normal, 1:Special/Missing, 2:Total)
                 pl.when(pl.col("bin_index") >= 0).then(0).otherwise(1).cast(pl.Int32).alias("_sort_group"),
 
-                # 针对非 Normal 箱的内部排序:
-                # -1 (Missing) -> 10000
-                # -2 (Other) -> 10001
-                # < -2 (Special) -> 20000 + abs
+                # 针对非正常箱的内部排序：
+                # -1（Missing）映射到 10000。
+                # -2（Other）映射到 10001。
+                # 小于 -2（Special）映射到 20000 + abs。
                 pl.when(pl.col("bin_index") >= 0).then(pl.col("bin_index").cast(pl.Int32)) # 显式转 Int32
                   .when(pl.col("bin_index") == -1).then(10000)
                   .when(pl.col("bin_index") == -2).then(10001)
@@ -1572,8 +1599,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
                 pl.lit("汇总组").alias("bin_type"),
 
-                pl.lit(2).cast(pl.Int32).alias("_sort_group"), # [Fix] Int32
-                pl.lit(0).cast(pl.Int32).alias("_sort_idx")    # [Fix] Int32
+                pl.lit(2).cast(pl.Int32).alias("_sort_group"), # 明确为 Int32，避免排序键类型漂移。
+                pl.lit(0).cast(pl.Int32).alias("_sort_idx")    # 明确为 Int32，避免排序键类型漂移。
             ])
         )
 
@@ -1614,7 +1641,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 pl.col("data_source").fill_null("UNMAPPED")
             )
 
-        #  Intermediate Calculations
+        # 中间指标计算
         # RiskCorr (RC) 跨期稳定性逻辑
         # 确定基准序列 (选取时间最早的一组)
         first_group = metrics_groups.select(pl.col(group_col).min()).item()
@@ -1657,6 +1684,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
 
         def _null_metric_for_invalid_groups(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
+            """对特征启用前的无效分组置空指定趋势指标。"""
             if (
                 df.is_empty()
                 or metric_col not in df.columns
@@ -1765,7 +1793,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             ])
         )
 
-        # Part 3: Summary Table
+        # 第三阶段：汇总表
         total_metrics_agg = (
             metrics_total.group_by("feature")
             .agg([
@@ -1839,7 +1867,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ["feature", "data_source"] + [col for col in summary_df.columns if col not in {"feature", "data_source"}]
             )
 
-        # Trend Tables
+        # 构建趋势表
         trend_tables = {}
         target_metrics = ["psi", "auc", "ks", "iv", "missing", "lift", "bad_rate", "risk_corr"]
 
@@ -1948,6 +1976,30 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ------
         ValueError
             当 ``report`` 和 ``df_detail`` 同时缺失时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> detail = pl.DataFrame(
+        ...     {
+        ...         "feature": ["age"],
+        ...         "bin_index": [0],
+        ...         "bin_label": ["[20, 40)"],
+        ...         "month": ["2026-01"],
+        ...         "count": [100],
+        ...         "bad": [12],
+        ...         "bad_rate": [0.12],
+        ...         "lift": [1.0],
+        ...         "iv_bin": [0.02],
+        ...     }
+        ... )
+        >>> evaluator = MarsBinEvaluator(target="y")
+        >>> evaluator.plot_feature_binning_risk_trends(
+        ...     df_detail=detail,
+        ...     features="age",
+        ...     group_col="month",
+        ... ) is None
+        True
         """
         target_df = None
         target_group_col = None
@@ -2106,6 +2158,15 @@ def profile_risk(
     ------
     ValueError
         当底层评估流程校验失败时，由 ``MarsBinEvaluator`` 继续向上抛出。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from mars.analysis.evaluator import profile_risk
+    >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+    >>> report, evaluator = profile_risk(df, target="y", features=["age"], plot=False)
+    >>> report.summary_table is not None and evaluator.target == "y"
+    True
     """
 
     input_is_pandas = isinstance(df, pd.DataFrame)

@@ -1,4 +1,4 @@
-"""Logistic regression modeling backend."""
+"""LogisticRegression 建模后端。"""
 
 from __future__ import annotations
 
@@ -36,6 +36,25 @@ class MarsLogisticModel:
         特征预处理模式。
     binner : MarsBinnerBase, optional
         WOE 模式下用于 replay/evaluate 的已拟合分箱器。
+
+    Attributes
+    ----------
+    estimator : Any
+        已训练的 ``LogisticRegression`` 实例或兼容对象。
+    features : list of str
+        用户传入的原始特征名。
+    model_features : list of str
+        LR 实际消费的数值特征名。
+    lr_feature_mode : str
+        特征预处理模式。
+    binner : MarsBinnerBase or None
+        WOE 模式下复用的分箱器。
+
+    Examples
+    --------
+    >>> model = MarsLogisticModel(estimator=object(), features=["age"], model_features=["age"])
+    >>> model.features
+    ['age']
     """
 
     estimator: Any
@@ -45,6 +64,7 @@ class MarsLogisticModel:
     binner: MarsBinnerBase | None = None
 
     def _to_pandas(self, X: pd.DataFrame | pl.DataFrame) -> pd.DataFrame:
+        """将 Pandas 或 Polars 输入复制为 Pandas DataFrame。"""
         if isinstance(X, pd.DataFrame):
             return X.copy()
         if isinstance(X, pl.DataFrame):
@@ -52,7 +72,30 @@ class MarsLogisticModel:
         raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
 
     def transform_features(self, X: pd.DataFrame | pl.DataFrame) -> pd.DataFrame:
-        """Return the numeric feature matrix consumed by LogisticRegression."""
+        """
+        返回 ``LogisticRegression`` 实际消费的数值特征矩阵。
+
+        Parameters
+        ----------
+        X : pandas.DataFrame or polars.DataFrame
+            待转换的原始特征数据。
+
+        Returns
+        -------
+        pandas.DataFrame
+            按 ``model_features`` 排列并已数值化的特征矩阵。
+
+        Raises
+        ------
+        ValueError
+            当输入缺少必要特征，或 WOE 模式缺少已拟合分箱器时抛出。
+
+        Examples
+        --------
+        >>> model = MarsLogisticModel(estimator=object(), features=["age"], model_features=["age"])
+        >>> model.transform_features(pd.DataFrame({"age": [20, 30]})).shape
+        (2, 1)
+        """
         frame = self._to_pandas(X)
         missing = sorted(set(self.features).difference(frame.columns))
         if missing:
@@ -73,7 +116,34 @@ class MarsLogisticModel:
         return woe_frame.loc[:, self.model_features].apply(pd.to_numeric, errors="coerce").fillna(0.0)
 
     def predict_proba(self, X: pd.DataFrame | pl.DataFrame) -> np.ndarray:
-        """Predict positive-class probabilities through the stored preprocessing path."""
+        """
+        通过已保存的预处理路径预测正类概率。
+
+        Parameters
+        ----------
+        X : pandas.DataFrame or polars.DataFrame
+            待评分特征数据。
+
+        Returns
+        -------
+        numpy.ndarray
+            ``estimator.predict_proba`` 的二维概率输出。
+
+        Examples
+        --------
+        >>> class DummyEstimator:
+        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
+        ...         return np.column_stack([1.0 - probs, probs])
+        >>> model = MarsLogisticModel(
+        ...     estimator=DummyEstimator(),
+        ...     features=["age"],
+        ...     model_features=["age"],
+        ... )
+        >>> probabilities = model.predict_proba(pd.DataFrame({"age": [20, 30]}))
+        >>> probabilities.round(2).tolist()
+        [[0.8, 0.2], [0.7, 0.3]]
+        """
         model_frame = self.transform_features(X)
         return np.asarray(self.estimator.predict_proba(model_frame))
 
@@ -113,12 +183,37 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
     lr_binner : MarsBinnerBase, optional
         用户传入的已配置分箱器。传入后优先复用该实例进行拟合与转换。
 
+    Attributes
+    ----------
+    lr_feature_mode : str
+        LR 特征预处理模式。
+    lr_binning_type : str
+        WOE 模式下使用的分箱器类型。
+    lr_binner_kwargs : dict
+        内部分箱器初始化参数。
+    lr_binner : MarsBinnerBase or None
+        用户传入或内部创建的分箱器。
+    model_features : list of str
+        LR 实际训练和预测使用的特征名。
+
     Raises
     ------
     ValueError
         当 LR 模式、分箱类型、样本切片或特征列配置非法时抛出。
     ImportError
         缺少 sklearn 或 statsmodels 等可选依赖时抛出。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({
+    ...     "age": [20, 30, 40, 50, 60, 70],
+    ...     "y": [0, 1, 0, 1, 0, 1],
+    ...     "dataset_flag": ["train", "train", "train", "train", "val", "val"],
+    ... })
+    >>> strategy = MarsLogisticRegressionStrategy(df, features=["age"], target="y")
+    >>> strategy.lr_feature_mode
+    'numeric'
     """
 
     SUPPORTED_FEATURE_MODES = {"numeric", "woe"}
@@ -142,6 +237,12 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         lr_binner_kwargs: Mapping[str, Any] | None = None,
         lr_binner: MarsBinnerBase | None = None,
     ) -> None:
+        """
+        初始化 LR 后端并校验数值/WOE 特征模式。
+
+        除基类调参状态外，该方法还保存 LR 专属分箱配置，并确保
+        ``lr_feature_mode`` 与 ``lr_binning_type`` 落在受支持集合中。
+        """
         self.lr_feature_mode = str(lr_feature_mode).lower()
         self.lr_binning_type = str(lr_binning_type).lower()
         self.lr_binner_kwargs = dict(lr_binner_kwargs or {})
@@ -173,7 +274,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         )
 
     def _build_backend_data(self) -> None:
-        """Prepare split-level pandas matrices for LR training and scoring."""
+        """准备 LR 训练和评分所需的分切片 Pandas 特征矩阵。"""
         self.raw_feature_frame_dict: dict[str, pd.DataFrame] = {}
         self.feature_frame_dict: dict[str, pd.DataFrame] = {}
         for split_name, split_df in self.data_dict.items():
@@ -219,7 +320,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         binner._cache_y = None
 
     def _resolve_binner(self) -> MarsBinnerBase:
-        """Return a user supplied or internally constructed LR binner."""
+        """返回用户传入或内部构建的 LR WOE 分箱器。"""
         if self.lr_binner is not None:
             return self.lr_binner
 
@@ -234,12 +335,18 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
 
     def get_default_space(self) -> dict[str, Any]:
         """
-        Return the lightweight LR hyperparameter search space.
+        返回轻量级 LR 超参数搜索空间。
 
         Returns
         -------
         dict of str to Any
-            Optuna-compatible search space for sklearn LogisticRegression.
+            兼容 Optuna 的 ``sklearn.linear_model.LogisticRegression`` 搜索空间。
+
+        Examples
+        --------
+        >>> strategy = object.__new__(MarsLogisticRegressionStrategy)
+        >>> strategy.get_default_space()["max_iter"]
+        500
         """
         return {
             "C": ("float", 0.1, 5.0, 0.1),
@@ -256,23 +363,36 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         training_metric: str,
     ) -> MarsLogisticModel:
         """
-        Train a sklearn LogisticRegression model.
+        训练单次 ``sklearn.linear_model.LogisticRegression`` 模型。
 
         Parameters
         ----------
         trial : Any
-            Current Optuna trial. Unused by LR v1.
+            当前 Optuna Trial。LR v1 暂不直接使用。
         params : dict of str to Any
-            Concrete LR hyperparameters.
+            当前 Trial 解析后的 LR 超参数。
         startup_trials : int
-            Pruning warmup count. Unused by LR v1.
+            剪枝预热 Trial 数量。LR v1 暂不直接使用。
         training_metric : str
-            Training metric name. Unused by LR v1.
+            训练期监控指标名。LR v1 暂不直接使用。
 
         Returns
         -------
         MarsLogisticModel
-            Serializable LR model wrapper.
+            可序列化的 LR 模型包装器。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({
+        ...     "age": [20, 30, 40, 50, 60, 70],
+        ...     "y": [0, 1, 0, 1, 0, 1],
+        ...     "dataset_flag": ["train", "train", "train", "train", "val", "val"],
+        ... })
+        >>> strategy = MarsLogisticRegressionStrategy(df, features=["age"], target="y")
+        >>> params = {"C": 1.0, "penalty": "l2", "max_iter": 100}
+        >>> lr_model = strategy.train_model(None, params, 0, "auc")
+        >>> isinstance(lr_model, MarsLogisticModel)
+        True
         """
         sklearn_linear = require_optional_module("sklearn.linear_model")
         logistic_cls = sklearn_linear.LogisticRegression
@@ -294,25 +414,61 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
 
     def predict_scores(self, model: MarsLogisticModel, split_name: str) -> np.ndarray:
         """
-        Predict positive-class probabilities for one split.
+        对指定数据切片预测正类概率。
 
         Parameters
         ----------
         model : MarsLogisticModel
-            Trained LR model wrapper.
+            已训练的 LR 模型包装器。
         split_name : str
-            Dataset split name.
+            数据切片名称。
 
         Returns
         -------
         numpy.ndarray
-            Positive-class probabilities.
+            正类概率一维数组。
+
+        Examples
+        --------
+        >>> class DummyEstimator:
+        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
+        ...         return np.column_stack([1.0 - probs, probs])
+        >>> strategy = object.__new__(MarsLogisticRegressionStrategy)
+        >>> strategy.feature_frame_dict = {"val": pd.DataFrame({"age": [20, 30]})}
+        >>> lr_model = MarsLogisticModel(DummyEstimator(), ["age"], ["age"])
+        >>> scores = strategy.predict_scores(lr_model, "val")
+        >>> scores.round(2).tolist()
+        [0.2, 0.3]
         """
         proba = model.estimator.predict_proba(self.feature_frame_dict[split_name])
         return np.asarray(proba[:, 1])
 
     def extract_importance(self, model: MarsLogisticModel) -> pd.DataFrame:
-        """Return a normalized absolute-coefficient importance table."""
+        """
+        返回按绝对系数归一化后的特征重要性表。
+
+        Parameters
+        ----------
+        model : MarsLogisticModel
+            已训练的 LR 模型包装器。
+
+        Returns
+        -------
+        pandas.DataFrame
+            MARS 统一格式的重要性表。
+
+        Examples
+        --------
+        >>> class DummyEstimator:
+        ...     coef_ = np.array([[0.4]])
+        >>> strategy = object.__new__(MarsLogisticRegressionStrategy)
+        >>> strategy.features = ["age"]
+        >>> lr_model = MarsLogisticModel(DummyEstimator(), ["age"], ["age"])
+        >>> importance = strategy.extract_importance(lr_model)
+        >>> importance.loc[0, "feature"]
+        'age'
+        """
         coefficients = np.ravel(model.estimator.coef_)
         importance_map = {
             feature: float(abs(coef))
@@ -326,7 +482,32 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         )
 
     def extract_diagnostics(self, model: MarsLogisticModel) -> dict[str, pd.DataFrame]:
-        """Return statsmodels coefficient and model summary diagnostics."""
+        """
+        返回 statsmodels 系数诊断和模型摘要。
+
+        Parameters
+        ----------
+        model : MarsLogisticModel
+            已训练的 LR 模型包装器。
+
+        Returns
+        -------
+        dict of str to pandas.DataFrame
+            包含 ``coefficients`` 与 ``model_summary`` 两张诊断表。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({
+        ...     "age": [20, 30, 40, 50, 60, 70],
+        ...     "y": [0, 1, 0, 1, 0, 1],
+        ...     "dataset_flag": ["train", "train", "train", "train", "val", "val"],
+        ... })
+        >>> strategy = MarsLogisticRegressionStrategy(df, features=["age"], target="y")
+        >>> lr_model = strategy.train_model(None, {"C": 1.0, "penalty": "l2"}, 0, "auc")
+        >>> diagnostics = strategy.extract_diagnostics(lr_model)
+        >>> set(diagnostics)
+        {'coefficients', 'model_summary'}
+        """
         sm = require_optional_module("statsmodels.api")
         X = self.feature_frame_dict["train"].copy()
         y = self._get_target_array(self.data_dict["train"])

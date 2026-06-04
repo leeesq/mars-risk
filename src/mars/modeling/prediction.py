@@ -35,6 +35,23 @@ class ModelPredictor:
         需要固定类别字典的特征列。
     category_levels : dict, optional
         train split 中抽取的稳定类别字典。
+
+    Attributes
+    ----------
+    model : Any
+        已训练模型对象。
+    features : list of str
+        预测所需特征列。
+    categorical_features : list of str
+        需要固定类别字典的特征列。
+    category_levels : dict of str to list
+        train split 中抽取的稳定类别字典。
+
+    Examples
+    --------
+    >>> predictor = ModelPredictor(model=object(), feature_list=["age"])
+    >>> predictor.features
+    ['age']
     """
 
     def __init__(
@@ -151,6 +168,17 @@ class ModelPredictor:
         -------
         pandas.DataFrame or polars.DataFrame
             与输入类型一致的评分数据。
+
+        Examples
+        --------
+        >>> class DummyModel:
+        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
+        ...         return np.column_stack([1.0 - probs, probs])
+        >>> predictor = ModelPredictor(DummyModel(), feature_list=["age"])
+        >>> scored = predictor.predict(pd.DataFrame({"age": [20, 30]}))
+        >>> scored["pred_score"].round(2).tolist()
+        [0.2, 0.3]
         """
         prefer_polars = is_polars_dataframe(df)
         if prefer_polars and not inplace and isinstance(df, pl.DataFrame):
@@ -171,7 +199,47 @@ class ModelPredictor:
         benchmark_col: str | None = None,
         pred_col_name: str = "pred_score",
     ) -> MarsModelingReport:
-        """评分后立即生成评估报告。"""
+        """
+        评分后立即生成评估报告。
+
+        Parameters
+        ----------
+        df : pandas.DataFrame or polars.DataFrame
+            待评分并评估的数据。
+        group_col : str
+            数据集分组列，例如 ``"train"``、``"val"`` 或月份分组。
+        target_col : str
+            二分类真实标签列。
+        time_col : str, optional
+            时间列，用于补充时序明细。
+        val_target_col : str, optional
+            验证目标列，适用于目标字段分阶段落地的场景。
+        benchmark_col : str, optional
+            基准模型分数字段。
+        pred_col_name : str, default "pred_score"
+            写入预测分数的列名。
+
+        Returns
+        -------
+        MarsModelingReport
+            评分数据对应的建模评估报告。
+
+        Examples
+        --------
+        >>> class DummyModel:
+        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
+        ...         return np.column_stack([1.0 - probs, probs])
+        >>> df = pd.DataFrame({
+        ...     "age": [20, 80, 40, 60],
+        ...     "target": [0, 1, 0, 1],
+        ...     "sample": ["train", "train", "val", "val"],
+        ... })
+        >>> predictor = ModelPredictor(DummyModel(), feature_list=["age"])
+        >>> report = predictor.evaluate(df, group_col="sample", target_col="target")
+        >>> isinstance(report, MarsModelingReport)
+        True
+        """
         scored = self.predict(df, pred_col_name=pred_col_name, inplace=False)
         evaluator = MarsModelEvaluator(
             group_col=group_col,

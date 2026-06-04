@@ -60,6 +60,31 @@ class MarsFeatureGrowthRun:
         推荐 step 对应的 tuning run。
     metadata : dict, optional
         额外审计元数据。
+
+    Attributes
+    ----------
+    summary_table : pandas.DataFrame
+        step 级汇总审计表。
+    runs : dict of int to MarsModelingRun
+        每个成功 step 对应的调参结果。
+    best_step : int or None
+        推荐模型对应的特征数量；若无成功 step 则为 ``None``。
+    best_run : MarsModelingRun or None
+        推荐 step 对应的调参结果。
+
+    Examples
+    --------
+    >>> run = MarsFeatureGrowthRun(
+    ...     model_type="xgb",
+    ...     optimize_metric="ks",
+    ...     feature_order=["age"],
+    ...     steps=[1],
+    ...     selection_metric="ks",
+    ...     summary_table=pd.DataFrame(),
+    ...     runs={},
+    ... )
+    >>> run.best_features
+    []
     """
 
     model_type: str
@@ -75,17 +100,56 @@ class MarsFeatureGrowthRun:
 
     @property
     def best_model(self) -> Any:
-        """返回推荐 step 的最佳模型。"""
+        """
+        返回推荐 step 的最佳模型。
+
+        Returns
+        -------
+        Any
+            推荐 step 的最佳模型；若尚无推荐 run，则返回 ``None``。
+
+        Examples
+        --------
+        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run.best_model is None
+        True
+        """
         return None if self.best_run is None else self.best_run.best_model
 
     @property
     def best_score(self) -> float | None:
-        """返回推荐 step 的 validation 分数。"""
+        """
+        返回推荐 step 的 validation 分数。
+
+        Returns
+        -------
+        float or None
+            推荐 step 的验证集分数；若尚无推荐 run，则返回 ``None``。
+
+        Examples
+        --------
+        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run.best_score is None
+        True
+        """
         return None if self.best_run is None else float(self.best_run.best_score)
 
     @property
     def best_features(self) -> List[str]:
-        """返回推荐 step 使用的特征列表。"""
+        """
+        返回推荐 step 使用的特征列表。
+
+        Returns
+        -------
+        list of str
+            推荐 step 使用的特征列名；若尚无推荐 run，则返回空列表。
+
+        Examples
+        --------
+        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run.best_features
+        []
+        """
         if self.best_run is None:
             return []
         return list(self.best_run.features)
@@ -103,6 +167,15 @@ class MarsFeatureGrowthRun:
         -------
         pathlib.Path
             artifact 目录路径。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> with TemporaryDirectory() as tmp:
+        ...     artifact_dir = run.write_artifact(tmp)
+        ...     artifact_dir.exists()
+        True
         """
         artifact_dir = Path(path)
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +222,15 @@ class MarsFeatureGrowthRun:
         -------
         MarsFeatureGrowthRun
             恢复后的实验结果。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> with TemporaryDirectory() as tmp:
+        ...     _ = run.write_artifact(tmp)
+        ...     MarsFeatureGrowthRun.load_artifact(tmp).feature_order
+        ['age']
         """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
@@ -208,6 +290,23 @@ class MarsFeatureIncrementalTuner:
         基准模型分数列。
     time_col : str, optional
         时间列。
+
+    Attributes
+    ----------
+    spec : ModelingSpec
+        由初始化参数构建的建模规格。
+    features : list of str
+        去重后的候选特征顺序。
+    benchmark_col : str or None
+        可选的基准模型分数列。
+    time_col : str or None
+        可选的时间列。
+
+    Examples
+    --------
+    >>> tuner = MarsFeatureIncrementalTuner(model_type="xgb", features=["age"], target="y")
+    >>> tuner.features
+    ['age']
     """
 
     def __init__(
@@ -445,6 +544,12 @@ class MarsFeatureIncrementalTuner:
         -------
         MarsFeatureGrowthRun
             包含所有成功 step、汇总表和推荐模型的实验结果。
+
+        Examples
+        --------
+        >>> tuner = MarsFeatureIncrementalTuner(model_type="xgb", features=["age"], target="y")
+        >>> callable(tuner.tune)
+        True
         """
         if mode.lower() != "prefix":
             raise ValueError("MarsFeatureIncrementalTuner currently supports only mode='prefix'.")

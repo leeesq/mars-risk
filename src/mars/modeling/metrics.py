@@ -24,6 +24,11 @@ def calculate_ks(y_true: np.ndarray | pd.Series, y_pred: np.ndarray | pd.Series)
     -------
     float
         百分制 KS。若标签不足两类，返回 ``0.0``。
+
+    Examples
+    --------
+    >>> calculate_ks(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9]))
+    100.0
     """
     y_true_arr = np.asarray(y_true)
     y_pred_arr = np.asarray(y_pred)
@@ -48,6 +53,11 @@ def calculate_auc(y_true: np.ndarray | pd.Series, y_pred: np.ndarray | pd.Series
     -------
     float
         百分制 AUC。若标签不足两类，返回随机模型基线 ``50.0``。
+
+    Examples
+    --------
+    >>> calculate_auc(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9]))
+    100.0
     """
     y_true_arr = np.asarray(y_true)
     y_pred_arr = np.asarray(y_pred)
@@ -69,6 +79,11 @@ def as_probability(preds: Any) -> np.ndarray:
     -------
     numpy.ndarray
         一维正类概率数组。
+
+    Examples
+    --------
+    >>> as_probability(np.array([-1.0, 0.0, 1.0])).round(3).tolist()
+    [0.269, 0.5, 0.731]
     """
     arr = np.asarray(preds, dtype=float).reshape(-1)
     if arr.size and (np.nanmin(arr) < 0.0 or np.nanmax(arr) > 1.0):
@@ -91,6 +106,15 @@ def xgb_ks_metric(preds: np.ndarray, dmatrix: Any) -> tuple[str, float]:
     -------
     tuple of str, float
         指标名与百分制 KS。
+
+    Examples
+    --------
+    >>> class DummyDMatrix:
+    ...     def get_label(self) -> np.ndarray:
+    ...         return np.array([0, 1])
+    >>> name, value = xgb_ks_metric(np.array([0.1, 0.9]), DummyDMatrix())
+    >>> name
+    'ks'
     """
     return "ks", calculate_ks(dmatrix.get_label(), as_probability(preds))
 
@@ -110,6 +134,15 @@ def lgb_ks_metric(preds: np.ndarray, dataset: Any) -> tuple[str, float, bool]:
     -------
     tuple of str, float, bool
         指标名、百分制 KS、是否越大越好。
+
+    Examples
+    --------
+    >>> class DummyDataset:
+    ...     def get_label(self) -> np.ndarray:
+    ...         return np.array([0, 1])
+    >>> name, value, higher_is_better = lgb_ks_metric(np.array([0.1, 0.9]), DummyDataset())
+    >>> higher_is_better
+    True
     """
     return "ks", calculate_ks(dataset.get_label(), as_probability(preds)), True
 
@@ -118,14 +151,42 @@ class CatBoostKSMetric:
     """
     CatBoost 自定义 KS 评估指标。
 
+    Parameters
+    ----------
+    None
+        该指标对象不需要初始化参数。
+
+    Attributes
+    ----------
+    None
+        该指标对象不维护可变实例状态。
+
     Notes
     -----
     CatBoost 的 ``evaluate`` 返回值第一项参与最优迭代选择，第二项为权重。这里不做
     weighted KS，只保证多维或分块输入会被安全一维化。
+
+    Examples
+    --------
+    >>> metric = CatBoostKSMetric()
+    >>> metric.is_max_optimal()
+    True
     """
 
     def is_max_optimal(self) -> bool:
-        """返回 ``True``，表示 KS 越大越优。"""
+        """
+        返回 ``True``，表示 KS 越大越优。
+
+        Returns
+        -------
+        bool
+            固定为 ``True``。
+
+        Examples
+        --------
+        >>> CatBoostKSMetric().is_max_optimal()
+        True
+        """
         return True
 
     def evaluate(self, approxes: Any, target: Any, weight: Any) -> tuple[float, float]:
@@ -150,6 +211,13 @@ class CatBoostKSMetric:
         ------
         ValueError
             预测长度与标签长度不一致时抛出。
+
+        Examples
+        --------
+        >>> metric = CatBoostKSMetric()
+        >>> value, weight = metric.evaluate([np.array([0.1, 0.9])], np.array([0, 1]), None)
+        >>> round(value, 1), weight
+        (1.0, 1.0)
         """
         preds = as_probability(approxes[0])
         target_arr = np.asarray(target).reshape(-1)
@@ -163,5 +231,24 @@ class CatBoostKSMetric:
         return calculate_ks(target_arr, preds) / 100.0, 1.0
 
     def get_final_error(self, error: float, weight: float) -> float:
-        """将 CatBoost 内部 0-1 量纲结果恢复为百分制 KS。"""
+        """
+        将 CatBoost 内部 0-1 量纲结果恢复为百分制 KS。
+
+        Parameters
+        ----------
+        error : float
+            CatBoost 内部传入的 0-1 量纲指标值。
+        weight : float
+            CatBoost 传入的指标权重，本实现不使用。
+
+        Returns
+        -------
+        float
+            百分制 KS。
+
+        Examples
+        --------
+        >>> CatBoostKSMetric().get_final_error(0.42, 1.0)
+        42.0
+        """
         return float(error) * 100.0

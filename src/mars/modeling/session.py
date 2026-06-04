@@ -40,6 +40,23 @@ class MarsModelingSession:
         评估时默认使用的基准分数列。
     time_col : str, optional
         评估时默认使用的时间列。
+
+    Attributes
+    ----------
+    tuner : MarsModelTuner
+        单次调参入口。
+    replay_runner : MarsModelReplay
+        Top-K replay 入口。
+    feature_growth_tuner : MarsFeatureIncrementalTuner
+        逐步增加特征调参入口。
+    last_feature_growth_run : MarsFeatureGrowthRun or None
+        最近一次特征增长调参结果。
+
+    Examples
+    --------
+    >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+    >>> session.tuner.spec.features
+    ['age']
     """
 
     def __init__(
@@ -108,32 +125,110 @@ class MarsModelingSession:
 
     @property
     def last_run(self) -> MarsModelingRun | None:
-        """返回当前会话最近一次调参结果。"""
+        """
+        返回当前会话最近一次调参结果。
+
+        Returns
+        -------
+        MarsModelingRun or None
+            最近一次调参结果；若尚未运行调参，则返回 ``None``。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.last_run is None
+        True
+        """
         return self.tuner.last_run
 
     @property
     def best_model(self) -> Any:
-        """Return the best model from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳模型。
+
+        Returns
+        -------
+        Any
+            最近一次调参运行中的最佳模型；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.best_model is None
+        True
+        """
         return self.tuner.best_model
 
     @property
     def best_score(self) -> float | None:
-        """Return the best validation score from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳验证集分数。
+
+        Returns
+        -------
+        float or None
+            最近一次调参运行的最佳验证集分数；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.best_score is None
+        True
+        """
         return self.tuner.best_score
 
     @property
     def best_params(self) -> dict[str, Any] | None:
-        """Return the best parameter set from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳参数集合。
+
+        Returns
+        -------
+        dict of str to Any or None
+            最近一次调参运行的最佳参数副本；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.best_params is None
+        True
+        """
         return self.tuner.best_params
 
     @property
     def history_table(self) -> pd.DataFrame:
-        """Return the structured history table from the latest tuning run."""
+        """
+        返回最近一次调参运行的结构化 Trial 历史表。
+
+        Returns
+        -------
+        pandas.DataFrame
+            Trial 历史表；若尚无调参结果，则返回空表。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.history_table.empty
+        True
+        """
         return self.tuner.history_table
 
     @property
     def last_feature_growth_run(self) -> MarsFeatureGrowthRun | None:
-        """返回最近一次逐步增加特征调参结果。"""
+        """
+        返回最近一次逐步增加特征调参结果。
+
+        Returns
+        -------
+        MarsFeatureGrowthRun or None
+            最近一次特征增长调参结果；若尚未运行，则返回 ``None``。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> session.last_feature_growth_run is None
+        True
+        """
         return self._last_feature_growth_run
 
     def slice(
@@ -174,6 +269,16 @@ class MarsModelingSession:
         -------
         pandas.DataFrame or polars.DataFrame
             与输入类型一致、已追加 dataset flag 的数据框。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame(
+        ...     {"apply_dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"], "y": [0, 1, 0, 1]}
+        ... )
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> out = session.slice(df, time_col="apply_dt", split_ratios={"train": 0.5, "val": 0.5})
+        >>> "dataset_flag" in out.columns
+        True
         """
         split_spec = SplitSpec(
             time_col=time_col,
@@ -201,7 +306,27 @@ class MarsModelingSession:
         raise ValueError(f"Unsupported slice mode: {mode!r}. Expected 'strict' or 'hybrid'.")
 
     def tune(self, df: FrameLike, **kwargs: Any) -> MarsModelingRun:
-        """调用调参工具训练并返回结构化调参结果。"""
+        """
+        调用调参工具训练并返回结构化调参结果。
+
+        Parameters
+        ----------
+        df : pandas.DataFrame or polars.DataFrame
+            已带 train/val/OOT 标识的建模样本。
+        **kwargs : Any
+            透传给 ``MarsModelTuner.tune`` 的调参参数。
+
+        Returns
+        -------
+        MarsModelingRun
+            单次调参结果。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> callable(session.tune)
+        True
+        """
         return self.tuner.tune(df, **kwargs)
 
     def incremental_tune(
@@ -248,6 +373,12 @@ class MarsModelingSession:
         -------
         MarsFeatureGrowthRun
             包含 step 汇总表、每个成功 step 的 tuning run 和推荐模型。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> callable(session.incremental_tune)
+        True
         """
         result = self.feature_growth_tuner.tune(
             df,
@@ -301,6 +432,12 @@ class MarsModelingSession:
         -------
         MarsModelingReport
             汇总指标、明细表和训练元数据。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> callable(session.evaluate)
+        True
         """
         run = self.last_run
         resolved_feature_cols = list(feature_cols) if feature_cols is not None else list(self.tuner.spec.features)
@@ -349,5 +486,27 @@ class MarsModelingSession:
         df: FrameLike,
         **kwargs: Any,
     ) -> MarsReplayRun:
-        """复用调参结果执行 Top-K replay、重训和重评分。"""
+        """
+        复用调参结果执行 Top-K replay、重训和重评分。
+
+        Parameters
+        ----------
+        run : MarsModelingRun
+            调参阶段产出的结果对象。
+        df : pandas.DataFrame or polars.DataFrame
+            需要重训和评分的数据。
+        **kwargs : Any
+            透传给 ``MarsModelReplay.run`` 的 replay 参数。
+
+        Returns
+        -------
+        MarsReplayRun
+            replay 排名、leaderboard、模型、评分数据和报告。
+
+        Examples
+        --------
+        >>> session = MarsModelingSession(model_type="xgb", features=["age"], target="y")
+        >>> callable(session.replay)
+        True
+        """
         return self.replay_runner.run(run, df, **kwargs)

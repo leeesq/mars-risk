@@ -64,6 +64,11 @@ class MarsBinnerBase(MarsTransformer):
     ``Other`` 为 ``-2``，
     ``Special`` 从 ``-3`` 开始向负方向扩展，
     正常分箱索引从 ``0`` 开始递增。
+
+    Examples
+    --------
+    >>> issubclass(MarsNativeBinner, MarsBinnerBase)
+    True
     """
 
     # 类型常量: 用于快速判定数值列
@@ -168,6 +173,13 @@ class MarsBinnerBase(MarsTransformer):
         pl.DataFrame or pd.DataFrame or pl.LazyFrame
             分箱转换结果。若设置了 ``set_output("pandas")`` 且结果为 eager
             DataFrame，则返回 Pandas 对象。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner.transform(X).columns
+        ['age_bin']
         """
         self._check_is_fitted()
 
@@ -209,6 +221,13 @@ class MarsBinnerBase(MarsTransformer):
         -------
         pl.DataFrame or pd.DataFrame or pl.LazyFrame
             分箱转换结果。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+        >>> binner.fit_transform(X, return_type="label").columns
+        ['age_bin']
         """
         return self.fit(X, y).transform(
             X,
@@ -229,6 +248,13 @@ class MarsBinnerBase(MarsTransformer):
         Notes
         -----
         返回结果只包含分箱规则和必要状态，不包含缓存的训练数据本体。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> sorted(binner.to_dict().keys())
+        ['params', 'state']
         """
         return {
             "params": {
@@ -294,6 +320,20 @@ class MarsBinnerBase(MarsTransformer):
         -------
         MarsBinnerBase
             恢复后的已拟合分箱器实例。
+
+        Examples
+        --------
+        >>> class DemoBinner(MarsBinnerBase):
+        ...     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
+        ...         return None
+        ...     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame:
+        ...         return X
+        >>> state = {
+        ...     "params": {"features": ["age"], "n_bins": 2},
+        ...     "state": {"bin_mappings_": {"age": {0: "young"}}},
+        ... }
+        >>> DemoBinner.from_dict(state).get_bin_mapping("age")
+        {0: 'young'}
         """
         # 实例化一个空对象
         instance = cls(**data["params"])
@@ -342,6 +382,19 @@ class MarsBinnerBase(MarsTransformer):
         -----
         该方法会清空 ``_cache_X`` 和 ``_cache_y``，并主动触发一次垃圾回收。
         适合在模型训练完成、无需再次即时重算统计量时调用。
+
+        Returns
+        -------
+        None
+            函数仅清理训练数据缓存。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner.clear_cache()
+        >>> binner._cache_X is None
+        True
         """
         self._cache_X = None
         self._cache_y = None
@@ -413,6 +466,13 @@ class MarsBinnerBase(MarsTransformer):
         -------
         dict of int to str
             分箱索引到标签的映射字典。若该特征不存在，则返回空字典。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> isinstance(binner.get_bin_mapping("age"), dict)
+        True
         """
         return self.bin_mappings_.get(col, {})
 
@@ -848,6 +908,15 @@ class MarsBinnerBase(MarsTransformer):
         -----
         该方法依赖当前分箱器已完成拟合，并会复用 ``transform(return_type="index")``
         的输出结果来执行聚合统计。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> y = pl.Series("target", [0, 0, 1, 1])
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> stats = binner.profile_bin_performance(X, y)
+        >>> "feature" in stats.columns
+        True
         """
         X = self._ensure_polars_dataframe(X)
 
@@ -1062,6 +1131,15 @@ class MarsBinnerBase(MarsTransformer):
         ------
         ValueError
             当缺少用于重算 WOE 的 ``X``/``y``，且缓存也不可用时抛出。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> y = pl.Series("target", [0, 0, 1, 1])
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> updated = binner.update_bins({"age": [35]})
+        >>> "feature" in updated.columns
+        True
         """
         self._check_is_fitted()
 
@@ -1139,6 +1217,13 @@ class MarsBinnerBase(MarsTransformer):
         -----
         该方法会同步裁剪切点、类别分组、标签映射、WOE 映射以及 ``feature_names_in_``，
         常用于特征筛选完成后缩小序列化模型体积。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50], "income": [5, 6, 7, 8]})
+        >>> binner = MarsNativeBinner(features=["age", "income"], method="quantile", n_bins=2).fit(X)
+        >>> binner.prune(["age"]).feature_names_in_
+        ['age']
         """
         keep_set = set(keep_features)
 
@@ -1192,6 +1277,14 @@ class MarsBinnerBase(MarsTransformer):
         ------
         ValueError
             当请求导出未拟合或不存在映射的特征时抛出。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> sql = binner.generate_sql(features="age", return_type="index")
+        >>> "age_index" in sql
+        True
         """
         self._check_is_fitted()
 
@@ -1225,7 +1318,7 @@ class MarsBinnerBase(MarsTransformer):
                     return f"{woes.get(idx, 0.0):.4f}"
                 elif return_type == "index":
                     return str(idx)
-                else:  # label
+                else:  # 输出分箱标签。
                     label_str = mappings.get(idx, "Unknown")
                     return f"'{label_str}'"
 
@@ -1387,6 +1480,14 @@ class MarsNativeBinner(MarsBinnerBase):
     当数据集体量极大且连续变量呈严重长尾或零膨胀分布时，无监督的等频与等宽算法极易生成
     绝对占比极低甚至频数为 0 的异常物理箱。开启 `merge_small_bins` 选项可在不显著增加
     计算开销的前提下，强制修复连续区间的碎化问题，保障后续 WOE 映射的稳定性。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+    >>> df = pl.DataFrame({"age": [20, 30, 40, 50]})
+    >>> binner.fit_transform(df).columns
+    ['age_bin']
     """
 
     def __init__(
@@ -1465,6 +1566,13 @@ class MarsNativeBinner(MarsBinnerBase):
         -------
         MarsNativeBinner
             拟合完成后的原生分箱器实例。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+        >>> binner.fit(X).feature_names_in_
+        ['age']
         """
         super().fit(X, y)
         return self
@@ -2240,6 +2348,15 @@ class MarsOptimalBinner(MarsBinnerBase):
     求解器可能因无法在给定的 `min_bin_size` 与单调性约束下找到可行解 (Infeasible) 而崩溃。
     为此，引擎内部构建了完备的异常隔离与降级回退机制，确保流水线在处理高噪超宽表时具备
     绝对的稳定性。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> binner = MarsOptimalBinner(features=["age"], n_bins=2, min_bin_n_event=1)
+    >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+    >>> y = pl.Series("y", [0, 0, 1, 1])
+    >>> binner.fit(X, y).transform(X).columns
+    ['age_bin']
     """
 
     def __init__(
@@ -2352,6 +2469,14 @@ class MarsOptimalBinner(MarsBinnerBase):
         -------
         MarsOptimalBinner
             拟合完成后的最优分箱器实例。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> y = pl.Series("target", [0, 0, 1, 1])
+        >>> binner = MarsOptimalBinner(features=["age"], n_bins=2, min_bin_n_event=1)
+        >>> binner.fit(X, y).feature_names_in_
+        ['age']
         """
         super().fit(X, y)
         return self

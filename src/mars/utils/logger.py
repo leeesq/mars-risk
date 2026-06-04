@@ -58,19 +58,99 @@ def _sanitize_console_text(text: str) -> str:
 
 
 class SafePlainFormatter(logging.Formatter):
-    """面向普通文本控制台的安全格式化器。"""
+    """
+    面向普通文本控制台的安全格式化器。
+
+    Parameters
+    ----------
+    fmt : str, optional
+        继承自 ``logging.Formatter`` 的格式化模板。
+    datefmt : str, optional
+        继承自 ``logging.Formatter`` 的日期格式。
+    style : {"%", "{", "$"}, default "%"
+        继承自 ``logging.Formatter`` 的模板风格。
+
+    Attributes
+    ----------
+    _style : logging.PercentStyle
+        ``logging.Formatter`` 内部保存的格式化样式对象。
+
+    Examples
+    --------
+    >>> formatter = SafePlainFormatter("%(levelname)s:%(message)s")
+    >>> isinstance(formatter, logging.Formatter)
+    True
+    """
 
     def format(self, record: logging.LogRecord) -> str:
-        """格式化日志记录并执行编码安全转换。"""
+        """
+        格式化日志记录并执行编码安全转换。
+
+        Parameters
+        ----------
+        record : logging.LogRecord
+            待格式化的日志记录对象。
+
+        Returns
+        -------
+        str
+            已经过控制台编码安全处理的日志文本。
+
+        Examples
+        --------
+        >>> record = logging.LogRecord("mars", logging.INFO, __file__, 1, "ok", (), None)
+        >>> SafePlainFormatter("%(message)s").format(record)
+        'ok'
+        """
         return _sanitize_console_text(super().format(record))
 
 
 if HAS_COLORLOG:
     class SafeColoredFormatter(colorlog.ColoredFormatter):
-        """面向彩色终端的安全格式化器。"""
+        """
+        面向彩色终端的安全格式化器。
+
+        Parameters
+        ----------
+        fmt : str, optional
+            继承自 ``colorlog.ColoredFormatter`` 的格式化模板。
+        datefmt : str, optional
+            继承自 ``colorlog.ColoredFormatter`` 的日期格式。
+        log_colors : dict, optional
+            日志级别到终端颜色的映射。
+
+        Attributes
+        ----------
+        _style : logging.PercentStyle
+            底层 formatter 内部保存的格式化样式对象。
+
+        Examples
+        --------
+        >>> formatter = SafeColoredFormatter("%(message)s")
+        >>> isinstance(formatter, logging.Formatter)
+        True
+        """
 
         def format(self, record: logging.LogRecord) -> str:
-            """格式化彩色日志记录并执行编码安全转换。"""
+            """
+            格式化彩色日志记录并执行编码安全转换。
+
+            Parameters
+            ----------
+            record : logging.LogRecord
+                待格式化的日志记录对象。
+
+            Returns
+            -------
+            str
+                已经过控制台编码安全处理的彩色日志文本。
+
+            Examples
+            --------
+            >>> record = logging.LogRecord("mars", logging.INFO, __file__, 1, "ok", (), None)
+            >>> SafeColoredFormatter("%(message)s").format(record)
+            'ok'
+            """
             return _sanitize_console_text(super().format(record))
 
 def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
@@ -98,6 +178,12 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     3. **样式**:
        - 彩色模式: [MARS] 时间 - 级别 - 消息 (不同级别不同颜色)
        - 普通模式: [MARS] 时间 - 级别 - 消息
+
+    Examples
+    --------
+    >>> logger = get_mars_logger()
+    >>> logger.name
+    'mars'
     """
     # 获取指定名称的 logger 实例
     logger = logging.getLogger(LOGGER_NAME)
@@ -177,6 +263,11 @@ def set_log_level(level: Union[str, int]) -> None:
     level : Union[str, int]
         目标日志级别。可以是 ``logging`` 常量，也可以是字符串形式的
         级别名称，例如 ``"DEBUG"``、``"info"`` 或 ``"WARNING"``。
+
+    Returns
+    -------
+    None
+        函数仅修改全局 logger 与 handler 的级别。
 
     Examples
     --------

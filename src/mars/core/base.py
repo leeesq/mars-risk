@@ -29,6 +29,12 @@ class MarsBaseEstimator(BaseEstimator):
         是否将输出格式化为 Pandas 对象。
     _output_config : {"default", "pandas", "polars"}
         用户通过 ``set_output`` 指定的输出格式偏好。
+
+    Examples
+    --------
+    >>> estimator = MarsBaseEstimator().set_output("polars")
+    >>> estimator._output_config
+    'polars'
     """
 
     _PL_NUMERIC_TYPES = {
@@ -64,6 +70,12 @@ class MarsBaseEstimator(BaseEstimator):
         -------
         MarsBaseEstimator
             当前实例，支持链式调用。
+
+        Examples
+        --------
+        >>> estimator = MarsBaseEstimator().set_output("pandas")
+        >>> estimator._return_pandas
+        True
         """
         if transform not in ["default", "pandas", "polars"]:
             raise ValueError(f"Unknown output format: {transform}")
@@ -272,6 +284,11 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         最近一次成功拟合时缓存的输入特征名。
     _is_fitted : bool
         当前实例是否已完成拟合。
+
+    Examples
+    --------
+    >>> issubclass(MarsTransformer, MarsBaseEstimator)
+    True
     """
 
     def __init__(self) -> None:
@@ -301,6 +318,17 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         -------
         list of str
             拟合阶段缓存的输入特征名。
+
+        Examples
+        --------
+        >>> class IdentityTransformer(MarsTransformer):
+        ...     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
+        ...         return None
+        ...     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame:
+        ...         return X
+        >>> transformer = IdentityTransformer().fit(pl.DataFrame({"age": [20]}))
+        >>> transformer.get_feature_names_out()
+        ['age']
         """
         return self.feature_names_in_
 
@@ -334,6 +362,17 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         -----
         该基类仅提供最小公共拟合契约。若子类需要向用户暴露额外参数，
         应直接重写公共 ``fit`` 方法，而不是依赖内部实现钩子的隐式透传。
+
+        Examples
+        --------
+        >>> class IdentityTransformer(MarsTransformer):
+        ...     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
+        ...         return None
+        ...     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame:
+        ...         return X
+        >>> transformer = IdentityTransformer().fit(pl.DataFrame({"age": [20]}))
+        >>> transformer.feature_names_in_
+        ['age']
         """
         if isinstance(X, pd.DataFrame) and isinstance(y, (pd.Series, pd.DataFrame)):
             if not X.index.equals(y.index):
@@ -372,6 +411,17 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         -----
         该基类不再承担子类私有参数的公开入口。若子类需要额外的转换参数，
         应在子类自己的公共 ``transform`` 方法中显式声明。
+
+        Examples
+        --------
+        >>> class IdentityTransformer(MarsTransformer):
+        ...     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
+        ...         return None
+        ...     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame:
+        ...         return X
+        >>> transformer = IdentityTransformer().fit(pl.DataFrame({"age": [20]}))
+        >>> transformer.transform(pl.DataFrame({"age": [30]})).to_dict(as_series=False)
+        {'age': [30]}
         """
         self._check_is_fitted()
 
@@ -403,6 +453,16 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         -----
         若子类公开的 ``fit`` 或 ``transform`` 带有额外参数，应同步重写
         ``fit_transform``，避免这些参数再次隐藏在基类实现之外。
+
+        Examples
+        --------
+        >>> class IdentityTransformer(MarsTransformer):
+        ...     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
+        ...         return None
+        ...     def _transform_impl(self, X: pl.DataFrame) -> pl.DataFrame:
+        ...         return X
+        >>> IdentityTransformer().fit_transform(pl.DataFrame({"age": [20]})).shape
+        (1, 1)
         """
         return self.fit(X, y).transform(X)
 
@@ -448,6 +508,11 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         筛选过程中的明细决策记录。
     _is_fitted : bool
         当前筛选器是否已完成拟合。
+
+    Examples
+    --------
+    >>> issubclass(MarsBaseSelector, MarsBaseEstimator)
+    True
     """
 
     def __init__(self, target: str) -> None:
@@ -478,6 +543,18 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         -------
         MarsBaseSelector
             完成拟合后的筛选器实例。
+
+        Examples
+        --------
+        >>> class KeepAgeSelector(MarsBaseSelector):
+        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
+        ...         self.selected_features_ = ["age"]
+        ...         self.n_features_in_ = len(X.columns)
+        ...         self._is_fitted = True
+        ...         return self
+        >>> selector = KeepAgeSelector(target="y").fit(pl.DataFrame({"age": [20], "y": [0]}))
+        >>> selector.selected_features_
+        ['age']
         """
 
     def transform(self, X: Union[pl.DataFrame, pd.DataFrame]) -> pl.DataFrame:
@@ -493,6 +570,17 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         -------
         pl.DataFrame or pd.DataFrame
             仅保留 ``selected_features_`` 以及目标列后的数据集。
+
+        Examples
+        --------
+        >>> class KeepAgeSelector(MarsBaseSelector):
+        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
+        ...         self.selected_features_ = ["age"]
+        ...         self._is_fitted = True
+        ...         return self
+        >>> selector = KeepAgeSelector(target="y").fit(pl.DataFrame({"age": [20], "y": [0]}))
+        >>> selector.transform(pl.DataFrame({"age": [30], "income": [10], "y": [1]})).columns
+        ['age', 'y']
         """
         self._check_is_fitted()
         X = self._ensure_polars_dataframe(X)
@@ -526,6 +614,19 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         -------
         pl.DataFrame or pd.DataFrame
             仅保留入选特征及目标列的数据集。
+
+        Examples
+        --------
+        >>> class KeepAgeSelector(MarsBaseSelector):
+        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
+        ...         self.selected_features_ = ["age"]
+        ...         self._is_fitted = True
+        ...         return self
+        >>> result = KeepAgeSelector(target="y").fit_transform(
+        ...     pl.DataFrame({"age": [20], "income": [10], "y": [0]})
+        ... )
+        >>> result.columns
+        ['age', 'y']
         """
         return self.fit(X, y, **kwargs).transform(X)
 
@@ -537,6 +638,18 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         -------
         pl.DataFrame or pd.DataFrame
             包含各特征筛选状态、阶段、原因、指标值与描述的报告表。
+
+        Examples
+        --------
+        >>> class KeepAgeSelector(MarsBaseSelector):
+        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
+        ...         self.selected_features_ = ["age"]
+        ...         self._register_decision("age", status="Selected", stage="demo")
+        ...         self._is_fitted = True
+        ...         return self
+        >>> selector = KeepAgeSelector(target="y").fit(pl.DataFrame({"age": [20], "y": [0]}))
+        >>> selector.get_report()["feature"].to_list()
+        ['age']
         """
         self._check_is_fitted()
 

@@ -1,4 +1,4 @@
-# mars/analysis/report.py
+"""MARS 数据画像与分箱评估报告对象。"""
 
 import html
 import importlib.util
@@ -35,7 +35,34 @@ def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
     return df
 
 class ProfileData(NamedTuple):
-    """画像报告底层数据对象集合。"""
+    """
+    画像报告底层数据对象集合。
+
+    Parameters
+    ----------
+    overview : DataFrame
+        特征概览宽表。
+    dq_trends : dict of str to DataFrame
+        数据质量指标的趋势宽表字典。
+    stats_trends : dict of str to DataFrame
+        统计分布指标的趋势宽表字典。
+
+    Attributes
+    ----------
+    overview : DataFrame
+        特征概览宽表。
+    dq_trends : dict of str to DataFrame
+        数据质量指标的趋势宽表字典。
+    stats_trends : dict of str to DataFrame
+        统计分布指标的趋势宽表字典。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> data = ProfileData(overview=pl.DataFrame(), dq_trends={}, stats_trends={})
+    >>> data.dq_trends
+    {}
+    """
 
     overview: Union[pl.DataFrame, pd.DataFrame]
     dq_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
@@ -85,19 +112,13 @@ class MarsProfileReport:
 
     Examples
     --------
-    >>> from mars.analysis import MarsDataProfiler
-    >>> profiler = MarsDataProfiler(df)
-    >>> report = profiler.generate_profile(profile_by="month")
-    >>>
-    >>> # 1. 触发交互式富文本视图渲染
-    >>> report.show_overview(sort_by="missing_rate")
-    >>> report.show_trend("missing", features=["age", "income"])
-    >>>
-    >>> # 2. 剥离并获取底层物理数据帧以执行二次开发
+    >>> import polars as pl
+    >>> overview = pl.DataFrame({"feature": ["age"], "missing_rate": [0.0]})
+    >>> dq_tables = {"missing": pl.DataFrame({"feature": ["age"], "202601": [0.0]})}
+    >>> report = MarsProfileReport(overview, dq_tables=dq_tables, stats_tables={})
     >>> overview_df, dq_dict, stat_dict = report.get_profile_data()
-    >>>
-    >>> # 3. 执行携带条件格式映射的跨平台报表持久化导出
-    >>> report.write_excel("mars_data_health_audit.xlsx")
+    >>> overview_df.height
+    1
     """
 
     def __init__(
@@ -138,6 +159,14 @@ class MarsProfileReport:
         -------
         ProfileData
             包含概览表、数据质量趋势表字典和统计指标趋势表字典的命名元组。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> overview = pl.DataFrame({"feature": ["age"], "missing_rate": [0.0]})
+        >>> report = MarsProfileReport(overview, dq_tables={}, stats_tables={})
+        >>> report.get_profile_data().overview.height
+        1
         """
         return ProfileData(
             overview=self.overview_table,
@@ -253,6 +282,23 @@ class MarsProfileReport:
         -------
         pd.io.formats.style.Styler
             适合在 Jupyter 环境中直接渲染的样式化概览表。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> overview = pl.DataFrame(
+        ...     {
+        ...         "feature": ["age"],
+        ...         "dtype": ["Int64"],
+        ...         "missing_rate": [0.0],
+        ...         "zeros_rate": [0.0],
+        ...         "unique_rate": [1.0],
+        ...         "top1_ratio": [0.25],
+        ...     }
+        ... )
+        >>> report = MarsProfileReport(overview, dq_tables={}, stats_tables={})
+        >>> hasattr(report.show_overview(features="age"), "to_html")
+        True
         """
         # 转换为 Pandas 副本以进行切片
         df = _as_pandas_frame(self.overview_table).copy()
@@ -305,6 +351,15 @@ class MarsProfileReport:
         ------
         ValueError
             当 ``metric`` 不在当前报告支持的指标范围内时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> overview = pl.DataFrame({"feature": ["age"], "dtype": ["Int64"], "missing_rate": [0.0]})
+        >>> trend = pl.DataFrame({"feature": ["age"], "dtype": ["Int64"], "2026-01": [0.0], "total": [0.0]})
+        >>> report = MarsProfileReport(overview, dq_tables={"missing": trend}, stats_tables={})
+        >>> hasattr(report.show_trend("missing", features="age"), "to_html")
+        True
         """
         # 路由逻辑：查找指标属于哪个表
         source_type = self._metric_index.get(metric)
@@ -321,14 +376,14 @@ class MarsProfileReport:
             fmt_pct = True     # DQ 指标通常是率 (Rate/Ratio)
             vmin, vmax = 0, 1  # 率通常在 0~1 之间
 
-        else: # source_type == "stat"
+        else: # source_type 为 "stat"。
             df_raw = self.stats_tables[metric]
-            # Stats 默认配置
+            # 统计指标默认配置
             cmap = "Blues"     # 蓝色代表数值高低 (中性)
             fmt_pct = False    # 统计值通常是绝对值
             vmin, vmax = None, None
 
-        # 特殊指标微调 (Override)
+        # 特殊指标覆盖配置
         if metric == "psi":
             cmap = "RdYlGn_r" # PSI 高了是坏事
             fmt_pct = False   # PSI 是数值不是百分比
@@ -399,6 +454,26 @@ class MarsProfileReport:
         Notes
         -----
         该方法依赖 ``xlsxwriter`` 导出带样式的多工作表 Excel 文件。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> overview = pl.DataFrame(
+        ...     {
+        ...         "feature": ["age"],
+        ...         "dtype": ["Int64"],
+        ...         "missing_rate": [0.0],
+        ...         "zeros_rate": [0.0],
+        ...         "unique_rate": [1.0],
+        ...         "top1_ratio": [0.25],
+        ...     }
+        ... )
+        >>> report = MarsProfileReport(overview, dq_tables={}, stats_tables={})
+        >>> with TemporaryDirectory() as tmp:
+        ...     report.write_excel(str(Path(tmp) / "profile.xlsx")) is None
+        True
         """
         logger.info(f"Exporting report to: {path}...")
 
@@ -504,9 +579,9 @@ class MarsProfileReport:
 
             worksheet.conditional_format(1, start_col, len(df_pd), end_col, {
                 'type': '3_color_scale',
-                'min_type': 'num', 'min_value': 0.05, 'min_color': '#63BE7B', # Green
-                'mid_type': 'num', 'mid_value': 0.15, 'mid_color': '#FFEB84', # Yellow
-                'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # Red
+                'min_type': 'num', 'min_value': 0.05, 'min_color': '#63BE7B', # 绿色
+                'mid_type': 'num', 'mid_value': 0.15, 'mid_color': '#FFEB84', # 黄色
+                'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # 红色
             })
 
         # 稳定性 Data Bars (针对 group_cv)
@@ -684,19 +759,13 @@ class MarsEvaluationReport:
 
     Examples
     --------
-    >>> from mars.analysis import MarsBinEvaluator
-    >>> evaluator = MarsBinEvaluator(target="is_bad")
-    >>> report = evaluator.evaluate(df, profile_by="month")
-    >>>
-    >>> # 触发交互式特征汇总审计视图
-    >>> core_features = ["age", "debt_ratio", "revolving_util"]
-    >>> report.show_summary(features=core_features)
-    >>>
-    >>> # 追踪特定指标的时间序列漂移轨迹
-    >>> report.show_trend("psi", sort_by="Total", sort_ascending=False, group_ascending=True)
-    >>>
-    >>> # 执行包含全量分箱明细的监控报表持久化导出
-    >>> report.write_excel("mars_feature_evaluation.xlsx")
+    >>> import polars as pl
+    >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
+    >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
+    >>> trend_tables = {"psi": pl.DataFrame({"feature": ["age"], "202601": [0.01]})}
+    >>> report = MarsEvaluationReport(summary, trend_tables, detail, group_col="month")
+    >>> report.get_evaluation_data()[0].height
+    1
     """
 
     def __init__(
@@ -751,6 +820,14 @@ class MarsEvaluationReport:
         -------
         pl.DataFrame or pd.DataFrame
             与构造时输入类型一致的汇总表。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12]})
+        >>> report = MarsEvaluationReport(summary, {}, pl.DataFrame())
+        >>> report.summary_table.height
+        1
         """
         return self._summary
 
@@ -763,6 +840,14 @@ class MarsEvaluationReport:
         -------
         dict of str to pl.DataFrame or pd.DataFrame
             键为指标名称，值为对应趋势宽表。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> trend = {"psi": pl.DataFrame({"feature": ["age"], "2026-01": [0.01]})}
+        >>> report = MarsEvaluationReport(pl.DataFrame(), trend, pl.DataFrame())
+        >>> sorted(report.trend_tables)
+        ['psi']
         """
         return self._trend_dict
 
@@ -775,6 +860,14 @@ class MarsEvaluationReport:
         -------
         pl.DataFrame or pd.DataFrame
             与构造时输入类型一致的分箱明细表。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0]})
+        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, detail)
+        >>> report.detail_table.height
+        1
         """
         return self._detail
 
@@ -787,6 +880,14 @@ class MarsEvaluationReport:
         -------
         pl.DataFrame or pd.DataFrame or None
             若评估流程生成了按日缺失统计，则返回对应表；否则返回 ``None``。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> missing = pl.DataFrame({"feature": ["age"], "date": ["2026-01-01"], "missing_rate": [0.0]})
+        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, pl.DataFrame(), missing_by_day_table=missing)
+        >>> report.missing_by_day_table.height
+        1
         """
         return self._missing_by_day
 
@@ -799,6 +900,13 @@ class MarsEvaluationReport:
         -------
         dict of str to Any
             生成报告时记录的辅助元数据。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, pl.DataFrame(), report_meta={"target": "y"})
+        >>> report.report_meta["target"]
+        'y'
         """
         return self._report_meta
 
@@ -815,6 +923,15 @@ class MarsEvaluationReport:
         tuple
             依次返回 ``(summary_table, trend_tables, detail_table)``，
             且各对象类型与构造时输入保持一致。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12]})
+        >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0]})
+        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> report.get_evaluation_data()[0].height
+        1
         """
         return self.summary_table, self.trend_tables, self.detail_table
 
@@ -869,12 +986,14 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _slugify(value: str) -> str:
+        """将任意标题转换为可作为 HTML id 的稳定片段。"""
         slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in str(value))
         slug = "-".join(part for part in slug.split("-") if part)
         return slug or "section"
 
     @staticmethod
     def _wrap_html_section(title: str, body: str, section_id: str, subtitle: str | None = None, open_by_default: bool = True) -> str:
+        """将一段 HTML 内容包装成可折叠的报告 section。"""
         open_attr = " open" if open_by_default else ""
         subtitle_html = f'<div class="mars-section-subtitle">{html.escape(subtitle)}</div>' if subtitle else ""
         return f"""
@@ -889,6 +1008,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _is_missing_html_value(value: Any) -> bool:
+        """判断单元格值在 HTML 表格中是否应按空值展示。"""
         if value is None:
             return True
         try:
@@ -904,6 +1024,7 @@ class MarsEvaluationReport:
         as_percent: bool = False,
         precision: int = 2,
     ) -> str:
+        """按数值、百分比和缺失值语义格式化 HTML 单元格文本。"""
         if cls._is_missing_html_value(value):
             return ""
 
@@ -919,6 +1040,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _normalize_search_text(*parts: Any) -> str:
+        """将多个文本片段合并为前端搜索使用的标准小写串。"""
         joined = " ".join("" if part is None else str(part) for part in parts)
         return " ".join(joined.split()).strip().lower()
 
@@ -929,6 +1051,12 @@ class MarsEvaluationReport:
         *,
         metric_name: str | None = None,
     ) -> bool:
+        """
+        判断列在 HTML 表格中是否应按百分比格式展示。
+
+        该判断结合列名和指标名处理 ``missing``、``bad_rate``、``pct`` 等
+        风控报告常见字段，避免普通标识列被误格式化。
+        """
         col_lower = str(col_name).strip().lower()
         metric_lower = str(metric_name or "").strip().lower()
 
@@ -953,6 +1081,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _interpolate_rgb(start: Tuple[int, int, int], end: Tuple[int, int, int], ratio: float) -> Tuple[int, int, int]:
+        """在两个 RGB 颜色之间按比例插值。"""
         return tuple(
             int(round(start[idx] + (end[idx] - start[idx]) * ratio))
             for idx in range(3)
@@ -965,6 +1094,7 @@ class MarsEvaluationReport:
         *,
         reverse: bool = False,
     ) -> Tuple[int, int, int]:
+        """生成红黄绿三段式色阶中的 RGB 颜色。"""
         ratio = max(0.0, min(1.0, ratio))
         low = (248, 105, 107) if not reverse else (99, 190, 123)
         mid = (255, 235, 132)
@@ -975,10 +1105,12 @@ class MarsEvaluationReport:
 
     @classmethod
     def _column_colspan(cls: type["MarsEvaluationReport"], col_name: Any) -> int:
+        """根据扁平化列名中的分隔符估算表头 colspan。"""
         return max(1, str(col_name).count("|") + 1)
 
     @classmethod
     def _format_sort_value(cls: type["MarsEvaluationReport"], value: Any, sort_type: str) -> str:
+        """为前端排序属性生成稳定的字符串化值。"""
         if cls._is_missing_html_value(value):
             return ""
 
@@ -992,6 +1124,12 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _reorder_group_columns(df: pd.DataFrame, leading_cols: List[str]) -> pd.DataFrame:
+        """
+        按报告展示习惯重排分组列。
+
+        指定的前置列会保持在最左侧，``Total`` 固定放在最右侧，其余分组列
+        使用稳定排序，保证 Notebook、Excel 与 HTML 报告列序一致。
+        """
         if df.empty:
             return df
 
@@ -1000,55 +1138,10 @@ class MarsEvaluationReport:
         non_total = sorted([c for c in other_cols if c != "Total"])
         tail_cols = ["Total"] if "Total" in other_cols else []
         return df[head_cols + non_total + tail_cols]
-        """
-
-        if bin_type_values:
-            bin_options = ['<option value="__all__">全部 bin_type</option>'] + [
-                f'<option value="{html.escape(bin_type)}">{html.escape(bin_type)}</option>'
-                for bin_type in bin_type_values
-            ]
-            control_parts.append(
-                f'<label class="mars-select-group">Bin Type'
-                f'<select id="mars-pivot-bin-type" onchange="marsUpdatePivotViews()">{"".join(bin_options)}</select>'
-                f'</label>'
-            )
-
-        view_blocks = []
-        bin_type_scope = [None] + bin_type_values if bin_type_values else [None]
-        for y_val in y_values:
-            for bin_type in bin_type_scope:
-                pivot_df = cls._build_pivot_frame(
-                    detail_pd,
-                    group_col=group_col,
-                    y_value=y_val if "y" in detail_pd.columns else None,
-                    bin_type_value=bin_type,
-                )
-                table_id = f"mars-pivot-{cls._slugify(y_val)}-{cls._slugify(bin_type or 'all')}"
-                table_html = cls._build_sortable_table_html(
-                    pivot_df,
-                    table_id,
-                    search_placeholder="Search grouped pivot...",
-                    empty_text="No grouped pivot data for this selection.",
-                )
-                label_suffix = f" | {bin_type}" if bin_type else " | 全部 bin_type"
-                view_blocks.append(
-                    f'<div class="mars-pivot-view" data-y-value="{html.escape(y_val)}" '
-                    f'data-bin-type-value="{html.escape(bin_type or "__all__")}">'
-                    f'<div class="mars-view-label">{html.escape(y_val + label_suffix)}</div>'
-                    f'{table_html}'
-                    f'</div>'
-                )
-
-        controls_html = (
-            f'<div class="mars-inline-controls">{"".join(control_parts)}</div>'
-            if control_parts else ""
-        )
-        return controls_html + "".join(view_blocks)
-
-        """
 
     @staticmethod
     def _resolve_chart_sort_column(summary_df: pd.DataFrame, requested: str) -> str | None:
+        """解析图表排序列，缺失请求列时回退到风险摘要或首个数值列。"""
         if requested in summary_df.columns:
             return requested
         if "psi_max" in summary_df.columns:
@@ -1062,6 +1155,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _semantic_for_metric(metric: str) -> str:
+        """返回指标在热力图中的业务方向语义。"""
         metric = str(metric).lower()
         if metric.startswith("missing") or metric in {"psi", "psi_max", "missing_rate"}:
             return "risk_high"
@@ -1073,10 +1167,17 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _escape_attr(value: Any) -> str:
+        """按 HTML 属性上下文转义任意值。"""
         return html.escape("" if value is None else str(value), quote=True)
 
     @staticmethod
     def _trend_style_rule(metric: str | None) -> Dict[str, Any] | None:
+        """
+        返回趋势指标对应的阈值色阶规则。
+
+        不同指标的好坏方向不同，规则中会显式编码锚点、颜色和部分高亮阈值，
+        供 HTML 表格和图例复用。
+        """
         metric_key = str(metric or "").lower()
         purple_rgb = (160, 98, 196)
         green = (99, 190, 123)
@@ -1099,6 +1200,7 @@ class MarsEvaluationReport:
         cls: type["MarsEvaluationReport"],
         metric: str | None,
     ) -> Dict[str, Any] | None:
+        """解析汇总表指标对应的阈值色阶规则。"""
         metric_key = str(metric or "").lower()
         if metric_key in {"iv", "ks", "auc", "psi_max", "rc_min", "lift_max", "missing", "missing_min", "missing_max"}:
             mapped = {
@@ -1118,6 +1220,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _sort_metric_display_df(df: pd.DataFrame) -> pd.DataFrame:
+        """按 Total 或 feature 列稳定排序趋势指标展示表。"""
         if df.empty:
             return df
         if "Total" in df.columns:
@@ -1138,6 +1241,7 @@ class MarsEvaluationReport:
         *,
         legend_id: str,
     ) -> str:
+        """构建阈值图例的 HTML chip 列表。"""
         if not items:
             return ""
         chips = "".join(
@@ -1151,10 +1255,17 @@ class MarsEvaluationReport:
         cls: type["MarsEvaluationReport"],
         report_meta: Dict[str, Any],
     ) -> str:
+        """
+        构建报告首页的数据集概览卡片。
+
+        输入来自 ``report_meta``，输出为自包含 HTML 字符串；缺少元信息时返回
+        空字符串，让调用方自然跳过该 section。
+        """
         if not report_meta:
             return ""
 
         def fmt_value(value: Any) -> str:
+            """将缺失元信息统一渲染为首页卡片可展示文本。"""
             if value is None or value == "":
                 return "N/A"
             return html.escape(str(value))
@@ -1204,6 +1315,7 @@ class MarsEvaluationReport:
         cls: type["MarsEvaluationReport"],
         features: List[str],
     ) -> str:
+        """构建 Summary 表格的特征跳转控件。"""
         feature_values = sorted({str(feature) for feature in features if str(feature).strip()})
         if not feature_values:
             return ""
@@ -1230,6 +1342,7 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _table_sticky_role(column_name: Any) -> str | None:
+        """识别表格列是否需要固定在横向滚动区域左侧。"""
         column_lower = str(column_name).strip().lower()
         if column_lower == "feature":
             return "feature"
@@ -1239,18 +1352,21 @@ class MarsEvaluationReport:
 
     @staticmethod
     def _sticky_class_for_role(role: str | None) -> str:
+        """将粘性列角色映射为外层单元格 CSS class。"""
         if not role:
             return ""
         return f" mars-sticky-col mars-{role}-col"
 
     @staticmethod
     def _sticky_inner_class_for_role(role: str | None) -> str:
+        """将粘性列角色映射为内层单元格 CSS class。"""
         if not role:
             return ""
         return " mars-sticky-cell-inner"
 
     @staticmethod
     def _build_scope_feedback_html(scope_id: str, *, empty_text: str) -> str:
+        """构建局部表格筛选状态和空结果提示区域。"""
         return (
             f'<div id="{scope_id}-status" class="mars-result-status" aria-live="polite"></div>'
             f'<div id="{scope_id}-empty" class="mars-empty mars-scope-empty" hidden>{html.escape(empty_text)}</div>'
@@ -1258,6 +1374,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_html_styles(cls: type["MarsEvaluationReport"]) -> str:
+        """返回评估 HTML 报告的样式表。"""
         return build_html_styles()
 
     @classmethod
@@ -1266,6 +1383,7 @@ class MarsEvaluationReport:
         *,
         summary_filter_columns: list[str],
     ) -> str:
+        """返回评估 HTML 报告的前端交互脚本。"""
         return build_html_runtime_script(summary_filter_columns)
 
     @classmethod
@@ -1277,6 +1395,7 @@ class MarsEvaluationReport:
         body_html: str,
         runtime_script: str,
     ) -> str:
+        """组装自包含 HTML 文档外壳。"""
         template = """
         <!DOCTYPE html>
         <html lang="zh">
@@ -1311,6 +1430,7 @@ __RUNTIME_SCRIPT__
         feature_jump_html: str,
         source_options: str,
     ) -> str:
+        """构建全局搜索、数据源过滤和导出工具条。"""
         export_block_html = (
             '<div class="mars-export-block">'
             '<button type="button" class="mars-clear-button" onclick="marsExportFeatures()">Export Feature List</button>'
@@ -1347,6 +1467,12 @@ __RUNTIME_SCRIPT__
         sort_by: str,
         ascending: bool,
     ) -> str | None:
+        """
+        构建特征汇总评估 section。
+
+        该 section 负责排序、字段显隐、阈值图例、表达式筛选框和增强表格
+        组装；汇总表为空时返回 ``None``。
+        """
         if summary_pd.empty:
             return None
 
@@ -1412,6 +1538,12 @@ __RUNTIME_SCRIPT__
         missing_by_day_pd: pd.DataFrame | None,
         feature_sources: Dict[str, str],
     ) -> List[Tuple[str, str, str]]:
+        """
+        构建缺失率日趋势和核心指标趋势 section 列表。
+
+        返回值中的元组依次为 section id、导航标题和 HTML 内容，供主页面
+        统一拼接导航和主体。
+        """
         sections: List[Tuple[str, str, str]] = []
 
         if missing_by_day_pd is not None and not missing_by_day_pd.empty:
@@ -1509,6 +1641,12 @@ __RUNTIME_SCRIPT__
         sort_by: str,
         ascending: bool,
     ) -> str | None:
+        """
+        构建特征分箱风险趋势图 section。
+
+        方法会复用 ``MarsPlotter`` 的绘图路径，并按目标变量和排序配置生成
+        可筛选的图表卡片；无明细数据时返回 ``None``。
+        """
         if detail_pd.empty:
             return None
 
@@ -1607,6 +1745,12 @@ __RUNTIME_SCRIPT__
         value: float,
         rule: Dict[str, Any],
     ) -> str:
+        """
+        将数值和阈值规则转换为单元格内联样式。
+
+        规则支持多锚点颜色插值和高值紫色强调，用于复刻 Excel 风格的
+        条件格式。
+        """
         anchors = tuple(float(v) for v in rule["anchors"])
         colors = tuple(rule["colors"])
         purple_above = rule.get("purple_above")
@@ -1649,6 +1793,12 @@ __RUNTIME_SCRIPT__
         style_rule: Dict[str, Any] | None = None,
         data_bar: bool = False,
     ) -> str:
+        """
+        为 HTML 表格单元格生成条件格式样式。
+
+        该方法统一处理风险高为坏、指标高为好、发散指标和 data bar 四类
+        展示语义；无法解析为有限数值时返回空样式。
+        """
         if cls._is_missing_html_value(value):
             return ""
 
@@ -1713,6 +1863,12 @@ __RUNTIME_SCRIPT__
         table_kind: str = "generic",
         empty_text: str = "No data available.",
     ) -> str:
+        """
+        构建带搜索、排序、粘性列和条件格式的 HTML 表格。
+
+        该方法是评估报告 v2 表格渲染的统一入口，负责把数据源、指标语义、
+        百分比格式和阈值样式编码进前端可识别的 ``data-*`` 属性。
+        """
         if df.empty:
             return f'<div class="mars-empty">{html.escape(empty_text)}</div>'
 
@@ -1837,6 +1993,12 @@ __RUNTIME_SCRIPT__
         group_col: str,
         feature_sources: Dict[str, str],
     ) -> str:
+        """
+        构建按特征分箱和时间分组展开的透视 section。
+
+        该 section 将明细表聚合成首尾组、正常组和空值组三类视图，便于在
+        HTML 报告中横向比较各分组的风险、占比和 Lift。
+        """
         if detail_pd.empty or group_col not in detail_pd.columns:
             return '<div class="mars-empty">No grouped pivot data available.</div>'
 
@@ -2109,6 +2271,20 @@ __RUNTIME_SCRIPT__
         Notes
         -----
         导出的 HTML 为单文件报告，适合脱离 Notebook 独立分享或归档。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
+        >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
+        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "report.html"
+        ...     report.write_html(str(path), include_charts=False, include_detail=False)
+        ...     path.exists()
+        True
         """
         return self._write_html_v2(
             path=path,
@@ -2121,702 +2297,6 @@ __RUNTIME_SCRIPT__
             include_detail=include_detail,
             include_charts=include_charts,
         )
-        '''
-        summary_pd = _as_pandas_frame(self.summary_table).copy()
-        detail_pd = _as_pandas_frame(self.detail_table).copy()
-        trend_pd_map = {metric: _as_pandas_frame(df).copy() for metric, df in self.trend_tables.items()}
-
-        n_features = len(summary_pd) if not summary_pd.empty else detail_pd["feature"].nunique() if "feature" in detail_pd.columns else 0
-        group_label = self.group_col if self.group_col else "None (Total Only)"
-        _ = include_detail  # Kept for backward compatibility; HTML export no longer renders detail table.
-
-        html_parts: List[str] = []
-        nav_items: List[Tuple[str, str]] = []
-
-        if include_summary and not summary_pd.empty:
-            summary_df = summary_pd.copy()
-            if sort_by in summary_df.columns:
-                summary_df = summary_df.sort_values(sort_by, ascending=ascending)
-            summary_table_html = self._build_sortable_table_html(
-                summary_df,
-                "mars-summary-table",
-                search_placeholder="Search summary table...",
-            )
-            html_parts.append(
-                self._wrap_html_section(
-                    "Summary",
-                    summary_table_html,
-                    "summary-section",
-                    subtitle="Feature-level ranking and monitoring summary.",
-                )
-            )
-            nav_items.append(("summary-section", "Summary"))
-
-        general_trend_metrics = [
-            metric for metric in ["psi", "auc", "ks", "iv", "risk_corr"]
-            if metric in trend_pd_map
-        ]
-        if include_trends and general_trend_metrics:
-            trend_blocks: List[str] = []
-            for metric in general_trend_metrics:
-                trend_df = self._reorder_group_columns(
-                    trend_pd_map[metric].copy(),
-                    ["feature", "dtype"],
-                )
-                trend_blocks.append(
-                    self._build_metric_table_block(
-                        metric.upper(),
-                        trend_df,
-                        f"mars-trend-{self._slugify(metric)}",
-                        search_placeholder=f"Search {metric} trend...",
-                    )
-                )
-            html_parts.append(
-                self._wrap_html_section(
-                    "Trend Tables",
-                    "".join(trend_blocks),
-                    "trend-section",
-                    subtitle="Core cross-period monitoring metrics, excluding bad_rate.",
-                )
-            )
-            nav_items.append(("trend-section", "Trends"))
-
-        if include_trends and "missing" in trend_pd_map:
-            missing_df = self._reorder_group_columns(
-                trend_pd_map["missing"].copy(),
-                ["feature", "dtype"],
-            )
-            html_parts.append(
-                self._wrap_html_section(
-                    "Missing Trend",
-                    self._build_sortable_table_html(
-                        missing_df,
-                        "mars-missing-trend",
-                        search_placeholder="Search missing trend...",
-                    ),
-                    "missing-section",
-                    subtitle="Feature-level missing-rate trend across groups.",
-                )
-            )
-            nav_items.append(("missing-section", "Missing"))
-
-        if include_trends and "lift" in trend_pd_map:
-            lift_df = self._reorder_group_columns(
-                trend_pd_map["lift"].copy(),
-                ["feature", "dtype"],
-            )
-            html_parts.append(
-                self._wrap_html_section(
-                    "Lift Trend",
-                    self._build_sortable_table_html(
-                        lift_df,
-                        "mars-lift-trend",
-                        search_placeholder="Search lift trend...",
-                    ),
-                    "lift-section",
-                    subtitle="Feature-level max-lift trend across groups.",
-                )
-            )
-            nav_items.append(("lift-section", "Lift"))
-
-        if not detail_pd.empty:
-            pivot_group_col = self.group_col or "mars_group"
-            pivot_body = self._build_pivot_section_html(detail_pd, group_col=pivot_group_col)
-            html_parts.append(
-                self._wrap_html_section(
-                    "Grouped Pivot",
-                    pivot_body,
-                    "pivot-section",
-                    subtitle="Pivoted monitoring view aligned with the Excel report structure.",
-                    open_by_default=False,
-                )
-            )
-            nav_items.append(("pivot-section", "Pivot"))
-
-        if include_charts and not detail_pd.empty:
-            chart_y_values = (
-                [str(v) for v in detail_pd["y"].dropna().astype(str).drop_duplicates().tolist()]
-                if "y" in detail_pd.columns and detail_pd["y"].notna().any()
-                else ["Target"]
-            )
-            chart_controls = ""
-            if len(chart_y_values) > 1:
-                chart_options = "".join(
-                    f'<option value="{html.escape(y_val)}">{html.escape(y_val)}</option>'
-                    for y_val in chart_y_values
-                )
-                chart_controls = (
-                    f'<div class="mars-inline-controls">'
-                    f'<label class="mars-select-group">Chart Target'
-                    f'<select id="mars-chart-target" onchange="marsUpdateChartViews()">{chart_options}</select>'
-                    f'</label></div>'
-                )
-
-            chart_views: List[str] = []
-            try:
-                from mars.utils.plotter import MarsPlotter
-
-                for y_val in chart_y_values:
-                    if "y" in detail_pd.columns:
-                        chart_detail_pd = detail_pd[detail_pd["y"].astype(str) == y_val].copy()
-                    else:
-                        chart_detail_pd = detail_pd.copy()
-
-                    if "target" in summary_pd.columns:
-                        chart_summary_pd = summary_pd[summary_pd["target"].astype(str) == y_val].copy()
-                    else:
-                        chart_summary_pd = summary_pd.copy()
-
-                    chart_sort_col = self._resolve_chart_sort_column(chart_summary_pd, sort_by)
-                    if not chart_summary_pd.empty and chart_sort_col:
-                        chart_summary_pd = chart_summary_pd.sort_values(chart_sort_col, ascending=ascending)
-
-                    if not chart_summary_pd.empty and "feature" in chart_summary_pd.columns:
-                        chart_features = chart_summary_pd["feature"].drop_duplicates().tolist()[:max_plots]
-                    else:
-                        chart_features = chart_detail_pd["feature"].drop_duplicates().tolist()[:max_plots]
-
-                    chart_cards: List[str] = []
-                    for feature in chart_features:
-                        block_html = MarsPlotter.render_feature_binning_risk_trend_html(
-                            df_detail=chart_detail_pd,
-                            feature=feature,
-                            group_col=self.group_col or "mars_group",
-                            target_name=y_val,
-                            dpi=150,
-                        )
-                        if not block_html:
-                            continue
-                        chart_cards.append(
-                            f'<article class="mars-chart-card" data-search-text="{html.escape((feature + " " + y_val).lower())}">'
-                            f'<h4>{html.escape(feature)}</h4>{block_html}</article>'
-                        )
-
-                    if not chart_cards:
-                        chart_cards.append('<div class="mars-empty">No chart data available for this target.</div>')
-
-                    chart_views.append(
-                        f'<div class="mars-chart-view" data-y-value="{html.escape(y_val)}">'
-                        f'{"".join(chart_cards)}</div>'
-                    )
-            except Exception as e:
-                logger.warning("HTML chart rendering skipped due to error: %s", e)
-
-            if not chart_views:
-                for y_val in chart_y_values:
-                    chart_views.append(
-                        f'<div class="mars-chart-view" data-y-value="{html.escape(y_val)}">'
-                        f'<div class="mars-empty">Chart rendering is unavailable in the current environment.</div>'
-                        f"</div>"
-                    )
-
-            if chart_views:
-                html_parts.append(
-                    self._wrap_html_section(
-                        "Charts",
-                        chart_controls + "".join(chart_views),
-                        "chart-section",
-                        subtitle="Risk trend charts rendered from the shared plotting path.",
-                        open_by_default=False,
-                    )
-                )
-                nav_items.append(("chart-section", "Charts"))
-
-        nav_html = "".join(
-            f'<a href="#{html.escape(section_id)}">{html.escape(label)}</a>'
-            for section_id, label in nav_items
-        )
-
-        page_html = """
-        <!DOCTYPE html>
-        <html lang="zh">
-        <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>{html.escape(safe_report_name)}</title>
-            <style>
-                :root {
-                    --bg: #f4f1ea;
-                    --panel: #fffdf8;
-                    --panel-alt: #f9f5ee;
-                    --ink: #1f2933;
-                    --muted: #677483;
-                    --line: #d9d1c3;
-                    --line-soft: #ebe4d8;
-                    --accent: #9b6b3d;
-                    --accent-soft: #efe2d0;
-                    --danger: #b63a3a;
-                }
-                body {
-                    margin: 0;
-                    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-                    background: radial-gradient(circle at top right, #efe8dd 0%, var(--bg) 34%, #f6f3ee 100%);
-                    color: var(--ink);
-                }
-                .mars-page {
-                    max-width: 1480px;
-                    margin: 0 auto;
-                    padding: 24px 24px 40px 24px;
-                }
-                .mars-hero {
-                    background: linear-gradient(135deg, rgba(255, 253, 248, 0.96), rgba(249, 245, 238, 0.98));
-                    border: 1px solid var(--line);
-                    border-radius: 22px;
-                    padding: 24px 26px;
-                    box-shadow: 0 18px 50px rgba(76, 56, 33, 0.08);
-                    margin-bottom: 18px;
-                }
-                .mars-hero h1 {
-                    margin: 0 0 8px 0;
-                    font-size: 30px;
-                    letter-spacing: 0.01em;
-                }
-                .mars-hero p {
-                    margin: 0;
-                    color: var(--muted);
-                    font-size: 14px;
-                }
-                .mars-meta {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                    margin-top: 14px;
-                }
-                .mars-pill {
-                    background: rgba(255, 255, 255, 0.92);
-                    border: 1px solid var(--line);
-                    border-radius: 999px;
-                    padding: 7px 12px;
-                    font-size: 13px;
-                }
-                .mars-global-tools {
-                    margin-top: 16px;
-                    display: grid;
-                    grid-template-columns: minmax(280px, 460px) auto auto;
-                    gap: 10px;
-                    align-items: center;
-                }
-                .mars-filter-input,
-                .mars-select-group select,
-                .mars-clear-button {
-                    border: 1px solid var(--line);
-                    border-radius: 12px;
-                    background: rgba(255, 255, 255, 0.9);
-                    font-size: 14px;
-                }
-                .mars-filter-input {
-                    padding: 10px 12px;
-                    width: 100%;
-                    box-sizing: border-box;
-                }
-                .mars-toggle {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 13px;
-                    color: var(--muted);
-                }
-                .mars-clear-button {
-                    padding: 10px 14px;
-                    cursor: pointer;
-                }
-                .mars-search-error {
-                    color: var(--danger);
-                    font-size: 12px;
-                    min-height: 16px;
-                }
-                .mars-nav {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                    margin: 16px 0 20px 0;
-                }
-                .mars-nav a {
-                    text-decoration: none;
-                    color: #6d4b2f;
-                    background: rgba(255, 253, 248, 0.82);
-                    border: 1px solid var(--line);
-                    padding: 8px 12px;
-                    border-radius: 999px;
-                    font-size: 13px;
-                }
-                .mars-section {
-                    background: rgba(255, 253, 248, 0.97);
-                    border: 1px solid var(--line);
-                    border-radius: 18px;
-                    margin-bottom: 18px;
-                    overflow: hidden;
-                }
-                .mars-section > summary {
-                    cursor: pointer;
-                    list-style: none;
-                    font-weight: 700;
-                    padding: 16px 18px;
-                    background: rgba(249, 245, 238, 0.92);
-                    border-bottom: 1px solid var(--line-soft);
-                }
-                .mars-section > summary::-webkit-details-marker {
-                    display: none;
-                }
-                .mars-section-subtitle {
-                    padding: 12px 18px 0 18px;
-                    font-size: 13px;
-                    color: var(--muted);
-                }
-                .mars-section-body {
-                    padding: 14px 18px 18px 18px;
-                }
-                .mars-metric-block {
-                    background: rgba(255, 255, 255, 0.7);
-                    border: 1px solid var(--line-soft);
-                    border-radius: 14px;
-                    padding: 14px;
-                    margin-bottom: 14px;
-                }
-                .mars-metric-block h3,
-                .mars-view-label {
-                    margin: 0 0 10px 0;
-                    font-size: 15px;
-                    color: #7a5635;
-                }
-                .mars-inline-controls {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                    margin-bottom: 12px;
-                }
-                .mars-select-group {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 13px;
-                    color: var(--muted);
-                }
-                .mars-select-group select {
-                    padding: 8px 10px;
-                }
-                .mars-table-wrap {
-                    width: 100%;
-                }
-                .mars-table-toolbar {
-                    display: grid;
-                    grid-template-columns: minmax(220px, 420px);
-                    gap: 6px;
-                    margin-bottom: 10px;
-                }
-                .mars-table-scroll {
-                    overflow-x: auto;
-                    border: 1px solid var(--line-soft);
-                    border-radius: 14px;
-                    background: rgba(255, 255, 255, 0.76);
-                }
-                .mars-data-table {
-                    width: 100%;
-                    border-collapse: separate;
-                    border-spacing: 0;
-                    font-size: 13px;
-                }
-                .mars-th,
-                .mars-td {
-                    border-bottom: 1px solid var(--line-soft);
-                    padding: 8px 10px;
-                    vertical-align: top;
-                    text-align: left;
-                    white-space: nowrap;
-                }
-                .mars-th {
-                    position: sticky;
-                    top: 0;
-                    background: rgba(249, 245, 238, 0.98);
-                    z-index: 1;
-                }
-                .mars-td.is-numeric,
-                .mars-th.is-numeric {
-                    text-align: right;
-                }
-                .mars-sort-button {
-                    width: 100%;
-                    border: 0;
-                    background: transparent;
-                    padding: 0;
-                    margin: 0;
-                    color: inherit;
-                    font: inherit;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: 8px;
-                    cursor: pointer;
-                }
-                .mars-sort-indicator::before {
-                    content: "↕";
-                    color: #b29a7f;
-                    font-size: 11px;
-                }
-                th[data-sort-dir="asc"] .mars-sort-indicator::before {
-                    content: "↑";
-                    color: var(--accent);
-                }
-                th[data-sort-dir="desc"] .mars-sort-indicator::before {
-                    content: "↓";
-                    color: var(--accent);
-                }
-                .mars-pivot-view,
-                .mars-chart-view {
-                    margin-bottom: 14px;
-                }
-                .mars-chart-card {
-                    border: 1px solid var(--line-soft);
-                    border-radius: 18px;
-                    padding: 14px;
-                    background: rgba(255, 255, 255, 0.76);
-                    margin-bottom: 14px;
-                }
-                .mars-chart-card h4 {
-                    margin: 0 0 10px 0;
-                    font-size: 16px;
-                }
-                .mars-empty {
-                    border: 1px dashed var(--line);
-                    border-radius: 14px;
-                    background: rgba(255, 255, 255, 0.7);
-                    color: var(--muted);
-                    padding: 16px;
-                    font-size: 13px;
-                }
-                .mars-footnote {
-                    font-size: 12px;
-                    color: var(--muted);
-                    margin-top: 12px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="mars-page">
-                <div class="mars-hero">
-                    <h1>MARS Evaluation Report</h1>
-                    <p>Lightweight monitoring HTML with shared charts, sortable tables, grouped pivot views, and dual-mode search.</p>
-                    <div class="mars-meta">
-                        __META_PILLS__
-                    </div>
-                    <div class="mars-global-tools">
-                        <input id="mars-global-search" class="mars-filter-input" type="search" placeholder="Global search across tables and charts..." oninput="marsSetGlobalQuery(this.value)" />
-                        <label class="mars-toggle"><input id="mars-regex-mode" type="checkbox" onchange="marsSetRegexMode(this.checked)" /> Regex Mode</label>
-                        <button type="button" class="mars-clear-button" onclick="marsClearGlobalSearch()">Clear Search</button>
-                    </div>
-                    <div id="mars-global-error" class="mars-search-error"></div>
-                </div>
-
-                <div class="mars-nav">__NAV_HTML__</div>
-
-                __BODY_HTML__
-
-                <div class="mars-footnote">
-                    HTML export is self-contained. `detail_table` is preserved in Python/Excel workflows but intentionally omitted from the HTML page.
-                </div>
-            </div>
-
-            <script>
-                const marsState = {
-                    globalQuery: "",
-                    regexMode: false,
-                    localQueries: {}
-                };
-
-                function marsBuildMatcher(query) {
-                    const q = (query || "").trim();
-                    if (!q) {
-                        return { ok: true, match: () => true };
-                    }
-
-                    if (marsState.regexMode) {
-                        try {
-                            const regex = new RegExp(q, "i");
-                            return { ok: true, match: (text) => regex.test(text || "") };
-                        } catch (err) {
-                            return { ok: false, error: err.message };
-                        }
-                    }
-
-                    const terms = q.toLowerCase().split(/\\s+/).filter(Boolean);
-                    return {
-                        ok: true,
-                        match: (text) => {
-                            const haystack = (text || "").toLowerCase();
-                            return terms.every((term) => haystack.includes(term));
-                        }
-                    };
-                }
-
-                function marsSetError(id, message) {
-                    const node = document.getElementById(id);
-                    if (node) {
-                        node.textContent = message || "";
-                    }
-                }
-
-                function marsSetGlobalQuery(value) {
-                    marsState.globalQuery = value || "";
-                    marsRefreshFilters();
-                }
-
-                function marsSetLocalQuery(tableId, value) {
-                    marsState.localQueries[tableId] = value || "";
-                    marsApplyTableFilter(tableId);
-                }
-
-                function marsSetRegexMode(enabled) {
-                    marsState.regexMode = !!enabled;
-                    marsRefreshFilters();
-                }
-
-                function marsClearGlobalSearch() {
-                    const input = document.getElementById("mars-global-search");
-                    if (input) {
-                        input.value = "";
-                    }
-                    marsState.globalQuery = "";
-                    marsRefreshFilters();
-                }
-
-                function marsApplyTableFilter(tableId) {
-                    const table = document.getElementById(tableId);
-                    if (!table) return;
-
-                    const globalMatcher = marsBuildMatcher(marsState.globalQuery);
-                    if (!globalMatcher.ok) {
-                        marsSetError("mars-global-error", `Invalid regex: ${globalMatcher.error}`);
-                        return;
-                    }
-                    marsSetError("mars-global-error", "");
-
-                    const localQuery = marsState.localQueries[tableId] || "";
-                    const localMatcher = marsBuildMatcher(localQuery);
-                    if (!localMatcher.ok) {
-                        marsSetError(`${tableId}-error`, `Invalid regex: ${localMatcher.error}`);
-                        return;
-                    }
-                    marsSetError(`${tableId}-error`, "");
-
-                    const rows = table.querySelectorAll("tbody tr");
-                    rows.forEach((row) => {
-                        const text = row.dataset.searchText || row.textContent || "";
-                        const keep = globalMatcher.match(text) && localMatcher.match(text);
-                        row.style.display = keep ? "" : "none";
-                    });
-                }
-
-                function marsSortTable(tableId, trigger) {
-                    const table = document.getElementById(tableId);
-                    if (!table) return;
-
-                    const th = trigger.closest("th");
-                    const headers = Array.from(table.querySelectorAll("thead th"));
-                    const colIndex = headers.indexOf(th);
-                    if (colIndex < 0) return;
-
-                    const currentCol = table.dataset.sortCol;
-                    let nextDir = "asc";
-                    if (currentCol === String(colIndex)) {
-                        nextDir = table.dataset.sortDir === "asc" ? "desc" : "asc";
-                    }
-
-                    const tbody = table.querySelector("tbody");
-                    const rows = Array.from(tbody.querySelectorAll("tr"));
-                    const sortType = th.dataset.sortType || "text";
-
-                    rows.sort((rowA, rowB) => {
-                        const cellA = rowA.children[colIndex];
-                        const cellB = rowB.children[colIndex];
-                        const valA = cellA ? (cellA.dataset.sortValue || "") : "";
-                        const valB = cellB ? (cellB.dataset.sortValue || "") : "";
-
-                        if (sortType === "number") {
-                            const numA = Number(valA);
-                            const numB = Number(valB);
-                            const safeA = Number.isFinite(numA) ? numA : (nextDir === "asc" ? Infinity : -Infinity);
-                            const safeB = Number.isFinite(numB) ? numB : (nextDir === "asc" ? Infinity : -Infinity);
-                            return nextDir === "asc" ? safeA - safeB : safeB - safeA;
-                        }
-
-                        return nextDir === "asc"
-                            ? valA.localeCompare(valB, undefined, { numeric: true, sensitivity: "base" })
-                            : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: "base" });
-                    });
-
-                    rows.forEach((row) => tbody.appendChild(row));
-                    table.dataset.sortCol = String(colIndex);
-                    table.dataset.sortDir = nextDir;
-                    headers.forEach((header, index) => {
-                        header.dataset.sortDir = index === colIndex ? nextDir : "";
-                    });
-
-                    marsApplyTableFilter(tableId);
-                }
-
-                function marsUpdatePivotViews() {
-                    const targetSelect = document.getElementById("mars-pivot-target");
-                    const binTypeSelect = document.getElementById("mars-pivot-bin-type");
-                    const targetValue = targetSelect ? targetSelect.value : null;
-                    const binTypeValue = binTypeSelect ? binTypeSelect.value : "__all__";
-
-                    document.querySelectorAll(".mars-pivot-view").forEach((view) => {
-                        const sameTarget = !targetValue || view.dataset.yValue === targetValue;
-                        const sameBinType = !binTypeSelect || binTypeValue === "__all__" || view.dataset.binTypeValue === binTypeValue;
-                        view.style.display = sameTarget && sameBinType ? "" : "none";
-                    });
-                }
-
-                function marsUpdateChartViews() {
-                    const targetSelect = document.getElementById("mars-chart-target");
-                    const targetValue = targetSelect ? targetSelect.value : null;
-                    const globalMatcher = marsBuildMatcher(marsState.globalQuery);
-                    if (!globalMatcher.ok) {
-                        marsSetError("mars-global-error", `Invalid regex: ${globalMatcher.error}`);
-                        return;
-                    }
-
-                    document.querySelectorAll(".mars-chart-view").forEach((view) => {
-                        const visibleTarget = !targetValue || view.dataset.yValue === targetValue;
-                        view.style.display = visibleTarget ? "" : "none";
-                        if (!visibleTarget) return;
-
-                        view.querySelectorAll(".mars-chart-card").forEach((card) => {
-                            const text = card.dataset.searchText || card.textContent || "";
-                            card.style.display = globalMatcher.match(text) ? "" : "none";
-                        });
-                    });
-                }
-
-                function marsRefreshFilters() {
-                    marsUpdatePivotViews();
-                    marsUpdateChartViews();
-                    document.querySelectorAll("table.mars-data-table").forEach((table) => {
-                        marsApplyTableFilter(table.id);
-                    });
-                }
-
-                window.addEventListener("DOMContentLoaded", marsRefreshFilters);
-            </script>
-        </body>
-        </html>
-        """
-
-        meta_pills = "".join([
-            f'<div class="mars-pill">Features: {n_features}</div>',
-            f'<div class="mars-pill">Trend Metrics: {len(trend_pd_map)}</div>',
-            f'<div class="mars-pill">Group By: {html.escape(str(group_label))}</div>',
-        ])
-        page_html = page_html.replace("__META_PILLS__", meta_pills)
-        page_html = page_html.replace("__NAV_HTML__", nav_html)
-        page_html = page_html.replace("__BODY_HTML__", "".join(html_parts))
-
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(page_html)
-
-        logger.info("Exported evaluation report to HTML: %s", path)
-
-        '''
 
     def _write_html_v2(
         self,
@@ -2831,6 +2311,12 @@ __RUNTIME_SCRIPT__
         include_detail: bool,
         include_charts: bool,
     ) -> None:
+        """
+        写入新版自包含 HTML 评估报告。
+
+        方法负责收集汇总表、明细表、趋势表、图表和数据源筛选配置，随后
+        组装导航、概览、各业务 section 与运行脚本并写入目标路径。
+        """
         summary_pd = _as_pandas_frame(self.summary_table).copy()
         detail_pd = _as_pandas_frame(self.detail_table).copy()
         trend_pd_map = {metric: _as_pandas_frame(df).copy() for metric, df in self.trend_tables.items()}
@@ -2998,6 +2484,14 @@ __RUNTIME_SCRIPT__
         -------
         pd.io.formats.style.Styler
             样式化后的特征汇总表。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
+        >>> report = MarsEvaluationReport(summary, {}, pl.DataFrame())
+        >>> hasattr(report.show_summary(features="age"), "to_html")
+        True
         """
         df: pd.DataFrame = _as_pandas_frame(self.summary_table).copy()
 
@@ -3075,6 +2569,14 @@ __RUNTIME_SCRIPT__
         ------
         ValueError
             当 ``metric`` 不在当前报告支持的趋势指标集合中时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> trend = pl.DataFrame({"feature": ["age"], "2026-01": [0.01], "Total": [0.01]})
+        >>> report = MarsEvaluationReport(pl.DataFrame(), {"psi": trend}, pl.DataFrame())
+        >>> hasattr(report.show_trend("psi", features="age"), "to_html")
+        True
         """
         if metric not in self.trend_tables:
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
@@ -3156,6 +2658,18 @@ __RUNTIME_SCRIPT__
         ------
         ValueError
             当 ``engine`` 不在支持列表中时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
+        >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
+        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> with TemporaryDirectory() as tmp:
+        ...     report.write_excel(str(Path(tmp) / "evaluation.xlsx"), engine="openpyxl") is None
+        True
         """
         valid_engines = ["auto", "xlwings", "openpyxl"]
         if engine not in valid_engines:
@@ -3189,7 +2703,7 @@ __RUNTIME_SCRIPT__
             use_xlwings = True
         elif engine == "openpyxl":
             use_xlwings = False
-        else:  # "auto"
+        else:  # 自动选择导出引擎。
             # 自动探测环境
             is_gui_env = sys.platform.startswith("win") or sys.platform.startswith("darwin")
             use_xlwings = is_gui_env

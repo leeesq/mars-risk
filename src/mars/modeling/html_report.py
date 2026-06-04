@@ -38,6 +38,12 @@ class _ModelReportHtmlRenderer:
         top_features: int,
         dpi: int,
     ) -> None:
+        """
+        初始化单文件 HTML 渲染上下文。
+
+        方法会合并报告 metadata、训练 run、外部传入的重要性表和历史表，
+        并把可选 Polars 表统一转换为 Pandas 副本供渲染使用。
+        """
         self.report = report
         self.title = title
         self.scorecard = scorecard
@@ -66,6 +72,7 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _coerce_optional_frame(value: Any) -> pd.DataFrame | None:
+        """将可选表对象安全转换为 Pandas DataFrame 副本。"""
         if value is None:
             return None
         if isinstance(value, pd.DataFrame):
@@ -76,10 +83,12 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _escape(value: Any) -> str:
+        """按 HTML 属性和文本上下文转义任意值。"""
         return html.escape("" if value is None else str(value), quote=True)
 
     @staticmethod
     def _is_missing(value: Any) -> bool:
+        """判断报告单元格值是否应按缺失展示。"""
         if value is None:
             return True
         try:
@@ -94,6 +103,7 @@ class _ModelReportHtmlRenderer:
         *,
         percent: bool = False,
     ) -> str:
+        """按日期、整数、浮点和百分比语义格式化展示值。"""
         if cls._is_missing(value):
             return "-"
         if isinstance(value, (pd.Timestamp, np.datetime64)):
@@ -113,6 +123,7 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """将 MultiIndex 列名压平成前端表格可展示的字符串列名。"""
         flat = df.copy()
         flat.columns = [
             " | ".join(str(part) for part in col if str(part) not in {"", "nan"})
@@ -131,6 +142,12 @@ class _ModelReportHtmlRenderer:
         empty_text: str = "No data available.",
         max_rows: int | None = None,
     ) -> str:
+        """
+        将 Pandas 表渲染为带搜索和排序能力的 HTML 表格。
+
+        空表会返回统一占位块；当 ``max_rows`` 生效时只展示前若干行，并
+        附加截断提示。
+        """
         if df is None or df.empty:
             return f'<div class="mars-empty">{cls._escape(empty_text)}</div>'
         view = cls._flatten_columns(df)
@@ -178,6 +195,11 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _figure_to_img(fig: Any, *, dpi: int) -> str:
+        """
+        将 Matplotlib 图表转换为内嵌 Base64 PNG 的 ``img`` 标签。
+
+        转换完成后会尝试关闭 figure，避免批量导出报告时积累图形资源。
+        """
         buffer = BytesIO()
         fig.savefig(buffer, format="png", bbox_inches="tight", dpi=dpi)
         buffer.seek(0)
@@ -189,6 +211,7 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _require_pyplot() -> Any:
+        """加载 Matplotlib pyplot，缺失可选依赖时抛出可行动错误。"""
         plt = _optional_import("matplotlib.pyplot")
         if plt is None:
             raise ImportError(
@@ -208,6 +231,12 @@ class _ModelReportHtmlRenderer:
         ylabel: str,
         diagonal: bool = False,
     ) -> str:
+        """
+        构建按数据切片分组的通用折线图 HTML。
+
+        该方法服务 ROC、KS 和校准图等简单双轴曲线；当必要列缺失时返回
+        空数据占位块。
+        """
         if df.empty or x_col not in df.columns or y_col not in df.columns:
             return '<div class="mars-empty">Chart data is unavailable.</div>'
         plt = self._require_pyplot()
@@ -227,6 +256,12 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _score_distribution_chart(self) -> str:
+        """
+        构建预测分数分布图。
+
+        图表按数据切片和目标取值绘制分布曲线，用于检查新模型分数在各
+        样本分组中的形态差异。
+        """
         df = self.report.detail_tables.get("score_distribution", pd.DataFrame())
         required = {"bin_center", "pct", "target_value"}
         if df.empty or not required.issubset(df.columns):
@@ -245,6 +280,12 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _rank_ordering_chart(self) -> str:
+        """
+        构建分数分位排序效果图。
+
+        图表叠加首个切片的样本量柱形和各切片坏率曲线，用于检查分数从高
+        风险到低风险是否保持良好排序。
+        """
         df = self.report.detail_tables.get("decile_lift", pd.DataFrame())
         if df.empty or "decile" not in df.columns or "bad_rate" not in df.columns:
             return '<div class="mars-empty">Risk rank-ordering data is unavailable.</div>'
@@ -270,6 +311,12 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _importance_chart(self, importance: pd.DataFrame | None) -> str:
+        """
+        构建特征重要性横向条形图。
+
+        仅展示 ``top_features`` 个最重要特征；重要性表缺失或字段不完整时
+        返回占位块。
+        """
         if importance is None or importance.empty or not {"feature", "importance"}.issubset(importance.columns):
             return '<div class="mars-empty">Feature importance data is unavailable.</div>'
         plot_df = importance.sort_values("importance", ascending=False).head(self.top_features).iloc[::-1]
@@ -282,6 +329,12 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _tuning_chart(self, history: pd.DataFrame | None) -> str:
+        """
+        构建 Trial 调参历史折线图。
+
+        方法会自动识别常见 AUC、KS 和自定义评分列，最多展示前八条指标
+        曲线，避免图表过载。
+        """
         if history is None or history.empty or "trial_num" not in history.columns:
             return '<div class="mars-empty">Tuning history data is unavailable.</div>'
         metric_cols = [
@@ -305,6 +358,12 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _feature_growth_chart(self, summary: pd.DataFrame | None) -> str:
+        """
+        构建特征增长实验指标曲线。
+
+        图表按特征数量展示 train、val 和部分 OOT 指标，并用竖线标记推荐的
+        best step。
+        """
         if summary is None or summary.empty or "feature_count" not in summary.columns:
             return '<div class="mars-empty">Feature growth data is unavailable.</div>'
         metric = str(
@@ -346,6 +405,7 @@ class _ModelReportHtmlRenderer:
         return self._figure_to_img(fig, dpi=self.dpi)
 
     def _summary_cards_html(self) -> str:
+        """从汇总表和元数据中构建顶部 KPI 卡片。"""
         summary = self.report.summary_table
         cards: List[Tuple[str, str]] = []
         if not summary.empty and isinstance(summary.columns, pd.MultiIndex):
@@ -374,6 +434,7 @@ class _ModelReportHtmlRenderer:
         return "".join(f'<div class="mars-card"><span>{self._escape(label)}</span><strong>{self._escape(value)}</strong></div>' for label, value in cards)
 
     def _metadata_table(self) -> pd.DataFrame:
+        """将训练配置、版本和 run 元数据展开为二维表。"""
         rows: List[Dict[str, Any]] = []
         for group_name, payload in [
             ("training_config", self.metadata.get("training_config")),
@@ -388,6 +449,12 @@ class _ModelReportHtmlRenderer:
         return pd.DataFrame(rows)
 
     def _scorecard_section(self) -> str:
+        """
+        构建评分卡配置与分值表 section。
+
+        当渲染器未绑定评分卡对象时返回空字符串，调用方可直接跳过该
+        section。
+        """
         if self.scorecard is None:
             return ""
         config_rows = []
@@ -402,10 +469,12 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _section(title: str, body: str, section_id: str, *, open_by_default: bool = True) -> str:
+        """将内容包装成可折叠的 HTML section。"""
         open_attr = " open" if open_by_default else ""
         return f'<details id="{section_id}" class="mars-section"{open_attr}><summary>{html.escape(title)}</summary>{body}</details>'
 
     def _build_document(self, body: str) -> str:
+        """组装建模报告的自包含 HTML 文档。"""
         return f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -431,6 +500,7 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _styles() -> str:
+        """返回建模 HTML 报告的内联样式。"""
         return """
         :root{--ink:#172033;--muted:#64748b;--line:#dbe3ec;--soft:#f6f8fb;--accent:#2563eb;--warn:#fff7ed;--danger:#fff1f2}
         body{margin:0;background:#eef3f8;color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
@@ -458,6 +528,7 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _script() -> str:
+        """返回建模 HTML 报告的前端筛选和排序脚本。"""
         return """
         function marsFilterTable(tableId, query){
           const table=document.getElementById(tableId); if(!table) return;
@@ -482,6 +553,33 @@ class _ModelReportHtmlRenderer:
         """
 
     def render(self) -> str:
+        """
+        组装完整的单文件建模 HTML 报告。
+
+        返回内容包含执行摘要、区分度与校准图、稳定性、解释性、调参审计、
+        可选特征增长审计和可选评分卡 section。
+
+        Returns
+        -------
+        str
+            完整 HTML 文本。
+
+        Examples
+        --------
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> renderer = _ModelReportHtmlRenderer(
+        ...     report=report,
+        ...     title="demo",
+        ...     run=None,
+        ...     scorecard=None,
+        ...     importance_table=None,
+        ...     history_table=None,
+        ...     top_features=5,
+        ...     dpi=80,
+        ... )
+        >>> "Executive Summary" in renderer.render()
+        True
+        """
         summary_df = self.report.summary_table.reset_index()
         body_parts: List[str] = []
         executive = f'<div class="mars-card-grid">{self._summary_cards_html()}</div>'

@@ -76,6 +76,15 @@ def profile_stats(
     ------
     ValueError
         当 ``metrics`` 为空，或包含未支持的指标名称时抛出。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from mars.analysis.profiler import profile_stats
+    >>> df = pl.DataFrame({"age": [20, 30, None], "month": ["202601", "202601", "202602"]})
+    >>> report = profile_stats(df, metrics=["missing", "mean"], profile_by="month")
+    >>> "missing" in report.dq_tables
+    True
     """
     if not metrics:
         raise ValueError("`metrics` must contain at least one metric name.")
@@ -203,12 +212,19 @@ class MarsDataProfiler(MarsBaseEstimator):
 
     Examples
     --------
-    >>> # 基础调用范式：生成全量报告与交互式视图
+    >>> import polars as pl
+    >>> df = pl.DataFrame({
+    ...     "age": [20, 30, None],
+    ...     "income": [5_000, 8_000, 6_000],
+    ...     "month": ["202601", "202601", "202602"],
+    ... })
+    >>> # 基础调用范式：生成全量报告并读取画像数据
     >>> profiler = MarsDataProfiler(df)
     >>> report = profiler.generate_profile()
-    >>> report.show_overview()
+    >>> report.get_profile_data().overview.height > 0
+    True
 
-    >>> # 进阶调用范式：挂载领域特殊值、注入时间窗口并覆写底层渲染配置
+    >>> # 进阶调用范式：挂载领域特殊值、注入分组维度并覆写底层渲染配置
     >>> profiler = MarsDataProfiler(df, missing_values=[-999, "unknown"])
     >>> report = profiler.generate_profile(
     ...     profile_by="month",
@@ -217,6 +233,8 @@ class MarsDataProfiler(MarsBaseEstimator):
     ...         "stat_metrics": ["psi", "mean", "min", "max"]
     ...     }
     ... )
+    >>> "psi" in report.stats_tables
+    True
     """
 
     def __init__(
@@ -309,7 +327,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             # 类型映射：Python Type -> Polars Abstract Type
             target_dtypes = []
             for t in raw_dtypes:
-                # --- Python Native Mapping ---
+                # Python 原生类型映射
                 if t is int:
                     target_dtypes.append(pl.Integer) # 匹配所有整型 (Int8~64, UInt)
                 elif t is float:
@@ -320,7 +338,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                     target_dtypes.append(pl.Boolean)
                 elif t is list:
                     target_dtypes.append(pl.List)
-                # --- Polars Type Pass-through ---
+                # Polars 类型直接透传
                 else:
                     target_dtypes.append(t)
 
@@ -387,16 +405,19 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Examples
         --------
+        >>> import polars as pl
+        >>> df = pl.DataFrame({
+        ...     "age": [20, 30, None],
+        ...     "income": [5_000, 8_000, 6_000],
+        ...     "month": ["202601", "202601", "202602"],
+        ... })
         >>> profiler = MarsDataProfiler(df)
         >>> report = profiler.generate_profile()
-        >>> report.show_overview()
-        >>> report.write_excel("my_analysis.xlsx")
-        >>>
         >>> report = profiler.generate_profile(profile_by="month")
-        >>> report.show_trend("mean")
-        >>>
         >>> overview, dq_tables, stat_tables = report.get_profile_data()
         >>> high_missing_cols = overview.filter(pl.col("missing_rate") > 0.9)["feature"].to_list()
+        >>> isinstance(dq_tables, dict) and isinstance(stat_tables, dict)
+        True
         """
         # 动态配置合并
         run_config: MarsProfileConfig = self.config
@@ -446,21 +467,21 @@ class MarsDataProfiler(MarsBaseEstimator):
         #    必须传入 context_df=working_df，因为它包含了可能新生成的 group_col
         dq_tables: Dict[str, pl.DataFrame] = {}
 
-        ## DQ Trends
+        # 数据质量趋势表
         for m in run_config.dq_metrics:
             dq_tables[m] = self._generate_pivot_report(m, group_col, context_df=working_df)
 
-        ## Stats Trends
+        # 统计指标趋势表
         stat_tables: Dict[str, pl.DataFrame] = {}
         for m in run_config.stat_metrics:
-            # a. Pivot
+            # 生成透视表。
             pivot: pl.DataFrame = self._generate_pivot_report(m, group_col, context_df=working_df)
             # b. Stability (CV/Var) - 仅在有分组时计算
             if group_col:
                 pivot = self._add_stability_metrics(pivot, exclude_cols=["feature", "dtype", "total"])
             stat_tables[m] = pivot
 
-        ## PSI Trend
+        # PSI 趋势表
         if group_col and ("psi" in run_config.stat_metrics):
             try:
                 # 传入 working_df 以支持临时时间列
@@ -603,7 +624,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             batch_raw = self.df.select(all_exprs)
 
             # 立即执行 Reshape 操作，释放内存并降维
-            # unpivot: [1 row x (Batch * Metrics) cols] -> [(Batch * Metrics) rows x 2 cols]
+            # unpivot 形态转换：[1 行 x（批次特征数 * 指标数）列] -> [长表 2 列]。
             batch_long = batch_raw.unpivot(variable_name="temp_id", value_name="value")
 
             # 解析编码在 temp_id 中的特征名和指标名
@@ -795,7 +816,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         # 计算 Total 列 (全局聚合)
         total_exprs = [self._get_single_metric_expr(c, metric).alias(c) for c in target_cols]
         total_row = target_df.select(total_exprs)
-        # Transpose: [1, n_feats] -> [n_feats, 1]
+        # 转置形态：[1, n_feats] -> [n_feats, 1]。
         total_df = total_row.transpose(include_header=True, header_name="feature", column_names=["total"])
 
         # 准备基础表 (feature + dtype + total)
@@ -808,21 +829,21 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         # 有分组 -> 计算 Pivot 并 Join
         agg_exprs = [self._get_single_metric_expr(c, metric).alias(c) for c in target_cols]
-        # GroupBy -> Agg -> Sort
+        # 分组、聚合并排序。
         #   结果形状: M个分组 x N个特征
         grouped =target_df.group_by(group_col).agg(agg_exprs).sort(group_col)
         grouped = grouped.with_columns(pl.col(group_col).cast(pl.String))
 
         # 再次转置
         #   输入:
-        #   month  | age | income
-        #   202301 | 25  | 10000
-        #   202302 | 26  | 12000
+        #   示例输入：month | age | income
+        #   示例输入：202301 | 25  | 10000
+        #   示例输入：202302 | 26  | 12000
         #
         #   输出 (Transpose后):
-        #   feature | 202301 | 202302
-        #   age     | 25     | 26
-        #   income  | 10000  | 12000
+        #   示例输出：feature | 202301 | 202302
+        #   示例输出：age     | 25     | 26
+        #   示例输出：income  | 10000  | 12000
         pivot_df = grouped.transpose(include_header=True, header_name="feature", column_names=group_col)
 
         result = base_df.join(pivot_df, on="feature", how="left")
@@ -1113,7 +1134,7 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         final_long_psi: pl.DataFrame = pl.concat(psi_result_parts)
 
-        # Pivot
+        # 透视为趋势宽表。
         pivot_df = (
             final_long_psi
             .pivot(on=group_col, index=["feature", "total"], values="psi")

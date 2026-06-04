@@ -31,6 +31,33 @@ class ModelingSpec:
         基准模型分数列。
     time_col : str, optional
         时间列名。
+
+    Attributes
+    ----------
+    model_type : str
+        模型后端类型。
+    features : list of str
+        特征列名。
+    target : str
+        目标变量列名。
+    dataset_flag_col : str
+        数据集切片标识列名。
+    categorical_features : list of str
+        类别特征列名。
+    optimize_metric : str
+        优化指标。
+    seed : int
+        随机种子。
+    benchmark_col : str or None
+        基准模型分数列。
+    time_col : str or None
+        时间列名。
+
+    Examples
+    --------
+    >>> spec = ModelingSpec(model_type="xgb", features=["age"], target="y")
+    >>> spec.dataset_flag_col
+    'dataset_flag'
     """
 
     model_type: str
@@ -67,6 +94,27 @@ class SplitSpec:
         验证集标识。
     random_seed : int, default 42
         hybrid 模式下建模窗口随机切分种子。
+
+    Attributes
+    ----------
+    time_col : str
+        时间列名。
+    label_col : str
+        标签列名。
+    mode : str
+        切分模式。
+    train_key : str
+        训练集标识。
+    val_key : str
+        验证集标识。
+    random_seed : int
+        hybrid 模式下建模窗口随机切分种子。
+
+    Examples
+    --------
+    >>> spec = SplitSpec(time_col="apply_dt", label_col="y", mode="hybrid")
+    >>> spec.train_key
+    'train'
     """
 
     time_col: str
@@ -96,6 +144,27 @@ class ReplaySpec:
         早停轮数。
     optimize_metric : str, default "auc"
         replay 阶段优化指标。
+
+    Attributes
+    ----------
+    top_k : int
+        需要回放的 trial 数量。
+    sort_metric : str
+        排序指标。
+    include_val : bool
+        排序均值是否包含验证集。
+    num_boost_round : int
+        最大训练轮数。
+    early_stopping_rounds : int
+        早停轮数。
+    optimize_metric : str
+        replay 阶段优化指标。
+
+    Examples
+    --------
+    >>> spec = ReplaySpec(top_k=3)
+    >>> spec.top_k
+    3
     """
 
     top_k: int = 5

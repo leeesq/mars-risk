@@ -1,4 +1,4 @@
-"""HTML asset builders for MARS evaluation reports."""
+"""MARS 评估报告 HTML 样式与运行脚本构建工具。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,20 @@ from collections.abc import Sequence
 
 
 def build_html_styles() -> str:
+    """
+    构建评估报告使用的内联 CSS 样式。
+
+    Returns
+    -------
+    str
+        可直接嵌入 HTML 文档的 ``<style>`` 内容。
+
+    Examples
+    --------
+    >>> styles = build_html_styles()
+    >>> ".mars-page" in styles
+    True
+    """
     return """
             :root { --bg:#f5f7fb; --panel:#fff; --panel-soft:#f9fbfd; --ink:#203040; --muted:#607080; --line:#d9e3eb; --line-soft:#ebf1f6; --accent:#3b87ad; --danger:#c44f4f; --shadow:0 16px 36px rgba(51,82,108,.08); }
             body { margin:0; font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:radial-gradient(circle at top right,#edf6fb 0%,#f5f7fb 40%,#f8fbfd 100%); color:var(--ink); }
@@ -131,6 +145,25 @@ def build_html_styles() -> str:
 
 
 def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
+    """
+    构建评估报告表格筛选、排序和跳转交互脚本。
+
+    Parameters
+    ----------
+    summary_filter_columns : Sequence[str]
+        汇总表允许参与全局搜索与筛选的列名集合。
+
+    Returns
+    -------
+    str
+        可直接嵌入 HTML 文档的 ``<script>`` 内容。
+
+    Examples
+    --------
+    >>> script = build_html_runtime_script(["feature", "group"])
+    >>> "marsSummaryFilterColumns" in script
+    True
+    """
     template = """
             const marsSummaryFilterColumns = new Set(__SUMMARY_FILTER_COLUMNS__);
             const marsState = {

@@ -32,6 +32,32 @@ class MarsModelEvaluator:
         需要计算特征 PSI 的特征列。
     importance_table : pandas.DataFrame, optional
         特征重要性表，写入报告 metadata。
+
+    Attributes
+    ----------
+    group_col : str
+        数据集切片列。
+    target_col : str
+        真实标签列。
+    benchmark_col : str or None
+        基准模型或旧模型分数列。
+    time_col : str or None
+        时间列。
+    val_target_col : str or None
+        可选校验标签列。
+    feature_cols : list of str
+        需要计算特征 PSI 的特征列。
+    importance_table : pandas.DataFrame or None
+        特征重要性表副本。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({"dataset_flag": ["train", "val"], "y": [0, 1], "score": [0.1, 0.9]})
+    >>> evaluator = MarsModelEvaluator(group_col="dataset_flag", target_col="y")
+    >>> report = evaluator.evaluate(df, pred_col="score")
+    >>> report.summary_table is not None
+    True
     """
 
     COLUMN_ORDER = [
@@ -63,6 +89,12 @@ class MarsModelEvaluator:
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
     ) -> None:
+        """
+        初始化模型评估器的列配置和可选元数据。
+
+        传入列名仅保存为评估上下文，具体列存在性和时间列解析会在
+        ``evaluate`` 调用时基于实际数据统一校验。
+        """
         self.group_col: str = group_col
         self.target_col: str = target_col
         self.benchmark_col: str | None = benchmark_col
@@ -99,7 +131,7 @@ class MarsModelEvaluator:
         section_label: str | None = None,
         score_psi: float | None = None,
     ) -> Dict[Tuple[str, str], Any]:
-        """Build one target block for the grouped evaluation report."""
+        """构建分组评估报告中的单个目标指标块。"""
         y_true = pd.to_numeric(sub_df[target_col], errors="coerce")
         y_pred = pd.to_numeric(sub_df[pred_col], errors="coerce")
         valid_mask = y_true.notna() & y_pred.notna() & (y_true >= 0)
@@ -180,12 +212,12 @@ class MarsModelEvaluator:
         return block
 
     def _get_ordered_groups(self, df: pd.DataFrame) -> List[str]:
-        """Return grouped split names in stable MARS order."""
+        """按 MARS 稳定顺序返回数据切片名称。"""
         groups = df[self.group_col].astype(str).unique().tolist()
         return sorted(groups, key=split_name_sort_key)
 
     def _get_ordered_columns(self, available_columns: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """Return a stable column layout for the final report."""
+        """为最终报告返回稳定的列布局。"""
         ordered_columns: List[Tuple[str, str]] = []
         if self.time_col:
             for time_name in ("Start Time", "End Time"):
@@ -207,7 +239,7 @@ class MarsModelEvaluator:
         return ordered_columns + remaining_columns
 
     def _build_score_bins(self, baseline_scores: pd.Series) -> np.ndarray | None:
-        """Build stable decile cut points from the first available group."""
+        """基于首个可用切片构建稳定的十分位切点。"""
         clean_scores = pd.to_numeric(baseline_scores, errors="coerce").dropna()
         if clean_scores.nunique() < 2:
             return None
@@ -226,7 +258,7 @@ class MarsModelEvaluator:
         pred_col: str,
         ordered_groups: Sequence[str],
     ) -> Tuple[pd.DataFrame, Dict[str, float]]:
-        """Calculate score distribution PSI for each group against the first group."""
+        """以首个切片为基准计算各切片的分数分布 PSI。"""
         if not ordered_groups:
             return pd.DataFrame(), {}
         baseline_group = ordered_groups[0]
@@ -283,7 +315,7 @@ class MarsModelEvaluator:
         target_col: str,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build grouped decile lift details ordered by descending model score."""
+        """按模型分数降序构建分组十分位 Lift 明细。"""
         rows: List[Dict[str, Any]] = []
         for group in ordered_groups:
             sub_df = df[df[self.group_col].astype(str) == str(group)].copy()
@@ -325,7 +357,7 @@ class MarsModelEvaluator:
         pred_col: str,
         target_col: str,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Return clean binary target and score arrays for chart details."""
+        """返回图表明细使用的干净二分类标签和分数数组。"""
         y_true = pd.to_numeric(sub_df[target_col], errors="coerce")
         y_pred = pd.to_numeric(sub_df[pred_col], errors="coerce")
         mask = y_true.notna() & y_pred.notna() & (y_true >= 0)
@@ -333,7 +365,7 @@ class MarsModelEvaluator:
 
     @staticmethod
     def _thin_arrays(max_points: int, **arrays: np.ndarray) -> Dict[str, np.ndarray]:
-        """Downsample aligned arrays to keep report detail tables lightweight."""
+        """对齐下采样数组，控制报告明细表体积。"""
         if not arrays:
             return {}
         size = len(next(iter(arrays.values())))
@@ -350,7 +382,7 @@ class MarsModelEvaluator:
         target_col: str,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build ROC curve detail rows for each split."""
+        """为每个切片构建 ROC 曲线明细行。"""
         rows: List[Dict[str, Any]] = []
         for group in ordered_groups:
             sub_df = df[df[self.group_col].astype(str) == str(group)]
@@ -390,7 +422,7 @@ class MarsModelEvaluator:
         target_col: str,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build KS curve detail rows for each split."""
+        """为每个切片构建 KS 曲线明细行。"""
         rows: List[Dict[str, Any]] = []
         for group in ordered_groups:
             sub_df = df[df[self.group_col].astype(str) == str(group)]
@@ -432,7 +464,7 @@ class MarsModelEvaluator:
         target_col: str,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build reliability diagram detail rows by quantile bin."""
+        """按分位箱构建校准曲线明细行。"""
         rows: List[Dict[str, Any]] = []
         for group in ordered_groups:
             sub_df = df[df[self.group_col].astype(str) == str(group)]
@@ -468,7 +500,7 @@ class MarsModelEvaluator:
         target_col: str,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build binned score distribution rows split by target value."""
+        """按目标取值构建分箱后的分数分布明细行。"""
         scores = pd.to_numeric(df[pred_col], errors="coerce").dropna()
         if scores.empty:
             return pd.DataFrame()
@@ -504,7 +536,7 @@ class MarsModelEvaluator:
 
     @staticmethod
     def _feature_distribution(series: pd.Series, baseline: pd.Series) -> Tuple[pd.Series, str]:
-        """Return aligned feature distribution for PSI using numeric bins or categories."""
+        """返回用于 PSI 的对齐特征分布，数值列使用分箱，类别列使用取值。"""
         baseline_clean = baseline.copy()
         series_clean = series.copy()
         if pd.api.types.is_numeric_dtype(baseline_clean):
@@ -531,7 +563,7 @@ class MarsModelEvaluator:
         *,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """Build feature-level PSI detail rows against the first split."""
+        """以首个切片为基准构建特征级 PSI 明细行。"""
         feature_cols = [col for col in self.feature_cols if col in df.columns]
         if not ordered_groups or not feature_cols:
             return pd.DataFrame()
@@ -586,6 +618,18 @@ class MarsModelEvaluator:
         -------
         MarsModelingReport
             汇总指标、明细表与轻量元数据。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({
+        ...     "pred": [0.1, 0.8, 0.3, 0.7],
+        ...     "target": [0, 1, 0, 1],
+        ...     "sample": ["train", "train", "val", "val"],
+        ... })
+        >>> evaluator = MarsModelEvaluator(group_col="sample", target_col="target")
+        >>> report = evaluator.evaluate(df, pred_col="pred")
+        >>> report.summary_table.shape[0]
+        2
         """
         df_pd = self._validate_frame(to_pandas_frame(df), pred_col)
         rows: List[Dict[Any, Any]] = []

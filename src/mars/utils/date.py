@@ -1,4 +1,4 @@
-# mars/utils/date.py
+"""MARS 日期解析与粒度转换工具。"""
 
 from typing import Union
 
@@ -12,10 +12,27 @@ class MarsDate:
     专为 Polars DataFrame 操作设计。
     所有方法均返回 ``pl.Expr`` 对象，可直接用于 Polars 的表达式系统中。
 
+    Parameters
+    ----------
+    None
+        该工具类只提供静态方法，不需要初始化参数。
+
+    Attributes
+    ----------
+    None
+        该工具类不维护实例状态。
+
     Notes
     -----
     该类不直接处理数据，而是构建 Polars 表达式树。
     这意味着它的开销极低，且能完美融入 ``lazy()`` 执行计划中。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> df = pl.DataFrame({"dt": ["2026-01-02"]})
+    >>> df.select(MarsDate.dt2month("dt").alias("month")).item()
+    '202601'
     """
 
     @staticmethod
@@ -62,6 +79,11 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Date`` 的表达式。无法解析的值将变为 Null。
+        Examples
+        --------
+        >>> df = pl.DataFrame({"dt": ["2026-01-02", "20260103"]})
+        >>> df.select(MarsDate.smart_parse_expr("dt").dt.strftime("%Y%m%d")).to_series().to_list()
+        ['20260102', '20260103']
         """
         expr = MarsDate._to_expr(col)
 
@@ -108,6 +130,11 @@ class MarsDate:
         pl.Expr
             当 interval 为 1d 时，返回 pl.Date 类型。
             当 interval > 1d 时，返回 pl.Utf8 (String) 区间格式。
+        Examples
+        --------
+        >>> df = pl.DataFrame({"dt": ["2026-01-01", "2026-01-03"]})
+        >>> df.select(MarsDate.dt2day("dt", "3d").alias("bucket")).to_series().to_list()
+        ['20260101-0103', '20260101-0103']
         """
         parsed_dt = MarsDate.smart_parse_expr(dt)
 
@@ -162,6 +189,11 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+        Examples
+        --------
+        >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
+        >>> df.select(MarsDate.dt2week("dt").alias("week")).item()
+        '20260126-0201'
         """
         # 解析并截断到周一 (起点)
         start_of_week = MarsDate.smart_parse_expr(dt).dt.truncate("1w")
@@ -189,6 +221,11 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+        Examples
+        --------
+        >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
+        >>> df.select(MarsDate.dt2month("dt").alias("month")).item()
+        '202601'
         """
         # 直接使用 strftime 提取年月即可，无需 truncate
         return MarsDate.smart_parse_expr(dt).dt.strftime("%Y%m")
@@ -209,5 +246,10 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+        Examples
+        --------
+        >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
+        >>> df.select(MarsDate.format_dt("dt", "%Y/%m/%d").alias("dt")).item()
+        '2026/01/28'
         """
         return MarsDate.smart_parse_expr(dt).dt.strftime(fmt)

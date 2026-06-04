@@ -29,6 +29,32 @@ from mars.modeling.metrics import lgb_ks_metric as _lgb_ks_metric
 class MarsLGBStrategy(MarsBaseModelTuner):
     """
     基于 LightGBM 原生接口的调参策略。
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or polars.DataFrame
+        继承自基类的建模数据集，需包含训练、验证和可选 OOT 切片标识。
+    features : sequence of str
+        参与 LightGBM 训练的特征列名。
+    target : str
+        二分类目标列名。
+    categorical_features : sequence of str, optional
+        需要交给 LightGBM 原生类别特征处理的字段名。
+
+    Attributes
+    ----------
+    dataset_dict : dict of str to Any
+        按切片缓存的 LightGBM ``Dataset`` 对象。
+    predict_frame_dict : dict of str to Any
+        按切片缓存的预测输入数据。
+    backend_data_mode : str
+        当前后端缓存采用的数据转换模式。
+
+    Examples
+    --------
+    >>> strategy = object.__new__(MarsLGBStrategy)
+    >>> "num_leaves" in strategy.get_default_space()
+    True
     """
 
     def _build_backend_data(self) -> None:
@@ -88,6 +114,12 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         -------
         dict of str to Any
             LightGBM 默认超参数搜索空间。
+
+        Examples
+        --------
+        >>> strategy = object.__new__(MarsLGBStrategy)
+        >>> "num_leaves" in strategy.get_default_space()
+        True
         """
         return {
             "num_leaves": ("int", 15, 63),
@@ -125,6 +157,12 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         -------
         Any
             训练完成的 LightGBM 模型。
+
+        Examples
+        --------
+        >>> strategy = object.__new__(MarsLGBStrategy)
+        >>> callable(strategy.train_model)
+        True
         """
         lgb = _load_module("lightgbm")
 
@@ -176,6 +214,16 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         -------
         numpy.ndarray
             预测分数数组。
+
+        Examples
+        --------
+        >>> class Model:
+        ...     def predict(self, frame, num_iteration=None):
+        ...         return np.array([0.2, 0.9])
+        >>> strategy = object.__new__(MarsLGBStrategy)
+        >>> strategy.predict_frame_dict = {"val": pd.DataFrame({"age": [20, 40]})}
+        >>> strategy.predict_scores(Model(), "val").tolist()
+        [0.2, 0.9]
         """
         best_iteration = self.get_best_iteration(model)
         return np.asarray(
@@ -186,7 +234,32 @@ class MarsLGBStrategy(MarsBaseModelTuner):
         )
 
     def extract_importance(self, model: Any) -> pd.DataFrame:
-        """Return a normalized LightGBM feature importance table."""
+        """
+        返回标准化后的 LightGBM 特征重要性表。
+
+        Parameters
+        ----------
+        model : Any
+            已训练的 LightGBM 模型。
+
+        Returns
+        -------
+        pandas.DataFrame
+            MARS 统一格式的重要性表。
+
+        Examples
+        --------
+        >>> class DummyLGBModel:
+        ...     def feature_name(self) -> list[str]:
+        ...         return ["age"]
+        ...     def feature_importance(self, importance_type: str = "gain") -> np.ndarray:
+        ...         return np.array([2.0])
+        >>> strategy = object.__new__(MarsLGBStrategy)
+        >>> strategy.features = ["age"]
+        >>> importance = strategy.extract_importance(DummyLGBModel())
+        >>> importance.loc[0, "feature"]
+        'age'
+        """
         feature_names = [str(name) for name in model.feature_name()]
         importance_values = model.feature_importance(importance_type="gain")
         importance_map = {

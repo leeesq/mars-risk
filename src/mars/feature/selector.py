@@ -1,3 +1,5 @@
+"""MARS 特征筛选器实现模块。"""
+
 from __future__ import annotations
 
 import copy
@@ -111,6 +113,14 @@ class MarsStatsSelector(MarsBaseSelector):
     -----
     评估器内部持有了最优分箱规则状态。在调用 `fit` 完成特征筛选后，系统会自动触发
     `prune` 方法裁剪冗余的非入模特征状态，以收敛序列化后的模型体积。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+    >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
+    >>> selector.fit(df).selected_features_
+    ['age']
     """
     def __init__(
         self,
@@ -291,6 +301,14 @@ class MarsStatsSelector(MarsBaseSelector):
         ------
         ValueError
             当粗筛和精筛同时被禁用时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+        >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
+        >>> selector.fit(df).selected_features_
+        ['age']
         """
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
@@ -425,6 +443,12 @@ class MarsStatsSelector(MarsBaseSelector):
         return self
 
     def _normalize_feature_data_source(self, features: List[str]) -> Dict[str, str]:
+        """
+        将选择器的数据源配置转换为特征到数据源的稳定映射。
+
+        未配置来源的特征统一标记为 ``"UNMAPPED"``；配置中出现当前候选特征
+        之外的字段时立即失败，避免导出的选择器报告来源错位。
+        """
         if not self.feature_data_source:
             return {feature: "UNMAPPED" for feature in features}
 
@@ -448,6 +472,7 @@ class MarsStatsSelector(MarsBaseSelector):
         return normalized
 
     def _feature_source_for(self, feature: str) -> str:
+        """返回特征所属数据源，未映射时使用统一兜底标签。"""
         return self._feature_source_map.get(feature, "UNMAPPED")
 
     def _register_feature_decision(
@@ -459,6 +484,7 @@ class MarsStatsSelector(MarsBaseSelector):
         value: float = -1.0,
         desc: str = "",
     ) -> None:
+        """记录特征筛选决策并补充数据源标签。"""
         self._register_decision(
             feature,
             status,
@@ -501,9 +527,21 @@ class MarsStatsSelector(MarsBaseSelector):
         """
         展示特征筛选漏斗摘要。
 
+        Returns
+        -------
+        None
+            函数仅展示或记录漏斗摘要，不返回表格对象。
+
         Notes
         -----
         在 Notebook 环境中优先返回富样式表格；若环境不支持，则退化为日志打印。
+
+        Examples
+        --------
+        >>> selector = MarsStatsSelector(target="y")
+        >>> selector._record_funnel("Init", "Demo", {"iv": 0.02}, 2, 1)
+        >>> selector.show_summary() is None
+        True
         """
         if not self._funnel_stats:
             logger.warning("No funnel stats available. Run .fit() first.")
@@ -594,9 +632,20 @@ class MarsStatsSelector(MarsBaseSelector):
         """
         释放缓存的分箱器上下文。
 
+        Returns
+        -------
+        None
+            函数仅释放缓存资源，并记录调试日志。
+
         Notes
         -----
         该方法会清理最终分箱器中缓存的数据引用，并主动触发一次垃圾回收。
+
+        Examples
+        --------
+        >>> selector = MarsStatsSelector(target="y")
+        >>> selector.clear_cache() is None
+        True
         """
         if self._stage3_binner is not None:
             self._stage3_binner.clear_cache()
@@ -930,6 +979,16 @@ class MarsStatsSelector(MarsBaseSelector):
         ------
         ValueError
             当当前选择器尚未拟合，或没有任何入选特征时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+        >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
+        >>> selector.fit(df)
+        >>> report, evaluator = selector.get_eval_report(df)
+        >>> isinstance(report, MarsEvaluationReport)
+        True
         """
         self._check_is_fitted()
 
@@ -988,6 +1047,24 @@ class MarsStatsSelector(MarsBaseSelector):
         ----------
         path : str, default "mars_selector_report.xlsx"
             持久化导出路径。引擎根据扩展名执行 `.csv` 或复合样式 `.xlsx` 的落盘处理。
+
+        Returns
+        -------
+        None
+            报告直接写入 ``path``，函数不返回文件句柄或表格对象。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> selector = MarsStatsSelector(target="y")
+        >>> selector._is_fitted = True
+        >>> selector._register_feature_decision("age", "Selected", "demo", "demo")
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "selector.csv"
+        ...     selector.export_selector_report(str(path))
+        ...     path.exists()
+        True
         """
         report_df = self.get_report()
         if isinstance(report_df, pd.DataFrame):
@@ -1033,10 +1110,29 @@ class MarsStatsSelector(MarsBaseSelector):
         blacklist_stages : list of str, optional
             界定需写入惩罚名单的阶段。支持字符串模糊匹配（例如 'quality' 匹配质量校验环节）。
 
+        Returns
+        -------
+        None
+            白名单与黑名单直接写入 JSON 文件。
+
         Notes
         -----
         导出的 ``white_list`` 为当前最终入选特征；``black_list`` 为被剔除特征与
         用户预设黑名单的并集。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> selector = MarsStatsSelector(target="y")
+        >>> selector._is_fitted = True
+        >>> selector.selected_features_ = ["age"]
+        >>> selector.report_records_ = [{"feature": "income", "status": "Dropped", "stage": "Quality"}]
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "lists.json"
+        ...     selector.save_selector_lists(str(path))
+        ...     MarsStatsSelector.load_lists_from_json(str(path))["white_list"]
+        ['age']
         """
         self._check_is_fitted()
 
@@ -1085,6 +1181,19 @@ class MarsStatsSelector(MarsBaseSelector):
         -------
         dict
             包含 ``white_list`` 与 ``black_list`` 的字典。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "lists.json"
+        ...     _ = path.write_text(
+        ...         json.dumps({"white_list": ["age"], "black_list": []}),
+        ...         encoding="utf-8",
+        ...     )
+        ...     MarsStatsSelector.load_lists_from_json(str(path))["white_list"]
+        ['age']
         """
         if not os.path.exists(path):
             logger.warning(f"File {path} not found. Returning empty lists.")
@@ -1101,6 +1210,20 @@ class MarsStatsSelector(MarsBaseSelector):
         ----------
         iv_thresholds : list of float, optional
             自定义统计边界截断数组。默认渲染 [0.02, 0.05, 0.10] 区间梯度。
+
+        Returns
+        -------
+        None
+            函数仅通过日志输出统计摘要。
+
+        Examples
+        --------
+        >>> selector = MarsStatsSelector(target="y")
+        >>> selector._is_fitted = True
+        >>> selector.selected_features_ = ["age"]
+        >>> selector._feature_iv_dict = {"age": 0.12}
+        >>> selector.print_stats([0.05]) is None
+        True
         """
         self._check_is_fitted()
 
@@ -1180,6 +1303,14 @@ class MarsLinearSelector(MarsBaseSelector):
         VIF 阶段的最终候选特征 VIF 表。
     stepwise_history_ : pandas.DataFrame
         逐步回归每一步的 add/drop 决策记录。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+    >>> selector = MarsLinearSelector(target="y", corr_thr=0.95)
+    >>> selector.fit(df).selected_features_
+    ['age']
     """
 
     def __init__(
@@ -1250,7 +1381,7 @@ class MarsLinearSelector(MarsBaseSelector):
         X: pl.DataFrame | pd.DataFrame,
         y: Any | None,
     ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
-        """Convert input frames to a clean numeric modeling matrix."""
+        """将输入表转换为干净的数值建模矩阵。"""
         if isinstance(X, pl.DataFrame):
             df = X.to_pandas()
         elif isinstance(X, pd.DataFrame):
@@ -1292,7 +1423,7 @@ class MarsLinearSelector(MarsBaseSelector):
 
     @staticmethod
     def _target_strength(X: pd.DataFrame, y: pd.Series, features: Sequence[str]) -> dict[str, float]:
-        """Rank features by absolute univariate association with the target."""
+        """按特征与目标的一元绝对关联强度生成排序分值。"""
         strengths: dict[str, float] = {}
         for feature in features:
             corr = pd.Series(X[feature]).corr(y, method="spearman")
@@ -1305,7 +1436,7 @@ class MarsLinearSelector(MarsBaseSelector):
         y: pd.Series,
         features: list[str],
     ) -> list[str]:
-        """Drop one side of each highly correlated feature pair."""
+        """在高度相关的特征对中剔除一侧特征。"""
         if not self.enable_corr_filter or len(features) <= 1:
             return list(features)
 
@@ -1341,7 +1472,7 @@ class MarsLinearSelector(MarsBaseSelector):
 
     @staticmethod
     def _compute_vif_table(X: pd.DataFrame, features: Sequence[str]) -> pd.DataFrame:
-        """Compute VIF for the current candidate feature set."""
+        """计算当前候选特征集合的 VIF 表。"""
         if not features:
             return pd.DataFrame(columns=["feature", "vif"])
         if len(features) == 1:
@@ -1360,7 +1491,7 @@ class MarsLinearSelector(MarsBaseSelector):
         return pd.DataFrame(rows).sort_values("vif", ascending=False).reset_index(drop=True)
 
     def _apply_vif_filter(self, X: pd.DataFrame, features: list[str]) -> list[str]:
-        """Iteratively remove the feature with the largest VIF."""
+        """迭代剔除 VIF 最高且超过阈值的特征。"""
         if not self.enable_vif_filter or len(features) <= 1:
             self.vif_table_ = self._compute_vif_table(X, features)
             return list(features)
@@ -1392,7 +1523,7 @@ class MarsLinearSelector(MarsBaseSelector):
         y: pd.Series,
         features: Sequence[str],
     ) -> tuple[float, Any | None]:
-        """Fit a statsmodels Logit and return the configured information criterion."""
+        """拟合 statsmodels Logit 并返回当前配置的信息准则值。"""
         sm = require_optional_module("statsmodels.api")
         design = X.loc[:, list(features)] if features else pd.DataFrame(index=X.index)
         design = sm.add_constant(design, has_constant="add")
@@ -1408,13 +1539,14 @@ class MarsLinearSelector(MarsBaseSelector):
         y: pd.Series,
         features: list[str],
     ) -> list[str]:
-        """Run forward, backward, or bidirectional AIC/BIC selection."""
+        """执行 forward、backward 或双向 AIC/BIC 逐步筛选。"""
         if not self.enable_stepwise or not features:
             return list(features)
 
         history: list[dict[str, Any]] = []
 
         def record(action: str, feature: str | None, score: float, selected: Sequence[str]) -> None:
+            """记录逐步回归每一步的特征集合与信息准则分数。"""
             history.append(
                 {
                     "action": action,
@@ -1435,6 +1567,7 @@ class MarsLinearSelector(MarsBaseSelector):
         record("start", None, current_score, selected)
 
         def try_add() -> bool:
+            """尝试加入一个能继续降低信息准则的候选特征。"""
             nonlocal current_score, current_result, selected
             remaining = [feature for feature in features if feature not in selected]
             if self.max_features is not None and len(selected) >= int(self.max_features):
@@ -1455,6 +1588,7 @@ class MarsLinearSelector(MarsBaseSelector):
             return True
 
         def try_drop() -> bool:
+            """尝试移除一个能继续降低信息准则的已选特征。"""
             nonlocal current_score, current_result, selected
             if len(selected) <= 1:
                 return False
@@ -1527,7 +1661,7 @@ class MarsLinearSelector(MarsBaseSelector):
         y: pd.Series,
         features: list[str],
     ) -> list[str]:
-        """Apply a final top-N cap when stepwise is disabled or keeps too many features."""
+        """在未启用 stepwise 或保留过多特征时应用最终 Top-N 限制。"""
         if self.max_features is None or len(features) <= int(self.max_features):
             return list(features)
         strengths = self._target_strength(X, y, features)
@@ -1548,19 +1682,27 @@ class MarsLinearSelector(MarsBaseSelector):
 
     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> MarsLinearSelector:
         """
-        Fit correlation, VIF, and optional stepwise filters.
+        执行相关性、VIF 与可选 stepwise 线性特征筛选。
 
         Parameters
         ----------
         X : polars.DataFrame or pandas.DataFrame
-            Input feature frame. When ``y`` is omitted, it must include the target column.
+            输入特征表。若未显式传入 ``y``，则必须包含目标列。
         y : Any, optional
-            Binary target array.
+            二分类目标数组。
 
         Returns
         -------
         MarsLinearSelector
-            Fitted selector instance.
+            已拟合的线性筛选器实例。
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+        >>> selector = MarsLinearSelector(target="y").fit(df)
+        >>> selector.selected_features_
+        ['age']
         """
         self.report_records_ = []
         X_numeric, target_series, features = self._prepare_xy(X, y)
@@ -1685,6 +1827,15 @@ class MarsImportanceSelector(MarsBaseSelector):
         标准化后的重要性表。
     estimator_ : Any or None
         由选择器训练得到的 estimator；使用外部 importance table 时为 ``None``。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+    >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
+    >>> selector = MarsImportanceSelector(target="y", importance_table=importance)
+    >>> selector.fit(df).selected_features_
+    ['age']
     """
 
     def __init__(
@@ -1748,7 +1899,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         X: pl.DataFrame | pd.DataFrame,
         y: Any | None,
     ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
-        """Convert input data to pandas and resolve the target series."""
+        """将输入数据转为 Pandas，并解析目标列与候选特征。"""
         if isinstance(X, pl.DataFrame):
             df = X.to_pandas()
         elif isinstance(X, pd.DataFrame):
@@ -1769,7 +1920,7 @@ class MarsImportanceSelector(MarsBaseSelector):
 
     @staticmethod
     def _encode_features(X: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
-        """Encode mixed-type features while retaining encoded-to-raw feature mapping."""
+        """编码混合类型特征，并保留编码列到原始特征的映射。"""
         encoded_parts: list[pd.DataFrame] = []
         mapping: dict[str, str] = {}
         for feature in X.columns:
@@ -1799,7 +1950,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         return encoded.astype(float), mapping
 
     def _build_estimator(self) -> Any:
-        """Instantiate a supported estimator or clone the supplied estimator object."""
+        """实例化受支持的 estimator，或复制用户传入的 estimator 对象。"""
         if not isinstance(self.estimator, str):
             return copy.deepcopy(self.estimator)
 
@@ -1854,7 +2005,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         mapping: Mapping[str, str],
         raw_features: Sequence[str],
     ) -> dict[str, float]:
-        """Aggregate encoded-level importances back to raw feature names."""
+        """将编码列级别的重要性聚合回原始特征名。"""
         importance_map = {feature: 0.0 for feature in raw_features}
         for encoded_feature, value in zip(encoded_features, values, strict=False):
             raw_feature = mapping.get(str(encoded_feature), str(encoded_feature))
@@ -1867,7 +2018,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         importance_map: Mapping[str, float],
         importance_type: str,
     ) -> pd.DataFrame:
-        """Normalize an importance mapping to the MARS importance table schema."""
+        """将重要性映射标准化为 MARS importance table 结构。"""
         rows = [
             {
                 "feature": feature,
@@ -1894,7 +2045,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         mapping: Mapping[str, str],
         raw_features: Sequence[str],
     ) -> pd.DataFrame:
-        """Fit an estimator and extract built-in feature importance or coefficients."""
+        """拟合 estimator 并提取内置特征重要性或系数。"""
         estimator.fit(X_encoded, y)
         self.estimator_ = estimator
         if hasattr(estimator, "feature_importances_"):
@@ -1923,7 +2074,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         mapping: Mapping[str, str],
         raw_features: Sequence[str],
     ) -> pd.DataFrame:
-        """Fit an estimator and compute mean absolute SHAP values."""
+        """拟合 estimator 并计算 mean absolute SHAP value。"""
         shap = require_optional_module("shap")
         estimator.fit(X_encoded, y)
         self.estimator_ = estimator
@@ -1957,7 +2108,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         table: pd.DataFrame | pl.DataFrame,
         raw_features: Sequence[str],
     ) -> pd.DataFrame:
-        """Validate and normalize a user supplied importance table."""
+        """校验并标准化用户传入的重要性表。"""
         table_pd = table.to_pandas() if isinstance(table, pl.DataFrame) else table.copy()
         if "feature" not in table_pd.columns or "importance" not in table_pd.columns:
             raise ValueError("importance_table must contain 'feature' and 'importance' columns.")
@@ -1973,7 +2124,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         return table_pd[["feature", "importance", "importance_type", "model_type", "rank"]]
 
     def _select_features(self, table: pd.DataFrame) -> list[str]:
-        """Select features by top-k, absolute threshold, or percentile."""
+        """按 top-k、绝对阈值或百分位阈值选择特征。"""
         if table.empty:
             return []
         if self.selection_mode == "top_k":
@@ -2001,21 +2152,30 @@ class MarsImportanceSelector(MarsBaseSelector):
         importance_table: pd.DataFrame | pl.DataFrame | None = None,
     ) -> MarsImportanceSelector:
         """
-        Fit importance-based or SHAP-based feature selection.
+        执行基于模型重要性或 SHAP 的特征筛选。
 
         Parameters
         ----------
         X : polars.DataFrame or pandas.DataFrame
-            Input feature frame. When ``y`` is omitted, it must include the target column.
+            输入特征表。若未显式传入 ``y``，则必须包含目标列。
         y : Any, optional
-            Binary target array.
+            二分类目标数组。
         importance_table : pandas.DataFrame or polars.DataFrame, optional
-            Precomputed importance table with ``feature`` and ``importance`` columns.
+            预先计算好的重要性表，需包含 ``feature`` 与 ``importance`` 列。
 
         Returns
         -------
         MarsImportanceSelector
-            Fitted selector instance.
+            已拟合的重要性筛选器实例。
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
+        >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
+        >>> selector = MarsImportanceSelector(target="y", importance_table=importance).fit(df)
+        >>> selector.selected_features_
+        ['age']
         """
         if self.method in {"rfe", "sfm"}:
             raise NotImplementedError(

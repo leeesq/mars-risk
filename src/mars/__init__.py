@@ -1,4 +1,4 @@
-"""Public package exports for MARS."""
+"""MARS 风险建模工具包的公开导出入口。"""
 
 from .analysis import (
     MarsBinEvaluator,
@@ -33,12 +33,12 @@ _BANNER = rf"""
 
 
 def __repr__() -> str:
-    """Return the package banner string."""
+    """返回包级欢迎横幅字符串。"""
     return _BANNER
 
 
 def __str__() -> str:
-    """Return the package banner string."""
+    """返回包级欢迎横幅字符串。"""
     return _BANNER
 
 

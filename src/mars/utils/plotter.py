@@ -1,3 +1,5 @@
+"""MARS 风控特征趋势图绘制与 HTML 渲染工具。"""
+
 import base64
 import uuid
 from io import BytesIO
@@ -17,6 +19,27 @@ from mars.utils.logger import logger
 class MarsPlotter:
     """
     专注于风控特征效能与稳定性分析的可视化工具。
+
+    该工具统一处理分箱明细表到 Matplotlib 图形和嵌入式 HTML 的转换，
+    适用于 Notebook 交互展示和 HTML 报告生成。
+
+    Parameters
+    ----------
+    None
+        该工具类不需要初始化参数。
+
+    Attributes
+    ----------
+    UNIT_WIDTH : int
+        单个子图的基准宽度。
+    UNIT_HEIGHT : float
+        单个子图的基准高度。
+
+    Examples
+    --------
+    >>> plotter = MarsPlotter()
+    >>> isinstance(plotter.UNIT_WIDTH, (int, float))
+    True
     """
 
     UNIT_WIDTH = 3  # 单个子图的基准宽度
@@ -126,7 +149,7 @@ class MarsPlotter:
 
     @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
-        """Serialize a Matplotlib figure to a base64 PNG string."""
+        """将 Matplotlib 图表序列化为 Base64 PNG 字符串。"""
         buf = BytesIO()
         fig.savefig(buf, format='png', bbox_inches='tight', dpi=dpi)
         buf.seek(0)
@@ -137,7 +160,7 @@ class MarsPlotter:
 
     @staticmethod
     def _build_image_html(img_str: str) -> str:
-        """Build a zoomable HTML snippet for an already-serialized PNG image."""
+        """为已序列化的 PNG 图片构建可缩放 HTML 片段。"""
         unique_id = str(uuid.uuid4())
         container_id = f"cont_{unique_id}"
         img_id = f"img_{unique_id}"
@@ -190,7 +213,48 @@ class MarsPlotter:
         target_name: str = "Target",
         dpi: int | None = 150,
     ) -> str:
-        """Render a feature risk trend chart as an embeddable HTML snippet."""
+        """
+        将单个特征的分箱风险趋势图渲染为可嵌入 HTML 片段。
+
+        Parameters
+        ----------
+        df_detail : pandas.DataFrame or polars.DataFrame
+            分箱评估明细表。
+        feature : str
+            需要绘制的特征名。
+        group_col : str, default "month"
+            趋势分组列名。
+        target_name : str, default "Target"
+            目标变量展示名称。
+        dpi : int, optional
+            输出 PNG 的渲染分辨率。为 ``None`` 时使用默认值 ``150``。
+
+        Returns
+        -------
+        str
+            包含图像与缩放脚本的 HTML 片段。若特征或分组无法绘制，则返回空字符串。
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> df_detail = pd.DataFrame({
+        ...     "feature": ["age", "age", "age", "age"],
+        ...     "month": ["202601", "202601", "202602", "202602"],
+        ...     "bin_index": [0, 1, 0, 1],
+        ...     "bin_label": ["young", "mature", "young", "mature"],
+        ...     "count": [80, 20, 70, 30],
+        ...     "bad": [4, 3, 5, 6],
+        ...     "bad_rate": [0.05, 0.15, 0.071, 0.20],
+        ...     "lift": [0.8, 1.5, 0.9, 1.7],
+        ...     "iv_bin": [0.01, 0.03, 0.02, 0.04],
+        ...     "ks_bin": [5.0, 12.0, 6.0, 14.0],
+        ...     "auc_bin": [0.31, 0.30, 0.32, 0.31],
+        ...     "psi_bin": [0.0, 0.0, 0.01, 0.02],
+        ... })
+        >>> html = MarsPlotter.render_feature_binning_risk_trend_html(df_detail, "age", dpi=80)
+        >>> isinstance(html, str)
+        True
+        """
         fig = MarsPlotter._build_feature_binning_risk_figure(
             df_detail=df_detail,
             feature=feature,
@@ -210,7 +274,7 @@ class MarsPlotter:
         group_col: str = "month",
         target_name: str = "Target",
     ) -> plt.Figure | None:
-        """Build the risk trend figure without displaying it."""
+        """构建风险趋势图对象但不直接展示。"""
         df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
 
         df_feat: pd.DataFrame = df_detail[df_detail["feature"] == feature].copy()
@@ -495,6 +559,23 @@ class MarsPlotter:
             目标变量名称，用于标题显示。
         dpi : int, optional, default 150
             绘图分辨率。
+        Returns
+        -------
+        None
+            函数通过 IPython display 展示图表，不返回业务对象。
+
+        Examples
+        --------
+        >>> df_detail = pd.DataFrame({
+        ...     "feature": ["age", "age"],
+        ...     "month": ["202601", "202602"],
+        ...     "bin_index": [0, 0],
+        ...     "bin_label": ["all", "all"],
+        ...     "count": [100, 120],
+        ...     "psi_bin": [0.0, 0.01],
+        ... })
+        >>> MarsPlotter.plot_feature_binning_risk_trend(df_detail, "age", dpi=80) is None
+        True
         """
         fig: plt.Figure | None = MarsPlotter._build_feature_binning_risk_figure(
             df_detail=df_detail,
@@ -538,6 +619,28 @@ class MarsPlotter:
             排序依据指标，可选 'iv', 'ks', 'auc'。
         ascending : bool, default False
             是否升序排列（默认降序，即最重要的特征排在最前面）。
+        Returns
+        -------
+        None
+            函数逐个展示图表，不返回业务对象。
+
+        Examples
+        --------
+        >>> df_detail = pd.DataFrame({
+        ...     "feature": ["age", "income"],
+        ...     "month": ["202601", "202601"],
+        ...     "bin_index": [0, 0],
+        ...     "bin_label": ["all", "all"],
+        ...     "count": [100, 120],
+        ...     "psi_bin": [0.0, 0.01],
+        ... })
+        >>> MarsPlotter.plot_feature_binning_risk_trend_batch(
+        ...     df_detail,
+        ...     ["age", "income"],
+        ...     dpi=80,
+        ...     sort_by="",
+        ... ) is None
+        True
         """
         df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
 

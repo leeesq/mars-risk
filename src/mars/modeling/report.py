@@ -22,6 +22,24 @@ class MarsModelingReport:
         ROC、KS、PSI、风险水位图等轻量明细表。
     metadata : dict, optional
         训练配置、版本、特征重要性等报告元数据。
+
+    Attributes
+    ----------
+    summary_table : pandas.DataFrame
+        分数据集的核心指标汇总表。
+    caption : str
+        Notebook 样式展示标题。
+    detail_tables : dict of str to pandas.DataFrame
+        ROC、KS、PSI、风险水位图等轻量明细表。
+    metadata : dict
+        训练配置、版本、特征重要性等报告元数据。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+    >>> report.caption
+    'MARS Model Evaluation'
     """
 
     def __init__(
@@ -38,7 +56,20 @@ class MarsModelingReport:
 
     @property
     def styled_summary(self) -> Any:
-        """返回适合 Notebook 展示的 Pandas Styler。"""
+        """
+        返回适合 Notebook 展示的 Pandas Styler。
+
+        Returns
+        -------
+        Any
+            Pandas Styler 对象。
+
+        Examples
+        --------
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> report.styled_summary.caption
+        'MARS Model Evaluation'
+        """
         all_cols = list(self.summary_table.columns)
         numeric_cols = [
             col
@@ -88,11 +119,37 @@ class MarsModelingReport:
         return styler.set_caption(self.caption)
 
     def show_summary(self) -> Any:
-        """返回样式化汇总表。"""
+        """
+        返回样式化汇总表。
+
+        Returns
+        -------
+        Any
+            Pandas Styler 对象。
+
+        Examples
+        --------
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> report.show_summary().caption
+        'MARS Model Evaluation'
+        """
         return self.styled_summary
 
     def to_pandas(self) -> pd.DataFrame:
-        """返回汇总表副本。"""
+        """
+        返回汇总表副本。
+
+        Returns
+        -------
+        pandas.DataFrame
+            汇总表副本。
+
+        Examples
+        --------
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> report.to_pandas().equals(report.summary_table)
+        True
+        """
         return self.summary_table.copy()
 
     def write_excel(self, path: str = "mars_model_evaluation.xlsx", engine: str | None = None) -> None:
@@ -105,6 +162,22 @@ class MarsModelingReport:
             输出文件路径。
         engine : str, optional
             Pandas ExcelWriter 引擎。
+
+        Returns
+        -------
+        None
+            函数仅产生 Excel 文件写入副作用。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = Path(tmp) / "report.xlsx"
+        ...     report.write_excel(str(path))
+        ...     path.exists()
+        True
         """
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
@@ -154,6 +227,16 @@ class MarsModelingReport:
         -------
         pathlib.Path
             写出的 HTML 文件路径。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> report = MarsModelingReport(pd.DataFrame({"metric": [1.0]}))
+        >>> with TemporaryDirectory() as tmp:
+        ...     path = report.to_html(str(Path(tmp) / "report.html"))
+        ...     path.name
+        'report.html'
         """
         from mars.modeling.html_report import _ModelReportHtmlRenderer
         renderer = _ModelReportHtmlRenderer(

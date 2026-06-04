@@ -25,6 +25,11 @@ def to_json_safe(value: Any) -> Any:
     -------
     Any
         JSON 可序列化对象。
+
+    Examples
+    --------
+    >>> to_json_safe({"value": 1})
+    {'value': 1}
     """
     if isinstance(value, dict):
         return {str(key): to_json_safe(inner) for key, inner in value.items()}
@@ -53,6 +58,16 @@ def write_json(path: Path, data: Dict[str, Any]) -> None:
     -------
     None
         函数仅产生文件写入副作用。
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> with TemporaryDirectory() as tmp:
+    ...     path = Path(tmp) / "meta.json"
+    ...     write_json(path, {"model": "xgb"})
+    ...     path.exists()
+    True
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(to_json_safe(data), ensure_ascii=False, indent=2)
@@ -77,6 +92,16 @@ def read_json(path: Path) -> Dict[str, Any]:
     ------
     FileNotFoundError
         文件不存在时抛出。
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> with TemporaryDirectory() as tmp:
+    ...     path = Path(tmp) / "meta.json"
+    ...     write_json(path, {"model": "xgb"})
+    ...     read_json(path)["model"]
+    'xgb'
     """
     if not path.exists():
         raise FileNotFoundError(f"Artifact metadata file is missing: {path}")
@@ -98,6 +123,17 @@ def save_report_tables(reports: Dict[str, MarsModelingReport], reports_dir: Path
     -------
     dict of str to str
         模型名到 CSV 文件名的映射。
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> from mars.modeling.report import MarsModelingReport
+    >>> report = MarsModelingReport(pd.DataFrame({"auc": [80.0]}))
+    >>> with TemporaryDirectory() as tmp:
+    ...     files = save_report_tables({"champion": report}, Path(tmp))
+    ...     files["champion"]
+    'champion.csv'
     """
     reports_dir.mkdir(parents=True, exist_ok=True)
     report_files: Dict[str, str] = {}
@@ -123,6 +159,19 @@ def load_report_tables(reports_dir: Path, report_files: Dict[str, str]) -> Dict[
     -------
     dict of str to MarsModelingReport
         恢复后的报告对象。
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> from mars.modeling.report import MarsModelingReport
+    >>> report = MarsModelingReport(pd.DataFrame({"auc": [80.0]}))
+    >>> with TemporaryDirectory() as tmp:
+    ...     reports_dir = Path(tmp)
+    ...     files = save_report_tables({"champion": report}, reports_dir)
+    ...     reports = load_report_tables(reports_dir, files)
+    ...     "champion" in reports
+    True
     """
     from mars.modeling.report import MarsModelingReport
 

@@ -30,6 +30,14 @@ def time_it(func: F) -> F:
     -------
     Callable
         带有计时日志的包装函数。
+
+    Examples
+    --------
+    >>> @time_it
+    ... def add_one(value: int) -> int:
+    ...     return value + 1
+    >>> add_one(1)
+    2
     """
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -109,6 +117,14 @@ def safe_run(default_return: Any = None) -> Callable[[F], F]:
     -------
     Callable
         装饰器函数。
+
+    Examples
+    --------
+    >>> @safe_run(default_return="fallback")
+    ... def fail() -> str:
+    ...     raise RuntimeError("boom")
+    >>> fail()
+    'fallback'
     """
     def decorator(func: F) -> F:
         """包装目标函数并提供统一异常兜底。"""

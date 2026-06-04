@@ -27,6 +27,12 @@ def is_polars_dataframe(df: Any) -> bool:
     -------
     bool
         若对象是 ``polars.DataFrame``，返回 ``True``。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> is_polars_dataframe(pl.DataFrame({"x": [1]}))
+    True
     """
     return isinstance(df, pl.DataFrame)
 
@@ -49,6 +55,12 @@ def to_pandas_frame(df: FrameLike) -> pd.DataFrame:
     ------
     TypeError
         输入类型不是 Pandas 或 Polars DataFrame 时抛出。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> to_pandas_frame(pl.DataFrame({"x": [1]})).shape
+    (1, 1)
     """
     if isinstance(df, pd.DataFrame):
         return df.copy()
@@ -70,6 +82,12 @@ def to_polars_frame(df: FrameLike) -> pl.DataFrame:
     -------
     polars.DataFrame
         Polars eager 数据框副本。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> to_polars_frame(pd.DataFrame({"x": [1]})).shape
+    (1, 1)
     """
     if isinstance(df, pl.DataFrame):
         return df.clone()
@@ -93,6 +111,12 @@ def restore_frame_type(df: FrameLike, prefer_polars: bool) -> FrameLike:
     -------
     pandas.DataFrame or polars.DataFrame
         与输入链路一致的数据框。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> restore_frame_type(pd.DataFrame({"x": [1]}), prefer_polars=True).shape
+    (1, 1)
     """
     if prefer_polars:
         if isinstance(df, pl.DataFrame):
@@ -116,6 +140,11 @@ def split_name_sort_key(split_name: str) -> Tuple[int, int, str]:
     -------
     tuple of int, int, str
         排序键，顺序为 train、val、oot*、其他。
+
+    Examples
+    --------
+    >>> sorted(["oot2", "train", "val"], key=split_name_sort_key)
+    ['train', 'val', 'oot2']
     """
     normalized = str(split_name).strip().lower()
     if "train" in normalized:
@@ -141,6 +170,12 @@ def normalize_dataset_flags(flags: pd.Series | pl.Series) -> pd.Series:
     -------
     pandas.Series
         去空格并转小写后的字符串序列。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> normalize_dataset_flags(pd.Series([" Train ", "OOT1"])).tolist()
+    ['train', 'oot1']
     """
     flags_pd = flags.to_pandas() if isinstance(flags, pl.Series) else flags
     return flags_pd.astype(str).str.strip().str.lower()
@@ -164,6 +199,11 @@ def validate_dataset_flag_roles(flags: pd.Series | pl.Series) -> None:
     ------
     ValueError
         任一唯一值同时包含 train、val、oot 中多个关键字时抛出。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> validate_dataset_flag_roles(pd.Series(["train", "val", "oot1"]))
     """
     normalized = normalize_dataset_flags(flags)
     unique_flags = sorted(set(normalized.dropna().tolist()))
@@ -200,6 +240,11 @@ def optional_import(module_name: str) -> Any:
     -------
     Any
         模块对象或 ``None``。
+
+    Examples
+    --------
+    >>> optional_import("json").__name__
+    'json'
     """
     try:
         return importlib.import_module(module_name)
@@ -225,6 +270,11 @@ def require_optional_module(module_name: str) -> Any:
     ------
     ImportError
         依赖未安装时给出 mars-risk extras 安装提示。
+
+    Examples
+    --------
+    >>> require_optional_module("json").__name__
+    'json'
     """
     try:
         return importlib.import_module(module_name)
@@ -248,6 +298,12 @@ def collect_library_versions(*module_names: str) -> Dict[str, str | None]:
     -------
     dict of str to str or None
         模块名到版本号的映射；导入失败时值为 ``None``。
+
+    Examples
+    --------
+    >>> versions = collect_library_versions("json", "module_that_does_not_exist")
+    >>> "json" in versions and "module_that_does_not_exist" in versions
+    True
     """
     versions: Dict[str, str | None] = {}
     for module_name in module_names:

@@ -26,9 +26,28 @@ class MarsModelDataSlicer:
     dataset_flag_col : str, default "dataset_flag"
         输出的数据集标识列名。
 
+    Attributes
+    ----------
+    df : pandas.DataFrame or polars.DataFrame
+        带清洗日期列和 dataset flag 列的工作副本。
+    engine_ : str
+        根据输入数据类型自动选择的切分引擎。
+    time_col : str
+        时间列名。
+    label_col : str
+        标签列名。
+
     Notes
     -----
     Pandas 输入全程走 Pandas，Polars 输入全程走 Polars，避免无收益的跨框架转换。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({"apply_dt": ["2026-01-01", "2026-02-01"], "y": [0, 1]})
+    >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
+    >>> slicer.engine_
+    'pandas'
     """
 
     def __init__(
@@ -38,6 +57,12 @@ class MarsModelDataSlicer:
         label_col: str,
         dataset_flag_col: str = "dataset_flag",
     ) -> None:
+        """
+        初始化建模样本切分器并保留输入数据引擎。
+
+        初始化阶段会复制输入数据、校验时间列和标签列，并为后续切分准备
+        清洗后的日期列与默认 ``dataset_flag`` 列。
+        """
         self._input_is_polars: bool = is_polars_dataframe(df)
         self._engine: str
 
@@ -65,10 +90,24 @@ class MarsModelDataSlicer:
 
     @property
     def engine_(self) -> str:
-        """返回由输入类型自动选择的切分引擎。"""
+        """
+        返回由输入类型自动选择的切分引擎。
+
+        Returns
+        -------
+        str
+            ``"pandas"`` 或 ``"polars"``。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({"apply_dt": ["2026-01-01"], "y": [1]})
+        >>> MarsModelDataSlicer(df, time_col="apply_dt", label_col="y").engine_
+        'pandas'
+        """
         return self._engine
 
     def _init_pandas(self) -> None:
+        """初始化 Pandas 工作副本中的清洗日期和切片标识列。"""
         assert isinstance(self.df, pd.DataFrame)
         clean_dt = pd.to_datetime(self.df[self.time_col], errors="coerce")
         self.df["__clean_dt__"] = clean_dt
@@ -76,6 +115,7 @@ class MarsModelDataSlicer:
         self.df[self.dataset_flag_col] = "unassigned"
 
     def _init_polars(self) -> None:
+        """初始化 Polars 工作副本中的清洗日期和切片标识列。"""
         assert isinstance(self.df, pl.DataFrame)
         clean_dt = pl.col(self.time_col).cast(pl.Utf8).str.to_datetime(strict=False)
         self.df = self.df.with_columns(
@@ -85,6 +125,7 @@ class MarsModelDataSlicer:
         )
 
     def _validate_ratios(self, split_ratios: Dict[str, float]) -> None:
+        """校验切分比例非空、非负且总和为 1。"""
         if not split_ratios:
             raise ValueError("split_ratios must not be empty.")
 
@@ -102,6 +143,12 @@ class MarsModelDataSlicer:
         train_key: str,
         val_key: str,
     ) -> tuple[float, float, float]:
+        """
+        校验 hybrid 模式的 train/val 键并返回建模窗口比例。
+
+        返回值依次为 train 比例、val 比例和二者之和；当键缺失、重名或
+        建模窗口比例非正时抛出异常。
+        """
         if train_key not in split_ratios:
             raise ValueError(f"train_key {train_key!r} is missing from split_ratios.")
         if val_key not in split_ratios:
@@ -129,6 +176,16 @@ class MarsModelDataSlicer:
         -------
         pandas.DataFrame or polars.DataFrame
             与输入类型一致的切分结果。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame(
+        ...     {"apply_dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"], "y": [0, 1, 0, 1]}
+        ... )
+        >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
+        >>> out = slicer.split_by_time_strictly({"train": 0.5, "val": 0.5})
+        >>> sorted(out["dataset_flag"].unique())
+        ['train', 'val']
         """
         self._validate_ratios(split_ratios)
         if self._engine == "pandas":
@@ -160,6 +217,16 @@ class MarsModelDataSlicer:
         -------
         pandas.DataFrame or polars.DataFrame
             与输入类型一致的切分结果。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame(
+        ...     {"apply_dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"], "y": [0, 1, 0, 1]}
+        ... )
+        >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
+        >>> out = slicer.split_hybrid_random_val({"train": 0.5, "val": 0.5})
+        >>> sorted(out["dataset_flag"].unique())
+        ['train', 'val']
         """
         self._validate_ratios(split_ratios)
         self._validate_hybrid_keys(split_ratios, train_key, val_key)
@@ -168,12 +235,19 @@ class MarsModelDataSlicer:
         return self._split_hybrid_random_val_polars(split_ratios, train_key, val_key, random_seed)
 
     def _reset_and_mark_other_pandas(self) -> None:
+        """重置 Pandas 切片列，并将无效标签或日期样本标为 other。"""
         assert isinstance(self.df, pd.DataFrame)
         self.df[self.dataset_flag_col] = "unassigned"
         valid_mask = self.df[self.label_col].isin([0, 1]) & self.df["__date__"].notna()
         self.df.loc[~valid_mask, self.dataset_flag_col] = "other"
 
     def _get_date_cutoffs_pandas(self, split_ratios: Dict[str, float]) -> Dict[str, Any]:
+        """
+        基于 Pandas 日粒度累计样本量计算各切片截止日期。
+
+        截止日期按输入比例顺序累积生成，保证同一天样本不会被拆到多个
+        数据集切片中。
+        """
         assert isinstance(self.df, pd.DataFrame)
         valid_df = self.df.loc[self.df[self.dataset_flag_col] == "unassigned"]
         if valid_df.empty:
@@ -205,6 +279,7 @@ class MarsModelDataSlicer:
         return cutoffs
 
     def _assign_until_cutoff_pandas(self, flag: str, cutoff_date: Any) -> None:
+        """将 Pandas 中尚未分配且不晚于截止日期的样本标为指定切片。"""
         assert isinstance(self.df, pd.DataFrame)
         if cutoff_date is None:
             return
@@ -212,6 +287,7 @@ class MarsModelDataSlicer:
         self.df.loc[mask, self.dataset_flag_col] = flag
 
     def _split_by_time_strictly_pandas(self, split_ratios: Dict[str, float]) -> pd.DataFrame:
+        """按 Pandas 路径执行严格时间顺序切分。"""
         self._reset_and_mark_other_pandas()
         cutoffs = self._get_date_cutoffs_pandas(split_ratios)
         for flag in split_ratios:
@@ -225,6 +301,12 @@ class MarsModelDataSlicer:
         val_key: str,
         random_seed: int,
     ) -> pd.DataFrame:
+        """
+        在 Pandas 路径下执行建模窗口内随机 val 切分。
+
+        训练集和验证集共享同一个时间窗口，窗口外切片仍按时间顺序分配；
+        无效标签或无效日期样本会进入 ``other``。
+        """
         assert isinstance(self.df, pd.DataFrame)
         _, val_ratio, modeling_ratio = self._validate_hybrid_keys(split_ratios, train_key, val_key)
         self._reset_and_mark_other_pandas()
@@ -257,6 +339,7 @@ class MarsModelDataSlicer:
         return self._get_result_pandas()
 
     def _get_result_pandas(self) -> pd.DataFrame:
+        """返回清理辅助列后的 Pandas 切分结果。"""
         assert isinstance(self.df, pd.DataFrame)
         result = self.df.copy()
         result.loc[result[self.dataset_flag_col] == "unassigned", self.dataset_flag_col] = "other"
@@ -264,6 +347,7 @@ class MarsModelDataSlicer:
         return result.drop(columns=cols_to_drop)
 
     def _reset_and_mark_other_polars(self) -> None:
+        """重置 Polars 切片列，并将无效标签或日期样本标为 other。"""
         assert isinstance(self.df, pl.DataFrame)
         label_is_valid = pl.col(self.label_col).is_in([0, 1])
         date_is_valid = pl.col("__date__").is_not_null()
@@ -275,6 +359,12 @@ class MarsModelDataSlicer:
         )
 
     def _get_date_cutoffs_polars(self, split_ratios: Dict[str, float]) -> Dict[str, Any]:
+        """
+        基于 Polars 日粒度累计样本量计算各切片截止日期。
+
+        该实现保持 Polars 原生执行路径，避免为切分边界计算额外转换到
+        Pandas。
+        """
         assert isinstance(self.df, pl.DataFrame)
         valid_df = self.df.filter(pl.col(self.dataset_flag_col) == "unassigned")
         if valid_df.is_empty():
@@ -304,6 +394,7 @@ class MarsModelDataSlicer:
         return cutoffs
 
     def _assign_until_cutoff_polars(self, flag: str, cutoff_date: Any) -> None:
+        """将 Polars 中尚未分配且不晚于截止日期的样本标为指定切片。"""
         assert isinstance(self.df, pl.DataFrame)
         if cutoff_date is None:
             return
@@ -318,6 +409,7 @@ class MarsModelDataSlicer:
         )
 
     def _split_by_time_strictly_polars(self, split_ratios: Dict[str, float]) -> pl.DataFrame:
+        """按 Polars 路径执行严格时间顺序切分。"""
         self._reset_and_mark_other_polars()
         cutoffs = self._get_date_cutoffs_polars(split_ratios)
         for flag in split_ratios:
@@ -331,6 +423,12 @@ class MarsModelDataSlicer:
         val_key: str,
         random_seed: int,
     ) -> pl.DataFrame:
+        """
+        在 Polars 路径下执行建模窗口内随机 val 切分。
+
+        随机列仅在切分过程中临时存在，返回前会与清洗日期辅助列一起删除，
+        保证输出 schema 只包含业务列和 dataset flag。
+        """
         assert isinstance(self.df, pl.DataFrame)
         _, val_ratio, modeling_ratio = self._validate_hybrid_keys(split_ratios, train_key, val_key)
         self._reset_and_mark_other_polars()
@@ -369,6 +467,7 @@ class MarsModelDataSlicer:
         return self._get_result_polars()
 
     def _get_result_polars(self) -> pl.DataFrame:
+        """返回清理辅助列后的 Polars 切分结果。"""
         assert isinstance(self.df, pl.DataFrame)
         result = self.df.with_columns(
             pl.when(pl.col(self.dataset_flag_col) == "unassigned")

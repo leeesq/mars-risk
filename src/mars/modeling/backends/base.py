@@ -66,6 +66,11 @@ class MarsBaseModelTuner(ABC):
     Notes
     -----
     该基类只定义调参与评估骨架。具体训练、后端缓存构建与预测逻辑由子类实现。
+
+    Examples
+    --------
+    >>> issubclass(MarsBaseModelTuner, ABC)
+    True
     """
 
     SUPPORTED_OPTIMIZE_METRICS = {"auc", "ks"}
@@ -84,6 +89,12 @@ class MarsBaseModelTuner(ABC):
         dataset_flag_col: str = "dataset_flag",
         categorical_features: Sequence[str] | None = None,
     ) -> None:
+        """
+        初始化调参后端共享状态并校验建模输入。
+
+        该方法负责保留原始数据引擎、检查必需列、标准化特征与切片配置，并
+        初始化 Trial 历史、模型缓存和最佳模型状态。
+        """
         self._input_is_polars: bool = is_polars_dataframe(df)
         if isinstance(df, pl.DataFrame):
             self.df_pl: pl.DataFrame | None = df.clone()
@@ -160,6 +171,18 @@ class MarsBaseModelTuner(ABC):
         -------
         list of str
             训练顺序下的切片名称，至少包含 ``train`` 与 ``val``。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.data_dict = {"train": None, "val": None}
+        >>> tuner.split_names
+        ['train', 'val']
         """
         return list(self.data_dict.keys())
 
@@ -172,6 +195,18 @@ class MarsBaseModelTuner(ABC):
         -------
         list of str
             按定义顺序去重后的参数键名列表。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {"depth": 3}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.param_space = {"learning_rate": 0.1}
+        >>> tuner.replay_param_keys
+        ['depth', 'learning_rate']
         """
         keys = list(self.get_default_space().keys())
         for key in self.param_space.keys():
@@ -260,7 +295,7 @@ class MarsBaseModelTuner(ABC):
             ].copy()
 
     def _initialize_category_levels(self) -> None:
-        """Collect stable train-split category levels for categorical backend features."""
+        """收集训练切片中的稳定类别取值，供类别后端复用。"""
         if not self.categorical_features or not hasattr(self, "data_dict") or "train" not in self.data_dict:
             self.category_levels = {}
             return
@@ -280,7 +315,7 @@ class MarsBaseModelTuner(ABC):
         self.category_levels = levels
 
     def _apply_category_levels(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Apply stable pandas CategoricalDtype levels to declared categorical features."""
+        """将稳定的 Pandas CategoricalDtype 类别级别应用到声明的类别特征。"""
         for feature in self.categorical_features:
             if feature not in X.columns:
                 continue
@@ -318,7 +353,7 @@ class MarsBaseModelTuner(ABC):
         return X
 
     def _get_feature_polars(self, df: FrameLike) -> pl.DataFrame:
-        """Return selected features as a Polars DataFrame."""
+        """以 Polars DataFrame 形式返回选中特征。"""
         if isinstance(df, pl.DataFrame):
             return df.select(self.features)
         if isinstance(df, pd.DataFrame):
@@ -326,10 +361,11 @@ class MarsBaseModelTuner(ABC):
         raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
     def _get_feature_arrow(self, df: FrameLike) -> Any:
-        """Return selected features as a PyArrow table for reduced-copy backends."""
+        """以 PyArrow table 形式返回选中特征，供低复制后端使用。"""
         return self._get_feature_polars(df).to_arrow()
 
     def _has_categorical_backend_features(self) -> bool:
+        """判断当前后端是否需要启用原生类别特征路径。"""
         return bool(self.categorical_features)
 
     def _get_target_array(self, df: FrameLike) -> np.ndarray:
@@ -388,6 +424,19 @@ class MarsBaseModelTuner(ABC):
         -------
         dict of str to float
             指定切片上的 ``auc`` 与 ``ks`` 百分制指标。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.target = "y"
+        >>> tuner.data_dict = {"val": pd.DataFrame({"y": [0, 1]})}
+        >>> sorted(tuner.evaluate_split(object(), "val"))
+        ['auc', 'ks']
         """
         preds = self.predict_scores(model, split_name)
         y_true = self._get_target_array(self.data_dict[split_name])
@@ -416,6 +465,22 @@ class MarsBaseModelTuner(ABC):
         - ``("int", low, high[, step])``
         - ``("float", low, high[, step])``
         - ``("categorical", values)``
+
+        Examples
+        --------
+        >>> class Trial:
+        ...     def suggest_int(self, name, low, high, step=1): return low
+        ...     def suggest_float(self, name, low, high, step=None): return low
+        ...     def suggest_categorical(self, name, values): return values[0]
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.param_space = {"depth": ("int", 2, 5)}
+        >>> tuner.parse_param_space(Trial(), {"eta": 0.1})
+        {'eta': 0.1, 'depth': 2}
         """
         active_space = dict(default_space)
         active_space.update(self.param_space)
@@ -477,6 +542,20 @@ class MarsBaseModelTuner(ABC):
         -------
         pandas.DataFrame
             列顺序稳定、便于分析与回放的历史表。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {"depth": 3}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.history = []
+        >>> tuner.param_space = {}
+        >>> tuner.data_dict = {"train": None, "val": None}
+        >>> "train_auc" in tuner.build_history_table().columns
+        True
         """
         history_table = pd.DataFrame(self.history)
         if history_table.empty:
@@ -519,6 +598,33 @@ class MarsBaseModelTuner(ABC):
         -------
         float
             当前 Trial 的目标分数；若未通过泛化约束，则返回惩罚分。
+
+        Examples
+        --------
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> class Trial:
+        ...     number = 0
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {"depth": 3}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return params
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        ...     def evaluate_split(self, model, split_name): return {"auc": 60.0, "ks": 25.0}
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.param_space = {}
+        >>> tuner.training_metric = "auc"
+        >>> tuner.all_models = {}
+        >>> tuner.data_dict = {"train": None, "val": None}
+        >>> tuner.optimize_metric = "ks"
+        >>> tuner.max_diff = 3.0
+        >>> tuner.use_oot_penalty = False
+        >>> tuner.history = []
+        >>> tuner.best_score = -np.inf
+        >>> tuner.best_model = None
+        >>> with TemporaryDirectory() as tmp:
+        ...     tuner.objective(Trial(), 0, str(Path(tmp) / "history.csv"))
+        25.0
         """
         record: Dict[str, Any] = {
             "trial_num": getattr(trial, "number", -1),
@@ -619,6 +725,19 @@ class MarsBaseModelTuner(ABC):
         -------
         int or None
             若模型暴露 `best_iteration`，则返回其整数值；否则返回 ``None``。
+
+        Examples
+        --------
+        >>> class Model:
+        ...     best_iteration = 12
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.get_best_iteration(Model())
+        12
         """
         best_iteration = getattr(model, "best_iteration", None)
         if isinstance(best_iteration, numbers.Integral):
@@ -639,7 +758,24 @@ class MarsBaseModelTuner(ABC):
 
     @abstractmethod
     def get_default_space(self) -> Dict[str, Any]:
-        """返回当前后端的默认搜索空间。"""
+        """
+        返回当前后端的默认搜索空间。
+
+        Returns
+        -------
+        dict of str to Any
+            后端参数名到固定值或搜索空间描述的映射。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {"depth": 3}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> DummyTuner.get_default_space(object.__new__(DummyTuner))
+        {'depth': 3}
+        """
 
     @abstractmethod
     def train_model(
@@ -667,6 +803,17 @@ class MarsBaseModelTuner(ABC):
         -------
         Any
             训练完成的模型对象。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return {"params": params}
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.train_model(None, {"depth": 3}, 0, "auc")["params"]["depth"]
+        3
         """
 
     @abstractmethod
@@ -685,4 +832,15 @@ class MarsBaseModelTuner(ABC):
         -------
         numpy.ndarray
             预测分数数组。
+
+        Examples
+        --------
+        >>> class DummyTuner(MarsBaseModelTuner):
+        ...     def _build_backend_data(self): pass
+        ...     def get_default_space(self): return {}
+        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
+        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
+        >>> tuner = object.__new__(DummyTuner)
+        >>> tuner.predict_scores(object(), "val").tolist()
+        [0.1, 0.9]
         """

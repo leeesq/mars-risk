@@ -22,6 +22,39 @@ class MarsModelingRun:
     """
     单次调参流程的结构化结果对象。
 
+    Parameters
+    ----------
+    model_type : str
+        模型后端类型。
+    optimize_metric : str
+        调参优化指标。
+    features : list of str
+        参与训练的特征列名。
+    target : str
+        目标变量列名。
+    dataset_flag_col : str
+        数据集切分标识列名。
+    categorical_features : list of str
+        类别特征列名。
+    best_params : dict
+        最优 Trial 参数。
+    best_iteration : int, optional
+        最优迭代轮次。
+    best_model : Any
+        验证集最优模型。
+    best_score : float
+        验证集最优分数。
+    history_table : pandas.DataFrame
+        Trial 级训练历史。
+    history_path : str
+        训练历史 CSV 路径。
+    study : Any
+        Optuna study 对象或兼容占位。
+    replay_candidates : list of str
+        推荐进入 replay 的 trial 标识。
+    importance_table : pandas.DataFrame
+        特征重要性表。
+
     Attributes
     ----------
     best_model : Any
@@ -36,6 +69,28 @@ class MarsModelingRun:
         实际后端数据通道。
     category_levels : dict
         类别特征稳定字典。
+
+    Examples
+    --------
+    >>> run = MarsModelingRun(
+    ...     model_type="xgb",
+    ...     optimize_metric="ks",
+    ...     features=["age"],
+    ...     target="y",
+    ...     dataset_flag_col="dataset_flag",
+    ...     categorical_features=[],
+    ...     best_params={},
+    ...     best_iteration=None,
+    ...     best_model=None,
+    ...     best_score=0.0,
+    ...     history_table=pd.DataFrame(),
+    ...     history_path="history.csv",
+    ...     study=None,
+    ...     replay_candidates=[],
+    ...     importance_table=pd.DataFrame(),
+    ... )
+    >>> run.features
+    ['age']
     """
 
     model_type: str
@@ -73,6 +128,31 @@ class MarsModelingRun:
         -------
         pathlib.Path
             artifact 目录路径。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> run = MarsModelingRun(
+        ...     model_type="xgb",
+        ...     optimize_metric="ks",
+        ...     features=["age"],
+        ...     target="y",
+        ...     dataset_flag_col="dataset_flag",
+        ...     categorical_features=[],
+        ...     best_params={},
+        ...     best_iteration=None,
+        ...     best_model=None,
+        ...     best_score=0.0,
+        ...     history_table=pd.DataFrame(),
+        ...     history_path="history.csv",
+        ...     study=None,
+        ...     replay_candidates=[],
+        ...     importance_table=pd.DataFrame(),
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     artifact_dir = run.write_artifact(tmp)
+        ...     (artifact_dir / "metadata.json").exists()
+        True
         """
         artifact_dir = Path(path)
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +205,44 @@ class MarsModelingRun:
 
     @classmethod
     def load_artifact(cls: type[MarsModelingRun], path: str) -> MarsModelingRun:
-        """从本地 artifact 目录恢复调参结果。"""
+        """
+        从本地 artifact 目录恢复调参结果。
+
+        Parameters
+        ----------
+        path : str
+            由 ``write_artifact`` 生成的 artifact 目录。
+
+        Returns
+        -------
+        MarsModelingRun
+            恢复后的单次调参结果。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> run = MarsModelingRun(
+        ...     model_type="xgb",
+        ...     optimize_metric="ks",
+        ...     features=["age"],
+        ...     target="y",
+        ...     dataset_flag_col="dataset_flag",
+        ...     categorical_features=[],
+        ...     best_params={},
+        ...     best_iteration=None,
+        ...     best_model=None,
+        ...     best_score=0.0,
+        ...     history_table=pd.DataFrame(),
+        ...     history_path="history.csv",
+        ...     study=None,
+        ...     replay_candidates=[],
+        ...     importance_table=pd.DataFrame(),
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     _ = run.write_artifact(tmp)
+        ...     MarsModelingRun.load_artifact(tmp).features
+        ['age']
+        """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
         if metadata.get("artifact_type") != "mars_modeling_run":
@@ -180,6 +297,23 @@ class MarsReplayRun:
     """
     Top-K replay 流程的结构化结果对象。
 
+    Parameters
+    ----------
+    model_type : str
+        模型后端类型。
+    ranking_table : pandas.DataFrame
+        用于选取 Top-K trial 的排名表。
+    leaderboard_table : pandas.DataFrame
+        replay 后的模型排行榜。
+    models : dict
+        replay 训练得到的模型对象。
+    scored_df : pandas.DataFrame or polars.DataFrame, optional
+        追加预测列后的数据。
+    reports : dict
+        每个 replay 模型对应的评估报告。
+    importance_tables : dict
+        每个 replay 模型对应的特征重要性表。
+
     Attributes
     ----------
     ranking_table : pandas.DataFrame
@@ -192,6 +326,20 @@ class MarsReplayRun:
         追加预测列后的数据。
     reports : dict
         每个 replay 模型对应的评估报告。
+
+    Examples
+    --------
+    >>> replay = MarsReplayRun(
+    ...     model_type="xgb",
+    ...     ranking_table=pd.DataFrame(),
+    ...     leaderboard_table=pd.DataFrame(),
+    ...     models={},
+    ...     scored_df=None,
+    ...     reports={},
+    ...     importance_tables={},
+    ... )
+    >>> replay.models
+    {}
     """
 
     model_type: str
@@ -218,6 +366,23 @@ class MarsReplayRun:
         -------
         pathlib.Path
             artifact 目录路径。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> replay = MarsReplayRun(
+        ...     model_type="xgb",
+        ...     ranking_table=pd.DataFrame(),
+        ...     leaderboard_table=pd.DataFrame(),
+        ...     models={},
+        ...     scored_df=None,
+        ...     reports={},
+        ...     importance_tables={},
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     artifact_dir = replay.write_artifact(tmp)
+        ...     (artifact_dir / "metadata.json").exists()
+        True
         """
         artifact_dir = Path(path)
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -288,7 +453,36 @@ class MarsReplayRun:
 
     @classmethod
     def load_artifact(cls: type[MarsReplayRun], path: str) -> MarsReplayRun:
-        """从本地 artifact 目录恢复 replay 结果。"""
+        """
+        从本地 artifact 目录恢复 replay 结果。
+
+        Parameters
+        ----------
+        path : str
+            由 ``write_artifact`` 生成的 replay artifact 目录。
+
+        Returns
+        -------
+        MarsReplayRun
+            恢复后的 replay 结果。
+
+        Examples
+        --------
+        >>> from tempfile import TemporaryDirectory
+        >>> replay = MarsReplayRun(
+        ...     model_type="xgb",
+        ...     ranking_table=pd.DataFrame(),
+        ...     leaderboard_table=pd.DataFrame(),
+        ...     models={},
+        ...     scored_df=None,
+        ...     reports={},
+        ...     importance_tables={},
+        ... )
+        >>> with TemporaryDirectory() as tmp:
+        ...     _ = replay.write_artifact(tmp)
+        ...     MarsReplayRun.load_artifact(tmp).model_type
+        'xgb'
+        """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
         if metadata.get("artifact_type") != "mars_replay_run":

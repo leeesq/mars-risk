@@ -24,6 +24,12 @@ def load_backend_module(module_name: str) -> Any:
     -------
     Any
         已导入模块。
+
+    Examples
+    --------
+    >>> json_module = load_backend_module("json")
+    >>> json_module.__name__
+    'json'
     """
     return require_optional_module(module_name)
 
@@ -48,6 +54,12 @@ def load_optuna_callback(module_name: str, class_name: str) -> Any:
     ------
     ImportError
         找不到兼容回调类时抛出。
+
+    Examples
+    --------
+    >>> callback_cls = load_optuna_callback("lightgbm", "LightGBMPruningCallback")
+    >>> callback_cls.__name__
+    'LightGBMPruningCallback'
     """
     root_module = require_optional_module("optuna_integration")
     callback = getattr(root_module, class_name, None)
@@ -89,6 +101,17 @@ def build_importance_table(
     -------
     pandas.DataFrame
         包含 feature、importance、importance_type、model_type、rank 的表。
+
+    Examples
+    --------
+    >>> table = build_importance_table(
+    ...     model_type="xgb",
+    ...     importance_type="gain",
+    ...     features=["age", "income"],
+    ...     importance_map={"age": 2.0},
+    ... )
+    >>> table.loc[0, "feature"]
+    'age'
     """
     rows = [
         {
@@ -128,6 +151,11 @@ def validate_numeric_polars(X: pl.DataFrame, backend_name: str) -> None:
     ------
     ValueError
         存在非数值且非布尔特征时抛出。
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> validate_numeric_polars(pl.DataFrame({"age": [1, 2]}), "MarsXGBStrategy")
     """
     unsupported = [
         name
@@ -161,6 +189,11 @@ def validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
     ------
     ValueError
         存在非数值且非布尔特征时抛出。
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> validate_numeric_pandas(pd.DataFrame({"age": [1, 2]}), "MarsLGBStrategy")
     """
     unsupported = [
         col

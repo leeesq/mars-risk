@@ -29,6 +29,30 @@ from mars.modeling.metrics import xgb_ks_metric as _xgb_ks_metric
 class MarsXGBStrategy(MarsBaseModelTuner):
     """
     基于 XGBoost 原生接口的调参策略。
+
+    Parameters
+    ----------
+    df : pandas.DataFrame or polars.DataFrame
+        继承自基类的建模数据集，需包含训练、验证和可选 OOT 切片标识。
+    features : sequence of str
+        参与 XGBoost 训练的特征列名。
+    target : str
+        二分类目标列名。
+    categorical_features : sequence of str, optional
+        需要交给 XGBoost 原生类别特征处理的字段名。
+
+    Attributes
+    ----------
+    dmatrix_dict : dict of str to Any
+        按切片缓存的 XGBoost ``DMatrix`` 对象。
+    backend_data_mode : str
+        当前后端缓存采用的数据转换模式。
+
+    Examples
+    --------
+    >>> strategy = object.__new__(MarsXGBStrategy)
+    >>> "max_depth" in strategy.get_default_space()
+    True
     """
 
     def _build_backend_data(self) -> None:
@@ -86,6 +110,12 @@ class MarsXGBStrategy(MarsBaseModelTuner):
         -------
         dict of str to Any
             XGBoost 默认超参数搜索空间。
+
+        Examples
+        --------
+        >>> strategy = object.__new__(MarsXGBStrategy)
+        >>> "max_depth" in strategy.get_default_space()
+        True
         """
         return {
             "max_depth": ("int", 2, 6),
@@ -125,6 +155,12 @@ class MarsXGBStrategy(MarsBaseModelTuner):
         -------
         Any
             训练完成的 XGBoost 模型。
+
+        Examples
+        --------
+        >>> strategy = object.__new__(MarsXGBStrategy)
+        >>> callable(strategy.train_model)
+        True
         """
         xgb = _load_module("xgboost")
 
@@ -181,6 +217,16 @@ class MarsXGBStrategy(MarsBaseModelTuner):
         -------
         numpy.ndarray
             预测分数数组。
+
+        Examples
+        --------
+        >>> class Model:
+        ...     def predict(self, data, iteration_range=None):
+        ...         return np.array([0.2, 0.9])
+        >>> strategy = object.__new__(MarsXGBStrategy)
+        >>> strategy.dmatrix_dict = {"val": object()}
+        >>> strategy.predict_scores(Model(), "val").tolist()
+        [0.2, 0.9]
         """
         best_iteration = self.get_best_iteration(model)
         iteration_range = (0, best_iteration + 1) if best_iteration is not None else None
@@ -189,7 +235,30 @@ class MarsXGBStrategy(MarsBaseModelTuner):
         return np.asarray(model.predict(self.dmatrix_dict[split_name], iteration_range=iteration_range))
 
     def extract_importance(self, model: Any) -> pd.DataFrame:
-        """Return a normalized XGBoost feature importance table."""
+        """
+        返回标准化后的 XGBoost 特征重要性表。
+
+        Parameters
+        ----------
+        model : Any
+            已训练的 XGBoost 模型。
+
+        Returns
+        -------
+        pandas.DataFrame
+            MARS 统一格式的重要性表。
+
+        Examples
+        --------
+        >>> class DummyXGBModel:
+        ...     def get_score(self, importance_type: str = "gain") -> dict[str, float]:
+        ...         return {"age": 2.0}
+        >>> strategy = object.__new__(MarsXGBStrategy)
+        >>> strategy.features = ["age"]
+        >>> importance = strategy.extract_importance(DummyXGBModel())
+        >>> importance.loc[0, "feature"]
+        'age'
+        """
         raw_importance = model.get_score(importance_type="gain")
         importance_map = {str(feature): float(value) for feature, value in raw_importance.items()}
         return _build_importance_table(

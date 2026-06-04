@@ -107,7 +107,7 @@ def _build_backend_from_spec(
     optimize_metric: str | None = None,
     seed: int | None = None,
 ) -> Any:
-    """Create a backend strategy instance from a modeling spec."""
+    """根据建模配置创建具体后端策略实例。"""
     backend_cls = BACKEND_MAP[spec.model_type]
     backend_kwargs: Dict[str, Any] = {
         "df": df,
@@ -157,6 +157,19 @@ class MarsModelTuner:
         评估时默认基准分数列。
     time_col : str, optional
         评估时默认时间列。
+
+    Attributes
+    ----------
+    spec : ModelingSpec
+        当前调参任务的建模规格。
+    last_run : MarsModelingRun or None
+        最近一次调参结果。
+
+    Examples
+    --------
+    >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+    >>> tuner.spec.optimize_metric
+    'ks'
     """
 
     def __init__(
@@ -195,24 +208,76 @@ class MarsModelTuner:
 
     @property
     def best_model(self) -> Any:
-        """Return the best model from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳模型。
+
+        Returns
+        -------
+        Any
+            最近一次调参运行中的最佳模型；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+        >>> tuner.best_model is None
+        True
+        """
         return None if self.last_run is None else self.last_run.best_model
 
     @property
     def best_score(self) -> float | None:
-        """Return the best validation score from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳验证集分数。
+
+        Returns
+        -------
+        float or None
+            最近一次调参运行的最佳验证集分数；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+        >>> tuner.best_score is None
+        True
+        """
         return None if self.last_run is None else self.last_run.best_score
 
     @property
     def best_params(self) -> Dict[str, Any] | None:
-        """Return the best parameter set from the latest tuning run."""
+        """
+        返回最近一次调参运行中的最佳参数集合。
+
+        Returns
+        -------
+        dict of str to Any or None
+            最近一次调参运行的最佳参数副本；若尚无调参结果，则返回 ``None``。
+
+        Examples
+        --------
+        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+        >>> tuner.best_params is None
+        True
+        """
         if self.last_run is None:
             return None
         return dict(self.last_run.best_params)
 
     @property
     def history_table(self) -> pd.DataFrame:
-        """Return the structured history table from the latest tuning run."""
+        """
+        返回最近一次调参运行的结构化 Trial 历史表。
+
+        Returns
+        -------
+        pandas.DataFrame
+            Trial 历史表；若尚无调参结果，则返回空表。
+
+        Examples
+        --------
+        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+        >>> tuner.history_table.empty
+        True
+        """
         if self.last_run is None:
             return pd.DataFrame()
         return self.last_run.history_table.copy()
@@ -227,7 +292,7 @@ class MarsModelTuner:
         optimize_metric: str | None = None,
         seed: int | None = None,
     ) -> Any:
-        """Build a concrete backend strategy for one tuning or replay job."""
+        """为单次调参或 replay 任务构建具体后端策略。"""
         return _build_backend_from_spec(
             self.spec,
             df,
@@ -282,6 +347,12 @@ class MarsModelTuner:
         -------
         MarsModelingRun
             调参结果、最佳模型、训练配置和元数据。
+
+        Examples
+        --------
+        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
+        >>> callable(tuner.tune)
+        True
         """
         try:
             import optuna
@@ -426,6 +497,17 @@ class MarsModelReplay:
     Notes
     -----
     replay 默认复用 tuning run 中保存的训练轮数和早停配置；用户显式传入参数时会覆盖。
+
+    Attributes
+    ----------
+    spec : ModelingSpec
+        replay 任务的建模规格。
+
+    Examples
+    --------
+    >>> replay = MarsModelReplay(model_type="xgb", features=["age"], target="y")
+    >>> replay.spec.model_type
+    'xgb'
     """
 
     def __init__(
@@ -468,7 +550,7 @@ class MarsModelReplay:
         optimize_metric: str | None = None,
         seed: int | None = None,
     ) -> Any:
-        """Build the backend used to replay tuned parameter sets."""
+        """构建用于 replay 已调优参数集合的后端。"""
         return _build_backend_from_spec(
             self.spec,
             df,
@@ -511,6 +593,12 @@ class MarsModelReplay:
         -------
         MarsReplayRun
             replay 排名、leaderboard、模型、评分数据和报告。
+
+        Examples
+        --------
+        >>> replay = MarsModelReplay(model_type="xgb", features=["age"], target="y")
+        >>> callable(replay.run)
+        True
         """
         if run.model_type != self.spec.model_type:
             raise ValueError(
