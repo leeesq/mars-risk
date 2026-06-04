@@ -3,6 +3,7 @@
 from mars.modeling.backends.base import MarsBaseModelTuner
 from mars.modeling.backends.catboost import MarsCatBoostStrategy
 from mars.modeling.backends.lightgbm import MarsLGBStrategy
+from mars.modeling.backends.logistic import MarsLogisticRegressionStrategy
 from mars.modeling.backends.xgboost import MarsXGBStrategy
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "MarsXGBStrategy",
     "MarsLGBStrategy",
     "MarsCatBoostStrategy",
+    "MarsLogisticRegressionStrategy",
 ]

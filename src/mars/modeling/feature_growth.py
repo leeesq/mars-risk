@@ -222,6 +222,10 @@ class MarsFeatureIncrementalTuner:
         seed: int = 1206,
         benchmark_col: str | None = None,
         time_col: str | None = None,
+        lr_feature_mode: str = "numeric",
+        lr_binning_type: str = "native",
+        lr_binner_kwargs: Mapping[str, Any] | None = None,
+        lr_binner: Any | None = None,
     ) -> None:
         self.spec = _build_spec(
             model_type=model_type,
@@ -233,6 +237,10 @@ class MarsFeatureIncrementalTuner:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
 
     def _resolve_feature_order(
@@ -475,6 +483,10 @@ class MarsFeatureIncrementalTuner:
                 seed=self.spec.seed,
                 benchmark_col=self.spec.benchmark_col,
                 time_col=self.spec.time_col,
+                lr_feature_mode=self.spec.lr_feature_mode,
+                lr_binning_type=self.spec.lr_binning_type,
+                lr_binner_kwargs=self.spec.lr_binner_kwargs,
+                lr_binner=self.spec.lr_binner,
             )
             step_kwargs = dict(common_tune_kwargs)
             step_kwargs["save_path"] = self._step_save_path(base_save_path, feature_count)

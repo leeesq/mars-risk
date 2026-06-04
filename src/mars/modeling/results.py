@@ -53,6 +53,7 @@ class MarsModelingRun:
     study: Any
     replay_candidates: List[str]
     importance_table: pd.DataFrame
+    diagnostic_tables: Dict[str, pd.DataFrame] = field(default_factory=dict)
     training_config: Dict[str, Any] = field(default_factory=dict)
     library_versions: Dict[str, Any] = field(default_factory=dict)
     feature_schema: Dict[str, Any] = field(default_factory=dict)
@@ -77,6 +78,8 @@ class MarsModelingRun:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         models_dir = artifact_dir / "models"
         models_dir.mkdir(exist_ok=True)
+        diagnostics_dir = artifact_dir / "diagnostics"
+        diagnostics_dir.mkdir(exist_ok=True)
 
         history_path = artifact_dir / "history.csv"
         importance_path = artifact_dir / "importance.csv"
@@ -85,6 +88,12 @@ class MarsModelingRun:
         self.history_table.to_csv(history_path, index=False)
         self.importance_table.to_csv(importance_path, index=False)
         joblib.dump(self.best_model, model_path)
+
+        diagnostic_files: Dict[str, str] = {}
+        for table_name, table in self.diagnostic_tables.items():
+            file_name = f"{table_name}.csv"
+            table.to_csv(diagnostics_dir / file_name, index=False)
+            diagnostic_files[table_name] = file_name
 
         metadata = {
             "artifact_type": "mars_modeling_run",
@@ -108,6 +117,7 @@ class MarsModelingRun:
                 "history": history_path.name,
                 "importance": importance_path.name,
                 "best_model": str(Path("models") / model_path.name),
+                "diagnostics": diagnostic_files,
             },
         }
         write_json(artifact_dir / "metadata.json", metadata)
@@ -133,6 +143,13 @@ class MarsModelingRun:
         if not model_path.exists():
             raise FileNotFoundError(f"Artifact model file is missing: {model_path}")
 
+        diagnostic_tables: Dict[str, pd.DataFrame] = {}
+        for table_name, file_name in dict(files.get("diagnostics", {})).items():
+            table_path = artifact_dir / "diagnostics" / file_name
+            if not table_path.exists():
+                raise FileNotFoundError(f"Artifact diagnostic table is missing: {table_path}")
+            diagnostic_tables[table_name] = pd.read_csv(table_path)
+
         return cls(
             model_type=metadata["model_type"],
             optimize_metric=metadata["optimize_metric"],
@@ -149,6 +166,7 @@ class MarsModelingRun:
             study=None,
             replay_candidates=list(metadata.get("replay_candidates", [])),
             importance_table=pd.read_csv(importance_path),
+            diagnostic_tables=diagnostic_tables,
             training_config=dict(metadata.get("training_config", {})),
             library_versions=dict(metadata.get("library_versions", {})),
             feature_schema=dict(metadata.get("feature_schema", {})),
@@ -183,6 +201,7 @@ class MarsReplayRun:
     scored_df: FrameLike | None
     reports: Dict[str, MarsModelingReport]
     importance_tables: Dict[str, pd.DataFrame]
+    diagnostic_tables: Dict[str, Dict[str, pd.DataFrame]] = field(default_factory=dict)
 
     def write_artifact(self, path: str, include_scored_df: bool = False) -> Path:
         """
@@ -206,6 +225,8 @@ class MarsReplayRun:
         models_dir.mkdir(exist_ok=True)
         importance_dir = artifact_dir / "importance_tables"
         importance_dir.mkdir(exist_ok=True)
+        diagnostics_dir = artifact_dir / "diagnostics"
+        diagnostics_dir.mkdir(exist_ok=True)
         reports_dir = artifact_dir / "reports"
         reports_dir.mkdir(exist_ok=True)
 
@@ -227,6 +248,17 @@ class MarsReplayRun:
             table.to_csv(importance_dir / file_name, index=False)
             importance_files[model_name] = file_name
 
+        diagnostic_files: Dict[str, Dict[str, str]] = {}
+        for model_name, tables in self.diagnostic_tables.items():
+            model_dir = diagnostics_dir / model_name
+            model_dir.mkdir(exist_ok=True)
+            table_files: Dict[str, str] = {}
+            for table_name, table in tables.items():
+                file_name = f"{table_name}.csv"
+                table.to_csv(model_dir / file_name, index=False)
+                table_files[table_name] = file_name
+            diagnostic_files[model_name] = table_files
+
         report_files = save_report_tables(self.reports, reports_dir)
 
         scored_df_file: str | None = None
@@ -247,6 +279,7 @@ class MarsReplayRun:
                 "scored_df": scored_df_file,
                 "models": model_files,
                 "importance_tables": importance_files,
+                "diagnostics": diagnostic_files,
                 "reports": report_files,
             },
         }
@@ -283,6 +316,16 @@ class MarsReplayRun:
                 raise FileNotFoundError(f"Artifact importance table is missing: {table_path}")
             importance_tables[model_name] = pd.read_csv(table_path)
 
+        diagnostic_tables: Dict[str, Dict[str, pd.DataFrame]] = {}
+        for model_name, table_files in dict(files.get("diagnostics", {})).items():
+            model_tables: Dict[str, pd.DataFrame] = {}
+            for table_name, file_name in dict(table_files).items():
+                table_path = artifact_dir / "diagnostics" / model_name / file_name
+                if not table_path.exists():
+                    raise FileNotFoundError(f"Artifact diagnostic table is missing: {table_path}")
+                model_tables[table_name] = pd.read_csv(table_path)
+            diagnostic_tables[model_name] = model_tables
+
         scored_df: pd.DataFrame | None = None
         scored_df_file = files.get("scored_df")
         if scored_df_file:
@@ -301,4 +344,5 @@ class MarsReplayRun:
             scored_df=scored_df,
             reports=reports,
             importance_tables=importance_tables,
+            diagnostic_tables=diagnostic_tables,
         )

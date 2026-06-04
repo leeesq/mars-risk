@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, List
 
 
 @dataclass(slots=True)
@@ -42,6 +42,10 @@ class ModelingSpec:
     seed: int = 1206
     benchmark_col: str | None = None
     time_col: str | None = None
+    lr_feature_mode: str = "numeric"
+    lr_binning_type: str = "native"
+    lr_binner_kwargs: dict[str, Any] = field(default_factory=dict)
+    lr_binner: Any | None = None
 
 
 @dataclass(slots=True)

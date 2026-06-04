@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Mapping, Sequence, Tuple, Union
 
+import numpy as np
 import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
 from mars.core.base import MarsBaseSelector
 from mars.feature.binner import MarsBinnerBase, MarsNativeBinner
+from mars.modeling.utils import require_optional_module
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -1197,7 +1200,424 @@ class MarsLinearSelector(MarsBaseSelector):
             并行任务数量。
         """
         super().__init__(target=target)
-        # ...
+        self.enable_corr_filter = bool(enable_corr_filter)
+        self.corr_thr = float(corr_thr)
+        self.corr_method = str(corr_method).lower()
+        self.enable_vif_filter = bool(enable_vif_filter)
+        self.vif_threshold = float(vif_threshold)
+        self.enable_stepwise = bool(enable_stepwise)
+        self.stepwise_direction = str(stepwise_direction).lower()
+        self.stepwise_criterion = str(stepwise_criterion).lower()
+        self.max_features = max_features
+        self.n_jobs = int(n_jobs)
+
+        if self.stepwise_direction not in {"forward", "backward", "both"}:
+            raise ValueError("stepwise_direction must be one of {'forward', 'backward', 'both'}.")
+        if self.stepwise_criterion not in {"aic", "bic"}:
+            raise ValueError("stepwise_criterion must be one of {'aic', 'bic'}.")
+
+        self.coef_table_: pd.DataFrame = pd.DataFrame()
+        self.vif_table_: pd.DataFrame = pd.DataFrame()
+        self.stepwise_history_: pd.DataFrame = pd.DataFrame()
+
+    def _prepare_xy(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Any | None,
+    ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
+        """Convert input frames to a clean numeric modeling matrix."""
+        if isinstance(X, pl.DataFrame):
+            df = X.to_pandas()
+        elif isinstance(X, pd.DataFrame):
+            df = X.copy()
+        else:
+            raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
+
+        if y is not None:
+            df[self.target] = np.asarray(y)
+        if self.target not in df.columns:
+            raise ValueError(f"Target column {self.target!r} is required.")
+
+        candidate_features = [feature for feature in df.columns if feature != self.target]
+        numeric_data: dict[str, pd.Series] = {}
+        for feature in candidate_features:
+            series = pd.to_numeric(df[feature], errors="coerce")
+            if series.notna().sum() == 0:
+                self._register_decision(
+                    feature,
+                    status="Dropped",
+                    stage="precheck",
+                    reason="non_numeric",
+                    desc="Feature cannot be converted to numeric values.",
+                )
+                continue
+            numeric_data[feature] = series
+
+        target_series = pd.to_numeric(df[self.target], errors="coerce")
+        clean = pd.DataFrame(numeric_data)
+        clean[self.target] = target_series
+        clean = clean.replace([np.inf, -np.inf], np.nan).dropna(axis=0)
+        if clean.empty:
+            raise ValueError("No complete numeric rows are available for MarsLinearSelector.")
+        if clean[self.target].nunique() < 2:
+            raise ValueError("MarsLinearSelector requires a binary target with both classes present.")
+
+        features = [feature for feature in candidate_features if feature in clean.columns]
+        return clean.loc[:, features], clean[self.target].astype(int), features
+
+    @staticmethod
+    def _target_strength(X: pd.DataFrame, y: pd.Series, features: Sequence[str]) -> dict[str, float]:
+        """Rank features by absolute univariate association with the target."""
+        strengths: dict[str, float] = {}
+        for feature in features:
+            corr = pd.Series(X[feature]).corr(y, method="spearman")
+            strengths[feature] = 0.0 if pd.isna(corr) else float(abs(corr))
+        return strengths
+
+    def _apply_corr_filter(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        features: list[str],
+    ) -> list[str]:
+        """Drop one side of each highly correlated feature pair."""
+        if not self.enable_corr_filter or len(features) <= 1:
+            return list(features)
+
+        corr = X.loc[:, features].corr(method=self.corr_method).abs()
+        strengths = self._target_strength(X, y, features)
+        dropped: set[str] = set()
+        for left_idx, left_feature in enumerate(features):
+            if left_feature in dropped:
+                continue
+            for right_feature in features[left_idx + 1 :]:
+                if right_feature in dropped:
+                    continue
+                value = float(corr.loc[left_feature, right_feature])
+                if pd.isna(value) or value < self.corr_thr:
+                    continue
+                drop_feature = (
+                    right_feature
+                    if strengths[left_feature] >= strengths[right_feature]
+                    else left_feature
+                )
+                dropped.add(drop_feature)
+                self._register_decision(
+                    drop_feature,
+                    status="Dropped",
+                    stage="corr",
+                    reason=f"corr_with_{left_feature if drop_feature == right_feature else right_feature}",
+                    value=value,
+                    desc=f"Absolute {self.corr_method} correlation exceeded {self.corr_thr:.4f}.",
+                )
+                if drop_feature == left_feature:
+                    break
+        return [feature for feature in features if feature not in dropped]
+
+    @staticmethod
+    def _compute_vif_table(X: pd.DataFrame, features: Sequence[str]) -> pd.DataFrame:
+        """Compute VIF for the current candidate feature set."""
+        if not features:
+            return pd.DataFrame(columns=["feature", "vif"])
+        if len(features) == 1:
+            return pd.DataFrame([{"feature": str(features[0]), "vif": 1.0}])
+
+        vif_module = require_optional_module("statsmodels.stats.outliers_influence")
+        variance_inflation_factor = vif_module.variance_inflation_factor
+        values = X.loc[:, list(features)].astype(float).to_numpy()
+        rows = []
+        for idx, feature in enumerate(features):
+            try:
+                vif_value = float(variance_inflation_factor(values, idx))
+            except Exception:
+                vif_value = float("inf")
+            rows.append({"feature": str(feature), "vif": vif_value})
+        return pd.DataFrame(rows).sort_values("vif", ascending=False).reset_index(drop=True)
+
+    def _apply_vif_filter(self, X: pd.DataFrame, features: list[str]) -> list[str]:
+        """Iteratively remove the feature with the largest VIF."""
+        if not self.enable_vif_filter or len(features) <= 1:
+            self.vif_table_ = self._compute_vif_table(X, features)
+            return list(features)
+
+        remaining = list(features)
+        while len(remaining) > 1:
+            vif_table = self._compute_vif_table(X, remaining)
+            max_row = vif_table.iloc[0]
+            max_vif = float(max_row["vif"])
+            if max_vif <= self.vif_threshold:
+                self.vif_table_ = vif_table
+                return remaining
+            drop_feature = str(max_row["feature"])
+            remaining.remove(drop_feature)
+            self._register_decision(
+                drop_feature,
+                status="Dropped",
+                stage="vif",
+                reason="high_vif",
+                value=max_vif,
+                desc=f"VIF exceeded {self.vif_threshold:.4f}.",
+            )
+        self.vif_table_ = self._compute_vif_table(X, remaining)
+        return remaining
+
+    def _fit_logit_score(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        features: Sequence[str],
+    ) -> tuple[float, Any | None]:
+        """Fit a statsmodels Logit and return the configured information criterion."""
+        sm = require_optional_module("statsmodels.api")
+        design = X.loc[:, list(features)] if features else pd.DataFrame(index=X.index)
+        design = sm.add_constant(design, has_constant="add")
+        try:
+            result = sm.Logit(y, design).fit(disp=False, maxiter=200)
+        except Exception:
+            return float("inf"), None
+        return float(getattr(result, self.stepwise_criterion)), result
+
+    def _apply_stepwise(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        features: list[str],
+    ) -> list[str]:
+        """Run forward, backward, or bidirectional AIC/BIC selection."""
+        if not self.enable_stepwise or not features:
+            return list(features)
+
+        history: list[dict[str, Any]] = []
+
+        def record(action: str, feature: str | None, score: float, selected: Sequence[str]) -> None:
+            history.append(
+                {
+                    "action": action,
+                    "feature": feature,
+                    "criterion": self.stepwise_criterion,
+                    "score": score,
+                    "n_features": len(selected),
+                    "selected_features": json.dumps(list(selected), ensure_ascii=False),
+                }
+            )
+
+        if self.stepwise_direction == "backward":
+            selected = list(features)
+        else:
+            selected = []
+
+        current_score, current_result = self._fit_logit_score(X, y, selected)
+        record("start", None, current_score, selected)
+
+        def try_add() -> bool:
+            nonlocal current_score, current_result, selected
+            remaining = [feature for feature in features if feature not in selected]
+            if self.max_features is not None and len(selected) >= int(self.max_features):
+                return False
+            candidates = []
+            for feature in remaining:
+                score, result = self._fit_logit_score(X, y, [*selected, feature])
+                candidates.append((score, feature, result))
+            if not candidates:
+                return False
+            best_score, best_feature, best_result = min(candidates, key=lambda item: item[0])
+            if best_score + 1e-9 >= current_score:
+                return False
+            selected.append(best_feature)
+            current_score = best_score
+            current_result = best_result
+            record("add", best_feature, current_score, selected)
+            return True
+
+        def try_drop() -> bool:
+            nonlocal current_score, current_result, selected
+            if len(selected) <= 1:
+                return False
+            candidates = []
+            for feature in selected:
+                trial_features = [item for item in selected if item != feature]
+                score, result = self._fit_logit_score(X, y, trial_features)
+                candidates.append((score, feature, result, trial_features))
+            best_score, best_feature, best_result, best_features = min(
+                candidates,
+                key=lambda item: item[0],
+            )
+            if best_score + 1e-9 >= current_score:
+                return False
+            selected = list(best_features)
+            current_score = best_score
+            current_result = best_result
+            record("drop", best_feature, current_score, selected)
+            return True
+
+        if self.stepwise_direction == "forward":
+            while try_add():
+                pass
+        elif self.stepwise_direction == "backward":
+            while try_drop():
+                pass
+        else:
+            changed = True
+            while changed:
+                changed = try_add()
+                while try_drop():
+                    changed = True
+
+        self.stepwise_history_ = pd.DataFrame(history)
+        selected_set = set(selected)
+        for feature in features:
+            if feature not in selected_set:
+                self._register_decision(
+                    feature,
+                    status="Dropped",
+                    stage="stepwise",
+                    reason=f"not_selected_by_{self.stepwise_criterion}",
+                    desc=f"Excluded by {self.stepwise_direction} stepwise regression.",
+                )
+        if current_result is not None and selected:
+            params = current_result.params.reindex(["const", *selected])
+            pvalues = current_result.pvalues.reindex(["const", *selected])
+            stderr = current_result.bse.reindex(["const", *selected])
+            self.coef_table_ = pd.DataFrame(
+                [
+                    {
+                        "feature": feature,
+                        "coefficient": float(params.get(feature, np.nan)),
+                        "abs_coefficient": abs(float(params.get(feature, np.nan))),
+                        "p_value": float(pvalues.get(feature, np.nan)),
+                        "std_err": float(stderr.get(feature, np.nan)),
+                    }
+                    for feature in selected
+                ]
+            )
+        else:
+            self.coef_table_ = pd.DataFrame(
+                columns=["feature", "coefficient", "abs_coefficient", "p_value", "std_err"]
+            )
+        return selected
+
+    def _apply_max_features(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        features: list[str],
+    ) -> list[str]:
+        """Apply a final top-N cap when stepwise is disabled or keeps too many features."""
+        if self.max_features is None or len(features) <= int(self.max_features):
+            return list(features)
+        strengths = self._target_strength(X, y, features)
+        ranked = sorted(features, key=lambda feature: strengths.get(feature, 0.0), reverse=True)
+        selected = ranked[: int(self.max_features)]
+        selected_set = set(selected)
+        for feature in features:
+            if feature not in selected_set:
+                self._register_decision(
+                    feature,
+                    status="Dropped",
+                    stage="max_features",
+                    reason="rank_cap",
+                    value=float(strengths.get(feature, 0.0)),
+                    desc=f"Feature rank exceeded max_features={self.max_features}.",
+                )
+        return [feature for feature in features if feature in selected_set]
+
+    def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> MarsLinearSelector:
+        """
+        Fit correlation, VIF, and optional stepwise filters.
+
+        Parameters
+        ----------
+        X : polars.DataFrame or pandas.DataFrame
+            Input feature frame. When ``y`` is omitted, it must include the target column.
+        y : Any, optional
+            Binary target array.
+
+        Returns
+        -------
+        MarsLinearSelector
+            Fitted selector instance.
+        """
+        self.report_records_ = []
+        X_numeric, target_series, features = self._prepare_xy(X, y)
+        self.n_features_in_ = len(features)
+
+        selected = self._apply_corr_filter(X_numeric, target_series, features)
+        if self.enable_corr_filter:
+            corr_frame = X_numeric.loc[:, features].corr(method=self.corr_method).abs()
+            for feature in selected:
+                other_features = [item for item in features if item != feature]
+                max_corr = (
+                    float(corr_frame.loc[feature, other_features].max())
+                    if other_features
+                    else 0.0
+                )
+                self._register_decision(
+                    feature,
+                    status="Checked",
+                    stage="corr",
+                    reason="within_threshold",
+                    value=max_corr,
+                    desc=f"Maximum absolute {self.corr_method} correlation stayed below threshold.",
+                )
+
+        selected = self._apply_vif_filter(X_numeric, selected)
+        if self.enable_vif_filter and not self.vif_table_.empty:
+            selected_set = set(selected)
+            for row in self.vif_table_.to_dict("records"):
+                feature = str(row["feature"])
+                if feature not in selected_set:
+                    continue
+                self._register_decision(
+                    feature,
+                    status="Checked",
+                    stage="vif",
+                    reason="within_threshold",
+                    value=float(row["vif"]),
+                    desc=f"VIF stayed below {self.vif_threshold:.4f}.",
+                )
+
+        selected = self._apply_stepwise(X_numeric, target_series, selected)
+        if self.enable_stepwise:
+            for feature in selected:
+                self._register_decision(
+                    feature,
+                    status="Selected",
+                    stage="stepwise",
+                    reason=f"selected_by_{self.stepwise_criterion}",
+                    desc=f"Retained by {self.stepwise_direction} stepwise regression.",
+                )
+
+        selected = self._apply_max_features(X_numeric, target_series, selected)
+
+        self.selected_features_ = [feature for feature in features if feature in set(selected)]
+        for feature in self.selected_features_:
+            self._register_decision(
+                feature,
+                status="Selected",
+                stage="final",
+                reason="kept",
+                desc="Feature survived linear selector filters.",
+            )
+
+        if self.coef_table_.empty and self.selected_features_:
+            _, result = self._fit_logit_score(X_numeric, target_series, self.selected_features_)
+            if result is not None:
+                params = result.params.reindex(["const", *self.selected_features_])
+                self.coef_table_ = pd.DataFrame(
+                    [
+                        {
+                            "feature": feature,
+                            "coefficient": float(params.get(feature, np.nan)),
+                            "abs_coefficient": abs(float(params.get(feature, np.nan))),
+                            "p_value": float(result.pvalues.get(feature, np.nan)),
+                            "std_err": float(result.bse.get(feature, np.nan)),
+                        }
+                        for feature in self.selected_features_
+                    ]
+                )
+
+        self._is_fitted = True
+        return self
 
 
 class MarsImportanceSelector(MarsBaseSelector):
@@ -1217,6 +1637,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         # 支持字符串简写，也支持传入实例化好的 sklearn/lgbm 对象
         estimator: Union[str, Any] = "lgbm", # lgbm, xgb, cat, rf, extra_trees
         estimator_params: dict | None = None, # 比如 {'learning_rate': 0.05, 'n_estimators': 100}
+        importance_table: pd.DataFrame | pl.DataFrame | None = None,
 
         # --- 筛选策略 (Method) ---
         # 1. importance: 使用模型自带的 feature_importances_ (gain/split)
@@ -1266,4 +1687,347 @@ class MarsImportanceSelector(MarsBaseSelector):
             随机种子。
         """
         super().__init__(target=target)
-        # ...
+        self.estimator = estimator
+        self.estimator_params = dict(estimator_params or {})
+        self.importance_table = importance_table
+        self.method = str(method).lower()
+        self.selection_mode = str(selection_mode).lower()
+        self.selection_threshold = selection_threshold
+        self.cv = int(cv)
+        self.n_jobs = int(n_jobs)
+        self.random_state = int(random_state)
+
+        if self.method not in {"importance", "shap", "rfe", "sfm"}:
+            raise ValueError("method must be one of {'importance', 'shap', 'rfe', 'sfm'}.")
+        if self.selection_mode not in {"top_k", "threshold", "percentile"}:
+            raise ValueError("selection_mode must be one of {'top_k', 'threshold', 'percentile'}.")
+
+        self.importance_table_: pd.DataFrame = pd.DataFrame()
+        self.estimator_: Any | None = None
+
+    def _prepare_xy(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Any | None,
+    ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
+        """Convert input data to pandas and resolve the target series."""
+        if isinstance(X, pl.DataFrame):
+            df = X.to_pandas()
+        elif isinstance(X, pd.DataFrame):
+            df = X.copy()
+        else:
+            raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
+
+        if y is not None:
+            df[self.target] = np.asarray(y)
+        if self.target not in df.columns:
+            raise ValueError(f"Target column {self.target!r} is required.")
+        features = [feature for feature in df.columns if feature != self.target]
+        target_series = pd.to_numeric(df[self.target], errors="coerce")
+        valid_mask = target_series.notna()
+        if int(valid_mask.sum()) == 0:
+            raise ValueError("Target contains no valid numeric labels.")
+        return df.loc[valid_mask, features], target_series.loc[valid_mask].astype(int), features
+
+    @staticmethod
+    def _encode_features(X: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
+        """Encode mixed-type features while retaining encoded-to-raw feature mapping."""
+        encoded_parts: list[pd.DataFrame] = []
+        mapping: dict[str, str] = {}
+        for feature in X.columns:
+            series = X[feature]
+            if pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+                encoded_col = pd.to_numeric(series, errors="coerce")
+                fill_value = encoded_col.median()
+                if pd.isna(fill_value):
+                    fill_value = 0.0
+                encoded_parts.append(pd.DataFrame({feature: encoded_col.fillna(fill_value)}))
+                mapping[feature] = feature
+                continue
+
+            dummies = pd.get_dummies(
+                series.astype("string").fillna("__MISSING__"),
+                prefix=feature,
+                prefix_sep="__",
+                dtype=float,
+            )
+            encoded_parts.append(dummies)
+            for encoded_feature in dummies.columns:
+                mapping[str(encoded_feature)] = feature
+
+        if not encoded_parts:
+            raise ValueError("At least one feature is required for MarsImportanceSelector.")
+        encoded = pd.concat(encoded_parts, axis=1)
+        return encoded.astype(float), mapping
+
+    def _build_estimator(self) -> Any:
+        """Instantiate a supported estimator or clone the supplied estimator object."""
+        if not isinstance(self.estimator, str):
+            return copy.deepcopy(self.estimator)
+
+        estimator_name = self.estimator.lower()
+        params = dict(self.estimator_params)
+        if estimator_name in {"rf", "random_forest", "randomforest"}:
+            ensemble = require_optional_module("sklearn.ensemble")
+            params.setdefault("n_estimators", 100)
+            params.setdefault("random_state", self.random_state)
+            params.setdefault("n_jobs", self.n_jobs)
+            return ensemble.RandomForestClassifier(**params)
+        if estimator_name in {"extra_trees", "extratrees", "et"}:
+            ensemble = require_optional_module("sklearn.ensemble")
+            params.setdefault("n_estimators", 100)
+            params.setdefault("random_state", self.random_state)
+            params.setdefault("n_jobs", self.n_jobs)
+            return ensemble.ExtraTreesClassifier(**params)
+        if estimator_name in {"lr", "logit", "logistic", "logistic_regression"}:
+            linear = require_optional_module("sklearn.linear_model")
+            params.setdefault("solver", "liblinear")
+            params.setdefault("random_state", self.random_state)
+            return linear.LogisticRegression(**params)
+        if estimator_name in {"lgb", "lgbm", "lightgbm"}:
+            lgb = require_optional_module("lightgbm")
+            params.setdefault("n_estimators", 100)
+            params.setdefault("random_state", self.random_state)
+            params.setdefault("n_jobs", self.n_jobs)
+            params.setdefault("verbosity", -1)
+            return lgb.LGBMClassifier(**params)
+        if estimator_name in {"xgb", "xgboost"}:
+            xgb = require_optional_module("xgboost")
+            params.setdefault("n_estimators", 100)
+            params.setdefault("random_state", self.random_state)
+            params.setdefault("n_jobs", self.n_jobs)
+            params.setdefault("eval_metric", "logloss")
+            return xgb.XGBClassifier(**params)
+        if estimator_name in {"cat", "catboost", "cbt"}:
+            catboost = require_optional_module("catboost")
+            params.setdefault("iterations", 100)
+            params.setdefault("random_seed", self.random_state)
+            params.setdefault("verbose", False)
+            return catboost.CatBoostClassifier(**params)
+        raise ValueError(
+            "Unsupported estimator. Expected one of "
+            "{'rf', 'extra_trees', 'lr', 'lgbm', 'xgb', 'cat'} or an estimator object."
+        )
+
+    @staticmethod
+    def _aggregate_importance(
+        encoded_features: Sequence[str],
+        values: Sequence[float],
+        mapping: Mapping[str, str],
+        raw_features: Sequence[str],
+    ) -> dict[str, float]:
+        """Aggregate encoded-level importances back to raw feature names."""
+        importance_map = {feature: 0.0 for feature in raw_features}
+        for encoded_feature, value in zip(encoded_features, values, strict=False):
+            raw_feature = mapping.get(str(encoded_feature), str(encoded_feature))
+            if raw_feature in importance_map:
+                importance_map[raw_feature] += float(value)
+        return importance_map
+
+    def _build_importance_table(
+        self,
+        importance_map: Mapping[str, float],
+        importance_type: str,
+    ) -> pd.DataFrame:
+        """Normalize an importance mapping to the MARS importance table schema."""
+        rows = [
+            {
+                "feature": feature,
+                "importance": float(importance),
+                "importance_type": importance_type,
+                "model_type": str(
+                    self.estimator
+                    if isinstance(self.estimator, str)
+                    else type(self.estimator).__name__
+                ),
+            }
+            for feature, importance in importance_map.items()
+        ]
+        table = pd.DataFrame(rows)
+        table = table.sort_values(["importance", "feature"], ascending=[False, True]).reset_index(drop=True)
+        table["rank"] = np.arange(1, len(table) + 1, dtype=int)
+        return table[["feature", "importance", "importance_type", "model_type", "rank"]]
+
+    def _importance_from_estimator(
+        self,
+        estimator: Any,
+        X_encoded: pd.DataFrame,
+        y: pd.Series,
+        mapping: Mapping[str, str],
+        raw_features: Sequence[str],
+    ) -> pd.DataFrame:
+        """Fit an estimator and extract built-in feature importance or coefficients."""
+        estimator.fit(X_encoded, y)
+        self.estimator_ = estimator
+        if hasattr(estimator, "feature_importances_"):
+            values = np.asarray(estimator.feature_importances_, dtype=float)
+            importance_type = "feature_importance"
+        elif hasattr(estimator, "coef_"):
+            values = np.abs(np.ravel(estimator.coef_)).astype(float)
+            importance_type = "abs_coef"
+        else:
+            raise ValueError(
+                "Estimator must expose feature_importances_ or coef_ for method='importance'."
+            )
+        importance_map = self._aggregate_importance(
+            list(X_encoded.columns),
+            values,
+            mapping,
+            raw_features,
+        )
+        return self._build_importance_table(importance_map, importance_type)
+
+    def _importance_from_shap(
+        self,
+        estimator: Any,
+        X_encoded: pd.DataFrame,
+        y: pd.Series,
+        mapping: Mapping[str, str],
+        raw_features: Sequence[str],
+    ) -> pd.DataFrame:
+        """Fit an estimator and compute mean absolute SHAP values."""
+        shap = require_optional_module("shap")
+        estimator.fit(X_encoded, y)
+        self.estimator_ = estimator
+        sample = X_encoded.head(min(len(X_encoded), 300))
+
+        try:
+            explainer = shap.TreeExplainer(estimator)
+            values = explainer.shap_values(sample)
+        except Exception:
+            explainer = shap.Explainer(estimator.predict_proba, sample)
+            explanation = explainer(sample)
+            values = getattr(explanation, "values", explanation)
+
+        if isinstance(values, list):
+            values_arr = np.asarray(values[-1])
+        else:
+            values_arr = np.asarray(values)
+        if values_arr.ndim == 3:
+            values_arr = values_arr[:, :, -1]
+        mean_abs = np.abs(values_arr).mean(axis=0)
+        importance_map = self._aggregate_importance(
+            list(X_encoded.columns),
+            mean_abs,
+            mapping,
+            raw_features,
+        )
+        return self._build_importance_table(importance_map, "mean_abs_shap")
+
+    @staticmethod
+    def _normalize_importance_table(
+        table: pd.DataFrame | pl.DataFrame,
+        raw_features: Sequence[str],
+    ) -> pd.DataFrame:
+        """Validate and normalize a user supplied importance table."""
+        table_pd = table.to_pandas() if isinstance(table, pl.DataFrame) else table.copy()
+        if "feature" not in table_pd.columns or "importance" not in table_pd.columns:
+            raise ValueError("importance_table must contain 'feature' and 'importance' columns.")
+        table_pd["feature"] = table_pd["feature"].astype(str)
+        table_pd["importance"] = pd.to_numeric(table_pd["importance"], errors="coerce").fillna(0.0)
+        table_pd = table_pd[table_pd["feature"].isin(set(raw_features))].copy()
+        if "importance_type" not in table_pd.columns:
+            table_pd["importance_type"] = "provided"
+        if "model_type" not in table_pd.columns:
+            table_pd["model_type"] = "provided"
+        table_pd = table_pd.sort_values(["importance", "feature"], ascending=[False, True]).reset_index(drop=True)
+        table_pd["rank"] = np.arange(1, len(table_pd) + 1, dtype=int)
+        return table_pd[["feature", "importance", "importance_type", "model_type", "rank"]]
+
+    def _select_features(self, table: pd.DataFrame) -> list[str]:
+        """Select features by top-k, absolute threshold, or percentile."""
+        if table.empty:
+            return []
+        if self.selection_mode == "top_k":
+            k = max(int(float(self.selection_threshold)), 0)
+            return table.head(k)["feature"].astype(str).tolist()
+        if self.selection_mode == "threshold":
+            threshold = float(self.selection_threshold)
+            return table.loc[table["importance"] >= threshold, "feature"].astype(str).tolist()
+
+        raw_threshold = self.selection_threshold
+        if isinstance(raw_threshold, str) and raw_threshold.endswith("%"):
+            percentile = float(raw_threshold.rstrip("%")) / 100.0
+        else:
+            threshold_value = float(raw_threshold)
+            percentile = threshold_value / 100.0 if threshold_value > 1 else threshold_value
+        percentile = min(max(percentile, 0.0), 1.0)
+        keep_count = int(np.ceil(len(table) * percentile))
+        return table.head(keep_count)["feature"].astype(str).tolist()
+
+    def fit(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Any | None = None,
+        *,
+        importance_table: pd.DataFrame | pl.DataFrame | None = None,
+    ) -> MarsImportanceSelector:
+        """
+        Fit importance-based or SHAP-based feature selection.
+
+        Parameters
+        ----------
+        X : polars.DataFrame or pandas.DataFrame
+            Input feature frame. When ``y`` is omitted, it must include the target column.
+        y : Any, optional
+            Binary target array.
+        importance_table : pandas.DataFrame or polars.DataFrame, optional
+            Precomputed importance table with ``feature`` and ``importance`` columns.
+
+        Returns
+        -------
+        MarsImportanceSelector
+            Fitted selector instance.
+        """
+        if self.method in {"rfe", "sfm"}:
+            raise NotImplementedError(
+                f"MarsImportanceSelector method={self.method!r} is not implemented in v1."
+            )
+
+        self.report_records_ = []
+        X_pd, y_series, raw_features = self._prepare_xy(X, y)
+        self.n_features_in_ = len(raw_features)
+
+        provided_table = importance_table if importance_table is not None else self.importance_table
+        if provided_table is not None:
+            table = self._normalize_importance_table(provided_table, raw_features)
+        else:
+            X_encoded, mapping = self._encode_features(X_pd)
+            estimator = self._build_estimator()
+            if self.method == "importance":
+                table = self._importance_from_estimator(
+                    estimator,
+                    X_encoded,
+                    y_series,
+                    mapping,
+                    raw_features,
+                )
+            else:
+                table = self._importance_from_shap(
+                    estimator,
+                    X_encoded,
+                    y_series,
+                    mapping,
+                    raw_features,
+                )
+
+        selected = self._select_features(table)
+        selected_set = set(selected)
+        self.importance_table_ = table.copy()
+        self.selected_features_ = [feature for feature in raw_features if feature in selected_set]
+
+        importance_lookup = dict(zip(table["feature"], table["importance"], strict=False))
+        for feature in raw_features:
+            status = "Selected" if feature in selected_set else "Dropped"
+            reason = self.selection_mode if feature in selected_set else f"below_{self.selection_mode}"
+            self._register_decision(
+                feature,
+                status=status,
+                stage=self.method,
+                reason=reason,
+                value=float(importance_lookup.get(feature, 0.0)),
+                desc="Feature selection based on normalized importance table.",
+            )
+
+        self._is_fitted = True
+        return self

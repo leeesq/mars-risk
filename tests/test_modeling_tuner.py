@@ -10,6 +10,7 @@ pytest.importorskip("lightgbm")
 pytest.importorskip("catboost")
 pytest.importorskip("optuna")
 pytest.importorskip("optuna_integration")
+pytest.importorskip("statsmodels")
 
 import mars
 import mars.modeling as modeling
@@ -89,6 +90,75 @@ def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tm
     assert tuner.best_model is result.best_model
     assert tuner.best_params == result.best_params
     assert tuner.history_table.equals(result.history_table)
+
+
+def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeling_pd, tmp_path: Path):
+    session = MarsModelingSession(
+        model_type="lr",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="auc",
+        seed=27,
+        lr_feature_mode="numeric",
+    )
+    result = session.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=2,
+        startup_trials=1,
+        warmup_steps=3,
+        save_path=str(tmp_path / "lr_numeric_history.csv"),
+    )
+
+    assert result.model_type == "lr"
+    assert result.best_model is not None
+    assert result.importance_table["importance_type"].unique().tolist() == ["abs_coef"]
+    assert {"coefficients", "model_summary"} == set(result.diagnostic_tables)
+    assert result.diagnostic_tables["coefficients"]["feature"].tolist() == ["x1", "x2", "x3"]
+
+    replay = session.replay_runner.run(result, sample_modeling_pd, top_k=1, sort_metric="auc")
+    model_name = next(iter(replay.models))
+    assert model_name.startswith("top1_trial")
+    assert set(replay.diagnostic_tables[model_name]) == {"coefficients", "model_summary"}
+
+    artifact_dir = result.write_artifact(str(tmp_path / "lr_numeric_artifact"))
+    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
+    assert loaded.importance_table.equals(result.importance_table)
+
+
+def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_pd, tmp_path: Path):
+    session = MarsModelingSession(
+        model_type="logistic",
+        features=["x1", "x2", "segment"],
+        target="target",
+        categorical_features=["segment"],
+        optimize_metric="ks",
+        seed=28,
+        lr_feature_mode="woe",
+        lr_binner_kwargs={"n_bins": 4, "n_jobs": 1},
+    )
+    result = session.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        save_path=str(tmp_path / "lr_woe_history.csv"),
+    )
+
+    assert result.model_type == "logistic"
+    assert result.backend_data_mode == "pandas_native_woe"
+    assert result.best_model.binner is not None
+    assert result.best_model.lr_feature_mode == "woe"
+    assert result.training_config["lr_feature_mode"] == "woe"
+    assert set(result.importance_table["feature"]) == {"x1", "x2", "segment"}
+
+    artifact_dir = result.write_artifact(str(tmp_path / "lr_woe_artifact"))
+    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    assert loaded.best_model.binner is not None
+    assert loaded.best_model.predict_proba(sample_modeling_pd.loc[:, loaded.features]).shape[0] == len(sample_modeling_pd)
+    assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
 
 
 def test_feature_incremental_tuner_resolves_steps_and_feature_order():

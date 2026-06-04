@@ -94,6 +94,13 @@ class ModelPredictor:
             preds = self.model.predict_proba(X)
             return np.asarray(preds[:, 1])
 
+        if hasattr(self.model, "predict_proba"):
+            preds = self.model.predict_proba(X)
+            preds_arr = np.asarray(preds)
+            if preds_arr.ndim == 2 and preds_arr.shape[1] >= 2:
+                return np.asarray(preds_arr[:, 1])
+            return np.ravel(preds_arr)
+
         raise TypeError(f"Unsupported model type: {type(self.model)!r}")
 
     def _safe_predict_logic_polars(self, df: pl.DataFrame) -> np.ndarray:

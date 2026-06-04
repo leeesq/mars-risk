@@ -8,7 +8,12 @@ from typing import Any, Dict, Mapping, Sequence, Type
 
 import pandas as pd
 
-from mars.modeling.backends import MarsCatBoostStrategy, MarsLGBStrategy, MarsXGBStrategy
+from mars.modeling.backends import (
+    MarsCatBoostStrategy,
+    MarsLGBStrategy,
+    MarsLogisticRegressionStrategy,
+    MarsXGBStrategy,
+)
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.prediction import ModelPredictor
 from mars.modeling.report import MarsModelingReport
@@ -22,6 +27,10 @@ BACKEND_MAP: Dict[str, Type[Any]] = {
     "cbt": MarsCatBoostStrategy,
     "cat": MarsCatBoostStrategy,
     "catboost": MarsCatBoostStrategy,
+    "lr": MarsLogisticRegressionStrategy,
+    "logit": MarsLogisticRegressionStrategy,
+    "logistic": MarsLogisticRegressionStrategy,
+    "logistic_regression": MarsLogisticRegressionStrategy,
 }
 
 
@@ -36,6 +45,10 @@ def _build_spec(
     seed: int = 1206,
     benchmark_col: str | None = None,
     time_col: str | None = None,
+    lr_feature_mode: str = "numeric",
+    lr_binning_type: str = "native",
+    lr_binner_kwargs: Mapping[str, Any] | None = None,
+    lr_binner: Any | None = None,
 ) -> ModelingSpec:
     """
     校验建模配置并构造共享规格对象。
@@ -64,6 +77,10 @@ def _build_spec(
         seed=int(seed),
         benchmark_col=benchmark_col,
         time_col=time_col,
+        lr_feature_mode=str(lr_feature_mode).lower(),
+        lr_binning_type=str(lr_binning_type).lower(),
+        lr_binner_kwargs=dict(lr_binner_kwargs or {}),
+        lr_binner=lr_binner,
     )
     if spec.model_type not in BACKEND_MAP:
         raise ValueError(
@@ -73,6 +90,10 @@ def _build_spec(
         raise ValueError(
             f"Unsupported optimize_metric: {optimize_metric!r}. Expected one of ['auc', 'ks']."
         )
+    if spec.lr_feature_mode not in {"numeric", "woe"}:
+        raise ValueError("lr_feature_mode must be one of {'numeric', 'woe'}.")
+    if spec.lr_binning_type not in {"native", "opt", "optimal"}:
+        raise ValueError("lr_binning_type must be one of {'native', 'opt', 'optimal'}.")
     return spec
 
 
@@ -88,18 +109,28 @@ def _build_backend_from_spec(
 ) -> Any:
     """Create a backend strategy instance from a modeling spec."""
     backend_cls = BACKEND_MAP[spec.model_type]
-    return backend_cls(
-        df=df,
-        features=spec.features,
-        target=spec.target,
-        optimize_metric=(optimize_metric or spec.optimize_metric).lower(),
-        param_space=param_space,
-        max_diff=max_diff,
-        seed=spec.seed if seed is None else int(seed),
-        use_oot_penalty=use_oot_penalty,
-        dataset_flag_col=spec.dataset_flag_col,
-        categorical_features=spec.categorical_features,
-    )
+    backend_kwargs: Dict[str, Any] = {
+        "df": df,
+        "features": spec.features,
+        "target": spec.target,
+        "optimize_metric": (optimize_metric or spec.optimize_metric).lower(),
+        "param_space": param_space,
+        "max_diff": max_diff,
+        "seed": spec.seed if seed is None else int(seed),
+        "use_oot_penalty": use_oot_penalty,
+        "dataset_flag_col": spec.dataset_flag_col,
+        "categorical_features": spec.categorical_features,
+    }
+    if backend_cls is MarsLogisticRegressionStrategy:
+        backend_kwargs.update(
+            {
+                "lr_feature_mode": spec.lr_feature_mode,
+                "lr_binning_type": spec.lr_binning_type,
+                "lr_binner_kwargs": spec.lr_binner_kwargs,
+                "lr_binner": spec.lr_binner,
+            }
+        )
+    return backend_cls(**backend_kwargs)
 
 
 class MarsModelTuner:
@@ -140,6 +171,10 @@ class MarsModelTuner:
         seed: int = 1206,
         benchmark_col: str | None = None,
         time_col: str | None = None,
+        lr_feature_mode: str = "numeric",
+        lr_binning_type: str = "native",
+        lr_binner_kwargs: Mapping[str, Any] | None = None,
+        lr_binner: Any | None = None,
     ) -> None:
         self.spec: ModelingSpec = _build_spec(
             model_type=model_type,
@@ -151,6 +186,10 @@ class MarsModelTuner:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
         self.last_run: MarsModelingRun | None = None
 
@@ -302,6 +341,18 @@ class MarsModelTuner:
             "param_space": dict(param_space or {}),
             "training_metric": backend.training_metric,
         }
+        if isinstance(backend, MarsLogisticRegressionStrategy):
+            training_config.update(
+                {
+                    "lr_feature_mode": self.spec.lr_feature_mode,
+                    "lr_binning_type": self.spec.lr_binning_type,
+                    "lr_binner_kwargs": dict(self.spec.lr_binner_kwargs),
+                }
+            )
+        diagnostic_tables: Dict[str, pd.DataFrame] = {}
+        extract_diagnostics = getattr(backend, "extract_diagnostics", None)
+        if callable(extract_diagnostics):
+            diagnostic_tables = extract_diagnostics(backend.best_model)
         run = MarsModelingRun(
             model_type=self.spec.model_type,
             optimize_metric=backend.optimize_metric,
@@ -318,6 +369,7 @@ class MarsModelTuner:
             study=study,
             replay_candidates=list(backend.replay_param_keys),
             importance_table=backend.extract_importance(backend.best_model),
+            diagnostic_tables=diagnostic_tables,
             training_config=training_config,
             library_versions=collect_library_versions(
                 "polars",
@@ -327,6 +379,8 @@ class MarsModelTuner:
                 "lightgbm",
                 "catboost",
                 "optuna",
+                "sklearn",
+                "statsmodels",
             ),
             feature_schema=dict(backend.feature_schema),
             backend_data_mode=backend.backend_data_mode,
@@ -357,6 +411,10 @@ class MarsModelReplay:
         seed: int = 1206,
         benchmark_col: str | None = None,
         time_col: str | None = None,
+        lr_feature_mode: str = "numeric",
+        lr_binning_type: str = "native",
+        lr_binner_kwargs: Mapping[str, Any] | None = None,
+        lr_binner: Any | None = None,
     ) -> None:
         self.spec: ModelingSpec = _build_spec(
             model_type=model_type,
@@ -368,6 +426,10 @@ class MarsModelReplay:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
 
     def _build_backend(
@@ -486,6 +548,7 @@ class MarsModelReplay:
         scored_df = df
         reports: Dict[str, MarsModelingReport] = {}
         importance_tables: Dict[str, pd.DataFrame] = {}
+        diagnostic_tables: Dict[str, Dict[str, pd.DataFrame]] = {}
         leaderboard_rows: list[dict[str, Any]] = []
 
         for rank, (_, row) in enumerate(ranking_table.iterrows(), start=1):
@@ -504,6 +567,9 @@ class MarsModelReplay:
             model_name = f"top{rank}_trial{trial_num}"
             models[model_name] = model
             importance_tables[model_name] = backend.extract_importance(model)
+            extract_diagnostics = getattr(backend, "extract_diagnostics", None)
+            if callable(extract_diagnostics):
+                diagnostic_tables[model_name] = extract_diagnostics(model)
 
             pred_col = f"prob_{model_name}"
             bench = ModelPredictor(
@@ -566,4 +632,5 @@ class MarsModelReplay:
             scored_df=scored_df,
             reports=reports,
             importance_tables=importance_tables,
+            diagnostic_tables=diagnostic_tables,
         )

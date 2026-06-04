@@ -54,6 +54,10 @@ class MarsModelingSession:
         seed: int = 1206,
         benchmark_col: str | None = None,
         time_col: str | None = None,
+        lr_feature_mode: str = "numeric",
+        lr_binning_type: str = "native",
+        lr_binner_kwargs: Mapping[str, Any] | None = None,
+        lr_binner: Any | None = None,
     ) -> None:
         self.tuner = MarsModelTuner(
             model_type=model_type,
@@ -65,6 +69,10 @@ class MarsModelingSession:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
         self.replay_runner = MarsModelReplay(
             model_type=model_type,
@@ -76,6 +84,10 @@ class MarsModelingSession:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
         self.feature_growth_tuner = MarsFeatureIncrementalTuner(
             model_type=model_type,
@@ -87,6 +99,10 @@ class MarsModelingSession:
             seed=seed,
             benchmark_col=benchmark_col,
             time_col=time_col,
+            lr_feature_mode=lr_feature_mode,
+            lr_binning_type=lr_binning_type,
+            lr_binner_kwargs=lr_binner_kwargs,
+            lr_binner=lr_binner,
         )
         self._last_feature_growth_run: MarsFeatureGrowthRun | None = None
 
