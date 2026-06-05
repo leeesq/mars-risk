@@ -14,32 +14,35 @@
  __________________________________________________________________________
 ```
 
-**面向信贷风控建模的数据画像、分箱评估、特征筛选、自动建模与评分卡工具库。**
+**面向信贷风控建模的 Polars-first 工具库，覆盖数据画像、特征分析、特征监控、风险评估、自动建模、模型监控与评分卡落地。**
 
 [![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=for-the-badge&color=2f6f8f)](https://pypi.org/project/mars-risk/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=for-the-badge&color=364f6b)](https://pypi.org/project/mars-risk/)
 [![CI](https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=for-the-badge&label=CI&color=1f7a5a)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
 [![License](https://img.shields.io/github/license/leeesq/mars-risk?style=for-the-badge&color=6c5ce7)](LICENSE)
 
-`Profile -> Bin -> Evaluate -> Select -> Model -> Score -> Export`
+`Profile -> Analyze -> Monitor -> Bin -> Select -> Model -> Score -> Export`
 
-[项目简介](#项目简介) · [设计取向](#设计取向) · [能力地图](#能力地图) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [自动建模](#自动建模) · [FAQ](#faq)
+[项目简介](#项目简介) · [设计取向](#设计取向) · [能力地图](#能力地图) · [性能对比](#性能对比) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [自动建模](#自动建模) · [FAQ](#faq)
 
 </div>
 
 ## 项目简介
 
-MARS 是一个围绕信贷风控建模日常流程设计的 Python 工具库。它覆盖数据画像、分箱、WOE 转换、IV/KS/AUC/PSI 评估、特征筛选、模型调参、Top-K replay、评分卡和报表导出，目标是把分散在脚本、Notebook 和 Excel 中的重复工作整理成可复用的工程链路。
+MARS 是一个围绕信贷风控建模日常流程设计的 Python 工具库。它覆盖数据画像、特征分析、特征监控、分箱评估、IV/KS/AUC/PSI 指标、特征筛选、模型调参、Top-K replay、模型监控、评分卡和报表导出，目标是把分散在脚本、Notebook 和 Excel 中的重复工作整理成可复用的工程链路。
+
+它不是单点算法封装，而是一条面向建模、验证、监控和部署的工程链路：从原始宽表出发，先识别特征质量和稳定性，再沉淀可复用的分箱与评估规则，最后把模型结果、特征漂移、模型分稳定性和导出产物放进同一套可审计的报告体系。
 
 ```mermaid
 flowchart LR
     A["Raw Data"] --> B["Data Profile"]
-    B --> C["Binning / WOE"]
-    C --> D["Risk Evaluation"]
-    D --> E["Feature Selection"]
-    E --> F["Modeling / Replay"]
-    F --> G["Scorecard"]
-    G --> H["Excel / HTML / SQL"]
+    B --> C["Feature Analysis"]
+    C --> D["Binning / Rules"]
+    D --> E["Feature / Risk Monitoring"]
+    E --> F["Feature Selection"]
+    F --> G["Modeling / Monitoring"]
+    G --> H["Scorecard"]
+    H --> I["Excel / HTML / SQL"]
 ```
 
 ## 设计取向
@@ -54,16 +57,16 @@ flowchart LR
 
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
-| 数据画像 | `MarsDataProfiler` / `profile_stats` | 缺失、零值、众数、分布、趋势、PSI | `MarsProfileReport` |
-| 分箱转换 | `MarsNativeBinner` / `MarsOptimalBinner` | 连续/类别分箱、WOE 映射、SQL 生成 | 分箱规则、映射表、SQL |
-| 风险画像 | `MarsBinEvaluator` / `profile_risk` | IV、KS、AUC、PSI、单调性、趋势报表 | `MarsRiskProfile`、`MarsEvaluationReport` |
+| 数据画像与特征分析 | `MarsDataProfiler` / `profile_stats` | 缺失率、零值、均值/分布、PSI、时间趋势、特征来源分组 | `MarsProfileReport` |
+| 分箱转换 | `MarsNativeBinner` / `MarsOptimalBinner` | 连续/类别分箱、规则映射、部署转换、SQL 生成 | 分箱规则、映射表、SQL |
+| 特征监控/风险画像 | `MarsBinEvaluator` / `profile_risk` | IV、KS、AUC、PSI、Lift、缺失趋势、分箱趋势、按月/周/分组监控 | `MarsRiskProfile`、`MarsEvaluationReport` |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
-| 自动建模 | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` | 样本切分、调参、评估、Top-K replay | `MarsModelTuningResult`、`MarsModelReplayResult` |
+| 自动建模与模型监控 | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` | train/val/oot 评估、benchmark 对比、Score PSI、feature PSI、重要性表、Top-K replay | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
 | 评分卡与导出 | `build_scorecard` | LR 系数转评分卡、部署 SQL、分数映射 | `MarsScorecard` |
 
 ## 性能对比
 
-MARS 最初的设计动机之一是让宽表风控分箱和 WOE 转换更快。下面结果来自本仓库的可复现脚本：
+MARS 最初的设计动机之一是让宽表风控分箱和规则转换更快。下面结果来自本仓库的可复现脚本：
 
 ```bash
 conda run -n mars python benchmarks/benchmark_binning_speed.py native --rows 200000 --features 3000 --repeats 1
@@ -87,6 +90,17 @@ conda run -n mars python benchmarks/benchmark_binning_speed.py optimal --rows 50
 | 等频分箱 | MarsNativeBinner | 78.768 | 78.768 | 78.768 | 3348.2 | 6768.8 | 1.00x | method=quantile |
 | 等宽分箱 | toad Combiner + WOETransformer | 105.859 | 105.859 | 105.859 | 6.7 | 20468.4 | 1.31x | 先运行；外部竞品库，不属于项目依赖 |
 | 等宽分箱 | MarsNativeBinner | 81.058 | 81.058 | 81.058 | -7.8 | 6727.7 | 1.00x | method=uniform |
+
+### 原生等频/等宽的额外能力
+
+MARS 的原生等频/等宽分箱不只是生成切点。围绕风控特征分析和监控，常规工具通常需要额外脚本补齐的处理，在 `MarsNativeBinner` 中尽量内聚为同一套规则对象：
+
+- 缺失值、`NaN`、自定义 `missing_values` 和业务特殊值 `special_values` 会独立隔离，不挤占正常分箱数量。
+- `merge_small_bins` 可在等频/等宽后自动合并低占比碎片箱，减少极端宽表中的不稳定分箱。
+- `remove_empty_bins` 可在等宽场景自动清理空箱，适配长尾、零膨胀和稀疏分布。
+- 同一套规则支持 `index` / `label` 映射、`LazyFrame` 延迟转换，以及 Pandas/Polars 输入。
+- 类别特征支持 Top-K 保留、长尾归并、未知类别落入 `Other`，高基数类别可走 Join 映射路径。
+- 分箱规则可以继续进入特征分析、特征监控、模型监控和 SQL 导出链路，减少从探索到部署之间的规则重写。
 
 ### 最优分箱：MarsOptimalBinner vs optbinning
 
@@ -298,6 +312,8 @@ replay_result = MarsModelReplayRunner().run(
 
 `MarsModelTuningResult` 会保存最佳模型、调参历史、特征重要性、训练配置和 artifact 元数据。`MarsModelReplayResult` 会保存 replay leaderboard、模型字典、打分数据、评估报告和重要性表。
 
+模型分可以被视为一个特殊特征进入稳定性监控。当前 `MarsModelEvaluator` 已输出 `Score PSI` 和 `score_psi` 明细，用于观察模型分在 train/val/oot 或业务切片之间的分布漂移；后续会补充模型分分箱后的趋势统计，例如分箱均值、样本量、坏账率和分数区间迁移，用于更细粒度的模型监控。
+
 ## 报告与导出
 
 画像、风险评估、建模评估和评分卡结果都以对象形式返回。常见出口包括：
@@ -361,8 +377,9 @@ MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 
 ## 路线图
 
-- 继续扩展模型评估和报表导出的测试覆盖。
-- 增强评分卡 SQL、监控报表和 artifact 回放能力。
+- 继续扩展模型评估、特征监控和报表导出的测试覆盖。
+- 补充模型分分箱后的趋势统计，包括分箱均值、样本量、坏账率和分数区间迁移。
+- 增强模型监控报表、评分卡 SQL 和 artifact 回放能力。
 - 梳理更多教程场景，保持 README 轻量，详细流程放在 `tutorial/`。
 - 持续收敛 public API 命名和类型注解。
 
