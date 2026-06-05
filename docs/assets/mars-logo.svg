@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="178" viewBox="0 0 920 178" role="img" aria-labelledby="title desc">
+  <title id="title">MARS</title>
+  <desc id="desc">MARS 矢量标识，使用线条结构表现四个字母。</desc>
+  <defs>
+    <linearGradient id="logo-gradient" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="46%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <filter id="logo-glow" x="-12%" y="-28%" width="124%" height="156%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#8b5cf6" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#020617" flood-opacity="0.16"/>
+    </filter>
+    <style>
+      .panel {
+        fill: #f8fafc;
+        stroke: #e9d5ff;
+      }
+
+      .letter {
+        fill: none;
+        stroke: #111827;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 13;
+      }
+
+      .accent {
+        stroke: url(#logo-gradient);
+        filter: url(#logo-glow);
+      }
+
+      .rail {
+        fill: none;
+        opacity: 0.74;
+        stroke: url(#logo-gradient);
+        stroke-linecap: round;
+        stroke-width: 2;
+      }
+
+      .tick {
+        fill: url(#logo-gradient);
+        opacity: 0.88;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .panel {
+          fill: #111827;
+          stroke: #312e81;
+        }
+
+        .letter {
+          stroke: #f8fafc;
+        }
+      }
+    </style>
+  </defs>
+  <rect class="panel" x="14" y="16" width="892" height="146" rx="24"/>
+  <path class="rail" d="M86 46 H834"/>
+  <path class="rail" d="M86 132 H834"/>
+  <g transform="translate(194 43) skewX(-8)">
+    <path class="letter accent" d="M0 88 V0 L42 58 L84 0 V88"/>
+    <path class="letter" d="M132 88 L174 0 L216 88"/>
+    <path class="letter accent" d="M148 56 H200"/>
+    <path class="letter" d="M260 88 V0 H318 C344 0 356 13 356 34 C356 55 342 68 318 68 H260"/>
+    <path class="letter accent" d="M314 68 L360 88"/>
+    <path class="letter" d="M502 10 C480 0 426 0 420 29 C414 60 496 44 496 75 C496 101 442 100 416 88"/>
+  </g>
+  <g>
+    <rect class="tick" x="180" y="42" width="48" height="5" rx="2.5"/>
+    <rect class="tick" x="692" y="128" width="48" height="5" rx="2.5"/>
+  </g>
+</svg>
