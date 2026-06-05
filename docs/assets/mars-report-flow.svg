@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="260" viewBox="0 0 1120 260" role="img" aria-labelledby="title desc">
+  <title id="title">MARS report 数据对象</title>
+  <desc id="desc">各模块 report 返回汇总、明细、趋势和元数据，支持导出、看板和 Agent 二次加工。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#8b5cf6"/>
+    </marker>
+    <filter id="glow" x="-16%" y="-32%" width="132%" height="164%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#8b5cf6" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .frame {
+        fill: #f8fafc;
+        stroke: #e9d5ff;
+      }
+
+      .core {
+        fill: #7c3aed;
+        filter: url(#glow);
+      }
+
+      .node {
+        fill: #ffffff;
+        stroke: #ddd6fe;
+        stroke-width: 1.2;
+      }
+
+      .line {
+        fill: none;
+        stroke: #8b5cf6;
+        stroke-width: 2;
+        marker-end: url(#arrow);
+      }
+
+      .title {
+        fill: #ffffff;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 24px;
+        font-weight: 900;
+      }
+
+      .core-subtitle {
+        fill: #f5f3ff;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .label {
+        fill: #111827;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 18px;
+        font-weight: 850;
+      }
+
+      .hint {
+        fill: #64748b;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .frame {
+          fill: #111827;
+          stroke: #4c1d95;
+        }
+
+        .node {
+          fill: #1f2937;
+          stroke: #6d28d9;
+        }
+
+        .label {
+          fill: #f8fafc;
+        }
+
+        .hint {
+          fill: #cbd5e1;
+        }
+      }
+    </style>
+  </defs>
+  <rect class="frame" x="12" y="12" width="1096" height="236" rx="22"/>
+  <rect class="core" x="430" y="88" width="260" height="84" rx="18"/>
+  <text class="title" x="560" y="124" text-anchor="middle">Report 对象</text>
+  <text class="core-subtitle" x="560" y="153" text-anchor="middle">结构化数据中枢</text>
+
+  <g>
+    <rect class="node" x="70" y="44" width="190" height="58" rx="14"/>
+    <text class="label" x="165" y="78" text-anchor="middle">summary_table</text>
+    <text class="hint" x="165" y="96" text-anchor="middle">汇总指标</text>
+  </g>
+  <g>
+    <rect class="node" x="70" y="158" width="190" height="58" rx="14"/>
+    <text class="label" x="165" y="192" text-anchor="middle">detail_tables</text>
+    <text class="hint" x="165" y="210" text-anchor="middle">特征明细</text>
+  </g>
+  <g>
+    <rect class="node" x="280" y="44" width="190" height="58" rx="14"/>
+    <text class="label" x="375" y="78" text-anchor="middle">trend_tables</text>
+    <text class="hint" x="375" y="96" text-anchor="middle">时间趋势</text>
+  </g>
+  <g>
+    <rect class="node" x="280" y="158" width="190" height="58" rx="14"/>
+    <text class="label" x="375" y="192" text-anchor="middle">metadata</text>
+    <text class="hint" x="375" y="210" text-anchor="middle">运行上下文</text>
+  </g>
+
+  <g>
+    <rect class="node" x="760" y="44" width="150" height="58" rx="14"/>
+    <text class="label" x="835" y="78" text-anchor="middle">Excel/HTML</text>
+    <text class="hint" x="835" y="96" text-anchor="middle">交付报表</text>
+  </g>
+  <g>
+    <rect class="node" x="760" y="158" width="150" height="58" rx="14"/>
+    <text class="label" x="835" y="192" text-anchor="middle">看板接入</text>
+    <text class="hint" x="835" y="210" text-anchor="middle">内部分析</text>
+  </g>
+  <g>
+    <rect class="node" x="930" y="101" width="130" height="58" rx="14"/>
+    <text class="label" x="995" y="135" text-anchor="middle">Agent</text>
+    <text class="hint" x="995" y="153" text-anchor="middle">定制加工</text>
+  </g>
+
+  <path class="line" d="M260 73 C320 73 352 105 426 118"/>
+  <path class="line" d="M260 187 C320 187 352 155 426 142"/>
+  <path class="line" d="M470 73 C496 82 518 88 536 94"/>
+  <path class="line" d="M470 187 C496 178 518 172 536 166"/>
+  <path class="line" d="M694 116 C724 100 740 82 756 73"/>
+  <path class="line" d="M694 144 C724 160 740 178 756 187"/>
+  <path class="line" d="M910 73 C946 82 966 96 980 101"/>
+  <path class="line" d="M910 187 C946 178 966 164 980 159"/>
+</svg>

@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="132" viewBox="0 0 1120 132" role="img" aria-labelledby="title desc">
+  <title id="title">MARS pipeline</title>
+  <desc id="desc">MARS 从数据画像到报表导出的风控分析建模流程轨道。</desc>
+  <defs>
+    <linearGradient id="rail-gradient" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <filter id="node-glow" x="-20%" y="-40%" width="140%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="3.2" flood-color="#8b5cf6" flood-opacity="0.32"/>
+    </filter>
+    <style>
+      .panel {
+        fill: #f8fafc;
+        stroke: #d8b4fe;
+        stroke-width: 1;
+      }
+
+      .rail {
+        fill: none;
+        stroke: url(#rail-gradient);
+        stroke-linecap: round;
+        stroke-width: 3;
+      }
+
+      .dot {
+        fill: #ffffff;
+        stroke: #8b5cf6;
+        stroke-width: 2.2;
+      }
+
+      .dot-main {
+        fill: #8b5cf6;
+        filter: url(#node-glow);
+      }
+
+      .label {
+        fill: #111827;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+      }
+
+      .sub {
+        fill: #64748b;
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1.1px;
+      }
+
+      .todo {
+        fill: #7c3aed;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .panel {
+          fill: #111827;
+          stroke: #6d28d9;
+        }
+
+        .dot {
+          fill: #1f2937;
+          stroke: #a78bfa;
+        }
+
+        .label {
+          fill: #f8fafc;
+        }
+
+        .sub {
+          fill: #cbd5e1;
+        }
+      }
+    </style>
+  </defs>
+  <rect class="panel" x="12" y="12" width="1096" height="108" rx="18"/>
+  <path class="rail" d="M88 62 H1032"/>
+  <g text-anchor="middle">
+    <g transform="translate(88 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Profile</text>
+      <text class="sub" y="36">DATA</text>
+    </g>
+    <g transform="translate(242 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Bin/Evaluate</text>
+      <text class="sub" y="36">RISK</text>
+    </g>
+    <g transform="translate(396 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Analyze</text>
+      <text class="sub" y="36">FEATURE</text>
+    </g>
+    <g transform="translate(550 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Select</text>
+      <text class="sub" y="36">FILTER</text>
+    </g>
+    <g transform="translate(704 62)">
+      <circle class="dot-main" r="12"/>
+      <text class="label" y="-24">Modeling Pipeline</text>
+      <text class="sub" y="38">MODEL</text>
+    </g>
+    <g transform="translate(878 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Monitor <tspan class="todo">TODO</tspan></text>
+      <text class="sub" y="36">STABILITY</text>
+    </g>
+    <g transform="translate(1032 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Report</text>
+      <text class="sub" y="36">DELIVER</text>
+    </g>
+  </g>
+</svg>

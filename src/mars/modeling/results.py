@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping
 
 import joblib
 import pandas as pd
@@ -15,6 +15,41 @@ from mars.modeling.utils import FrameLike
 if TYPE_CHECKING:
     from mars.modeling.report import MarsModelingReport
 
+
+CSV_FLOAT_FORMAT: str = "%.17g"
+
+
+def _dataframe_schema(df: pd.DataFrame) -> Dict[str, str]:
+    """记录 DataFrame 列 dtype，供 CSV artifact 读回后恢复类型。"""
+    return {str(column): str(dtype) for column, dtype in df.dtypes.items()}
+
+
+def _restore_dataframe_schema(df: pd.DataFrame, schema: Mapping[str, Any] | None) -> pd.DataFrame:
+    """按 artifact metadata 中记录的 dtype 恢复 DataFrame。"""
+    if not schema:
+        return df
+
+    restored = df.copy()
+    for column, dtype_value in schema.items():
+        if column not in restored.columns:
+            continue
+        dtype_name = str(dtype_value)
+        try:
+            if dtype_name.startswith("datetime64"):
+                restored[column] = pd.to_datetime(restored[column])
+            elif dtype_name == "category":
+                restored[column] = restored[column].astype("category")
+            else:
+                restored[column] = restored[column].astype(dtype_name)
+        except (TypeError, ValueError):
+            continue
+    return restored
+
+
+def _read_artifact_csv(path: Path, schema: Mapping[str, Any] | None = None) -> pd.DataFrame:
+    """读取 artifact CSV，并保持浮点值的 round-trip 精度。"""
+    table = pd.read_csv(path, float_precision="round_trip")
+    return _restore_dataframe_schema(table, schema)
 
 
 @dataclass(slots=True)
@@ -165,15 +200,17 @@ class MarsModelTuningResult:
         importance_path = artifact_dir / "importance.csv"
         model_path = models_dir / "best_model.joblib"
 
-        self.history_table.to_csv(history_path, index=False)
-        self.importance_table.to_csv(importance_path, index=False)
+        self.history_table.to_csv(history_path, index=False, float_format=CSV_FLOAT_FORMAT)
+        self.importance_table.to_csv(importance_path, index=False, float_format=CSV_FLOAT_FORMAT)
         joblib.dump(self.best_model, model_path)
 
         diagnostic_files: Dict[str, str] = {}
+        diagnostic_schemas: Dict[str, Dict[str, str]] = {}
         for table_name, table in self.diagnostic_tables.items():
             file_name = f"{table_name}.csv"
-            table.to_csv(diagnostics_dir / file_name, index=False)
+            table.to_csv(diagnostics_dir / file_name, index=False, float_format=CSV_FLOAT_FORMAT)
             diagnostic_files[table_name] = file_name
+            diagnostic_schemas[table_name] = _dataframe_schema(table)
 
         metadata = {
             "artifact_type": "mars_model_tuning_result",
@@ -193,6 +230,11 @@ class MarsModelTuningResult:
             "feature_schema": self.feature_schema,
             "backend_data_mode": self.backend_data_mode,
             "category_levels": self.category_levels,
+            "table_schemas": {
+                "history": _dataframe_schema(self.history_table),
+                "importance": _dataframe_schema(self.importance_table),
+                "diagnostics": diagnostic_schemas,
+            },
             "files": {
                 "history": history_path.name,
                 "importance": importance_path.name,
@@ -261,11 +303,16 @@ class MarsModelTuningResult:
             raise FileNotFoundError(f"Artifact model file is missing: {model_path}")
 
         diagnostic_tables: Dict[str, pd.DataFrame] = {}
+        table_schemas = dict(metadata.get("table_schemas", {}))
+        diagnostic_schemas = dict(table_schemas.get("diagnostics", {}))
         for table_name, file_name in dict(files.get("diagnostics", {})).items():
             table_path = artifact_dir / "diagnostics" / file_name
             if not table_path.exists():
                 raise FileNotFoundError(f"Artifact diagnostic table is missing: {table_path}")
-            diagnostic_tables[table_name] = pd.read_csv(table_path)
+            diagnostic_tables[table_name] = _read_artifact_csv(
+                table_path,
+                dict(diagnostic_schemas.get(table_name, {})),
+            )
 
         return cls(
             model_type=metadata["model_type"],
@@ -278,11 +325,17 @@ class MarsModelTuningResult:
             best_iteration=metadata.get("best_iteration"),
             best_model=joblib.load(model_path),
             best_score=float(metadata["best_score"]),
-            history_table=pd.read_csv(history_path),
+            history_table=_read_artifact_csv(
+                history_path,
+                dict(table_schemas.get("history", {})),
+            ),
             history_path=str(metadata.get("history_path", history_path.resolve())),
             study=None,
             replay_candidates=list(metadata.get("replay_candidates", [])),
-            importance_table=pd.read_csv(importance_path),
+            importance_table=_read_artifact_csv(
+                importance_path,
+                dict(table_schemas.get("importance", {})),
+            ),
             diagnostic_tables=diagnostic_tables,
             training_config=dict(metadata.get("training_config", {})),
             library_versions=dict(metadata.get("library_versions", {})),
@@ -398,8 +451,8 @@ class MarsModelReplayResult:
         ranking_path = artifact_dir / "ranking.csv"
         leaderboard_path = artifact_dir / "leaderboard.csv"
         ranking_path.parent.mkdir(parents=True, exist_ok=True)
-        self.ranking_table.to_csv(ranking_path, index=False)
-        self.leaderboard_table.to_csv(leaderboard_path, index=False)
+        self.ranking_table.to_csv(ranking_path, index=False, float_format=CSV_FLOAT_FORMAT)
+        self.leaderboard_table.to_csv(leaderboard_path, index=False, float_format=CSV_FLOAT_FORMAT)
 
         model_files: Dict[str, str] = {}
         for model_name, model in self.models.items():
@@ -408,21 +461,27 @@ class MarsModelReplayResult:
             model_files[model_name] = file_name
 
         importance_files: Dict[str, str] = {}
+        importance_schemas: Dict[str, Dict[str, str]] = {}
         for model_name, table in self.importance_tables.items():
             file_name = f"{model_name}.csv"
-            table.to_csv(importance_dir / file_name, index=False)
+            table.to_csv(importance_dir / file_name, index=False, float_format=CSV_FLOAT_FORMAT)
             importance_files[model_name] = file_name
+            importance_schemas[model_name] = _dataframe_schema(table)
 
         diagnostic_files: Dict[str, Dict[str, str]] = {}
+        diagnostic_schemas: Dict[str, Dict[str, Dict[str, str]]] = {}
         for model_name, tables in self.diagnostic_tables.items():
             model_dir = diagnostics_dir / model_name
             model_dir.mkdir(exist_ok=True)
             table_files: Dict[str, str] = {}
+            table_schemas: Dict[str, Dict[str, str]] = {}
             for table_name, table in tables.items():
                 file_name = f"{table_name}.csv"
-                table.to_csv(model_dir / file_name, index=False)
+                table.to_csv(model_dir / file_name, index=False, float_format=CSV_FLOAT_FORMAT)
                 table_files[table_name] = file_name
+                table_schemas[table_name] = _dataframe_schema(table)
             diagnostic_files[model_name] = table_files
+            diagnostic_schemas[model_name] = table_schemas
 
         report_files = save_report_tables(self.reports, reports_dir)
 
@@ -438,6 +497,12 @@ class MarsModelReplayResult:
             "artifact_type": "mars_model_replay_result",
             "model_type": self.model_type,
             "include_scored_df": bool(scored_df_file),
+            "table_schemas": {
+                "ranking": _dataframe_schema(self.ranking_table),
+                "leaderboard": _dataframe_schema(self.leaderboard_table),
+                "importance_tables": importance_schemas,
+                "diagnostics": diagnostic_schemas,
+            },
             "files": {
                 "ranking": ranking_path.name,
                 "leaderboard": leaderboard_path.name,
@@ -496,6 +561,8 @@ class MarsModelReplayResult:
         if not leaderboard_path.exists():
             raise FileNotFoundError(f"Artifact leaderboard file is missing: {leaderboard_path}")
 
+        table_schemas = dict(metadata.get("table_schemas", {}))
+
         models: Dict[str, Any] = {}
         for model_name, file_name in files.get("models", {}).items():
             model_path = artifact_dir / "models" / file_name
@@ -504,20 +571,29 @@ class MarsModelReplayResult:
             models[model_name] = joblib.load(model_path)
 
         importance_tables: Dict[str, pd.DataFrame] = {}
+        importance_schemas = dict(table_schemas.get("importance_tables", {}))
         for model_name, file_name in files.get("importance_tables", {}).items():
             table_path = artifact_dir / "importance_tables" / file_name
             if not table_path.exists():
                 raise FileNotFoundError(f"Artifact importance table is missing: {table_path}")
-            importance_tables[model_name] = pd.read_csv(table_path)
+            importance_tables[model_name] = _read_artifact_csv(
+                table_path,
+                dict(importance_schemas.get(model_name, {})),
+            )
 
         diagnostic_tables: Dict[str, Dict[str, pd.DataFrame]] = {}
+        diagnostic_schemas = dict(table_schemas.get("diagnostics", {}))
         for model_name, table_files in dict(files.get("diagnostics", {})).items():
             model_tables: Dict[str, pd.DataFrame] = {}
+            model_schemas = dict(diagnostic_schemas.get(model_name, {}))
             for table_name, file_name in dict(table_files).items():
                 table_path = artifact_dir / "diagnostics" / model_name / file_name
                 if not table_path.exists():
                     raise FileNotFoundError(f"Artifact diagnostic table is missing: {table_path}")
-                model_tables[table_name] = pd.read_csv(table_path)
+                model_tables[table_name] = _read_artifact_csv(
+                    table_path,
+                    dict(model_schemas.get(table_name, {})),
+                )
             diagnostic_tables[model_name] = model_tables
 
         scored_df: pd.DataFrame | None = None
@@ -532,8 +608,14 @@ class MarsModelReplayResult:
 
         return cls(
             model_type=metadata["model_type"],
-            ranking_table=pd.read_csv(ranking_path),
-            leaderboard_table=pd.read_csv(leaderboard_path),
+            ranking_table=_read_artifact_csv(
+                ranking_path,
+                dict(table_schemas.get("ranking", {})),
+            ),
+            leaderboard_table=_read_artifact_csv(
+                leaderboard_path,
+                dict(table_schemas.get("leaderboard", {})),
+            ),
             models=models,
             scored_df=scored_df,
             reports=reports,

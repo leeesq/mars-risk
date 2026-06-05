@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="86" viewBox="0 0 920 86" role="img" aria-labelledby="title desc">
+  <title id="title">MODELING ANALYSIS RISK SCORE</title>
+  <desc id="desc">MARS 标语字标，四个首字母使用紫色强调。</desc>
+  <defs>
+    <linearGradient id="mars-purple" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="45%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <filter id="soft-glow" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.2" flood-color="#8b5cf6" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2.8" flood-color="#111827" flood-opacity="0.18"/>
+    </filter>
+    <style>
+      .word {
+        fill: #111827;
+        font-family: Orbitron, Rajdhani, Eurostile, "Segoe UI", Arial, sans-serif;
+        font-size: 34px;
+        font-style: italic;
+        font-weight: 900;
+        letter-spacing: 3.2px;
+      }
+
+      .initial {
+        fill: url(#mars-purple);
+        filter: url(#soft-glow);
+      }
+
+      .rail {
+        opacity: 0.72;
+        stroke: #a78bfa;
+        stroke-linecap: round;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .word {
+          fill: #f8fafc;
+        }
+
+        .rail {
+          opacity: 0.85;
+          stroke: #c4b5fd;
+        }
+      }
+    </style>
+  </defs>
+  <line class="rail" x1="76" y1="17" x2="844" y2="17" stroke-width="1.4" stroke-dasharray="1 12"/>
+  <line class="rail" x1="76" y1="69" x2="844" y2="69" stroke-width="1.4" stroke-dasharray="1 12"/>
+  <text class="word" x="460" y="54" text-anchor="middle">
+    <tspan class="initial">M</tspan><tspan>ODELING</tspan>
+    <tspan dx="34" class="initial">A</tspan><tspan>NALYSIS</tspan>
+    <tspan dx="34" class="initial">R</tspan><tspan>ISK</tspan>
+    <tspan dx="34" class="initial">S</tspan><tspan>CORE</tspan>
+  </text>
+</svg>

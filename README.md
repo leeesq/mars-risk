@@ -9,12 +9,12 @@
   / /|_/ // /| | / /_/ /\__ \
  / /  / // ___ |/ _, _/___/ /
 /_/  /_//_/  |_/_/ |_|/____/
-
- MODELING ANALYSIS RISK SCORE
  __________________________________________________________________________
 ```
 
-**面向信贷风控分析与建模的 Polars-first 高性能工具库**
+<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="760">
+
+<h2 align="center">面向信贷风控分析与建模的 Polars-first 高性能工具库</h2>
 
 [![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=for-the-badge&color=2f6f8f)](https://pypi.org/project/mars-risk/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=for-the-badge&color=364f6b)](https://pypi.org/project/mars-risk/)
@@ -22,41 +22,31 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=for-the-badge&label=CI&color=1f7a5a)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
 [![License](https://img.shields.io/github/license/leeesq/mars-risk?style=for-the-badge&color=6c5ce7)](LICENSE)
 
-`Profile -> Bin/Evaluate -> Analyze -> Select -> Model -> Monitor TODO -> Report`
+<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor TODO -> Report" width="920">
 
-[项目简介](#项目简介) · [设计原则](#设计原则) · [能力地图](#能力地图) · [性能对比](#性能对比) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [自动建模](#自动建模) · [报表导出](#excelhtml-报表导出与二次加工) · [FAQ](#faq)
+[项目简介](#项目简介) · [设计原则](#设计原则) · [能力地图](#能力地图) · [性能对比](#性能对比) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [Modeling Pipeline](#modeling-pipeline) · [报表导出](#excelhtml-报表导出与二次加工) · [FAQ](#faq)
 
 </div>
 
 ## 项目简介
 
-MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、自动建模、特征监控、模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、上线后特征监控、模型监控和报表导出，让日常风控建模流程更容易复用、审计和交付。
+MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征监控、模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、上线后特征监控、模型监控和报表导出，让日常风控建模流程更容易复用、审计和交付。
 
 MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参与评估结果、导出产物组织在同一套结构化报告体系中。使用者既可以直接生成 Excel/HTML 报表，也可以读取各模块返回的多粒度数据，继续做特征复盘、监控规则定制、内部看板接入或定制化分析。
-
-```mermaid
-flowchart LR
-    A["Raw Data"] --> B["Data Profile"]
-    B --> C["Binning Evaluation"]
-    C --> D["Feature Analysis"]
-    D --> E["Feature Selection"]
-    E --> F["Auto Modeling"]
-    F --> G["Feature Monitoring"]
-    G --> H["Model Monitoring TODO"]
-    H --> I["Excel / HTML Report"]
-```
 
 ## 设计原则
 
 - **性能优先**：面向宽表、大样本、多特征风控场景，核心计算优先使用 Polars，减少不必要的数据复制和跨框架转换。
 - **sklearn 风格**：底层算法对象保持 `fit` / `transform` / `evaluate` 等熟悉范式，便于接入现有建模实验和 Pipeline。
 - **Pandas/Polars 兼容**：核心计算优先走 Polars，同时兼容 Pandas 和 Polars 的输入与输出；需要保持原类型的链路尽量减少无意义转换。
-- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、自动建模、特征监控、报表导出组织能力。
+- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征监控、报表导出组织能力。
 - **模块可串联**：分箱规则、指标明细、筛选结果、模型结果和 report 对象可在模块间复用，减少 Notebook、Excel 和零散脚本中的重复加工。
 - **补齐开源空白**：聚焦通用开源工具通常覆盖不足的信贷风控宽表分析、特征监控、报表交付和可复盘数据对象。
 - **可审计与可二次加工**：各模块 report 保留多粒度结构化表，支持 Excel/HTML 导出、内部看板接入，以及借助 Agent 做定制化摘要和报告重排。
 
 ## 能力地图
+
+模块链路：数据画像 -> 分箱评估 -> 特征分析 -> 特征筛选 -> Modeling Pipeline -> 特征监控 -> 模型监控 TODO -> Excel/HTML 报表导出。
 
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
@@ -64,7 +54,7 @@ flowchart LR
 | 分箱评估 | `MarsNativeBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
-| 自动建模 | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
+| Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
 | 特征监控 | `MarsBinEvaluator` / `profile_risk` | PSI、缺失趋势、分箱趋势、Lift、按月/周/分组监控 | `MarsEvaluationReport` |
 | 模型监控（TODO） | TODO | 模型上线后稳定性、模型分分箱趋势、漂移监控、监控报表 | TODO |
 | Excel/HTML 报表导出 | `write_excel` / `write_html` / `build_scorecard` | 画像报表、风险评估报表、建模评估报表、评分卡映射、部署 SQL | Excel、HTML、`MarsScorecard` |
@@ -103,7 +93,7 @@ MARS 的原生等频/等宽分箱不只是生成切点。围绕风控特征分�
 - `merge_small_bins` 可在等频/等宽后自动合并低占比碎片箱，减少极端宽表中的不稳定分箱。
 - `remove_empty_bins` 可在等宽场景自动清理空箱，适配长尾、零膨胀和稀疏分布。
 - 原生分箱支持处理类别特征，最优分箱支持类别合并，用于降低高基数类别带来的不稳定性。
-- 分箱规则可以继续进入特征分析、特征监控、自动建模结果和后续监控报表，减少从探索到部署之间的规则重写。
+- 分箱规则可以继续进入特征分析、特征监控、Modeling Pipeline 结果和后续监控报表，减少从探索到部署之间的规则重写。
 
 ### 最优分箱：MarsOptimalBinner vs optbinning
 
@@ -251,7 +241,7 @@ selected_features = selector.selected_features_
 selection_report = selector.get_eval_report(df)
 ```
 
-### 自动建模
+### Modeling Pipeline
 
 建模调参需要安装 `ml` 和 `tuning` 可选依赖。
 
@@ -300,9 +290,9 @@ replay_result = MarsModelReplayRunner().run(
 | 建模切片 | `dataset_flag_col` 只表示 train/val/oot 等建模样本切片 |
 | 文件输出 | 路径参数支持 `str | Path`；`history_path=None` 表示不写调参历史文件 |
 
-## 自动建模
+## Modeling Pipeline
 
-自动建模仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。
+Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。
 
 当前支持 XGBoost（`xgb`）、LightGBM（`lgb`）、CatBoost（`cbt` / `cat` / `catboost`）和 Logistic Regression（`lr` / `logistic`）。逻辑回归支持 numeric 与 WOE 两种特征模式。
 
@@ -322,6 +312,10 @@ replay_result = MarsModelReplayRunner().run(
 完整模型监控仍为 TODO，后续补充模型分分箱后的趋势统计、上线后漂移监控和监控报表。
 
 ## Excel/HTML 报表导出与二次加工
+
+<div align="center">
+  <img src="docs/assets/mars-report-flow.svg" alt="Report 对象输出 summary_table、detail_tables、trend_tables、metadata，并支持 Excel/HTML、看板和 Agent 二次加工" width="920">
+</div>
 
 画像、风险评估、建模评估和评分卡结果都以对象形式返回。`MarsProfileReport`、`MarsEvaluationReport`、`MarsModelingReport` 等 report 对象会保留 `summary_table`、`detail_table` / `detail_tables`、`trend_tables`、`metadata` / `report_meta` 等结构化数据，使用者可以按模块、特征、分组、时间或样本切片继续加工。
 
