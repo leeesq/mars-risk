@@ -479,7 +479,10 @@ class MarsProfileReport:
 
         # 1. 依赖检查
         if importlib.util.find_spec("xlsxwriter") is None:
-            logger.error("'xlsxwriter' is required for Excel export. Install it via: pip install xlsxwriter")
+            logger.error(
+                "'xlsxwriter' is included in the base mars-risk installation; "
+                "reinstall mars-risk if missing."
+            )
             return
 
         try:

@@ -211,12 +211,12 @@ class _ModelReportHtmlRenderer:
 
     @staticmethod
     def _require_pyplot() -> Any:
-        """加载 Matplotlib pyplot，缺失可选依赖时抛出可行动错误。"""
+        """加载 Matplotlib pyplot，缺失基础依赖时抛出可行动错误。"""
         plt = _optional_import("matplotlib.pyplot")
         if plt is None:
             raise ImportError(
                 "matplotlib is required for MarsModelingReport.to_html(). "
-                "Install it with `pip install \"mars-risk[plot]\"`."
+                "It is included in the base mars-risk installation; reinstall mars-risk if missing."
             )
         return plt
 

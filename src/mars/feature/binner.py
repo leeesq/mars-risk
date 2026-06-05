@@ -503,8 +503,9 @@ class MarsBinnerBase(MarsTransformer):
 
         y_name = "_y_tmp"
         y_series = pl.Series(name=y_name, values=self._cache_y)
-        total_bads = y_series.sum()
-        total_goods = len(y_series) - total_bads
+        epsilon: float = 1e-6
+        total_bads: float = float(y_series.sum() or 0.0)
+        total_goods: float = float(len(y_series)) - total_bads
 
         # 涵盖数值和类别特征
         bin_cols_orig = [
@@ -549,9 +550,12 @@ class MarsBinnerBase(MarsTransformer):
                 pl.concat(stats_list)
                 .with_columns(
                     (
-                        ((pl.col("bin_bads") + 1e-6) / (total_bads + 1e-6))
+                        ((pl.col("bin_bads") + epsilon) / (total_bads + epsilon))
                         /
-                        ((pl.col("bin_total") - pl.col("bin_bads") + 1e-6) / (total_goods + 1e-6))
+                        (
+                            (pl.col("bin_total") - pl.col("bin_bads") + epsilon)
+                            / (total_goods + epsilon)
+                        )
                     )
                     .log()
                     .cast(pl.Float32)
@@ -936,9 +940,10 @@ class MarsBinnerBase(MarsTransformer):
             pl.col(y_name).sum().alias("total_bads")
         ]).collect()
 
-        total_counts = meta[0, "total_counts"]
-        total_bads = meta[0, "total_bads"]
-        total_goods = total_counts - total_bads
+        epsilon: float = 1e-6
+        total_counts: float = float(meta[0, "total_counts"] or 0.0)
+        total_bads: float = float(meta[0, "total_bads"] or 0.0)
+        total_goods: float = total_counts - total_bads
         global_bad_rate = (total_bads / total_counts) if total_counts > 0 else 0
 
         current_cols = X_bin_lazy.collect_schema().names()
@@ -983,8 +988,8 @@ class MarsBinnerBase(MarsTransformer):
         ]).with_columns([
             (pl.col("count") / total_counts).cast(pl.Float32).alias("count_dist"),
             (pl.col("bad") / pl.col("count")).cast(pl.Float32).alias("bad_rate"),
-            (pl.col("bad") / (total_bads + 1e-6)).cast(pl.Float32).alias("bad_dist"),
-            (pl.col("good") / (total_goods + 1e-6)).cast(pl.Float32).alias("good_dist")
+            (pl.col("bad") / (total_bads + epsilon)).cast(pl.Float32).alias("bad_dist"),
+            (pl.col("good") / (total_goods + epsilon)).cast(pl.Float32).alias("good_dist")
         ])
 
         # 计算 WOE 与 IV
@@ -992,9 +997,9 @@ class MarsBinnerBase(MarsTransformer):
             stats_df
             .with_columns([
                 (
-                    ((pl.col("bad") + 1e-6) / (total_bads + 1e-6))
+                    ((pl.col("bad") + epsilon) / (total_bads + epsilon))
                     /
-                    ((pl.col("good") + 1e-6) / (total_goods + 1e-6))
+                    ((pl.col("good") + epsilon) / (total_goods + epsilon))
                 )
                 .log()
                 .cast(pl.Float32)
