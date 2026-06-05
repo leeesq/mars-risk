@@ -130,6 +130,39 @@ def test_native_cart_requires_y_and_quantile_allows_label_free(sample_credit_df)
     assert "age_bin" in binner.transform(features).columns
 
 
+def test_native_uniform_remove_empty_bins_handles_nan_and_special_values() -> None:
+    values = np.array(
+        [
+            -999.0,
+            np.nan,
+            0.0,
+            0.1,
+            0.2,
+            1.5,
+            3.0,
+            np.nan,
+            8.0,
+            13.0,
+        ],
+        dtype=np.float32,
+    )
+    features = pl.DataFrame({"score": values})
+
+    binner = MarsNativeBinner(
+        method="uniform",
+        n_bins=6,
+        special_values=[-999.0],
+        remove_empty_bins=True,
+    )
+
+    transformed = binner.fit_transform(features, features=["score"])
+
+    assert transformed.height == features.height
+    assert "score_bin" in transformed.columns
+    assert binner.bin_cuts_["score"][0] == float("-inf")
+    assert binner.bin_cuts_["score"][-1] == float("inf")
+
+
 def test_optimal_binner_requires_y(sample_credit_df):
     features = sample_credit_df.select(["age", "income"])
     target = sample_credit_df.get_column("target")

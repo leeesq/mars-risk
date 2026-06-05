@@ -2092,11 +2092,17 @@ class MarsNativeBinner(MarsBinnerBase):
             for c in pending_optimization_cols:
                 cuts = initial_cuts_map[c]
                 breaks = cuts[1:-1]
-                target_col = pl.col(c).filter(~pl.col(c).is_nan())
                 safe_exclude = col_safe_excludes[c]
 
+                # 空箱优化必须使用单个组合掩码；先过滤 NaN 再叠加 special_values
+                # 会让第二个掩码仍保持原始行数，宽表场景下触发 Polars ShapeError。
+                col_dtype = X.schema[c]
+                keep_mask = pl.lit(True)
+                if col_dtype in [pl.Float32, pl.Float64]:
+                    keep_mask &= ~pl.col(c).is_nan()
                 if safe_exclude:
-                    target_col = target_col.filter(~pl.col(c).is_in(safe_exclude))
+                    keep_mask &= ~pl.col(c).is_in(safe_exclude)
+                target_col = pl.col(c).filter(keep_mask)
 
                 labels = [str(i) for i in range(len(breaks)+1)]
 

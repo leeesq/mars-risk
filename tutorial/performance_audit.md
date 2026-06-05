@@ -30,7 +30,8 @@
 ## 推荐流程
 
 ```bash
-python benchmarks/benchmark_binning_speed.py --rows 50000 --features 1000 --repeats 3
+python benchmarks/benchmark_binning_speed.py native --rows 200000 --features 3000 --repeats 1
+python benchmarks/benchmark_binning_speed.py optimal --rows 50000 --features 1000 --repeats 3
 python -m pytest -q
 ```
 
@@ -39,5 +40,5 @@ python -m pytest -q
 - `MarsDataProfiler.generate_profile` 总耗时
 - `MarsNativeBinner.fit` / `transform` 总耗时
 - `profile_risk` 端到端耗时
-- 峰值内存占用
+- 结束内存增量与峰值内存增量
 - Pandas 输入与 Polars 输入的差异

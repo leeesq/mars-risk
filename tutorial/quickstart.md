@@ -122,4 +122,4 @@ income_mapping = binner.get_bin_mapping("income")
 ## 6. 下一步
 
 - 查看 [performance_audit.md](performance_audit.md) 了解当前性能整理方向。
-- 运行 [../benchmarks/benchmark_binning_speed.py](../benchmarks/benchmark_binning_speed.py) 复现 5w×1000 特征速度对比。
+- 运行 [../benchmarks/benchmark_binning_speed.py](../benchmarks/benchmark_binning_speed.py) 复现 README 中的原生分箱和最优分箱性能对比。

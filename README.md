@@ -66,21 +66,37 @@ flowchart LR
 MARS 最初的设计动机之一是让宽表风控分箱和 WOE 转换更快。下面结果来自本仓库的可复现脚本：
 
 ```bash
-conda run -n mars python benchmarks/benchmark_binning_speed.py --rows 50000 --features 1000 --repeats 3 --include-toad
+conda run -n mars python benchmarks/benchmark_binning_speed.py native --rows 200000 --features 3000 --repeats 1
+conda run -n mars python benchmarks/benchmark_binning_speed.py optimal --rows 50000 --features 1000 --repeats 3
 ```
 
-- 数据规模：`50,000` 行 × `1,000` 个数值特征
-- 计时范围：fit + WOE transform
-- 重复次数：`3`；随机种子：`2026`
+- 计时范围：数据生成 + fit + WOE transform + 本轮清理
+- 内存口径：主进程及其子进程的 RSS；结束增量为本轮结束 RSS - 起始 RSS，峰值增量为采样峰值 RSS - 起始 RSS
 - Python：`3.10.19`；系统：`Windows-10-10.0.26200-SP0`
 - `toad` 仅为本地竞品对比临时安装，不属于 MARS 项目依赖
+- 结束增量会受 Python、Polars、NumPy 内存分配器缓存影响；比较峰值压力时优先看“峰值增量”
 
-| 方法 | 平均耗时(s) | 最快(s) | 最慢(s) | 相对 MarsNative | 备注 |
-| --- | ---: | ---: | ---: | ---: | --- |
-| MarsNativeBinner | 7.394 | 7.276 | 7.490 | 1.00x | Polars 原生等频分箱 |
-| MarsOptimalBinner | 17.337 | 14.493 | 22.908 | 2.34x | 单特征 time_limit=1s |
-| optbinning.BinningProcess | 110.566 | 108.618 | 113.995 | 14.95x | 单特征 time_limit=1s |
-| toad Combiner + WOETransformer | 8.092 | 8.020 | 8.136 | 1.09x | 外部竞品库，不属于项目依赖 |
+### 原生分箱：toad vs MarsNativeBinner
+
+- 数据规模：`200,000` 行 × `3,000` 个数值特征
+- 重复次数：`1`；随机种子：`2026`
+
+| 场景 | 方法 | 平均耗时(s) | 最快(s) | 最慢(s) | 平均结束增量(MB) | 峰值增量(MB) | 相对基准 | 备注 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 等频分箱 | toad Combiner + WOETransformer | 126.083 | 126.083 | 126.083 | 30.7 | 20516.1 | 1.60x | 先运行；外部竞品库，不属于项目依赖 |
+| 等频分箱 | MarsNativeBinner | 78.768 | 78.768 | 78.768 | 3348.2 | 6768.8 | 1.00x | method=quantile |
+| 等宽分箱 | toad Combiner + WOETransformer | 105.859 | 105.859 | 105.859 | 6.7 | 20468.4 | 1.31x | 先运行；外部竞品库，不属于项目依赖 |
+| 等宽分箱 | MarsNativeBinner | 81.058 | 81.058 | 81.058 | -7.8 | 6727.7 | 1.00x | method=uniform |
+
+### 最优分箱：MarsOptimalBinner vs optbinning
+
+- 数据规模：`50,000` 行 × `1,000` 个数值特征
+- 重复次数：`3`；随机种子：`2026`
+
+| 场景 | 方法 | 平均耗时(s) | 最快(s) | 最慢(s) | 平均结束增量(MB) | 峰值增量(MB) | 相对基准 | 备注 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 最优分箱 | MarsOptimalBinner | 28.011 | 26.627 | 29.189 | 282.0 | 5531.5 | 1.00x | 单特征 time_limit=1s |
+| 最优分箱 | optbinning.BinningProcess | 125.826 | 124.474 | 126.538 | 17.0 | 628.4 | 4.49x | 单特征 time_limit=1s |
 
 ## 安装
 
