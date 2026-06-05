@@ -149,103 +149,77 @@ class ModelPredictor:
     def predict(
         self,
         df: FrameLike,
-        pred_col_name: str = "pred_score",
+        pred_col: str = "pred_score",
         inplace: bool = False,
     ) -> FrameLike:
         """
-        对数据集评分并追加预测列。
+        为一份样本追加预测分列。
 
         Parameters
         ----------
         df : pandas.DataFrame or polars.DataFrame
-            待评分数据。
-        pred_col_name : str, default "pred_score"
-            追加的预测列名。
+            待打分样本表。
+        pred_col : str, default "pred_score"
+            追加到结果表中的预测分列名。
         inplace : bool, default False
-            Pandas 输入时是否原地追加。
+            当输入是 pandas DataFrame 时，是否直接在原对象上写入预测分。
 
         Returns
         -------
         pandas.DataFrame or polars.DataFrame
-            与输入类型一致的评分数据。
-
-        Examples
-        --------
-        >>> class DummyModel:
-        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
-        ...         return np.column_stack([1.0 - probs, probs])
-        >>> predictor = ModelPredictor(DummyModel(), feature_list=["age"])
-        >>> scored = predictor.predict(pd.DataFrame({"age": [20, 30]}))
-        >>> scored["pred_score"].round(2).tolist()
-        [0.2, 0.3]
+            追加了 `pred_col` 的打分结果，尽量保持输入表类型。
         """
         prefer_polars = is_polars_dataframe(df)
         if prefer_polars and not inplace and isinstance(df, pl.DataFrame):
             preds = self._safe_predict_logic_polars(df)
-            return df.with_columns(pl.Series(pred_col_name, preds))
+            return df.with_columns(pl.Series(pred_col, preds))
         df_pd = df if isinstance(df, pd.DataFrame) and inplace else to_pandas_frame(df)
-        df_pd[pred_col_name] = self._safe_predict_logic(df_pd)
+        df_pd[pred_col] = self._safe_predict_logic(df_pd)
         return restore_frame_type(df_pd, prefer_polars)
 
     def evaluate(
         self,
         df: FrameLike,
         group_col: str,
-        target_col: str,
+        target: str,
         *,
         time_col: str | None = None,
-        val_target_col: str | None = None,
+        val_target: str | None = None,
         benchmark_col: str | None = None,
-        pred_col_name: str = "pred_score",
+        pred_col: str = "pred_score",
     ) -> MarsModelingReport:
         """
-        评分后立即生成评估报告。
+        对样本打分并立即构建模型评估报告。
 
         Parameters
         ----------
         df : pandas.DataFrame or polars.DataFrame
-            待评分并评估的数据。
+            待打分和评估的样本表。
         group_col : str
-            数据集分组列，例如 ``"train"``、``"val"`` 或月份分组。
-        target_col : str
-            二分类真实标签列。
+            已存在的样本分组列名。
+        target : str
+            二分类目标列名。
         time_col : str, optional
-            时间列，用于补充时序明细。
-        val_target_col : str, optional
-            验证目标列，适用于目标字段分阶段落地的场景。
+            原始时间列名，用于补充报告中的时间边界。
+        val_target : str, optional
+            替代验证目标列名。
         benchmark_col : str, optional
-            基准模型分数字段。
-        pred_col_name : str, default "pred_score"
-            写入预测分数的列名。
+            benchmark 或 champion 模型分数列名。
+        pred_col : str, default "pred_score"
+            追加并用于评估的预测分列名。
 
         Returns
         -------
         MarsModelingReport
-            评分数据对应的建模评估报告。
-
-        Examples
-        --------
-        >>> class DummyModel:
-        ...     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        ...         probs = X["age"].to_numpy(dtype=float) / 100.0
-        ...         return np.column_stack([1.0 - probs, probs])
-        >>> df = pd.DataFrame({
-        ...     "age": [20, 80, 40, 60],
-        ...     "target": [0, 1, 0, 1],
-        ...     "sample": ["train", "train", "val", "val"],
-        ... })
-        >>> predictor = ModelPredictor(DummyModel(), feature_list=["age"])
-        >>> report = predictor.evaluate(df, group_col="sample", target_col="target")
-        >>> isinstance(report, MarsModelingReport)
-        True
+            基于打分结果生成的模型评估报告。
         """
-        scored = self.predict(df, pred_col_name=pred_col_name, inplace=False)
-        evaluator = MarsModelEvaluator(
+        scored = self.predict(df, pred_col=pred_col, inplace=False)
+        return MarsModelEvaluator().evaluate(
+            scored,
+            pred_col=pred_col,
             group_col=group_col,
-            target_col=target_col,
+            target=target,
             time_col=time_col,
             benchmark_col=benchmark_col,
-            val_target_col=val_target_col,
+            val_target=val_target,
         )
-        return evaluator.evaluate(scored, pred_col=pred_col_name)

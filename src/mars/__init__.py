@@ -6,6 +6,7 @@ from .analysis import (
     MarsEvaluationReport,
     MarsProfileConfig,
     MarsProfileReport,
+    MarsRiskProfile,
     profile_risk,
     profile_stats,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "MarsDataProfiler",
     "MarsProfileConfig",
     "MarsProfileReport",
+    "MarsRiskProfile",
     "MarsNativeBinner",
     "MarsOptimalBinner",
     "MarsBinEvaluator",

@@ -1,4 +1,4 @@
-# Performance Audit Checklist
+# 性能审计清单
 
 这份清单记录了当前版本已经完成的低风险性能整理，以及下一轮值得继续推进的热点。
 
@@ -30,7 +30,7 @@
 ## 推荐流程
 
 ```bash
-python tutorial/benchmark_synthetic.py
+python benchmarks/benchmark_binning_speed.py --rows 50000 --features 1000 --repeats 3
 python -m pytest -q
 ```
 

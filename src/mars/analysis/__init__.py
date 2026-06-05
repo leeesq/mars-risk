@@ -1,7 +1,7 @@
 """MARS 数据画像与分箱评估模块的公开导出入口。"""
 
 from .config import MarsProfileConfig
-from .evaluator import MarsBinEvaluator, profile_risk
+from .evaluator import MarsBinEvaluator, MarsRiskProfile, profile_risk
 from .profiler import MarsDataProfiler, profile_stats
 from .report import MarsEvaluationReport, MarsProfileReport
 
@@ -11,6 +11,7 @@ __all__ = [
     "MarsProfileReport",
     "MarsBinEvaluator",
     "MarsEvaluationReport",
+    "MarsRiskProfile",
     "profile_stats",
     "profile_risk"
 ]

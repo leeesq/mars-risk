@@ -14,48 +14,25 @@ from mars.modeling.utils import FrameLike, split_name_sort_key, to_pandas_frame
 
 class MarsModelEvaluator:
     """
-    构建二分类风险模型的分组评估报告。
+    构建二分类模型分组评估报告。
 
-    Parameters
-    ----------
-    group_col : str
-        数据集切片列，通常为 dataset flag。
-    target_col : str
-        真实标签列。
-    benchmark_col : str, optional
-        基准模型或旧模型分数列。
-    time_col : str, optional
-        时间列，用于报告各切片起止时间。
-    val_target_col : str, optional
-        可选校验标签列。
-    feature_cols : sequence of str, optional
-        需要计算特征 PSI 的特征列。
-    importance_table : pandas.DataFrame, optional
-        特征重要性表，写入报告 metadata。
+    评估器在 public API 层面按无状态工具使用：样本数据、预测分、目标列、分组列、
+    benchmark 分数、时间列、特征 PSI 列和重要性表都由每次 :meth:`evaluate`
+    调用传入。同一个实例可以连续评估不同模型、不同样本或不同切片，不会复用上一次
+    评估上下文中的列名。
 
-    Attributes
-    ----------
-    group_col : str
-        数据集切片列。
-    target_col : str
-        真实标签列。
-    benchmark_col : str or None
-        基准模型或旧模型分数列。
-    time_col : str or None
-        时间列。
-    val_target_col : str or None
-        可选校验标签列。
-    feature_cols : list of str
-        需要计算特征 PSI 的特征列。
-    importance_table : pandas.DataFrame or None
-        特征重要性表副本。
+    Notes
+    -----
+    `group_col` 表示已经存在的样本分组列，例如 `dataset_flag`；`time_col`
+    只用于报告中补充每个分组的时间边界；`feature_cols` 只影响特征 PSI 明细，
+    不参与模型指标计算。
 
     Examples
     --------
     >>> import pandas as pd
     >>> df = pd.DataFrame({"dataset_flag": ["train", "val"], "y": [0, 1], "score": [0.1, 0.9]})
-    >>> evaluator = MarsModelEvaluator(group_col="dataset_flag", target_col="y")
-    >>> report = evaluator.evaluate(df, pred_col="score")
+    >>> evaluator = MarsModelEvaluator()
+    >>> report = evaluator.evaluate(df, pred_col="score", group_col="dataset_flag", target="y")
     >>> report.summary_table is not None
     True
     """
@@ -80,28 +57,21 @@ class MarsModelEvaluator:
 
     def __init__(
         self,
-        *,
-        group_col: str,
-        target_col: str,
-        benchmark_col: str | None = None,
-        time_col: str | None = None,
-        val_target_col: str | None = None,
-        feature_cols: Sequence[str] | None = None,
-        importance_table: pd.DataFrame | None = None,
     ) -> None:
         """
-        初始化模型评估器的列配置和可选元数据。
+        初始化一个空评估器。
 
-        传入列名仅保存为评估上下文，具体列存在性和时间列解析会在
-        ``evaluate`` 调用时基于实际数据统一校验。
+        构造函数不接收数据列名，也不绑定某一次评估数据。列名和可选元数据会在
+        `evaluate` 调用期间写入实例，用于复用内部 helper；下一次调用会重新覆盖这些
+        临时上下文。
         """
-        self.group_col: str = group_col
-        self.target_col: str = target_col
-        self.benchmark_col: str | None = benchmark_col
-        self.time_col: str | None = time_col
-        self.val_target_col: str | None = val_target_col
-        self.feature_cols: List[str] = list(feature_cols or [])
-        self.importance_table: pd.DataFrame | None = None if importance_table is None else importance_table.copy()
+        self.group_col: str = ""
+        self.target_col: str = ""
+        self.benchmark_col: str | None = None
+        self.time_col: str | None = None
+        self.val_target: str | None = None
+        self.feature_cols: List[str] = []
+        self.importance_table: pd.DataFrame | None = None
 
     def _validate_frame(self, df: pd.DataFrame, pred_col: str) -> pd.DataFrame:
         """校验必需列，并在配置时间列时统一转换为 datetime。"""
@@ -110,8 +80,8 @@ class MarsModelEvaluator:
             required.add(self.time_col)
         if self.benchmark_col:
             required.add(self.benchmark_col)
-        if self.val_target_col:
-            required.add(self.val_target_col)
+        if self.val_target:
+            required.add(self.val_target)
 
         missing = required.difference(df.columns)
         if missing:
@@ -226,8 +196,8 @@ class MarsModelEvaluator:
                     ordered_columns.append(candidate)
 
         sections = [f"Target: {self.target_col}"]
-        if self.val_target_col:
-            sections.append(f"Val Target: {self.val_target_col}")
+        if self.val_target:
+            sections.append(f"Val Target: {self.val_target}")
 
         for section in sections:
             for column_name in self.COLUMN_ORDER:
@@ -603,34 +573,69 @@ class MarsModelEvaluator:
             return pd.DataFrame()
         return pd.DataFrame(rows).sort_values(["feature_psi", "feature", self.group_col], ascending=[False, True, True])
 
-    def evaluate(self, df: FrameLike, *, pred_col: str) -> MarsModelingReport:
+    def evaluate(
+        self,
+        df: FrameLike,
+        *,
+        pred_col: str,
+        group_col: str,
+        target: str,
+        benchmark_col: str | None = None,
+        time_col: str | None = None,
+        val_target: str | None = None,
+        feature_cols: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | None = None,
+    ) -> MarsModelingReport:
         """
-        针对一个预测分数列生成评估报告。
+        对一次已打分样本构建模型评估报告。
 
         Parameters
         ----------
         df : pandas.DataFrame or polars.DataFrame
-            已包含预测分数的数据框。
+            已包含预测分和目标列的样本表。
         pred_col : str
-            预测分数列名。
+            当前模型预测分列名。
+        group_col : str
+            已存在的样本分组列名，常见取值是 `dataset_flag`。
+        target : str
+            二分类目标列名。
+        benchmark_col : str, optional
+            benchmark 或 champion 模型分数列名；传入后会计算 AUC/KS 差异。
+        time_col : str, optional
+            原始时间列名；传入后会在汇总表中展示每个分组的起止时间。
+        val_target : str, optional
+            替代验证目标列名；适合在主目标之外同时观察另一个口径。
+        feature_cols : sequence of str, optional
+            用于计算特征 PSI 明细的特征列名。
+        importance_table : pandas.DataFrame, optional
+            特征重要性表；会复制进报告元数据，便于导出和追踪。
 
         Returns
         -------
         MarsModelingReport
-            汇总指标、明细表与轻量元数据。
+            包含汇总指标、曲线/分布明细表和报告元数据的模型评估报告。
 
         Examples
         --------
+        >>> import pandas as pd
         >>> df = pd.DataFrame({
         ...     "pred": [0.1, 0.8, 0.3, 0.7],
         ...     "target": [0, 1, 0, 1],
         ...     "sample": ["train", "train", "val", "val"],
         ... })
-        >>> evaluator = MarsModelEvaluator(group_col="sample", target_col="target")
-        >>> report = evaluator.evaluate(df, pred_col="pred")
+        >>> evaluator = MarsModelEvaluator()
+        >>> report = evaluator.evaluate(df, pred_col="pred", group_col="sample", target="target")
         >>> report.summary_table.shape[0]
         2
         """
+        self.group_col = group_col
+        self.target_col = target
+        self.benchmark_col = benchmark_col
+        self.time_col = time_col
+        self.val_target = val_target
+        self.feature_cols = list(feature_cols or [])
+        self.importance_table = None if importance_table is None else importance_table.copy()
+
         df_pd = self._validate_frame(to_pandas_frame(df), pred_col)
         rows: List[Dict[Any, Any]] = []
         ordered_groups = self._get_ordered_groups(df_pd)
@@ -656,13 +661,13 @@ class MarsModelEvaluator:
                     score_psi=score_psi_map.get(str(group)),
                 )
             )
-            if self.val_target_col:
+            if self.val_target:
                 row.update(
                     self._calc_metric_block(
                         sub_df,
                         pred_col=pred_col,
-                        target_col=self.val_target_col,
-                        section_label=f"Val Target: {self.val_target_col}",
+                        target_col=self.val_target,
+                        section_label=f"Val Target: {self.val_target}",
                     )
                 )
             rows.append(row)
@@ -714,7 +719,7 @@ class MarsModelEvaluator:
             "pred_col": pred_col,
             "benchmark_col": self.benchmark_col,
             "time_col": self.time_col,
-            "val_target_col": self.val_target_col,
+            "val_target": self.val_target,
             "feature_cols": [col for col in self.feature_cols if col in df_pd.columns],
         }
         if self.importance_table is not None:

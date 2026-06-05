@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Mapping, Sequence, Tuple, Union
+from typing import Any, Dict, List, Literal, Mapping, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -18,120 +18,29 @@ from mars.modeling.utils import require_optional_module
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
-if TYPE_CHECKING:
-    from mars.analysis.evaluator import MarsBinEvaluator
-
 
 class MarsStatsSelector(MarsBaseSelector):
     """
-    全流程自动化特征筛选评估器。
+    基于风控统计指标的特征筛选器。
 
-    该组件采用多阶段过滤架构，通过连续的条件测试对特征空间进行降维，
-    提取具备高区分度、高稳定性且符合业务逻辑单调性的特征子集。
+    该筛选器将数据质量、IV/Lift、PSI、相关性和白黑名单规则串成一个漏斗式筛选流程。
+    构造函数只保存阈值、分箱策略、缺失/特殊值配置以及运行资源参数；样本数据、
+    目标列、特征范围、分组列、时间列和最大抽样量都由 `fit` 传入。
 
-    核心过滤维度包括数据质量校验、轻量级分布探查、精确区间区分度计算、
-    群体分布偏移评估、风险逻辑一致性检验以及共线性降维。
-
-    Parameters
-    ----------
-    target : str
-        目标变量列名。
-    features : list of str, optional
-        特征候选池。若为 None，将自动扫描输入数据集中剔除目标列与时间（或分组）列后的全量特征。
-    feature_data_source : dict of str to list of str, optional
-        特征到数据源标签的映射。
-    time_col : str, optional
-        时间切片列名。用于界定特征表现的时间序列，支撑跨期稳定性与风险逻辑一致性的测算。
-    profile_by : str, optional
-        稳定性探查的分组聚合维度。配置此参数将激活截面分布稳定性 (PSI) 及风险逻辑一致性 (RiskCorr) 的校验。
-        该参数支持两类映射形态的入参：
-        - 数据集内已存在的物理列名（如 'customer_segment', 'vintage'），用于执行基于特定客群或静态批次的截面分析；
-        - 时间粒度聚合指令（如 'month', 'week', 'day' 及自定义滚动周期的 '7d', '14d' 等），用于执行时间序列分析。
-        - 当使用时间粒度指令时，必须协同配置 `time_col` 参数提供原始时间基准，底层引擎将基于该时间戳列自动完成时间窗口的动态截断与衍生列生成。
-        - 若仅配置了 `time_col` 参数而未显式声明本参数，系统将默认采用 'month' 级别的时间跨期聚合策略。
-    feature_start_aware_baseline : bool, default False
-        是否按特征首次出现时点感知稳定性基准。
-    missing_thr : float, default 0.90
-        缺失率控制阈值。超过该阈值的特征将在数据质量校验阶段被剔除。
-    zeros_thr : float, default 0.90
-        零值率控制阈值，仅对数值型特征生效。
-    mode_thr : float, default 0.90
-        众数占比控制阈值，用于过滤低方差的常量特征。
-    iv_thr : float, default 0.01
-        基于最优分箱器评估的信息值 (IV) 准入下限。
-    lift_thr : float, optional, default 1.2
-        基于最优分箱器评估的单分箱提升度 (Lift) 召回下限阈值。
-    min_sample_rate : float, default 0.05
-        触发最优分箱评估提升度召回机制的最小物理箱占比前提。
-    psi_thr : float, optional, default 0.25
-        群体稳定性指标 (PSI) 容忍上限。超过该值的特征将被判定为发生分布漂移 (Data Drift)。
-    rc_thr : float, optional, default 0.5
-        风险逻辑一致性相关系数 (RiskCorr) 下限，用于防范特征分箱的违约率排序逻辑随时间发生跨期翻转。
-    corr_thr : float, optional, default 0.95
-        皮尔逊相关系数上限。用于执行基于信息值的贪心共线性去重。
-    skip_rough_scan : bool, default False
-        控制是否跳过基于原生分箱器 (`MarsNativeBinner`) 的特征筛选阶段。
-    skip_fine_scan : bool, default False
-        控制是否跳过基于最优分箱器 (`MarsOptimalBinner`) 的特征筛选阶段。
-    rough_iv_thr : float, default 0.01
-        基于原生分箱器评估的信息值 (IV) 准入下限。
-    rough_lift_thr : float, default 1.2
-        基于原生分箱器评估的单分箱提升度 (Lift) 召回下限阈值。
-    rough_min_sample_rate : float, default 0.02
-        触发原生分箱评估提升度召回机制的最小物理箱占比前提。
-    white_list : list of str, optional
-        白名单特征列表。列表内的特征将无视各项统计与稳定性约束，强制保留至结果集。
-    black_list : list of str, optional
-        黑名单特征列表。列表内的特征将在评估管道启动前被物理剥离。
-    missing_values : list, optional
-        领域自定义缺失值定义（如 [-999, 'unknown']）。将合并计入数据质量模块的缺失率统计，并分配至独立的缺失值箱。
-    special_values : list, optional
-        领域自定义特殊值定义。底层分箱引擎将对此类数值执行强制物理隔离，不参与正常区间切分。
-    binning_params : dict, optional
-        透传至最优分箱器 (`MarsOptimalBinner`) 的初始化超参数字典。
-    rough_binning_params : dict, optional
-        透传至原生分箱器 (`MarsNativeBinner`) 的初始化超参数字典。
-    max_samples : int, optional
-        全局随机采样上限，用于控制超大规模数据集下的运算时间边界。
-    batch_size : int, optional, default 100
-        向量化计算执行时的特征列并发分块大小，防范底层查询优化器 (Query Planner) 解析耗时爆炸。
-    n_jobs : int, default -1
-        并行计算的分配核心数限制。
-
-    Attributes
-    ----------
-    selected_features_ : list of str
-        最终通过所有过滤阶段保留的入模特征列表（包含匹配成功的白名单特征）。
-    report_records_ : list of dict
-        特征级评估决策明细记录。包含每个特征在评估管线中的最终状态（保留或截断）、触发该决策的逻辑节点、决策原因及决定性度量指标。
-    _funnel_stats : list of dict
-        阶段级评估漏斗统计快照。记录评估管线中各节点的输入数量、截断数量、留存绝对值及累积留存率。
-    _stage3_binner : MarsBinnerBase
-        承载最终入选特征分箱映射规则的基础分箱器实例。可调用该实例对未见数据执行区间离散化转换，或导出模型部署脚本。
-
-    Notes
-    -----
-    评估器内部持有了最优分箱规则状态。在调用 `fit` 完成特征筛选后，系统会自动触发
-    `prune` 方法裁剪冗余的非入模特征状态，以收敛序列化后的模型体积。
+    典型用法是先用粗分箱低成本压缩特征空间，再用精细分箱和稳定性规则做最终筛选。
+    `white_list` 中的特征会尽量绕过自动剔除规则，`black_list` 中的特征会被强制排除。
 
     Examples
     --------
     >>> import polars as pl
     >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-    >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
-    >>> selector.fit(df).selected_features_
+    >>> selector = MarsStatsSelector(skip_fine_scan=True)
+    >>> selector.fit(df, target="y", features=["age"]).selected_features_
     ['age']
     """
     def __init__(
         self,
         *,
-        target: str,
-        features: List[str] | None = None,
-        feature_data_source: Dict[str, List[str]] | None = None,
-        time_col: str | None = None,
-        profile_by: str | None = None,
-        feature_start_aware_baseline: bool = False,
-
         missing_thr: float = 0.90,
         zeros_thr: float = 0.90,
         mode_thr: float = 0.90,
@@ -150,92 +59,70 @@ class MarsStatsSelector(MarsBaseSelector):
         rough_lift_thr: float = 1.2,
         rough_min_sample_rate: float = 0.02,
 
-        white_list: List[str] | None = None,
-        black_list: List[str] | None = None,
-
         missing_values: List[Any] | None = None,
         special_values: List[Any] | None = None,
 
         binning_params: Dict[str, Any] | None = None,
         rough_binning_params: Dict[str, Any] | None = None,
 
-        max_samples: int | None = None,
         batch_size: int | None = 100,
         n_jobs: int = -1,
     ) -> None:
         """
-        初始化统计筛选器配置。
+        初始化统计筛选策略。
 
         Parameters
         ----------
-        target : str
-            目标变量列名。
-        features : list of str, optional
-            候选特征列表。
-        feature_data_source : dict of str to list of str, optional
-            特征到数据源标签的映射。
-        time_col : str, optional
-            时间列名。
-        profile_by : str, optional
-            分组或时间聚合维度。
-        feature_start_aware_baseline : bool, default False
-            是否按特征首次出现时点感知稳定性基准。
         missing_thr : float, default 0.90
-            缺失率阈值。
+            缺失率剔除阈值。
         zeros_thr : float, default 0.90
-            零值率阈值。
+            零值率剔除阈值。
         mode_thr : float, default 0.90
-            众数占比阈值。
+            单一众数占比剔除阈值。
         iv_thr : float, default 0.01
-            精筛阶段 IV 阈值。
+            精筛阶段保留特征所需的最低 IV。
         lift_thr : float, optional, default 1.2
-            精筛阶段 Lift 阈值。
+            精筛阶段保留特征所需的最低 Lift。
         min_sample_rate : float, default 0.05
-            精筛阶段最小样本占比。
+            计算 Lift 时单个分箱所需的最低样本占比。
         psi_thr : float, optional, default 0.25
-            PSI 阈值。
+            稳定性筛选的 PSI 上限。
         rc_thr : float, optional, default 0.5
-            风险相关性阈值。
+            排名变化率筛选阈值。
         corr_thr : float, optional, default 0.95
-            相关性去重阈值。
+            WOE 相关性筛选阈值。
         skip_rough_scan : bool, default False
-            是否跳过粗筛。
+            是否跳过粗筛分箱阶段。
         skip_fine_scan : bool, default False
-            是否跳过精筛。
+            是否跳过精筛分箱阶段。
         rough_iv_thr : float, default 0.01
-            粗筛阶段 IV 阈值。
+            粗筛阶段保留特征所需的最低 IV。
         rough_lift_thr : float, default 1.2
-            粗筛阶段 Lift 阈值。
+            粗筛阶段保留特征所需的最低 Lift。
         rough_min_sample_rate : float, default 0.02
-            粗筛阶段最小样本占比。
-        white_list : list of str, optional
-            白名单特征列表。
-        black_list : list of str, optional
-            黑名单特征列表。
+            粗筛阶段计算 Lift 时单个分箱所需的最低样本占比。
         missing_values : list, optional
-            自定义缺失值集合。
+            需要视为缺失的取值列表。
         special_values : list, optional
-            自定义特殊值集合。
+            需要单独处理的特殊值列表。
         binning_params : dict, optional
-            精筛分箱参数。
+            精筛阶段分箱器参数。
         rough_binning_params : dict, optional
-            粗筛分箱参数。
-        max_samples : int, optional
-            抽样样本上限。
+            粗筛阶段分箱器参数。
         batch_size : int, optional, default 100
-            批处理大小。
+            批量评估时的特征批大小。
         n_jobs : int, default -1
-            并行任务数量。
+            并行任务数，含义遵循 joblib 约定。
         """
-        super().__init__(target=target)
+        super().__init__()
 
-        self.features = features
-        self.feature_data_source = feature_data_source or {}
-        self.time_col = time_col
-        self.profile_by = profile_by
-        self.feature_start_aware_baseline = feature_start_aware_baseline
-        self.white_list = white_list if white_list else []
-        self.black_list = black_list if black_list else []
+        self.features: list[str] | None = None
+        self.feature_data_source: dict[str, list[str]] = {}
+        self.time_col: str | None = None
+        self.profile_by: str | None = None
+        self.feature_start_aware_baseline = False
+        self.white_list: list[str] = []
+        self.black_list: list[str] = []
 
         self.missing_values = missing_values if missing_values else []
         self.special_values = special_values if special_values else []
@@ -269,7 +156,7 @@ class MarsStatsSelector(MarsBaseSelector):
         self.rc_thr = rc_thr
         self.corr_thr = corr_thr
 
-        self.max_samples = max_samples
+        self.max_samples: int | None = None
         self.batch_size = batch_size
         self.n_jobs = n_jobs
 
@@ -281,40 +168,69 @@ class MarsStatsSelector(MarsBaseSelector):
         self._funnel_stats = []
 
     @time_it
-    def fit(self, X: pl.DataFrame, y: Any | None = None) -> MarsStatsSelector:
+    def fit(
+        self,
+        df: pl.DataFrame | pd.DataFrame,
+        *,
+        target: str,
+        features: List[str] | None = None,
+        feature_data_source: Dict[str, List[str]] | None = None,
+        group_col: str | None = None,
+        time_col: str | None = None,
+        time_grain: str | None = None,
+        white_list: List[str] | None = None,
+        black_list: List[str] | None = None,
+        max_samples: int | None = None,
+        feature_start_aware_baseline: bool = False,
+    ) -> MarsStatsSelector:
         """
-        触发自动化特征筛选流程。
+        在一次样本上下文中执行统计特征筛选。
 
         Parameters
         ----------
-        X : pl.DataFrame
-            训练数据集上下文。
-        y : array-like, optional
-            目标变量数组，默认通过内部解析目标列获取。
+        df : polars.DataFrame or pandas.DataFrame
+            待筛选样本表。
+        target : str
+            二分类目标列名。
+        features : list of str, optional
+            候选特征列；不传时会从样本表中自动推断。
+        feature_data_source : dict, optional
+            特征来源映射，用于报告中追踪特征所属来源。
+        group_col : str, optional
+            已存在的分组列名，用于趋势和稳定性筛选。
+        time_col : str, optional
+            原始日期列名；与 `time_grain` 配合时生成时间分组。
+        time_grain : str, optional
+            时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
+        white_list : list of str, optional
+            白名单特征，尽量绕过自动剔除规则。
+        black_list : list of str, optional
+            黑名单特征，会被强制剔除。
+        max_samples : int, optional
+            本次筛选允许使用的最大样本量。
+        feature_start_aware_baseline : bool, default False
+            是否按特征首次出现分组选择 PSI 基准。
 
         Returns
         -------
         MarsStatsSelector
-            完成拟合与裁剪的自身实例。
-
-        Raises
-        ------
-        ValueError
-            当粗筛和精筛同时被禁用时抛出。
-
-        Examples
-        --------
-        >>> import polars as pl
-        >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-        >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
-        >>> selector.fit(df).selected_features_
-        ['age']
+            拟合后的筛选器，`selected_features_` 中保存最终特征列表。
         """
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
 
-        X = self._ensure_polars_dataframe(X)
+        self.target = target
+        self.features = features
+        self.feature_data_source = feature_data_source or {}
+        self.time_col = time_col
+        self.profile_by = (time_grain or "month") if time_col else group_col
+        self.white_list = white_list if white_list else []
+        self.black_list = black_list if black_list else []
+        self.max_samples = max_samples
+        self.feature_start_aware_baseline = feature_start_aware_baseline
+
+        X = self._ensure_polars_dataframe(df)
         self._funnel_stats = []
         self._feature_iv_dict = {}
 
@@ -495,6 +411,23 @@ class MarsStatsSelector(MarsBaseSelector):
             data_source=self._feature_source_for(feature),
         )
 
+    def transform(
+        self,
+        df: Union[pl.DataFrame, pd.DataFrame],
+        *,
+        keep_target: bool = True,
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
+        """根据筛选结果裁剪数据，可选择保留目标列。"""
+        result = super().transform(df)
+        if not keep_target or self.target is None:
+            return result
+
+        df_pl = self._ensure_polars_dataframe(df)
+        out_pl = self._ensure_polars_dataframe(result)
+        if self.target in df_pl.columns and self.target not in out_pl.columns:
+            out_pl = out_pl.with_columns(df_pl.get_column(self.target))
+        return self._format_output(out_pl)
+
     def _record_funnel(
         self,
         stage: str,
@@ -538,7 +471,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Examples
         --------
-        >>> selector = MarsStatsSelector(target="y")
+        >>> selector = MarsStatsSelector()
         >>> selector._record_funnel("Init", "Demo", {"iv": 0.02}, 2, 1)
         >>> selector.show_summary() is None
         True
@@ -643,7 +576,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Examples
         --------
-        >>> selector = MarsStatsSelector(target="y")
+        >>> selector = MarsStatsSelector()
         >>> selector.clear_cache() is None
         True
         """
@@ -659,12 +592,12 @@ class MarsStatsSelector(MarsBaseSelector):
 
         from mars.analysis.profiler import MarsDataProfiler
         profiler = MarsDataProfiler(
-            df,
-            features=features,
             missing_values=self.missing_values,
             special_values=self.special_values
         )
         report = profiler.generate_profile(
+            df,
+            features=features,
             config_overrides={
                 "dq_metrics": ["missing", "zeros", "top1"],
                 "stat_metrics": [],
@@ -714,15 +647,13 @@ class MarsStatsSelector(MarsBaseSelector):
             logger.info(f"Native Binner will also evaluate {len(cat_features)} categorical features.")
 
         binner = MarsNativeBinner(
-            features=features,
-            cat_features=cat_features,
             missing_values=self.missing_values,
             special_values=self.special_values,
             n_jobs=self.n_jobs,
             **self.rough_binning_params
         )
         target = df.get_column(self.target)
-        binner.fit(df, target)
+        binner.fit(df, target, features=features, cat_features=cat_features)
 
         self._rough_binner = binner
 
@@ -770,29 +701,30 @@ class MarsStatsSelector(MarsBaseSelector):
         """内部方法：执行具备全量约束的最优分箱核查及区间效能召回。"""
         from mars.analysis.evaluator import MarsBinEvaluator
 
-        cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
-        cat_features = [c for c in features if df.schema[c] in cat_types]
-
+        binner_params = {
+            **self.binning_params,
+            "missing_values": self.missing_values,
+            "special_values": self.special_values,
+        }
         evaluator = MarsBinEvaluator(
-            target=self.target,
-            bining_type="opt",
-            feature_data_source=self.feature_data_source,
-            cat_features=cat_features,
-            missing_values=self.missing_values,
-            special_values=self.special_values,
-            **self.binning_params
+            binning_type="opt",
+            binner_params=binner_params,
         )
 
-        report = evaluator.evaluate(
-            df,
+        run = evaluator.evaluate(
+            df=df,
+            target=self.target,
             features=features,
-            dt_col=self.time_col,
-            profile_by=self.profile_by,
+            feature_data_source=self.feature_data_source,
+            group_col=None if self.time_col else self.profile_by,
+            time_col=self.time_col,
+            time_grain=self.profile_by if self.time_col else None,
             batch_size=self.batch_size,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
+        report = run.report
 
-        self._stage3_binner = evaluator.binner
+        self._stage3_binner = run.binner
 
         lift_recall_set = set()
         if self.lift_thr is not None:
@@ -843,19 +775,18 @@ class MarsStatsSelector(MarsBaseSelector):
         """内部方法：跨维度投射特征区间计算群体偏移极值。"""
 
         from mars.analysis.evaluator import MarsBinEvaluator
-        evaluator = MarsBinEvaluator(
+        run = MarsBinEvaluator().evaluate(
+            df=df,
             target=self.target,
-            feature_data_source=self.feature_data_source,
-            binner=self._stage3_binner
-        )
-
-        report = evaluator.evaluate(
-            df,
             features=features,
-            dt_col=self.time_col,
-            profile_by=self.profile_by,
+            binner=self._stage3_binner,
+            feature_data_source=self.feature_data_source,
+            group_col=None if self.time_col else self.profile_by,
+            time_col=self.time_col,
+            time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
+        report = run.report
         psi_map = {r["feature"]: r["psi_max"] for r in report.summary_table.select(["feature", "psi_max"]).to_dicts()}
 
         kept_features = []
@@ -877,19 +808,18 @@ class MarsStatsSelector(MarsBaseSelector):
         """内部方法：追踪特征序列区间逻辑相关性的变异下限。"""
 
         from mars.analysis.evaluator import MarsBinEvaluator
-        evaluator = MarsBinEvaluator(
+        run = MarsBinEvaluator().evaluate(
+            df=df,
             target=self.target,
-            feature_data_source=self.feature_data_source,
-            binner=self._stage3_binner
-        )
-
-        report = evaluator.evaluate(
-            df,
             features=features,
-            dt_col=self.time_col,
-            profile_by=self.profile_by,
+            binner=self._stage3_binner,
+            feature_data_source=self.feature_data_source,
+            group_col=None if self.time_col else self.profile_by,
+            time_col=self.time_col,
+            time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
         )
+        report = run.report
 
         if "rc_min" in report.summary_table.columns:
             rc_map = {r["feature"]: r["rc_min"] for r in report.summary_table.select(["feature", "rc_min"]).to_dicts()}
@@ -961,32 +891,32 @@ class MarsStatsSelector(MarsBaseSelector):
 
         return [f for f in features if f in kept_features_set]
 
-    def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> Tuple[MarsEvaluationReport, MarsBinEvaluator]:
+    def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> MarsEvaluationReport:
         """
-        基于当前筛选结果生成最终评估报告。
+        为已选中特征生成最终风险评估报告。
 
         Parameters
         ----------
-        df : pl.DataFrame or pd.DataFrame
-            评估数据上下文环境。
+        df : polars.DataFrame or pandas.DataFrame
+            用于重新评估已选中特征的样本表。
 
         Returns
         -------
-        tuple of (MarsEvaluationReport, MarsBinEvaluator)
-            包含汇总统计报表与趋势透视表的报告容器，以及执行规则推演的评估器实例。
+        MarsEvaluationReport
+            基于 `selected_features_` 生成的风险评估报告。
 
         Raises
         ------
         ValueError
-            当当前选择器尚未拟合，或没有任何入选特征时抛出。
+            当筛选器尚未拟合或没有选中特征时抛出。
 
         Examples
         --------
         >>> import polars as pl
         >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-        >>> selector = MarsStatsSelector(target="y", features=["age"], skip_fine_scan=True)
-        >>> selector.fit(df)
-        >>> report, evaluator = selector.get_eval_report(df)
+        >>> selector = MarsStatsSelector(skip_fine_scan=True)
+        >>> selector.fit(df, target="y", features=["age"])
+        >>> report = selector.get_eval_report(df)
         >>> isinstance(report, MarsEvaluationReport)
         True
         """
@@ -1000,44 +930,41 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.evaluator import MarsBinEvaluator
 
         if self._stage3_binner is not None:
-            evaluator = MarsBinEvaluator(
-                target=self.target,
-                binner=self._stage3_binner,
-                feature_data_source=self.feature_data_source,
-            )
+            evaluator = MarsBinEvaluator()
+            eval_binner = self._stage3_binner
         else:
             logger.warning("Cached binner not found. Re-fitting Binner for the selected features...")
-            cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
-            cat_features = [c for c in self.selected_features_ if X_pl.schema[c] in cat_types]
-
-            bining_type = "native" if self.skip_fine_scan else "opt"
+            binning_type = "native" if self.skip_fine_scan else "opt"
             binning_params = self.rough_binning_params if self.skip_fine_scan else self.binning_params
-
             evaluator = MarsBinEvaluator(
-                target=self.target,
-                bining_type=bining_type,
-                feature_data_source=self.feature_data_source,
-                cat_features=cat_features,
-                missing_values=self.missing_values,
-                special_values=self.special_values,
-                **binning_params
+                binning_type=binning_type,
+                binner_params={
+                    **binning_params,
+                    "missing_values": self.missing_values,
+                    "special_values": self.special_values,
+                },
             )
+            eval_binner = None
 
         if self._return_pandas:
             evaluator.set_output("pandas")
 
         logger.info(f"Generating final evaluation report for {len(self.selected_features_)} selected features...")
 
-        report: MarsEvaluationReport = evaluator.evaluate(
-            X_pl,
+        run = evaluator.evaluate(
+            df=X_pl,
+            target=self.target,
             features=self.selected_features_,
-            dt_col=self.time_col,
-            profile_by=self.profile_by,
+            binner=eval_binner,
+            group_col=None if self.time_col else self.profile_by,
+            time_col=self.time_col,
+            time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
             feature_data_source=self.feature_data_source,
         )
+        report: MarsEvaluationReport = run.report
 
-        return report, evaluator
+        return report
 
     def export_selector_report(self, path: str = "mars_selector_report.xlsx") -> None:
         """
@@ -1057,7 +984,7 @@ class MarsStatsSelector(MarsBaseSelector):
         --------
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> selector = MarsStatsSelector(target="y")
+        >>> selector = MarsStatsSelector()
         >>> selector._is_fitted = True
         >>> selector._register_feature_decision("age", "Selected", "demo", "demo")
         >>> with TemporaryDirectory() as tmp:
@@ -1124,7 +1051,7 @@ class MarsStatsSelector(MarsBaseSelector):
         --------
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> selector = MarsStatsSelector(target="y")
+        >>> selector = MarsStatsSelector()
         >>> selector._is_fitted = True
         >>> selector.selected_features_ = ["age"]
         >>> selector.report_records_ = [{"feature": "income", "status": "Dropped", "stage": "Quality"}]
@@ -1218,7 +1145,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Examples
         --------
-        >>> selector = MarsStatsSelector(target="y")
+        >>> selector = MarsStatsSelector()
         >>> selector._is_fitted = True
         >>> selector.selected_features_ = ["age"]
         >>> selector._feature_iv_dict = {"age": 0.12}
@@ -1308,14 +1235,13 @@ class MarsLinearSelector(MarsBaseSelector):
     --------
     >>> import pandas as pd
     >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-    >>> selector = MarsLinearSelector(target="y", corr_thr=0.95)
-    >>> selector.fit(df).selected_features_
+    >>> selector = MarsLinearSelector(corr_thr=0.95)
+    >>> selector.fit(df, target="y", features=["age"]).selected_features_
     ['age']
     """
 
     def __init__(
         self,
-        target: str,
         enable_corr_filter: bool = True,
         corr_thr: float = 0.8,
         corr_method: str = "spearman",
@@ -1355,7 +1281,7 @@ class MarsLinearSelector(MarsBaseSelector):
         n_jobs : int, default -1
             并行任务数量。
         """
-        super().__init__(target=target)
+        super().__init__()
         self.enable_corr_filter = bool(enable_corr_filter)
         self.corr_thr = float(corr_thr)
         self.corr_method = str(corr_method).lower()
@@ -1379,7 +1305,8 @@ class MarsLinearSelector(MarsBaseSelector):
     def _prepare_xy(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        y: Any | None,
+        y: Any,
+        features: Sequence[str] | None,
     ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
         """将输入表转换为干净的数值建模矩阵。"""
         if isinstance(X, pl.DataFrame):
@@ -1389,12 +1316,14 @@ class MarsLinearSelector(MarsBaseSelector):
         else:
             raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
 
-        if y is not None:
-            df[self.target] = np.asarray(y)
-        if self.target not in df.columns:
-            raise ValueError(f"Target column {self.target!r} is required.")
+        if y is None:
+            raise ValueError("MarsLinearSelector.fit requires `y`.")
 
-        candidate_features = [feature for feature in df.columns if feature != self.target]
+        target_col = "__mars_target__"
+        df[target_col] = np.asarray(y)
+        candidate_features = list(features) if features is not None else [
+            feature for feature in df.columns if feature != target_col
+        ]
         numeric_data: dict[str, pd.Series] = {}
         for feature in candidate_features:
             series = pd.to_numeric(df[feature], errors="coerce")
@@ -1409,17 +1338,17 @@ class MarsLinearSelector(MarsBaseSelector):
                 continue
             numeric_data[feature] = series
 
-        target_series = pd.to_numeric(df[self.target], errors="coerce")
+        target_series = pd.to_numeric(df[target_col], errors="coerce")
         clean = pd.DataFrame(numeric_data)
-        clean[self.target] = target_series
+        clean[target_col] = target_series
         clean = clean.replace([np.inf, -np.inf], np.nan).dropna(axis=0)
         if clean.empty:
             raise ValueError("No complete numeric rows are available for MarsLinearSelector.")
-        if clean[self.target].nunique() < 2:
+        if clean[target_col].nunique() < 2:
             raise ValueError("MarsLinearSelector requires a binary target with both classes present.")
 
         features = [feature for feature in candidate_features if feature in clean.columns]
-        return clean.loc[:, features], clean[self.target].astype(int), features
+        return clean.loc[:, features], clean[target_col].astype(int), features
 
     @staticmethod
     def _target_strength(X: pd.DataFrame, y: pd.Series, features: Sequence[str]) -> dict[str, float]:
@@ -1680,7 +1609,13 @@ class MarsLinearSelector(MarsBaseSelector):
                 )
         return [feature for feature in features if feature in selected_set]
 
-    def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> MarsLinearSelector:
+    def fit(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Any,
+        *,
+        features: Sequence[str] | None = None,
+    ) -> MarsLinearSelector:
         """
         执行相关性、VIF 与可选 stepwise 线性特征筛选。
 
@@ -1700,12 +1635,12 @@ class MarsLinearSelector(MarsBaseSelector):
         --------
         >>> import pandas as pd
         >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-        >>> selector = MarsLinearSelector(target="y").fit(df)
+        >>> selector = MarsLinearSelector().fit(X, y)
         >>> selector.selected_features_
         ['age']
         """
         self.report_records_ = []
-        X_numeric, target_series, features = self._prepare_xy(X, y)
+        X_numeric, target_series, features = self._prepare_xy(X, y, features)
         self.n_features_in_ = len(features)
 
         selected = self._apply_corr_filter(X_numeric, target_series, features)
@@ -1833,17 +1768,15 @@ class MarsImportanceSelector(MarsBaseSelector):
     >>> import pandas as pd
     >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
     >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
-    >>> selector = MarsImportanceSelector(target="y", importance_table=importance)
-    >>> selector.fit(df).selected_features_
+    >>> selector = MarsImportanceSelector()
+    >>> selector.fit(df, target="y", features=["age"]).selected_features_
     ['age']
     """
 
     def __init__(
         self,
-        target: str,
         estimator: Union[str, Any] = "lgbm",
         estimator_params: dict | None = None,
-        importance_table: pd.DataFrame | pl.DataFrame | None = None,
         method: Literal["importance", "shap", "rfe", "sfm"] = "importance",
         selection_mode: Literal["top_k", "threshold", "percentile"] = "top_k",
         selection_threshold: Union[int, float, str] = 50,
@@ -1875,10 +1808,9 @@ class MarsImportanceSelector(MarsBaseSelector):
         random_state : int, default 42
             随机种子。
         """
-        super().__init__(target=target)
+        super().__init__()
         self.estimator = estimator
         self.estimator_params = dict(estimator_params or {})
-        self.importance_table = importance_table
         self.method = str(method).lower()
         self.selection_mode = str(selection_mode).lower()
         self.selection_threshold = selection_threshold
@@ -1898,7 +1830,8 @@ class MarsImportanceSelector(MarsBaseSelector):
         self,
         X: pl.DataFrame | pd.DataFrame,
         y: Any | None,
-    ) -> tuple[pd.DataFrame, pd.Series, list[str]]:
+        features: Sequence[str] | None,
+    ) -> tuple[pd.DataFrame, pd.Series | None, list[str]]:
         """将输入数据转为 Pandas，并解析目标列与候选特征。"""
         if isinstance(X, pl.DataFrame):
             df = X.to_pandas()
@@ -1907,16 +1840,15 @@ class MarsImportanceSelector(MarsBaseSelector):
         else:
             raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
 
-        if y is not None:
-            df[self.target] = np.asarray(y)
-        if self.target not in df.columns:
-            raise ValueError(f"Target column {self.target!r} is required.")
-        features = [feature for feature in df.columns if feature != self.target]
-        target_series = pd.to_numeric(df[self.target], errors="coerce")
-        valid_mask = target_series.notna()
+        raw_features = list(features) if features is not None else list(df.columns)
+        if y is None:
+            return df.loc[:, raw_features], None, raw_features
+
+        target_series = pd.to_numeric(pd.Series(np.asarray(y)), errors="coerce")
+        valid_mask = target_series.notna().to_numpy()
         if int(valid_mask.sum()) == 0:
             raise ValueError("Target contains no valid numeric labels.")
-        return df.loc[valid_mask, features], target_series.loc[valid_mask].astype(int), features
+        return df.loc[valid_mask, raw_features], target_series.loc[valid_mask].astype(int), raw_features
 
     @staticmethod
     def _encode_features(X: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
@@ -2149,6 +2081,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         X: pl.DataFrame | pd.DataFrame,
         y: Any | None = None,
         *,
+        features: Sequence[str] | None = None,
         importance_table: pd.DataFrame | pl.DataFrame | None = None,
     ) -> MarsImportanceSelector:
         """
@@ -2173,7 +2106,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         >>> import pandas as pd
         >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
         >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
-        >>> selector = MarsImportanceSelector(target="y", importance_table=importance).fit(df)
+        >>> selector = MarsImportanceSelector().fit(X, importance_table=importance)
         >>> selector.selected_features_
         ['age']
         """
@@ -2183,13 +2116,15 @@ class MarsImportanceSelector(MarsBaseSelector):
             )
 
         self.report_records_ = []
-        X_pd, y_series, raw_features = self._prepare_xy(X, y)
+        X_pd, y_series, raw_features = self._prepare_xy(X, y, features)
         self.n_features_in_ = len(raw_features)
 
-        provided_table = importance_table if importance_table is not None else self.importance_table
+        provided_table = importance_table
         if provided_table is not None:
             table = self._normalize_importance_table(provided_table, raw_features)
         else:
+            if y_series is None:
+                raise ValueError("MarsImportanceSelector.fit requires y when `importance_table` is not provided.")
             X_encoded, mapping = self._encode_features(X_pd)
             estimator = self._build_estimator()
             if self.method == "importance":

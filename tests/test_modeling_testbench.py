@@ -8,7 +8,7 @@ pytest.importorskip("optuna_integration")
 
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.prediction import ModelPredictor
-from mars.modeling.results import MarsModelingRun
+from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner
 
 
@@ -43,15 +43,10 @@ def test_public_tooling_can_tune_and_evaluate_all_backends(
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / f"{model_type}_tool_history.csv"),
+        history_path=str(tmp_path / f"{model_type}_tool_history.csv"),
     )
 
-    evaluator = MarsModelEvaluator(
-        group_col="dataset_flag",
-        target_col="target",
-        benchmark_col="benchmark_score",
-        time_col="biz_dt",
-    )
+    evaluator = MarsModelEvaluator()
 
     assert run.best_model is not None
     assert run.best_iteration is None or isinstance(run.best_iteration, int)
@@ -64,7 +59,14 @@ def test_public_tooling_can_tune_and_evaluate_all_backends(
         assert run.backend_data_mode == "pandas_category"
     elif model_type in {"xgb", "lgb"}:
         assert run.backend_data_mode == "pandas_numeric"
-    report = evaluator.evaluate(sample_modeling_pd.assign(pred_score=sample_modeling_pd["benchmark_score"]), pred_col="pred_score")
+    report = evaluator.evaluate(
+        sample_modeling_pd.assign(pred_score=sample_modeling_pd["benchmark_score"]),
+        pred_col="pred_score",
+        group_col="dataset_flag",
+        target="target",
+        benchmark_col="benchmark_score",
+        time_col="biz_dt",
+    )
     assert ("Target: target", "New KS") in report.summary_table.columns
 
 
@@ -93,7 +95,7 @@ def test_lightgbm_categorical_levels_are_fixed_for_unseen_categories(sample_mode
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "lgb_category_history.csv"),
+        history_path=str(tmp_path / "lgb_category_history.csv"),
     )
 
     assert run.category_levels == {"segment": ["A", "B"]}
@@ -103,9 +105,9 @@ def test_lightgbm_categorical_levels_are_fixed_for_unseen_categories(sample_mode
         categorical_features=run.categorical_features,
         category_levels=run.category_levels,
     )
-    scored = predictor.predict(df, pred_col_name="score_with_unseen")
+    scored = predictor.predict(df, pred_col="score_with_unseen")
 
     assert "score_with_unseen" in scored.columns
     artifact_dir = run.write_artifact(str(tmp_path / "lgb_category_artifact"))
-    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
     assert loaded.category_levels == run.category_levels

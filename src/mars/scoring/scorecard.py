@@ -401,7 +401,7 @@ class MarsScorecard:
         >>> from mars.feature import MarsNativeBinner
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
         >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, y, features=["age"])
         >>> scorecard = build_scorecard(
         ...     binner,
         ...     {"age": 0.3},
@@ -476,7 +476,7 @@ def build_scorecard(
     >>> from mars.feature import MarsNativeBinner
     >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
     >>> y = pl.Series("target", [0, 0, 1, 1])
-    >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+    >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, y, features=["age"])
     >>> card = build_scorecard(binner, {"age": 0.3}, intercept=-1.2, pdo=20, base_score=600, base_odds=50)
     >>> isinstance(card, MarsScorecard)
     True

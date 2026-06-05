@@ -11,75 +11,108 @@ import polars as pl
 from mars.modeling.utils import FrameLike, is_polars_dataframe
 
 
-class MarsModelDataSlicer:
+class MarsModelDataSplitter:
     """
-    按输入数据引擎切分二分类建模样本。
+    无状态的二分类建模样本切分工具。
 
-    Parameters
-    ----------
-    df : pandas.DataFrame or polars.DataFrame
-        原始建模样本。
-    time_col : str
-        时间列名，切分时按自然日保持完整。
-    label_col : str
-        二分类标签列名，仅 ``0``/``1`` 参与切分。
-    dataset_flag_col : str, default "dataset_flag"
-        输出的数据集标识列名。
+    构造函数不绑定样本表和列名；每次切分都通过
+    `split_by_time_strictly` 或 `split_hybrid_random_val` 传入数据、时间列、
+    目标列和输出切片列名。方法内部会创建临时工作副本，并根据输入类型选择
+    Pandas 或 Polars 实现，返回结果尽量保持输入表类型。
 
     Attributes
     ----------
     df : pandas.DataFrame or polars.DataFrame
-        带清洗日期列和 dataset flag 列的工作副本。
+        单次切分期间使用的内部工作副本。
     engine_ : str
-        根据输入数据类型自动选择的切分引擎。
+        当前工作副本对应的数据引擎；未绑定数据时为 `"stateless"`。
     time_col : str
-        时间列名。
+        单次切分使用的时间列名。
     label_col : str
-        标签列名。
+        单次切分使用的目标列名。
 
     Notes
     -----
     Pandas 输入全程走 Pandas，Polars 输入全程走 Polars，避免无收益的跨框架转换。
+    时间严格切分会保证同一天不被拆到多个样本切片；hybrid 切分会先确定建模窗口，
+    再在建模窗口内随机拆分 train/val。
 
     Examples
     --------
     >>> import pandas as pd
-    >>> df = pd.DataFrame({"apply_dt": ["2026-01-01", "2026-02-01"], "y": [0, 1]})
-    >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
-    >>> slicer.engine_
-    'pandas'
+    >>> df = pd.DataFrame(
+    ...     {"apply_dt": ["2026-01-01", "2026-01-02"], "y": [0, 1]}
+    ... )
+    >>> splitter = MarsModelDataSplitter()
+    >>> out = splitter.split_by_time_strictly(
+    ...     df,
+    ...     time_col="apply_dt",
+    ...     target="y",
+    ...     split_ratios={"train": 0.5, "val": 0.5},
+    ... )
+    >>> "dataset_flag" in out.columns
+    True
     """
 
     def __init__(
         self,
-        df: FrameLike,
-        time_col: str,
-        label_col: str,
-        dataset_flag_col: str = "dataset_flag",
     ) -> None:
         """
-        初始化建模样本切分器并保留输入数据引擎。
+        初始化无状态建模样本切分器。
 
-        初始化阶段会复制输入数据、校验时间列和标签列，并为后续切分准备
-        清洗后的日期列与默认 ``dataset_flag`` 列。
+        数据、时间列、目标列和输出切片列名都在具体切分方法中传入。实例属性只用于
+        单次切分内部工作副本，方法结束后调用方不应依赖这些临时状态。
         """
-        self._input_is_polars: bool = is_polars_dataframe(df)
-        self._engine: str
+        self._input_is_polars: bool = False
+        self._engine: str = "stateless"
+        self.df: pl.DataFrame | pd.DataFrame = pd.DataFrame()
+        self.time_col: str = ""
+        self.label_col: str = ""
+        self.dataset_flag_col: str = "dataset_flag"
 
+    @classmethod
+    def _from_data(
+        cls,
+        df: FrameLike,
+        *,
+        time_col: str,
+        target: str,
+        dataset_flag_col: str,
+    ) -> MarsModelDataSplitter:
+        """创建绑定单次切分上下文的内部工作副本。"""
+        slicer = cls()
+        slicer._bind_data(
+            df,
+            time_col=time_col,
+            target=target,
+            dataset_flag_col=dataset_flag_col,
+        )
+        return slicer
+
+    def _bind_data(
+        self,
+        df: FrameLike,
+        *,
+        time_col: str,
+        target: str,
+        dataset_flag_col: str,
+    ) -> None:
+        """绑定单次切分使用的数据和列名。"""
+        self._input_is_polars = is_polars_dataframe(df)
         if isinstance(df, pl.DataFrame):
             self._engine = "polars"
-            self.df: pl.DataFrame | pd.DataFrame = df.clone()
+            self.df = df.clone()
         elif isinstance(df, pd.DataFrame):
             self._engine = "pandas"
             self.df = df.copy()
         else:
             raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
-        self.time_col: str = time_col
-        self.label_col: str = label_col
-        self.dataset_flag_col: str = dataset_flag_col
+        self.time_col = time_col
+        self.label_col = target
+        self.dataset_flag_col = dataset_flag_col
 
-        missing_cols = {time_col, label_col}.difference(self.df.columns)
+        missing_cols = {time_col, target}.difference(self.df.columns)
         if missing_cols:
             raise ValueError(f"Input data is missing required columns: {sorted(missing_cols)}")
 
@@ -100,9 +133,9 @@ class MarsModelDataSlicer:
 
         Examples
         --------
-        >>> df = pd.DataFrame({"apply_dt": ["2026-01-01"], "y": [1]})
-        >>> MarsModelDataSlicer(df, time_col="apply_dt", label_col="y").engine_
-        'pandas'
+        >>> splitter = MarsModelDataSplitter()
+        >>> splitter.engine_
+        'stateless'
         """
         return self._engine
 
@@ -163,14 +196,30 @@ class MarsModelDataSlicer:
             raise ValueError("train_ratio + val_ratio must be greater than 0.")
         return train_ratio, val_ratio, modeling_ratio
 
-    def split_by_time_strictly(self, split_ratios: Dict[str, float]) -> FrameLike:
+    def split_by_time_strictly(
+        self,
+        df: FrameLike,
+        *,
+        time_col: str,
+        target: str,
+        split_ratios: Dict[str, float],
+        dataset_flag_col: str = "dataset_flag",
+    ) -> FrameLike:
         """
         按时间顺序严格切分，并保证同一天不被拆到多个数据集。
 
         Parameters
         ----------
+        df : pandas.DataFrame or polars.DataFrame
+            原始建模样本。
+        time_col : str
+            原始时间列名，切分时按自然日保持完整。
+        target : str
+            二分类目标列名，仅 `0`/`1` 样本参与切分。
         split_ratios : dict of str to float
             切分名称到比例的映射，比例合计必须为 1。
+        dataset_flag_col : str, default "dataset_flag"
+            输出的数据集切片列名。
 
         Returns
         -------
@@ -182,19 +231,35 @@ class MarsModelDataSlicer:
         >>> df = pd.DataFrame(
         ...     {"apply_dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"], "y": [0, 1, 0, 1]}
         ... )
-        >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
-        >>> out = slicer.split_by_time_strictly({"train": 0.5, "val": 0.5})
+        >>> splitter = MarsModelDataSplitter()
+        >>> out = splitter.split_by_time_strictly(
+        ...     df,
+        ...     time_col="apply_dt",
+        ...     target="y",
+        ...     split_ratios={"train": 0.5, "val": 0.5},
+        ... )
         >>> sorted(out["dataset_flag"].unique())
         ['train', 'val']
         """
-        self._validate_ratios(split_ratios)
-        if self._engine == "pandas":
-            return self._split_by_time_strictly_pandas(split_ratios)
-        return self._split_by_time_strictly_polars(split_ratios)
+        slicer = self._from_data(
+            df,
+            time_col=time_col,
+            target=target,
+            dataset_flag_col=dataset_flag_col,
+        )
+        slicer._validate_ratios(split_ratios)
+        if slicer._engine == "pandas":
+            return slicer._split_by_time_strictly_pandas(split_ratios)
+        return slicer._split_by_time_strictly_polars(split_ratios)
 
     def split_hybrid_random_val(
         self,
+        df: FrameLike,
+        *,
+        time_col: str,
+        target: str,
         split_ratios: Dict[str, float],
+        dataset_flag_col: str = "dataset_flag",
         train_key: str = "train",
         val_key: str = "val",
         random_seed: int = 42,
@@ -204,8 +269,16 @@ class MarsModelDataSlicer:
 
         Parameters
         ----------
+        df : pandas.DataFrame or polars.DataFrame
+            原始建模样本。
+        time_col : str
+            原始时间列名，切分时按自然日保持完整。
+        target : str
+            二分类目标列名，仅 `0`/`1` 样本参与切分。
         split_ratios : dict of str to float
             切分名称到比例的映射，比例合计必须为 1。
+        dataset_flag_col : str, default "dataset_flag"
+            输出的数据集切片列名。
         train_key : str, default "train"
             训练集标识。
         val_key : str, default "val"
@@ -223,16 +296,27 @@ class MarsModelDataSlicer:
         >>> df = pd.DataFrame(
         ...     {"apply_dt": ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"], "y": [0, 1, 0, 1]}
         ... )
-        >>> slicer = MarsModelDataSlicer(df, time_col="apply_dt", label_col="y")
-        >>> out = slicer.split_hybrid_random_val({"train": 0.5, "val": 0.5})
+        >>> splitter = MarsModelDataSplitter()
+        >>> out = splitter.split_hybrid_random_val(
+        ...     df,
+        ...     time_col="apply_dt",
+        ...     target="y",
+        ...     split_ratios={"train": 0.5, "val": 0.5},
+        ... )
         >>> sorted(out["dataset_flag"].unique())
         ['train', 'val']
         """
-        self._validate_ratios(split_ratios)
-        self._validate_hybrid_keys(split_ratios, train_key, val_key)
-        if self._engine == "pandas":
-            return self._split_hybrid_random_val_pandas(split_ratios, train_key, val_key, random_seed)
-        return self._split_hybrid_random_val_polars(split_ratios, train_key, val_key, random_seed)
+        slicer = self._from_data(
+            df,
+            time_col=time_col,
+            target=target,
+            dataset_flag_col=dataset_flag_col,
+        )
+        slicer._validate_ratios(split_ratios)
+        slicer._validate_hybrid_keys(split_ratios, train_key, val_key)
+        if slicer._engine == "pandas":
+            return slicer._split_hybrid_random_val_pandas(split_ratios, train_key, val_key, random_seed)
+        return slicer._split_hybrid_random_val_polars(split_ratios, train_key, val_key, random_seed)
 
     def _reset_and_mark_other_pandas(self) -> None:
         """重置 Pandas 切片列，并将无效标签或日期样本标为 other。"""

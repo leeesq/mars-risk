@@ -18,9 +18,9 @@ from mars.modeling import MarsModelingSession
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
 from mars.modeling import tuning as tuning_module
-from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
+from mars.modeling.feature_growth import MarsFeatureGrowthResult, MarsFeatureIncrementalTuner
 from mars.modeling.metrics import CatBoostKSMetric, as_probability
-from mars.modeling.results import MarsModelingRun
+from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner
 
 
@@ -33,7 +33,7 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
         optimize_metric="ks",
         seed=11,
     )
-    save_path = tmp_path / f"{model_type}_history.csv"
+    history_path = tmp_path / f"{model_type}_history.csv"
     result = session.tune(
         sample_modeling_pd,
         max_diff=20.0,
@@ -42,11 +42,11 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
         warmup_steps=5,
         num_boost_round=30,
         early_stopping_rounds=8,
-        save_path=str(save_path),
+        history_path=str(history_path),
     )
 
-    assert isinstance(result, MarsModelingRun)
-    assert save_path.exists()
+    assert isinstance(result, MarsModelTuningResult)
+    assert history_path.exists()
     assert session.last_run is result
     assert session.last_run.best_model is not None
     assert session.best_model is result.best_model
@@ -82,14 +82,61 @@ def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tm
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "tool_history.csv"),
+        history_path=str(tmp_path / "tool_history.csv"),
     )
 
-    assert isinstance(result, MarsModelingRun)
+    assert isinstance(result, MarsModelTuningResult)
     assert tuner.last_run is result
     assert tuner.best_model is result.best_model
     assert tuner.best_params == result.best_params
     assert tuner.history_table.equals(result.history_table)
+
+
+def test_model_tuner_history_path_none_does_not_write_file(sample_modeling_pd, tmp_path: Path):
+    tuner = MarsModelTuner(
+        model_type="xgb",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="ks",
+        seed=23,
+    )
+    result = tuner.tune(
+        sample_modeling_pd,
+        max_diff=20.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        history_path=None,
+    )
+
+    assert result.history_path is None
+    assert not any(tmp_path.glob("*history*.csv"))
+
+
+def test_model_tuner_rejects_existing_history_without_overwrite(sample_modeling_pd, tmp_path: Path):
+    history_path = tmp_path / "existing_history.csv"
+    history_path.write_text("trial_num\n", encoding="utf-8")
+    tuner = MarsModelTuner(
+        model_type="xgb",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="ks",
+        seed=24,
+    )
+
+    with pytest.raises(FileExistsError, match="history_path"):
+        tuner.tune(
+            sample_modeling_pd,
+            max_diff=20.0,
+            n_trials=1,
+            startup_trials=1,
+            warmup_steps=3,
+            num_boost_round=20,
+            early_stopping_rounds=5,
+            history_path=history_path,
+        )
 
 
 def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeling_pd, tmp_path: Path):
@@ -107,7 +154,7 @@ def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeli
         n_trials=2,
         startup_trials=1,
         warmup_steps=3,
-        save_path=str(tmp_path / "lr_numeric_history.csv"),
+        history_path=str(tmp_path / "lr_numeric_history.csv"),
     )
 
     assert result.model_type == "lr"
@@ -122,7 +169,7 @@ def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeli
     assert set(replay.diagnostic_tables[model_name]) == {"coefficients", "model_summary"}
 
     artifact_dir = result.write_artifact(str(tmp_path / "lr_numeric_artifact"))
-    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
     assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
     assert loaded.importance_table.equals(result.importance_table)
 
@@ -144,7 +191,7 @@ def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_
         n_trials=1,
         startup_trials=1,
         warmup_steps=3,
-        save_path=str(tmp_path / "lr_woe_history.csv"),
+        history_path=str(tmp_path / "lr_woe_history.csv"),
     )
 
     assert result.model_type == "logistic"
@@ -155,7 +202,7 @@ def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_
     assert set(result.importance_table["feature"]) == {"x1", "x2", "segment"}
 
     artifact_dir = result.write_artifact(str(tmp_path / "lr_woe_artifact"))
-    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
     assert loaded.best_model.binner is not None
     assert loaded.best_model.predict_proba(sample_modeling_pd.loc[:, loaded.features]).shape[0] == len(sample_modeling_pd)
     assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
@@ -214,10 +261,10 @@ def test_modeling_session_incremental_tune_runs_for_all_backends(sample_modeling
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / f"{model_type}_feature_growth.csv"),
+        history_path=str(tmp_path / f"{model_type}_feature_growth.csv"),
     )
 
-    assert isinstance(result, MarsFeatureGrowthRun)
+    assert isinstance(result, MarsFeatureGrowthResult)
     assert result.steps == [1, 3]
     assert set(result.runs) == {1, 3}
     assert result.best_run is not None
@@ -247,11 +294,11 @@ def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Pat
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "artifact_feature_growth.csv"),
+        history_path=str(tmp_path / "artifact_feature_growth.csv"),
     )
 
     artifact_dir = result.write_artifact(str(tmp_path / "feature_growth_artifact"))
-    loaded = MarsFeatureGrowthRun.load_artifact(str(artifact_dir))
+    loaded = MarsFeatureGrowthResult.load_artifact(str(artifact_dir))
 
     assert loaded.best_step == result.best_step
     assert loaded.steps == result.steps
@@ -276,11 +323,11 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "artifact_history.csv"),
+        history_path=str(tmp_path / "artifact_history.csv"),
     )
 
     artifact_dir = result.write_artifact(str(tmp_path / "run_artifact"))
-    loaded = MarsModelingRun.load_artifact(str(artifact_dir))
+    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
 
     assert loaded.study is None
     assert loaded.best_model is not None
@@ -295,7 +342,7 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
 
 def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="metadata"):
-        MarsModelingRun.load_artifact(str(tmp_path / "missing_artifact"))
+        MarsModelTuningResult.load_artifact(str(tmp_path / "missing_artifact"))
 
 
 def test_modeling_public_exports_only_include_formal_api():
@@ -309,7 +356,7 @@ def test_modeling_public_exports_only_include_formal_api():
     assert "MarsModelingSession" in mars.__all__
     assert "MarsModelTuner" not in mars.__all__
     assert "MarsModelEvaluator" not in mars.__all__
-    assert "MarsModelReplay" not in mars.__all__
+    assert "MarsModelReplayRunner" not in mars.__all__
 
 
 def test_modeling_old_module_paths_are_removed():
@@ -325,7 +372,7 @@ def test_modeling_old_module_paths_are_removed():
     assert not hasattr(modeling, "MarsModelTuner")
     assert not hasattr(modeling, "MarsModelEvaluator")
     assert not hasattr(modeling, "MarsModelingReport")
-    assert not hasattr(modeling, "MarsModelDataSlicer")
+    assert not hasattr(modeling, "MarsModelDataSplitter")
 
 
 def test_modeling_session_tune_records_oot_penalty_columns(sample_modeling_pd, tmp_path: Path):
@@ -346,7 +393,7 @@ def test_modeling_session_tune_records_oot_penalty_columns(sample_modeling_pd, t
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "oot_history.csv"),
+        history_path=str(tmp_path / "oot_history.csv"),
     )
 
     assert "max_oot_diff" in result.history_table.columns
@@ -398,7 +445,7 @@ def test_modeling_session_tune_uses_lowercase_contains_dataset_flags(sample_mode
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        save_path=str(tmp_path / "contains_history.csv"),
+        history_path=str(tmp_path / "contains_history.csv"),
     )
 
     assert "OOT_202403_ks" in result.history_table.columns

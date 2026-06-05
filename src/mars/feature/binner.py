@@ -85,8 +85,6 @@ class MarsBinnerBase(MarsTransformer):
 
     def __init__(
         self,
-        features: List[str] | None = None,
-        cat_features: List[str] | None = None,
         n_bins: int = 10,
         special_values: List[Union[int, float, str]] | None = None,
         missing_values: List[Union[int, float, str]] | None = None,
@@ -124,8 +122,8 @@ class MarsBinnerBase(MarsTransformer):
         初始化阶段不执行任何重型计算。所有计算资源 (进程池、线程池) 均在 `fit` 阶段按需按需申请。
         """
         super().__init__()
-        self.features = features if features is not None else []
-        self.cat_features = cat_features if cat_features is not None else []
+        self.features: list[str] = []
+        self.cat_features: list[str] = []
         self.n_bins = n_bins
         self.special_values = special_values if special_values is not None else []
         self.missing_values = missing_values if missing_values is not None else []
@@ -177,7 +175,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age"])
         >>> binner.transform(X).columns
         ['age_bin']
         """
@@ -197,6 +195,8 @@ class MarsBinnerBase(MarsTransformer):
         X: Union[pl.DataFrame, pd.DataFrame],
         y: Any | None = None,
         *,
+        features: List[str] | None = None,
+        cat_features: List[str] | None = None,
         return_type: Literal["index", "label", "woe"] = "index",
         woe_batch_size: int = 200,
         lazy: bool = False,
@@ -225,11 +225,11 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2)
         >>> binner.fit_transform(X, return_type="label").columns
         ['age_bin']
         """
-        return self.fit(X, y).transform(
+        return self.fit(X, y, features=features, cat_features=cat_features).transform(
             X,
             return_type=return_type,
             woe_batch_size=woe_batch_size,
@@ -252,7 +252,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age"])
         >>> sorted(binner.to_dict().keys())
         ['params', 'state']
         """
@@ -391,7 +391,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age"])
         >>> binner.clear_cache()
         >>> binner._cache_X is None
         True
@@ -470,7 +470,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age"])
         >>> isinstance(binner.get_bin_mapping("age"), dict)
         True
         """
@@ -913,7 +913,7 @@ class MarsBinnerBase(MarsTransformer):
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
         >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, y, features=["age"])
         >>> stats = binner.profile_bin_performance(X, y)
         >>> "feature" in stats.columns
         True
@@ -1136,7 +1136,7 @@ class MarsBinnerBase(MarsTransformer):
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
         >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X, y)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, y, features=["age"])
         >>> updated = binner.update_bins({"age": [35]})
         >>> "feature" in updated.columns
         True
@@ -1221,7 +1221,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50], "income": [5, 6, 7, 8]})
-        >>> binner = MarsNativeBinner(features=["age", "income"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age", "income"])
         >>> binner.prune(["age"]).feature_names_in_
         ['age']
         """
@@ -1281,7 +1281,7 @@ class MarsBinnerBase(MarsTransformer):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2).fit(X)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2).fit(X, features=["age"])
         >>> sql = binner.generate_sql(features="age", return_type="index")
         >>> "age_index" in sql
         True
@@ -1484,7 +1484,7 @@ class MarsNativeBinner(MarsBinnerBase):
     Examples
     --------
     >>> import polars as pl
-    >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+    >>> binner = MarsNativeBinner(method="quantile", n_bins=2)
     >>> df = pl.DataFrame({"age": [20, 30, 40, 50]})
     >>> binner.fit_transform(df).columns
     ['age_bin']
@@ -1492,10 +1492,8 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def __init__(
         self,
-        features: List[str] | None = None,
         *,
-        cat_features: List[str] | None = None,
-        method: Literal["cart", "quantile", "uniform"] = "cart",
+        method: Literal["cart", "quantile", "uniform"] = "quantile",
         n_bins: int = 10,
         special_values: List[Union[int, float, str]] | None = None,
         missing_values: List[Union[int, float, str]] | None = None,
@@ -1534,8 +1532,7 @@ class MarsNativeBinner(MarsBinnerBase):
             并行计算使用的核心数限制。
         """
         super().__init__(
-            features=features, n_bins=n_bins,
-            cat_features=cat_features, # 传递给父类
+            n_bins=n_bins,
             special_values=special_values,
             missing_values=missing_values,
             n_jobs=n_jobs
@@ -1551,6 +1548,9 @@ class MarsNativeBinner(MarsBinnerBase):
         self,
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
+        *,
+        features: List[str] | None = None,
+        cat_features: List[str] | None = None,
     ) -> "MarsNativeBinner":
         """
         拟合原生分箱器。
@@ -1570,10 +1570,15 @@ class MarsNativeBinner(MarsBinnerBase):
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(features=["age"], method="quantile", n_bins=2)
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2)
         >>> binner.fit(X).feature_names_in_
         ['age']
         """
+        if self.method == "cart" and y is None:
+            raise ValueError("Decision Tree Binning ('cart') requires y.")
+
+        self.features = list(features or [])
+        self.cat_features = list(cat_features or [])
         super().fit(X, y)
         return self
 
@@ -2352,7 +2357,7 @@ class MarsOptimalBinner(MarsBinnerBase):
     Examples
     --------
     >>> import polars as pl
-    >>> binner = MarsOptimalBinner(features=["age"], n_bins=2, min_bin_n_event=1)
+    >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=1)
     >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
     >>> y = pl.Series("y", [0, 0, 1, 1])
     >>> binner.fit(X, y).transform(X).columns
@@ -2361,9 +2366,7 @@ class MarsOptimalBinner(MarsBinnerBase):
 
     def __init__(
         self,
-        features: List[str] | None = None,
         *,
-        cat_features: List[str] | None = None,
         n_bins: int = 10,
         min_n_bins: int = 1,
         min_bin_size: float = 0.02,
@@ -2427,7 +2430,7 @@ class MarsOptimalBinner(MarsBinnerBase):
             并行计算使用的核心数限制。
         """
         super().__init__(
-            features=features, cat_features=cat_features, n_bins=n_bins,
+            n_bins=n_bins,
             special_values=special_values, missing_values=missing_values,
             join_threshold=join_threshold, n_jobs=n_jobs
        )
@@ -2453,7 +2456,10 @@ class MarsOptimalBinner(MarsBinnerBase):
     def fit(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
+        y: pl.Series | pd.Series | np.ndarray | list[Any],
+        *,
+        features: List[str] | None = None,
+        cat_features: List[str] | None = None,
     ) -> "MarsOptimalBinner":
         """
         拟合最优分箱器。
@@ -2474,10 +2480,15 @@ class MarsOptimalBinner(MarsBinnerBase):
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
         >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsOptimalBinner(features=["age"], n_bins=2, min_bin_n_event=1)
+        >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=1)
         >>> binner.fit(X, y).feature_names_in_
         ['age']
         """
+        if y is None:
+            raise ValueError("MarsOptimalBinner.fit requires y.")
+
+        self.features = list(features or [])
+        self.cat_features = list(cat_features or [])
         super().fit(X, y)
         return self
 
@@ -2582,7 +2593,6 @@ class MarsOptimalBinner(MarsBinnerBase):
         y_series = pl.Series(name="target", values=y_np)
 
         pre_binner = MarsNativeBinner(
-            features=num_cols,
             method=self.prebinning_method,
             n_bins=self.n_prebins,
             special_values=self.special_values,
@@ -2592,7 +2602,7 @@ class MarsOptimalBinner(MarsBinnerBase):
             n_jobs=self.n_jobs,
             remove_empty_bins=False
        )
-        pre_binner.fit(X, y_series)
+        pre_binner.fit(X, y_series, features=num_cols)
         pre_cuts_map = pre_binner.bin_cuts_
 
         # 筛选需要优化的列

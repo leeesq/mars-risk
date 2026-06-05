@@ -7,12 +7,12 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 
 from mars.modeling.evaluation import MarsModelEvaluator
-from mars.modeling.feature_growth import MarsFeatureGrowthRun, MarsFeatureIncrementalTuner
+from mars.modeling.feature_growth import MarsFeatureGrowthResult, MarsFeatureIncrementalTuner
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.results import MarsModelingRun, MarsReplayRun
-from mars.modeling.slicing import MarsModelDataSlicer
+from mars.modeling.results import MarsModelReplayResult, MarsModelTuningResult
+from mars.modeling.slicing import MarsModelDataSplitter
 from mars.modeling.spec import SplitSpec
-from mars.modeling.tuning import MarsModelReplay, MarsModelTuner
+from mars.modeling.tuning import MarsModelReplayRunner, MarsModelTuner
 from mars.modeling.utils import FrameLike
 
 
@@ -36,20 +36,16 @@ class MarsModelingSession:
         调参和 replay 使用的优化指标。
     seed : int, default 1206
         随机种子。
-    benchmark_col : str, optional
-        评估时默认使用的基准分数列。
-    time_col : str, optional
-        评估时默认使用的时间列。
 
     Attributes
     ----------
     tuner : MarsModelTuner
         单次调参入口。
-    replay_runner : MarsModelReplay
+    replay_runner : MarsModelReplayRunner
         Top-K replay 入口。
     feature_growth_tuner : MarsFeatureIncrementalTuner
         逐步增加特征调参入口。
-    last_feature_growth_run : MarsFeatureGrowthRun or None
+    last_feature_growth_run : MarsFeatureGrowthResult or None
         最近一次特征增长调参结果。
 
     Examples
@@ -69,8 +65,6 @@ class MarsModelingSession:
         categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: str | None = None,
-        time_col: str | None = None,
         lr_feature_mode: str = "numeric",
         lr_binning_type: str = "native",
         lr_binner_kwargs: Mapping[str, Any] | None = None,
@@ -84,28 +78,12 @@ class MarsModelingSession:
             categorical_features=categorical_features,
             optimize_metric=optimize_metric,
             seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
             lr_feature_mode=lr_feature_mode,
             lr_binning_type=lr_binning_type,
             lr_binner_kwargs=lr_binner_kwargs,
             lr_binner=lr_binner,
         )
-        self.replay_runner = MarsModelReplay(
-            model_type=model_type,
-            features=features,
-            target=target,
-            dataset_flag_col=dataset_flag_col,
-            categorical_features=categorical_features,
-            optimize_metric=optimize_metric,
-            seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
-            lr_feature_mode=lr_feature_mode,
-            lr_binning_type=lr_binning_type,
-            lr_binner_kwargs=lr_binner_kwargs,
-            lr_binner=lr_binner,
-        )
+        self.replay_runner = MarsModelReplayRunner()
         self.feature_growth_tuner = MarsFeatureIncrementalTuner(
             model_type=model_type,
             features=features,
@@ -114,23 +92,21 @@ class MarsModelingSession:
             categorical_features=categorical_features,
             optimize_metric=optimize_metric,
             seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
             lr_feature_mode=lr_feature_mode,
             lr_binning_type=lr_binning_type,
             lr_binner_kwargs=lr_binner_kwargs,
             lr_binner=lr_binner,
         )
-        self._last_feature_growth_run: MarsFeatureGrowthRun | None = None
+        self._last_feature_growth_run: MarsFeatureGrowthResult | None = None
 
     @property
-    def last_run(self) -> MarsModelingRun | None:
+    def last_run(self) -> MarsModelTuningResult | None:
         """
         返回当前会话最近一次调参结果。
 
         Returns
         -------
-        MarsModelingRun or None
+        MarsModelTuningResult or None
             最近一次调参结果；若尚未运行调参，则返回 ``None``。
 
         Examples
@@ -214,13 +190,13 @@ class MarsModelingSession:
         return self.tuner.history_table
 
     @property
-    def last_feature_growth_run(self) -> MarsFeatureGrowthRun | None:
+    def last_feature_growth_run(self) -> MarsFeatureGrowthResult | None:
         """
         返回最近一次逐步增加特征调参结果。
 
         Returns
         -------
-        MarsFeatureGrowthRun or None
+        MarsFeatureGrowthResult or None
             最近一次特征增长调参结果；若尚未运行，则返回 ``None``。
 
         Examples
@@ -237,7 +213,7 @@ class MarsModelingSession:
         *,
         time_col: str,
         split_ratios: Mapping[str, float],
-        label_col: str | None = None,
+        target: str | None = None,
         mode: str = "strict",
         train_key: str = "train",
         val_key: str = "val",
@@ -254,7 +230,7 @@ class MarsModelingSession:
             时间列名。
         split_ratios : mapping of str to float
             数据集切分比例，合计必须为 1。
-        label_col : str, optional
+        target : str, optional
             标签列；默认使用 session 的 target。
         mode : {"strict", "hybrid"}, default "strict"
             时间严格切分或建模窗口内随机 validation 切分。
@@ -282,30 +258,35 @@ class MarsModelingSession:
         """
         split_spec = SplitSpec(
             time_col=time_col,
-            label_col=label_col or self.tuner.spec.target,
+            label_col=target or self.tuner.spec.target,
             mode=mode.lower(),
             train_key=train_key,
             val_key=val_key,
             random_seed=random_seed,
         )
-        slicer = MarsModelDataSlicer(
-            df=df,
-            time_col=split_spec.time_col,
-            label_col=split_spec.label_col,
-            dataset_flag_col=self.tuner.spec.dataset_flag_col,
-        )
+        slicer = MarsModelDataSplitter()
         if split_spec.mode == "strict":
-            return slicer.split_by_time_strictly(dict(split_ratios))
+            return slicer.split_by_time_strictly(
+                df,
+                time_col=split_spec.time_col,
+                target=split_spec.label_col,
+                split_ratios=dict(split_ratios),
+                dataset_flag_col=self.tuner.spec.dataset_flag_col,
+            )
         if split_spec.mode == "hybrid":
             return slicer.split_hybrid_random_val(
-                dict(split_ratios),
+                df,
+                time_col=split_spec.time_col,
+                target=split_spec.label_col,
+                split_ratios=dict(split_ratios),
+                dataset_flag_col=self.tuner.spec.dataset_flag_col,
                 train_key=split_spec.train_key,
                 val_key=split_spec.val_key,
                 random_seed=split_spec.random_seed,
             )
         raise ValueError(f"Unsupported slice mode: {mode!r}. Expected 'strict' or 'hybrid'.")
 
-    def tune(self, df: FrameLike, **kwargs: Any) -> MarsModelingRun:
+    def tune(self, df: FrameLike, **kwargs: Any) -> MarsModelTuningResult:
         """
         调用调参工具训练并返回结构化调参结果。
 
@@ -318,7 +299,7 @@ class MarsModelingSession:
 
         Returns
         -------
-        MarsModelingRun
+        MarsModelTuningResult
             单次调参结果。
 
         Examples
@@ -342,7 +323,7 @@ class MarsModelingSession:
         mode: str = "prefix",
         selection_metric: str | None = None,
         **tune_kwargs: Any,
-    ) -> MarsFeatureGrowthRun:
+    ) -> MarsFeatureGrowthResult:
         """
         按特征数量逐步扩展并执行多轮调参。
 
@@ -371,7 +352,7 @@ class MarsModelingSession:
 
         Returns
         -------
-        MarsFeatureGrowthRun
+        MarsFeatureGrowthResult
             包含 step 汇总表、每个成功 step 的 tuning run 和推荐模型。
 
         Examples
@@ -404,7 +385,7 @@ class MarsModelingSession:
         pred_col: str,
         benchmark_col: str | None = None,
         time_col: str | None = None,
-        val_target_col: str | None = None,
+        val_target: str | None = None,
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
     ) -> MarsModelingReport:
@@ -421,7 +402,7 @@ class MarsModelingSession:
             覆盖会话默认基准分数列。
         time_col : str, optional
             覆盖会话默认时间列。
-        val_target_col : str, optional
+        val_target : str, optional
             可选校验标签列。
         feature_cols : sequence of str, optional
             用于计算特征 PSI 的特征列。
@@ -444,16 +425,18 @@ class MarsModelingSession:
         resolved_importance = importance_table
         if resolved_importance is None and run is not None:
             resolved_importance = run.importance_table.copy()
-        evaluator = MarsModelEvaluator(
+        evaluator = MarsModelEvaluator()
+        report = evaluator.evaluate(
+            df,
+            pred_col=pred_col,
             group_col=self.tuner.spec.dataset_flag_col,
-            target_col=self.tuner.spec.target,
-            benchmark_col=benchmark_col if benchmark_col is not None else self.tuner.spec.benchmark_col,
-            time_col=time_col if time_col is not None else self.tuner.spec.time_col,
-            val_target_col=val_target_col,
+            target=self.tuner.spec.target,
+            benchmark_col=benchmark_col,
+            time_col=time_col,
+            val_target=val_target,
             feature_cols=resolved_feature_cols,
             importance_table=resolved_importance,
         )
-        report = evaluator.evaluate(df, pred_col=pred_col)
         if run is not None:
             report.metadata.update(
                 {
@@ -482,25 +465,25 @@ class MarsModelingSession:
 
     def replay(
         self,
-        run: MarsModelingRun,
+        tuning_result: MarsModelTuningResult,
         df: FrameLike,
         **kwargs: Any,
-    ) -> MarsReplayRun:
+    ) -> MarsModelReplayResult:
         """
         复用调参结果执行 Top-K replay、重训和重评分。
 
         Parameters
         ----------
-        run : MarsModelingRun
+        tuning_result : MarsModelTuningResult
             调参阶段产出的结果对象。
         df : pandas.DataFrame or polars.DataFrame
             需要重训和评分的数据。
         **kwargs : Any
-            透传给 ``MarsModelReplay.run`` 的 replay 参数。
+            透传给 ``MarsModelReplayRunner.run`` 的 replay 参数。
 
         Returns
         -------
-        MarsReplayRun
+        MarsModelReplayResult
             replay 排名、leaderboard、模型、评分数据和报告。
 
         Examples
@@ -509,4 +492,4 @@ class MarsModelingSession:
         >>> callable(session.replay)
         True
         """
-        return self.replay_runner.run(run, df, **kwargs)
+        return self.replay_runner.run(tuning_result, df, **kwargs)

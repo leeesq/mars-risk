@@ -23,7 +23,7 @@ from mars.modeling.utils import (
 )
 
 
-class MarsBaseModelTuner(ABC):
+class MarsBaseModelStrategy(ABC):
     """
     MARS 二分类模型调参基类。
 
@@ -69,7 +69,7 @@ class MarsBaseModelTuner(ABC):
 
     Examples
     --------
-    >>> issubclass(MarsBaseModelTuner, ABC)
+    >>> issubclass(MarsBaseModelStrategy, ABC)
     True
     """
 
@@ -174,7 +174,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -198,7 +198,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {"depth": 3}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -427,7 +427,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -472,7 +472,7 @@ class MarsBaseModelTuner(ABC):
         ...     def suggest_int(self, name, low, high, step=1): return low
         ...     def suggest_float(self, name, low, high, step=None): return low
         ...     def suggest_categorical(self, name, values): return values[0]
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -514,7 +514,7 @@ class MarsBaseModelTuner(ABC):
 
         return params
 
-    def _sync_to_disk(self, record: Mapping[str, Any], path: str) -> None:
+    def _sync_to_disk(self, record: Mapping[str, Any], path: str | Path | None) -> None:
         """
         将单次 Trial 记录追加写入 CSV。
 
@@ -525,6 +525,8 @@ class MarsBaseModelTuner(ABC):
         path : str
             CSV 输出路径。
         """
+        if path is None:
+            return
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([dict(record)]).to_csv(
@@ -545,7 +547,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {"depth": 3}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -581,50 +583,29 @@ class MarsBaseModelTuner(ABC):
         extra_columns = [col for col in history_table.columns if col not in ordered_columns]
         return history_table.reindex(columns=ordered_columns + sorted(extra_columns))
 
-    def objective(self, trial: Any, startup_trials: int, save_path: str) -> float:
+    def objective(
+        self,
+        trial: Any,
+        startup_trials: int,
+        history_path: str | Path | None,
+    ) -> float:
         """
-        执行单次 Trial 的完整生命周期。
+        Execute one Optuna trial lifecycle.
 
         Parameters
         ----------
         trial : Any
-            当前 Optuna Trial 对象。
+            Current Optuna trial object.
         startup_trials : int
-            启用剪枝前的预热 Trial 数量。
-        save_path : str
-            调参历史 CSV 输出路径。
+            Warmup trial count before pruning.
+        history_path : str or pathlib.Path, optional
+            CSV path for trial history. ``None`` disables disk writes.
 
         Returns
         -------
         float
-            当前 Trial 的目标分数；若未通过泛化约束，则返回惩罚分。
-
-        Examples
-        --------
-        >>> from pathlib import Path
-        >>> from tempfile import TemporaryDirectory
-        >>> class Trial:
-        ...     number = 0
-        >>> class DummyTuner(MarsBaseModelTuner):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {"depth": 3}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return params
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        ...     def evaluate_split(self, model, split_name): return {"auc": 60.0, "ks": 25.0}
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.param_space = {}
-        >>> tuner.training_metric = "auc"
-        >>> tuner.all_models = {}
-        >>> tuner.data_dict = {"train": None, "val": None}
-        >>> tuner.optimize_metric = "ks"
-        >>> tuner.max_diff = 3.0
-        >>> tuner.use_oot_penalty = False
-        >>> tuner.history = []
-        >>> tuner.best_score = -np.inf
-        >>> tuner.best_model = None
-        >>> with TemporaryDirectory() as tmp:
-        ...     tuner.objective(Trial(), 0, str(Path(tmp) / "history.csv"))
-        25.0
+            Trial objective score, or a penalty score when generalization
+            constraints fail.
         """
         record: Dict[str, Any] = {
             "trial_num": getattr(trial, "number", -1),
@@ -710,7 +691,7 @@ class MarsBaseModelTuner(ABC):
         finally:
             # 无论 Trial 成功、剪枝还是异常，都要保留 history 并立即落盘。
             self.history.append(record)
-            self._sync_to_disk(record, save_path)
+            self._sync_to_disk(record, history_path)
 
     def get_best_iteration(self, model: Any) -> int | None:
         """
@@ -730,7 +711,7 @@ class MarsBaseModelTuner(ABC):
         --------
         >>> class Model:
         ...     best_iteration = 12
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -768,7 +749,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {"depth": 3}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
@@ -806,7 +787,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return {"params": params}
@@ -835,7 +816,7 @@ class MarsBaseModelTuner(ABC):
 
         Examples
         --------
-        >>> class DummyTuner(MarsBaseModelTuner):
+        >>> class DummyTuner(MarsBaseModelStrategy):
         ...     def _build_backend_data(self): pass
         ...     def get_default_space(self): return {}
         ...     def train_model(self, trial, params, startup_trials, training_metric): return object()

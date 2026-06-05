@@ -1,4 +1,4 @@
-# MARS Quickstart
+# MARS 快速开始
 
 这份教程使用小型合成数据，演示 MARS 的三个典型工作流：
 
@@ -32,12 +32,12 @@ df = pl.DataFrame(
 from mars.analysis import MarsDataProfiler
 
 profiler = MarsDataProfiler(
-    df,
     missing_values=[-999],
 )
 
 profile_report = profiler.generate_profile(
-    profile_by="month",
+    df,
+    group_col="month",
     config_overrides={
         "enable_sparkline": False,
         "dq_metrics": ["missing", "zeros"],
@@ -65,25 +65,26 @@ profile_report.write_excel("tutorial_profile_report.xlsx")
 ```python
 from mars.analysis import profile_risk
 
-eval_report, evaluator = profile_risk(
+risk_profile = profile_risk(
     df,
     target="target",
     features=["income", "utilization", "segment"],
-    profile_by="month",
+    group_col="month",
     binning_type="native",
-    n_bins=4,
-    binner_kwargs={"method": "quantile"},
+    binner_params={"method": "quantile", "n_bins": 4},
     plot=False,
 )
 
+eval_report = risk_profile.report
+binner = risk_profile.binner
 summary = eval_report.summary_table
 detail = eval_report.detail_table
 ```
 
-这里有两个结果：
+`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。这里最常用的是：
 
 - `eval_report`：汇总表、趋势表、明细表和 Excel 导出入口。
-- `evaluator`：保留了已经拟合好的分箱器，可以继续复用规则。
+- `binner`：保留了已经拟合好的分箱器，可以继续复用规则。
 
 导出评估报表：
 
@@ -102,11 +103,10 @@ y = df.get_column("target")
 binner = MarsNativeBinner(
     method="quantile",
     n_bins=4,
-    cat_features=["segment"],
     special_values=[-999],
 )
 
-binner.fit(X, y)
+binner.fit(X, y, cat_features=["segment"])
 X_binned = binner.transform(X, return_type="index")
 X_woe = binner.transform(X, return_type="woe")
 income_mapping = binner.get_bin_mapping("income")
@@ -122,4 +122,4 @@ income_mapping = binner.get_bin_mapping("income")
 ## 6. 下一步
 
 - 查看 [performance_audit.md](performance_audit.md) 了解当前性能整理方向。
-- 运行 [benchmark_synthetic.py](benchmark_synthetic.py) 做一次本地基准测试。
+- 运行 [../benchmarks/benchmark_binning_speed.py](../benchmarks/benchmark_binning_speed.py) 复现 5w×1000 特征速度对比。

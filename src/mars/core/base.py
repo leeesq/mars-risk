@@ -515,9 +515,9 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
     True
     """
 
-    def __init__(self, target: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.target = target
+        self.target: str | None = None
         self.selected_features_: list[str] = []
         self.n_features_in_: int = 0
         self.report_records_: list[dict[str, Any]] = []
@@ -586,8 +586,6 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         X = self._ensure_polars_dataframe(X)
 
         cols_to_keep = [c for c in self.selected_features_ if c in X.columns]
-        if self.target in X.columns and self.target not in cols_to_keep:
-            cols_to_keep.append(self.target)
 
         X_out = X.select(cols_to_keep)
         return self._format_output(X_out)

@@ -7,7 +7,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 
-from mars.modeling.backends.base import MarsBaseModelTuner
+from mars.modeling.backends.base import MarsBaseModelStrategy
 from mars.modeling.backends.common import (
     build_importance_table as _build_importance_table,
 )
@@ -26,7 +26,7 @@ from mars.modeling.backends.common import (
 from mars.modeling.metrics import lgb_ks_metric as _lgb_ks_metric
 
 
-class MarsLGBStrategy(MarsBaseModelTuner):
+class MarsLGBStrategy(MarsBaseModelStrategy):
     """
     基于 LightGBM 原生接口的调参策略。
 

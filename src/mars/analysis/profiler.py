@@ -21,8 +21,9 @@ def profile_stats(
     *,
     metrics: List[str],
     features: List[str] | None = None,
-    profile_by: str | None = None,
-    dt_col: str | None = None,
+    group_col: str | None = None,
+    time_col: str | None = None,
+    time_grain: str | None = None,
     missing_values: List[Union[int, float, str]] | None = None,
     special_values: List[Any] | None = None,
     exclude_features: List[str] | None = None,
@@ -32,59 +33,42 @@ def profile_stats(
     config_overrides: Dict[str, Any] | None = None,
 ) -> MarsProfileReport:
     """
-    轻量级统计画像入口。
-
-    该函数会根据 ``metrics`` 自动拆分数据质量指标与统计指标，
-    并调用 ``MarsDataProfiler`` 生成仅包含所需指标的画像报告。
+    为指定指标生成轻量画像报告。
 
     Parameters
     ----------
-    df : pl.DataFrame or pd.DataFrame
-        待分析的数据集。
+    df : polars.DataFrame or pandas.DataFrame
+        待画像样本表。
     metrics : list of str
-        需要计算的指标名称列表，可混合传入数据质量指标与统计指标，
-        例如 ``["missing", "zeros", "mean"]``。
+        数据质量或统计指标名称，例如 `["missing", "mean"]`。
     features : list of str, optional
-        指定要画像的特征子集。默认为全部候选特征。
-    profile_by : str, optional
-        趋势分析的分组维度，可以是数据中已有列名，也可以是时间粒度指令。
-    dt_col : str, optional
-        当 ``profile_by`` 为 ``month``、``week``、``day`` 或 ``Nd`` 时，
-        作为时间聚合基准的日期列名。
-    missing_values : list of Any, optional
-        传递给 ``MarsDataProfiler`` 的自定义缺失值集合。
-    special_values : list of Any, optional
-        传递给 ``MarsDataProfiler`` 的自定义特殊值集合。
+        本次画像的特征列。
+    group_col : str, optional
+        已存在的分组列名。
+    time_col : str, optional
+        原始日期列名，用于生成趋势分组。
+    time_grain : str, optional
+        时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`；
+        传入 `time_col` 时默认按 `"month"` 聚合。
+    missing_values : list, optional
+        额外视为缺失的取值。
+    special_values : list, optional
+        连续分布计算中需要排除的特殊值。
     exclude_features : list of str, optional
-        需要排除的特征列表。
-    include_dtypes : type or pl.DataType or list, optional
-        仅纳入指定数据类型的列。
+        本次画像需要排除的列名。
+    include_dtypes : type, polars.DataType or list, optional
+        本次画像允许保留的数据类型。
     sample_frac : float, optional
-        在画像前对输入数据执行随机采样的比例。
+        本次画像的抽样比例。
     enable_sparkline : bool, default False
-        是否在概览表中启用 Sparkline。
+        是否生成 overview 中的迷你趋势图。
     config_overrides : dict, optional
-        临时覆盖 ``MarsProfileConfig`` 的配置项。由 ``metrics`` 推导出的
-        ``dq_metrics``、``stat_metrics`` 以及 ``enable_sparkline`` 会覆盖同名项。
+        对 `MarsProfileConfig` 的本次运行覆盖配置。
 
     Returns
     -------
     MarsProfileReport
-        仅包含所请求指标范围的画像报告对象。
-
-    Raises
-    ------
-    ValueError
-        当 ``metrics`` 为空，或包含未支持的指标名称时抛出。
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from mars.analysis.profiler import profile_stats
-    >>> df = pl.DataFrame({"age": [20, 30, None], "month": ["202601", "202601", "202602"]})
-    >>> report = profile_stats(df, metrics=["missing", "mean"], profile_by="month")
-    >>> "missing" in report.dq_tables
-    True
+        包含所请求指标表的画像报告。
     """
     if not metrics:
         raise ValueError("`metrics` must contain at least one metric name.")
@@ -115,13 +99,8 @@ def profile_stats(
         )
 
     profiler = MarsDataProfiler(
-        df,
-        features=features,
-        exclude_features=exclude_features,
-        include_dtypes=include_dtypes,
         missing_values=missing_values,
         special_values=special_values,
-        sample_frac=sample_frac,
     )
 
     merged_overrides = dict(config_overrides or {})
@@ -130,120 +109,57 @@ def profile_stats(
     merged_overrides["enable_sparkline"] = enable_sparkline
 
     return profiler.generate_profile(
-        profile_by=profile_by,
-        dt_col=dt_col,
+        df,
+        features=features,
+        exclude_features=exclude_features,
+        include_dtypes=include_dtypes,
+        group_col=group_col,
+        time_col=time_col,
+        time_grain=time_grain,
+        sample_frac=sample_frac,
         config_overrides=merged_overrides,
     )
 
 class MarsDataProfiler(MarsBaseEstimator):
     """
-    高性能数据特征画像与稳定性评估器。
+    数据质量、统计分布和稳定性画像器。
 
-    该组件负责计算数据集的全局质量指标（如缺失率、零值率、众数占比）与统计分布特征
-    （如均值、方差、分位数）。同时提供基于底层向量化引擎的字符级微缩分布图（Sparklines）
-    渲染，并支持基于时间切片或客群维度的多维趋势分析及群体稳定性（PSI）评估。
+    画像器只保存稳定的画像策略配置。样本数据、active features、排除列、dtype 过滤、
+    分组列、时间聚合、抽样比例和本次运行覆盖项都通过 :meth:`generate_profile`
+    传入，以便同一个实例可以自然复用到不同数据集。
 
     Parameters
     ----------
-    df : pl.DataFrame or pd.DataFrame
-        输入数据集上下文。引擎内部统一将其转换为 Polars 内存数据帧格式。
-
-    features : list of str, optional
-        指定参与计算的特征列名集合。若为 None，系统将默认挂载数据集中的全量特征列。
-
-    exclude_features : list of str, optional
-        排除计算的特征列名黑名单。
-
-    include_dtypes : type or pl.DataType or list, optional
-        数据类型白名单约束。仅允许匹配指定类型的列进入计算管道，支持 Python 原生类型
-        （如 int, float, str）与 Polars 数据类型（如 pl.Int64）的混合枚举约束。
-
     missing_values : list, optional
-        领域自定义缺失值定义（如 [-999, 'unknown']）。该集合内的数值在计算质量指标时
-        将被纳入缺失率统计，并在连续变量的统计分布及分布图计算中被物理剔除。
-
+        数据质量指标中额外视为缺失的取值。
     special_values : list, optional
-        领域自定义特殊值定义。在数据质量统计中被视为有效值并参与众数等计算，但在
-        连续型变量的数值分布运算中会被剥离。
-
+        连续分布计算中需要排除的特殊值。
     psi_n_bins : int, default 10
-        执行群体稳定性 (PSI) 计算时，针对连续型变量设定的空间离散化分箱上限。
-
+        PSI 计算使用的最大分箱数。
     psi_bin_method : {"quantile", "uniform"}, default "quantile"
-        执行群体稳定性 (PSI) 计算时，针对连续型变量调用的无监督区间切分策略。
-
+        PSI 计算使用的无监督分箱策略。
     psi_cv_ignore_threshold : float, default 0.05
-        群体稳定性变异系数 (CV) 的触发门限。用于抑制极小基数分布下的方差膨胀效应。
-
+        分组 PSI 波动过小时的忽略阈值。
     psi_batch_size : int, default 50
-        执行跨维度 PSI 矩阵交叉运算时的特征列并发切块大小。
-
+        PSI 趋势计算的特征批大小。
     overview_batch_size : int, default 500
-        执行全局概览统计时的特征列并发切块大小，用于防范大规模特征下底层查询优化器
-        (Query Planner) 的抽象语法树 (AST) 解析过载。
-
-    sample_frac : float, optional
-        全局随机采样比例限，区间边界为 (0.0, 1.0)。配置该参数将通过牺牲部分统计精度
-        以换取极大规模数据集下的特征计算吞吐量。
-
+        overview 计算的特征批大小。
     config : MarsProfileConfig, optional
-        画像管线配置上下文。用于精细化控制各计算节点的度量算子开关与图表渲染参数。
-
-    Attributes
-    ----------
-    df : pl.DataFrame
-        内部挂载并经过预处理（如随机采样）的数据帧只读引用。
-    features : list of str
-        经过数据类型过滤与黑白名单校验后，实际流入画像管道的物理特征名称集合。
-    config : MarsProfileConfig
-        执行期绑定的全局配置实体。
-    missing_values : list of Any
-        执行期绑定的自定义缺失值集合。
-    special_values : list of Any
-        执行期绑定的特殊值集合。
-
-    Notes
-    -----
-    在计算多维组间变异系数 (Group CV) 时，若某特征在全部分布切片下的 PSI 峰值均未突破
-    `psi_cv_ignore_threshold`，底层引擎将强制抹零其组间波动率，以此对冲在极小偏移量下
-    由分母极值引发的相对误差放大现象。
-    微缩分布图 (Sparklines) 生成机制内部集成了异常值截断与自适应降采样策略，以确保
-    前端终端渲染的稳健性与一致性。
+        基础画像配置。
 
     Examples
     --------
     >>> import polars as pl
-    >>> df = pl.DataFrame({
-    ...     "age": [20, 30, None],
-    ...     "income": [5_000, 8_000, 6_000],
-    ...     "month": ["202601", "202601", "202602"],
-    ... })
-    >>> # 基础调用范式：生成全量报告并读取画像数据
-    >>> profiler = MarsDataProfiler(df)
-    >>> report = profiler.generate_profile()
+    >>> df = pl.DataFrame({"age": [20, 30, None], "month": ["202601", "202601", "202602"]})
+    >>> profiler = MarsDataProfiler(missing_values=[-999])
+    >>> report = profiler.generate_profile(df, group_col="month")
     >>> report.get_profile_data().overview.height > 0
-    True
-
-    >>> # 进阶调用范式：挂载领域特殊值、注入分组维度并覆写底层渲染配置
-    >>> profiler = MarsDataProfiler(df, missing_values=[-999, "unknown"])
-    >>> report = profiler.generate_profile(
-    ...     profile_by="month",
-    ...     config_overrides={
-    ...         "enable_sparkline": False,
-    ...         "stat_metrics": ["psi", "mean", "min", "max"]
-    ...     }
-    ... )
-    >>> "psi" in report.stats_tables
     True
     """
 
     def __init__(
         self,
-        df: Union[pl.DataFrame, pd.DataFrame],
-        features: List[str] | None = None,
         *,
-        exclude_features: List[str] | None = None,
-        include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None] = None,
         missing_values: List[Union[int, float, str]] | None = None,
         special_values: List[Any] | None = None,
         psi_n_bins: int = 10,
@@ -251,48 +167,32 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_cv_ignore_threshold: float = 0.05,
         psi_batch_size: int = 50,
         overview_batch_size: int = 500,
-        sample_frac: float | None = None,
         config: MarsProfileConfig | None = None,
     ) -> None:
         """
-        初始化数据画像器。
+        初始化稳定画像策略。
 
         Parameters
         ----------
-        df : pl.DataFrame or pd.DataFrame
-            待画像的数据集。
-        features : list of str, optional
-            需要纳入画像流程的特征列表。默认使用全部候选列。
-        exclude_features : list of str, optional
-            需要从候选特征中排除的列名列表。
-        include_dtypes : type or pl.DataType or list, optional
-            数据类型白名单，仅允许匹配到的列参与画像。
         missing_values : list, optional
-            自定义缺失值集合，会并入缺失率统计。
+            额外视为缺失的取值。
         special_values : list, optional
-            自定义特殊值集合，会在连续变量分布计算中被单独隔离。
+            连续分布计算中需要排除的特殊值。
         psi_n_bins : int, default 10
-            计算 PSI 时连续特征的最大分箱数。
+            PSI 计算使用的最大分箱数。
         psi_bin_method : {"quantile", "uniform"}, default "quantile"
-            计算 PSI 时使用的连续特征分箱策略。
+            PSI 计算使用的无监督分箱策略。
         psi_cv_ignore_threshold : float, default 0.05
-            组间 PSI 波动较小时忽略 Group CV 的阈值。
+            分组 PSI 波动过小时的忽略阈值。
         psi_batch_size : int, default 50
-            计算 PSI 趋势时的特征批处理大小。
+            PSI 趋势计算的特征批大小。
         overview_batch_size : int, default 500
-            计算概览宽表时的特征批处理大小。
-        sample_frac : float, optional
-            画像前执行随机采样的比例，取值应位于 ``(0, 1)``。
+            overview 计算的特征批大小。
         config : MarsProfileConfig, optional
-            画像流程配置对象。未提供时使用默认配置。
+            基础画像配置。
         """
         super().__init__()
         # 数据接入与采样
-        self.df = self._ensure_polars_dataframe(df)
-        if sample_frac is not None and 0 < sample_frac < 1.0:
-            logger.warning(f"[SAMPLE] Data is sampled (frac={sample_frac}). Metrics are estimates.")
-            self.df = self.df.sample(fraction=sample_frac, shuffle=True)
-
         self.config = config if config else MarsProfileConfig()
 
         # 值处理配置
@@ -304,127 +204,93 @@ class MarsDataProfiler(MarsBaseEstimator):
         self.psi_n_bins = psi_n_bins
         self.psi_bin_method = psi_bin_method
         self.psi_cv_ignore_threshold = psi_cv_ignore_threshold
+        self.df: pl.DataFrame = pl.DataFrame()
 
-        # 特征筛选逻辑
-        # 初始范围
-        candidates = features if features else self.df.columns
-
-        # 黑名单剔除
-        if exclude_features:
-            exclude_set = set(exclude_features)
-            candidates = [c for c in candidates if c not in exclude_set]
-
-        # 类型白名单 (支持 Python原生类型 + Polars类型)
-        if include_dtypes:
-            import polars.selectors as cs
-
-            # 归一化为列表
-            if not isinstance(include_dtypes, list):
-                raw_dtypes = [include_dtypes]
-            else:
-                raw_dtypes = include_dtypes
-
-            # 类型映射：Python Type -> Polars Abstract Type
-            target_dtypes = []
-            for t in raw_dtypes:
-                # Python 原生类型映射
-                if t is int:
-                    target_dtypes.append(pl.Integer) # 匹配所有整型 (Int8~64, UInt)
-                elif t is float:
-                    target_dtypes.append(pl.Float)   # 匹配所有浮点 (Float32/64)
-                elif t is str:
-                    target_dtypes.append(pl.String)  # 匹配 String/Utf8
-                elif t is bool:
-                    target_dtypes.append(pl.Boolean)
-                elif t is list:
-                    target_dtypes.append(pl.List)
-                # Polars 类型直接透传
-                else:
-                    target_dtypes.append(t)
-
-            # 智能选择
-            try:
-                # 利用 Selectors 进行宽容匹配
-                dtype_selector = cs.by_dtype(target_dtypes)
-                # 只在 candidates 范围内筛选
-                matched_cols = self.df.select(pl.col(candidates)).select(dtype_selector).columns
-                candidates = matched_cols
-
-            except Exception as e:
-                logger.error(f"Type filtering failed: {e}. Falling back to basic filtering, only works for Polars dtypes.")
-                # 降级策略: 简单的包含判断 (仅对 Polars 类型有效)
-                candidates = [c for c in candidates if self.df.schema[c] in target_dtypes]
-
-        if not candidates:
-            raise ValueError("No features selected after filtering.")
-
-        self._dtype_map = self.df.schema
         self.overview_batch_size = overview_batch_size
 
-        self.features = candidates
+        self.features = []
+        self._dtype_map = {}
 
     @time_it
     def generate_profile(
         self,
-        profile_by: str | None = None,
+        df: Union[pl.DataFrame, pd.DataFrame],
         *,
-        dt_col: str | None = None,
+        features: List[str] | None = None,
+        exclude_features: List[str] | None = None,
+        include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None] = None,
+        group_col: str | None = None,
+        time_col: str | None = None,
+        time_grain: str | None = None,
+        sample_frac: float | None = None,
         config_overrides: Dict[str, Any] | None = None
     ) -> MarsProfileReport:
         """
-        执行数据画像分析并生成报告。
+        生成一次数据画像报告。
 
-        结果包含两个部分：
-        1. ``overview``：全量特征概览表，包含分布、数据质量指标和统计指标。
-        2. ``trend tables``：当指定 ``profile_by`` 时，计算各指标随分组维度的变化趋势。
+        `MarsDataProfiler` 的构造函数只保存画像策略配置；样本表、特征范围、排除列、
+        dtype 过滤、分组列和抽样比例都属于本次运行上下文，由 `generate_profile`
+        传入。同一个 profiler 实例可以连续画像不同 DataFrame，方法结束后会恢复
+        原实例状态。`sample_frac` 只对本次运行的工作副本生效，不会持久改变实例数据。
 
         Parameters
         ----------
-        profile_by : str, optional
-            趋势分析的分组维度。
-            当同时提供 ``dt_col`` 时，可使用 ``"day"``、``"week"``、
-            ``"month"`` 或 ``"7d"``、``"14d"`` 这类时间粒度指令；
-            否则应为数据中已存在的列名。若为 ``None``，仅生成概览表。
-        dt_col : str, optional
-            用于配合 ``profile_by`` 进行自动时间聚合的日期列名。
-        config_overrides : Dict[str, Any], optional
-            临时覆盖 ``MarsProfileConfig`` 的配置项。
-            常见键包括 ``stat_metrics``、``dq_metrics``、``enable_sparkline``、
-            ``sparkline_sample_size``、``sparkline_bins``、
-            ``psi_include_missing`` 与 ``psi_include_special``。
+        df : polars.DataFrame or pandas.DataFrame
+            待画像样本表。
+        features : list of str, optional
+            本次画像的特征列；不传时使用过滤后的全部候选列。
+        exclude_features : list of str, optional
+            本次画像需要排除的列名。
+        include_dtypes : type, polars.DataType or list, optional
+            只保留指定数据类型的特征列。
+        group_col : str, optional
+            已存在的分组列名，例如月份、客群或样本切片。
+        time_col : str, optional
+            原始日期列名；与 `time_grain` 配合时会生成临时时间分组列。
+        time_grain : str, optional
+            时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
+        sample_frac : float, optional
+            本次运行的抽样比例，必须位于 `(0, 1)`。
+        config_overrides : dict, optional
+            覆盖 `MarsProfileConfig` 的部分字段，例如 `dq_metrics`、`stat_metrics`
+            或 `enable_sparkline`。
 
         Returns
         -------
         MarsProfileReport
-            包含概览表与趋势表的画像报告对象。
+            包含 overview、数据质量趋势表和统计趋势表的数据画像报告。
 
         Raises
         ------
         ValueError
-            当 ``dt_col`` 不存在于输入数据中时抛出。
-
-        Examples
-        --------
-        >>> import polars as pl
-        >>> df = pl.DataFrame({
-        ...     "age": [20, 30, None],
-        ...     "income": [5_000, 8_000, 6_000],
-        ...     "month": ["202601", "202601", "202602"],
-        ... })
-        >>> profiler = MarsDataProfiler(df)
-        >>> report = profiler.generate_profile()
-        >>> report = profiler.generate_profile(profile_by="month")
-        >>> overview, dq_tables, stat_tables = report.get_profile_data()
-        >>> high_missing_cols = overview.filter(pl.col("missing_rate") > 0.9)["feature"].to_list()
-        >>> isinstance(dq_tables, dict) and isinstance(stat_tables, dict)
-        True
+            当数据为空、特征列不存在、抽样比例非法或分组列配置不合法时抛出。
         """
         # 动态配置合并
+        prepared_df, prepared_features = self._prepare_run_data(
+            df,
+            features=features,
+            exclude_features=exclude_features,
+            include_dtypes=include_dtypes,
+            sample_frac=sample_frac,
+        )
+        prev_df = self.df
+        prev_features = self.features
+        prev_dtype_map = self._dtype_map
+        self.df = prepared_df
+        self.features = prepared_features
+        self._dtype_map = prepared_df.schema
+
         run_config: MarsProfileConfig = self.config
         if config_overrides:
             run_config = dataclasses.replace(self.config, **config_overrides)
 
         # 构建分析上下文, 决定本次运行使用的数据集 (working_df) 和 分组列 (group_col)
+        profile_by = self._resolve_profile_by(
+            group_col=group_col,
+            time_col=time_col,
+            time_grain=time_grain,
+        )
+        dt_col = time_col
         working_df = self.df
         group_col = profile_by
 
@@ -491,11 +357,85 @@ class MarsDataProfiler(MarsBaseEstimator):
             except Exception as e:
                 logger.warning(f"PSI calculation skipped due to error: {e}")
 
-        return MarsProfileReport(
+        report = MarsProfileReport(
             overview=self._format_output(overview_df),
             dq_tables=self._format_output(dq_tables),
             stats_tables=self._format_output(stat_tables)
         )
+        self.df = prev_df
+        self.features = prev_features
+        self._dtype_map = prev_dtype_map
+        return report
+
+    def _prepare_run_data(
+        self,
+        df: Union[pl.DataFrame, pd.DataFrame],
+        *,
+        features: List[str] | None,
+        exclude_features: List[str] | None,
+        include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None],
+        sample_frac: float | None,
+    ) -> tuple[pl.DataFrame, list[str]]:
+        """准备单次画像运行使用的数据和特征范围。"""
+        df_pl = self._ensure_polars_dataframe(df)
+        if isinstance(df_pl, pl.LazyFrame):
+            df_pl = df_pl.collect()
+
+        if sample_frac is not None and 0 < sample_frac < 1.0:
+            logger.warning(f"[SAMPLE] Data is sampled (frac={sample_frac}). Metrics are estimates.")
+            df_pl = df_pl.sample(fraction=sample_frac, shuffle=True)
+
+        candidates = list(features) if features else list(df_pl.columns)
+        if exclude_features:
+            exclude_set = set(exclude_features)
+            candidates = [col for col in candidates if col not in exclude_set]
+
+        if include_dtypes:
+            import polars.selectors as cs
+
+            raw_dtypes = include_dtypes if isinstance(include_dtypes, list) else [include_dtypes]
+            target_dtypes = []
+            for dtype in raw_dtypes:
+                if dtype is int:
+                    target_dtypes.append(pl.Integer)
+                elif dtype is float:
+                    target_dtypes.append(pl.Float)
+                elif dtype is str:
+                    target_dtypes.append(pl.String)
+                elif dtype is bool:
+                    target_dtypes.append(pl.Boolean)
+                elif dtype is list:
+                    target_dtypes.append(pl.List)
+                else:
+                    target_dtypes.append(dtype)
+
+            try:
+                dtype_selector = cs.by_dtype(target_dtypes)
+                candidates = df_pl.select(pl.col(candidates)).select(dtype_selector).columns
+            except Exception as exc:
+                logger.error(
+                    f"Type filtering failed: {exc}. Falling back to basic filtering, only works for Polars dtypes."
+                )
+                candidates = [col for col in candidates if df_pl.schema[col] in target_dtypes]
+
+        if not candidates and (features or exclude_features or include_dtypes):
+            raise ValueError("No features selected after filtering.")
+
+        return df_pl, candidates
+
+    @staticmethod
+    def _resolve_profile_by(
+        *,
+        group_col: str | None,
+        time_col: str | None,
+        time_grain: str | None,
+    ) -> str | None:
+        """把新的分组/时间参数映射到内部趋势维度。"""
+        if group_col:
+            return group_col
+        if time_col:
+            return time_grain or "month"
+        return None
 
     def _calculate_overview(self, config: MarsProfileConfig) -> pl.DataFrame:
         """

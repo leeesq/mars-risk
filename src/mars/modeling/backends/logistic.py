@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
 from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBinner
-from mars.modeling.backends.base import MarsBaseModelTuner
+from mars.modeling.backends.base import MarsBaseModelStrategy
 from mars.modeling.backends.common import build_importance_table as _build_importance_table
 from mars.modeling.backends.common import validate_numeric_pandas as _validate_numeric_pandas
 from mars.modeling.utils import require_optional_module
@@ -148,7 +148,7 @@ class MarsLogisticModel:
         return np.asarray(self.estimator.predict_proba(model_frame))
 
 
-class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
+class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     """
     面向传统银行评分卡体系的 LR 建模后端。
 
@@ -300,7 +300,12 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         binner = self._resolve_binner()
         train_X = self.raw_feature_frame_dict["train"]
         train_y = self._get_target_array(self.data_dict["train"])
-        binner.fit(train_X, train_y)
+        binner.fit(
+            train_X,
+            train_y,
+            features=list(self.features),
+            cat_features=list(self.categorical_features),
+        )
         binner.set_output("polars")
         self.lr_binner = binner
 
@@ -319,16 +324,12 @@ class MarsLogisticRegressionStrategy(MarsBaseModelTuner):
         binner._cache_X = None
         binner._cache_y = None
 
-    def _resolve_binner(self) -> MarsBinnerBase:
+    def _resolve_binner(self) -> MarsNativeBinner | MarsOptimalBinner:
         """返回用户传入或内部构建的 LR WOE 分箱器。"""
         if self.lr_binner is not None:
-            return self.lr_binner
+            return cast(MarsNativeBinner | MarsOptimalBinner, self.lr_binner)
 
-        kwargs = {
-            "features": list(self.features),
-            "cat_features": list(self.categorical_features),
-            **self.lr_binner_kwargs,
-        }
+        kwargs = dict(self.lr_binner_kwargs)
         if self.lr_binning_type in {"opt", "optimal"}:
             return MarsOptimalBinner(**kwargs)
         return MarsNativeBinner(**kwargs)

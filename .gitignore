@@ -54,6 +54,13 @@ mars_lists.json
 # 测试与教程运行产物
 tests/_artifacts/
 tutorial/__pycache__/
+tutorial/**/*.ipynb
+tutorial/**/*.parquet
+tutorial/**/*.xlsx
+tutorial/**/*.html
+tutorial/**/*.zip
+tutorial/modeling_artifacts/
+benchmarks/_artifacts/
 tutorial/*.tmp
 tutorial/*.log
 .html

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence, Type
 
@@ -17,7 +16,7 @@ from mars.modeling.backends import (
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.prediction import ModelPredictor
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.results import MarsModelingRun, MarsReplayRun
+from mars.modeling.results import MarsModelReplayResult, MarsModelTuningResult
 from mars.modeling.spec import ModelingSpec, ReplaySpec
 from mars.modeling.utils import FrameLike, collect_library_versions
 
@@ -43,8 +42,6 @@ def _build_spec(
     categorical_features: Sequence[str] | None = None,
     optimize_metric: str = "ks",
     seed: int = 1206,
-    benchmark_col: str | None = None,
-    time_col: str | None = None,
     lr_feature_mode: str = "numeric",
     lr_binning_type: str = "native",
     lr_binner_kwargs: Mapping[str, Any] | None = None,
@@ -75,8 +72,6 @@ def _build_spec(
         categorical_features=list(categorical_features or []),
         optimize_metric=optimize_metric.lower(),
         seed=int(seed),
-        benchmark_col=benchmark_col,
-        time_col=time_col,
         lr_feature_mode=str(lr_feature_mode).lower(),
         lr_binning_type=str(lr_binning_type).lower(),
         lr_binner_kwargs=dict(lr_binner_kwargs or {}),
@@ -153,16 +148,12 @@ class MarsModelTuner:
         trial 最终优化指标。
     seed : int, default 1206
         随机种子。
-    benchmark_col : str, optional
-        评估时默认基准分数列。
-    time_col : str, optional
-        评估时默认时间列。
 
     Attributes
     ----------
     spec : ModelingSpec
         当前调参任务的建模规格。
-    last_run : MarsModelingRun or None
+    last_run : MarsModelTuningResult or None
         最近一次调参结果。
 
     Examples
@@ -182,8 +173,6 @@ class MarsModelTuner:
         categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: str | None = None,
-        time_col: str | None = None,
         lr_feature_mode: str = "numeric",
         lr_binning_type: str = "native",
         lr_binner_kwargs: Mapping[str, Any] | None = None,
@@ -197,14 +186,12 @@ class MarsModelTuner:
             categorical_features=categorical_features,
             optimize_metric=optimize_metric,
             seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
             lr_feature_mode=lr_feature_mode,
             lr_binning_type=lr_binning_type,
             lr_binner_kwargs=lr_binner_kwargs,
             lr_binner=lr_binner,
         )
-        self.last_run: MarsModelingRun | None = None
+        self.last_run: MarsModelTuningResult | None = None
 
     @property
     def best_model(self) -> Any:
@@ -315,44 +302,41 @@ class MarsModelTuner:
         warmup_steps: int = 100,
         num_boost_round: int = 500,
         early_stopping_rounds: int = 50,
-        save_path: str = "tuner_history.csv",
-    ) -> MarsModelingRun:
+        history_path: str | Path | None = None,
+        overwrite: bool = False,
+    ) -> MarsModelTuningResult:
         """
-        调参训练一个模型族并返回可复用结果对象。
+        调优一个模型后端并返回可复用的建模调优结果。
 
         Parameters
         ----------
         df : pandas.DataFrame or polars.DataFrame
-            已带 train/val/oot 标识的建模样本。
+            已经带有 train、validation、OOT 切片标记的建模样本。
         param_space : mapping, optional
-            覆盖或扩展默认搜索空间。
+            对后端搜索空间的覆盖或扩展。
         max_diff : float, default 3.0
-            泛化衰减阈值，单位为百分点。
+            泛化衰减阈值，单位是百分点。
         use_oot_penalty : bool, default False
-            是否把 OOT 衰减纳入 trial 有效性约束。
+            是否将 OOT 衰减纳入 trial 有效性判断。
         n_trials : int, default 50
-            Optuna trial 数量。
+            Optuna 试验次数。
         startup_trials : int, default 20
-            剪枝启动前 trial 数。
+            剪枝器开始工作前的预热试验次数。
         warmup_steps : int, default 100
-            剪枝预热步数。
+            剪枝器预热步数。
         num_boost_round : int, default 500
             最大 boosting 轮数。
         early_stopping_rounds : int, default 50
-            早停轮数。
-        save_path : str, default "tuner_history.csv"
-            trial 历史落盘路径。
+            early stopping 轮数。
+        history_path : str or pathlib.Path, optional
+            trial 历史记录 CSV 路径；`None` 表示只保存在内存中，不落盘。
+        overwrite : bool, default False
+            当 `history_path` 已存在时，是否允许覆盖。
 
         Returns
         -------
-        MarsModelingRun
-            调参结果、最佳模型、训练配置和元数据。
-
-        Examples
-        --------
-        >>> tuner = MarsModelTuner(model_type="xgb", features=["age"], target="y")
-        >>> callable(tuner.tune)
-        True
+        MarsModelTuningResult
+            包含最佳模型、调参历史、训练配置和元数据的建模调优结果。
         """
         try:
             import optuna
@@ -369,8 +353,16 @@ class MarsModelTuner:
             use_oot_penalty=use_oot_penalty,
         )
 
-        if os.path.exists(save_path):
-            os.remove(save_path)
+        resolved_history_path: Path | None = None
+        if history_path is not None:
+            resolved_history_path = Path(history_path)
+            if resolved_history_path.exists() and not overwrite:
+                raise FileExistsError(
+                    f"history_path already exists: {resolved_history_path}. "
+                    "Pass overwrite=True to replace it."
+                )
+            if resolved_history_path.exists():
+                resolved_history_path.unlink()
 
         backend.num_boost_round = int(num_boost_round)
         backend.early_stopping_rounds = int(early_stopping_rounds)
@@ -384,7 +376,10 @@ class MarsModelTuner:
                 n_warmup_steps=warmup_steps,
             ),
         )
-        study.optimize(lambda trial: backend.objective(trial, startup_trials, save_path), n_trials=n_trials)
+        study.optimize(
+            lambda trial: backend.objective(trial, startup_trials, resolved_history_path),
+            n_trials=n_trials,
+        )
 
         if backend.best_model is None:
             raise RuntimeError("No valid trial satisfied the generalization constraints.")
@@ -411,6 +406,8 @@ class MarsModelTuner:
             "use_oot_penalty": bool(use_oot_penalty),
             "param_space": dict(param_space or {}),
             "training_metric": backend.training_metric,
+            "history_path": str(resolved_history_path.resolve()) if resolved_history_path else None,
+            "seed": int(backend.seed),
         }
         if isinstance(backend, MarsLogisticRegressionStrategy):
             training_config.update(
@@ -424,7 +421,7 @@ class MarsModelTuner:
         extract_diagnostics = getattr(backend, "extract_diagnostics", None)
         if callable(extract_diagnostics):
             diagnostic_tables = extract_diagnostics(backend.best_model)
-        run = MarsModelingRun(
+        result = MarsModelTuningResult(
             model_type=self.spec.model_type,
             optimize_metric=backend.optimize_metric,
             features=list(self.spec.features),
@@ -436,7 +433,7 @@ class MarsModelTuner:
             best_model=backend.best_model,
             best_score=backend.best_score,
             history_table=history_table.copy(),
-            history_path=str(Path(save_path).resolve()),
+            history_path=str(resolved_history_path.resolve()) if resolved_history_path else None,
             study=study,
             replay_candidates=list(backend.replay_param_keys),
             importance_table=backend.extract_importance(backend.best_model),
@@ -457,90 +454,43 @@ class MarsModelTuner:
             backend_data_mode=backend.backend_data_mode,
             category_levels=dict(getattr(backend, "category_levels", {})),
         )
-        self.last_run = run
-        return run
+        self.last_run = result
+        return result
 
 
-class MarsModelReplay:
+class MarsModelReplayRunner:
     """
-    对调参历史中的 Top-K trial 进行重训、重评分和评估。
+    基于 `MarsModelTuningResult` 回放 Top-K 调参结果。
 
-    Parameters
-    ----------
-    model_type : str
-        模型后端类型，需与原始 tuning run 保持一致。
-    features : sequence of str
-        replay 时参与训练和评分的特征列名。
-    target : str
-        二分类目标列名。
-    dataset_flag_col : str, default "dataset_flag"
-        训练集、验证集和 OOT 样本切片标识列。
-    categorical_features : sequence of str, optional
-        需要按类别特征处理的列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        replay 排名和评估使用的默认优化指标。
-    seed : int, default 1206
-        随机种子。
-    benchmark_col : str, optional
-        评估报告默认对比的基准分数列。
-    time_col : str, optional
-        评估报告默认使用的时间列。
-    lr_feature_mode : {"numeric", "woe"}, default "numeric"
-        LR replay 的特征预处理模式。
-    lr_binning_type : {"native", "opt", "optimal"}, default "native"
-        LR WOE 模式下的分箱器类型。
-    lr_binner_kwargs : mapping, optional
-        LR WOE 模式下传给内部分箱器的参数。
-    lr_binner : Any, optional
-        LR WOE 模式下复用的已配置或已拟合分箱器。
-
-    Notes
-    -----
-    replay 默认复用 tuning run 中保存的训练轮数和早停配置；用户显式传入参数时会覆盖。
-
-    Attributes
-    ----------
-    spec : ModelingSpec
-        replay 任务的建模规格。
+    `MarsModelReplayRunner` 不在构造函数中绑定模型类型、特征列或目标列，而是从
+    :meth:`run` 传入的调优结果中读取建模规格。benchmark 分数、时间列和替代验证目标
+    属于本次 replay 评估上下文，因此保留在方法入参中。
 
     Examples
     --------
-    >>> replay = MarsModelReplay(model_type="xgb", features=["age"], target="y")
-    >>> replay.spec.model_type
-    'xgb'
+    >>> replay = MarsModelReplayRunner()
+    >>> callable(replay.run)
+    True
     """
 
-    def __init__(
-        self,
-        *,
-        model_type: str,
-        features: Sequence[str],
-        target: str,
-        dataset_flag_col: str = "dataset_flag",
-        categorical_features: Sequence[str] | None = None,
-        optimize_metric: str = "ks",
-        seed: int = 1206,
-        benchmark_col: str | None = None,
-        time_col: str | None = None,
-        lr_feature_mode: str = "numeric",
-        lr_binning_type: str = "native",
-        lr_binner_kwargs: Mapping[str, Any] | None = None,
-        lr_binner: Any | None = None,
-    ) -> None:
-        self.spec: ModelingSpec = _build_spec(
-            model_type=model_type,
-            features=features,
-            target=target,
-            dataset_flag_col=dataset_flag_col,
-            categorical_features=categorical_features,
-            optimize_metric=optimize_metric,
-            seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
-            lr_feature_mode=lr_feature_mode,
-            lr_binning_type=lr_binning_type,
-            lr_binner_kwargs=lr_binner_kwargs,
-            lr_binner=lr_binner,
+    def __init__(self) -> None:
+        self.spec: ModelingSpec | None = None
+
+    @staticmethod
+    def _build_spec_from_result(tuning_result: MarsModelTuningResult) -> ModelingSpec:
+        """从调优结果恢复 replay 所需的建模规格。"""
+        training_config = dict(getattr(tuning_result, "training_config", {}) or {})
+        return _build_spec(
+            model_type=tuning_result.model_type,
+            features=tuning_result.features,
+            target=tuning_result.target,
+            dataset_flag_col=tuning_result.dataset_flag_col,
+            categorical_features=tuning_result.categorical_features,
+            optimize_metric=tuning_result.optimize_metric,
+            seed=int(training_config.get("seed", 1206)),
+            lr_feature_mode=str(training_config.get("lr_feature_mode", "numeric")),
+            lr_binning_type=str(training_config.get("lr_binning_type", "native")),
+            lr_binner_kwargs=training_config.get("lr_binner_kwargs"),
         )
 
     def _build_backend(
@@ -551,8 +501,11 @@ class MarsModelReplay:
         seed: int | None = None,
     ) -> Any:
         """构建用于 replay 已调优参数集合的后端。"""
+        spec = self.spec
+        if spec is None:
+            raise RuntimeError("Replay spec is unavailable before run(...) receives a tuning run.")
         return _build_backend_from_spec(
-            self.spec,
+            spec,
             df,
             optimize_metric=optimize_metric,
             seed=seed,
@@ -560,7 +513,7 @@ class MarsModelReplay:
 
     def run(
         self,
-        run: MarsModelingRun,
+        tuning_result: MarsModelTuningResult,
         df: FrameLike,
         *,
         top_k: int = 5,
@@ -571,41 +524,45 @@ class MarsModelReplay:
         optimize_metric: str | None = None,
         benchmark_col: str | None = None,
         time_col: str | None = None,
-        val_target_col: str | None = None,
-    ) -> MarsReplayRun:
+        val_target: str | None = None,
+    ) -> MarsModelReplayResult:
         """
-        执行 Top-K replay 并生成排行榜、模型和评估报告。
+        回放 Top-K trial，并生成模型、打分数据和评估报告。
 
         Parameters
         ----------
-        run : MarsModelingRun
-            调参阶段产出的结果对象。
+        tuning_result : MarsModelTuningResult
+            提供模型类型、特征列、目标列和样本切片配置的调优结果。
         df : pandas.DataFrame or polars.DataFrame
-            需要重训和评分的数据。
+            用于重新训练和打分的样本表。
         top_k : int, default 5
-            回放 trial 数量。
+            要回放的 trial 数量。
         sort_metric : {"auc", "ks"}, default "ks"
-            排名指标。
+            leaderboard 排序指标。
         include_val : bool, default True
-            排名均值是否包含验证集。
+            是否将 validation 切片指标纳入平均排序。
+        num_boost_round : int, default 500
+            当调优结果中没有保存该配置时使用的最大 boosting 轮数。
+        early_stopping_rounds : int, default 50
+            当调优结果中没有保存该配置时使用的 early stopping 轮数。
+        optimize_metric : str, optional
+            覆盖 replay 后端使用的优化指标。
+        benchmark_col : str, optional
+            benchmark 或 champion 模型分数列名。
+        time_col : str, optional
+            原始时间列名，用于补充报告中的时间边界。
+        val_target : str, optional
+            替代验证目标列名。
 
         Returns
         -------
-        MarsReplayRun
-            replay 排名、leaderboard、模型、评分数据和报告。
-
-        Examples
-        --------
-        >>> replay = MarsModelReplay(model_type="xgb", features=["age"], target="y")
-        >>> callable(replay.run)
-        True
+        MarsModelReplayResult
+            包含 replay leaderboard、模型、打分数据和评估报告的结果对象。
         """
-        if run.model_type != self.spec.model_type:
-            raise ValueError(
-                f"Run model_type {run.model_type!r} does not match replay model_type {self.spec.model_type!r}."
-            )
+        self.spec = self._build_spec_from_result(tuning_result)
+        spec = self.spec
 
-        run_training_config = dict(getattr(run, "training_config", {}) or {})
+        run_training_config = dict(getattr(tuning_result, "training_config", {}) or {})
         resolved_num_boost_round = (
             int(num_boost_round)
             if num_boost_round != 500 or "num_boost_round" not in run_training_config
@@ -622,10 +579,10 @@ class MarsModelReplay:
             include_val=include_val,
             num_boost_round=resolved_num_boost_round,
             early_stopping_rounds=resolved_early_stopping_rounds,
-            optimize_metric=(optimize_metric or self.spec.optimize_metric).lower(),
+            optimize_metric=(optimize_metric or spec.optimize_metric).lower(),
         )
 
-        history_df = run.history_table.copy()
+        history_df = tuning_result.history_table.copy()
         valid_df = history_df[
             (history_df["trial_state"] == "COMPLETE") & history_df["is_valid"]
         ].copy()
@@ -647,19 +604,13 @@ class MarsModelReplay:
         backend = self._build_backend(
             df,
             optimize_metric=replay_spec.optimize_metric,
-            seed=self.spec.seed,
+            seed=spec.seed,
         )
         backend.num_boost_round = replay_spec.num_boost_round
         backend.early_stopping_rounds = replay_spec.early_stopping_rounds
         backend.training_metric = backend.optimize_metric
 
-        evaluator = MarsModelEvaluator(
-            group_col=self.spec.dataset_flag_col,
-            target_col=self.spec.target,
-            benchmark_col=benchmark_col if benchmark_col is not None else self.spec.benchmark_col,
-            time_col=time_col if time_col is not None else self.spec.time_col,
-            val_target_col=val_target_col,
-        )
+        evaluator = MarsModelEvaluator()
 
         models: Dict[str, Any] = {}
         scored_df = df
@@ -672,7 +623,7 @@ class MarsModelReplay:
             trial_num = int(row["trial_num"])
             pure_params = {
                 key: row[key]
-                for key in run.replay_candidates
+                for key in tuning_result.replay_candidates
                 if key in row.index and pd.notna(row[key])
             }
             model = backend.train_model(
@@ -691,12 +642,22 @@ class MarsModelReplay:
             pred_col = f"prob_{model_name}"
             bench = ModelPredictor(
                 model,
-                feature_list=self.spec.features,
-                categorical_features=self.spec.categorical_features,
+                feature_list=spec.features,
+                categorical_features=spec.categorical_features,
                 category_levels=getattr(backend, "category_levels", {}),
             )
-            scored_df = bench.predict(scored_df, pred_col_name=pred_col, inplace=False)
-            reports[model_name] = evaluator.evaluate(scored_df, pred_col=pred_col)
+            scored_df = bench.predict(scored_df, pred_col=pred_col, inplace=False)
+            reports[model_name] = evaluator.evaluate(
+                scored_df,
+                pred_col=pred_col,
+                group_col=spec.dataset_flag_col,
+                target=spec.target,
+                benchmark_col=benchmark_col,
+                time_col=time_col,
+                val_target=val_target,
+                feature_cols=spec.features,
+                importance_table=importance_tables[model_name],
+            )
 
             leaderboard_row = {
                 "rank": rank,
@@ -741,8 +702,8 @@ class MarsModelReplay:
                 ]
             ]
 
-        return MarsReplayRun(
-            model_type=self.spec.model_type,
+        return MarsModelReplayResult(
+            model_type=spec.model_type,
             ranking_table=ranking_table,
             leaderboard_table=leaderboard_table,
             models=models,

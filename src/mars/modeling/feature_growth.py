@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Sequence
 import pandas as pd
 
 from mars.modeling.artifacts import read_json, write_json
-from mars.modeling.results import MarsModelingRun
+from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner, _build_spec
 from mars.modeling.utils import FrameLike
 
@@ -34,7 +34,7 @@ def _json_dumps(value: Any) -> str:
 
 
 @dataclass(slots=True)
-class MarsFeatureGrowthRun:
+class MarsFeatureGrowthResult:
     """
     逐步增加特征调参的结构化结果。
 
@@ -52,11 +52,11 @@ class MarsFeatureGrowthRun:
         用于从各 step 中挑选推荐模型的 validation 指标。
     summary_table : pandas.DataFrame
         step 级汇总审计表。
-    runs : dict of int to MarsModelingRun
+    runs : dict of int to MarsModelTuningResult
         成功完成的 step 对应的单次 tuning run。
     best_step : int, optional
         推荐特征数量。
-    best_run : MarsModelingRun, optional
+    best_run : MarsModelTuningResult, optional
         推荐 step 对应的 tuning run。
     metadata : dict, optional
         额外审计元数据。
@@ -65,16 +65,16 @@ class MarsFeatureGrowthRun:
     ----------
     summary_table : pandas.DataFrame
         step 级汇总审计表。
-    runs : dict of int to MarsModelingRun
+    runs : dict of int to MarsModelTuningResult
         每个成功 step 对应的调参结果。
     best_step : int or None
         推荐模型对应的特征数量；若无成功 step 则为 ``None``。
-    best_run : MarsModelingRun or None
+    best_run : MarsModelTuningResult or None
         推荐 step 对应的调参结果。
 
     Examples
     --------
-    >>> run = MarsFeatureGrowthRun(
+    >>> run = MarsFeatureGrowthResult(
     ...     model_type="xgb",
     ...     optimize_metric="ks",
     ...     feature_order=["age"],
@@ -93,9 +93,9 @@ class MarsFeatureGrowthRun:
     steps: List[int]
     selection_metric: str
     summary_table: pd.DataFrame
-    runs: Dict[int, MarsModelingRun]
+    runs: Dict[int, MarsModelTuningResult]
     best_step: int | None = None
-    best_run: MarsModelingRun | None = None
+    best_run: MarsModelTuningResult | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -110,7 +110,7 @@ class MarsFeatureGrowthRun:
 
         Examples
         --------
-        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run = MarsFeatureGrowthResult("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
         >>> run.best_model is None
         True
         """
@@ -128,7 +128,7 @@ class MarsFeatureGrowthRun:
 
         Examples
         --------
-        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run = MarsFeatureGrowthResult("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
         >>> run.best_score is None
         True
         """
@@ -146,7 +146,7 @@ class MarsFeatureGrowthRun:
 
         Examples
         --------
-        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run = MarsFeatureGrowthResult("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
         >>> run.best_features
         []
         """
@@ -171,7 +171,7 @@ class MarsFeatureGrowthRun:
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run = MarsFeatureGrowthResult("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
         >>> with TemporaryDirectory() as tmp:
         ...     artifact_dir = run.write_artifact(tmp)
         ...     artifact_dir.exists()
@@ -192,7 +192,7 @@ class MarsFeatureGrowthRun:
             run_dirs[str(step)] = str(rel_dir)
 
         metadata = {
-            "artifact_type": "mars_feature_growth_run",
+            "artifact_type": "mars_feature_growth_result",
             "model_type": self.model_type,
             "optimize_metric": self.optimize_metric,
             "feature_order": self.feature_order,
@@ -209,7 +209,7 @@ class MarsFeatureGrowthRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls: type[MarsFeatureGrowthRun], path: str) -> MarsFeatureGrowthRun:
+    def load_artifact(cls: type[MarsFeatureGrowthResult], path: str) -> MarsFeatureGrowthResult:
         """
         从本地 artifact 目录恢复特征增长实验结果。
 
@@ -220,23 +220,23 @@ class MarsFeatureGrowthRun:
 
         Returns
         -------
-        MarsFeatureGrowthRun
+        MarsFeatureGrowthResult
             恢复后的实验结果。
 
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> run = MarsFeatureGrowthRun("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
+        >>> run = MarsFeatureGrowthResult("xgb", "ks", ["age"], [1], "ks", pd.DataFrame(), {})
         >>> with TemporaryDirectory() as tmp:
         ...     _ = run.write_artifact(tmp)
-        ...     MarsFeatureGrowthRun.load_artifact(tmp).feature_order
+        ...     MarsFeatureGrowthResult.load_artifact(tmp).feature_order
         ['age']
         """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
-        if metadata.get("artifact_type") != "mars_feature_growth_run":
+        if metadata.get("artifact_type") != "mars_feature_growth_result":
             raise ValueError(
-                f"Unsupported artifact type for MarsFeatureGrowthRun: {metadata.get('artifact_type')!r}"
+                f"Unsupported artifact type for MarsFeatureGrowthResult: {metadata.get('artifact_type')!r}"
             )
 
         files = metadata.get("files", {})
@@ -244,10 +244,10 @@ class MarsFeatureGrowthRun:
         if not summary_path.exists():
             raise FileNotFoundError(f"Feature growth summary file is missing: {summary_path}")
 
-        runs: Dict[int, MarsModelingRun] = {}
+        runs: Dict[int, MarsModelTuningResult] = {}
         for step_text, rel_dir in dict(files.get("runs", {})).items():
             step = int(step_text)
-            runs[step] = MarsModelingRun.load_artifact(str(artifact_dir / rel_dir))
+            runs[step] = MarsModelTuningResult.load_artifact(str(artifact_dir / rel_dir))
 
         best_step = metadata.get("best_step")
         if best_step is not None:
@@ -286,10 +286,6 @@ class MarsFeatureIncrementalTuner:
         单次 tuning 的优化指标。
     seed : int, default 1206
         随机种子。
-    benchmark_col : str, optional
-        基准模型分数列。
-    time_col : str, optional
-        时间列。
 
     Attributes
     ----------
@@ -297,10 +293,6 @@ class MarsFeatureIncrementalTuner:
         由初始化参数构建的建模规格。
     features : list of str
         去重后的候选特征顺序。
-    benchmark_col : str or None
-        可选的基准模型分数列。
-    time_col : str or None
-        可选的时间列。
 
     Examples
     --------
@@ -319,8 +311,6 @@ class MarsFeatureIncrementalTuner:
         categorical_features: Sequence[str] | None = None,
         optimize_metric: str = "ks",
         seed: int = 1206,
-        benchmark_col: str | None = None,
-        time_col: str | None = None,
         lr_feature_mode: str = "numeric",
         lr_binning_type: str = "native",
         lr_binner_kwargs: Mapping[str, Any] | None = None,
@@ -334,8 +324,6 @@ class MarsFeatureIncrementalTuner:
             categorical_features=categorical_features,
             optimize_metric=optimize_metric,
             seed=seed,
-            benchmark_col=benchmark_col,
-            time_col=time_col,
             lr_feature_mode=lr_feature_mode,
             lr_binning_type=lr_binning_type,
             lr_binner_kwargs=lr_binner_kwargs,
@@ -409,7 +397,7 @@ class MarsFeatureIncrementalTuner:
         return sorted(set(resolved))
 
     @staticmethod
-    def _step_save_path(base_path: str, feature_count: int) -> str:
+    def _step_history_path(base_path: str | Path, feature_count: int) -> str:
         """为每个 step 生成互不覆盖的 history 路径。"""
         path = Path(base_path)
         suffix = path.suffix or ".csv"
@@ -435,7 +423,7 @@ class MarsFeatureIncrementalTuner:
         return valid.loc[scores.loc[valid.index].idxmax()]
 
     @staticmethod
-    def _success_row(run: MarsModelingRun, *, feature_count: int, selection_metric: str) -> Dict[str, Any]:
+    def _success_row(run: MarsModelTuningResult, *, feature_count: int, selection_metric: str) -> Dict[str, Any]:
         """构建成功 step 的轻量审计行。"""
         row: Dict[str, Any] = {
             "feature_count": int(feature_count),
@@ -482,7 +470,7 @@ class MarsFeatureIncrementalTuner:
         }
 
     @staticmethod
-    def _choose_best(summary_table: pd.DataFrame, runs: Mapping[int, MarsModelingRun], metric: str) -> tuple[int | None, MarsModelingRun | None]:
+    def _choose_best(summary_table: pd.DataFrame, runs: Mapping[int, MarsModelTuningResult], metric: str) -> tuple[int | None, MarsModelTuningResult | None]:
         """按 validation 指标选择推荐 step。"""
         if summary_table.empty:
             return None, None
@@ -513,7 +501,7 @@ class MarsFeatureIncrementalTuner:
         mode: str = "prefix",
         selection_metric: str | None = None,
         **tune_kwargs: Any,
-    ) -> MarsFeatureGrowthRun:
+    ) -> MarsFeatureGrowthResult:
         """
         执行逐步增加特征的多轮调参。
 
@@ -542,7 +530,7 @@ class MarsFeatureIncrementalTuner:
 
         Returns
         -------
-        MarsFeatureGrowthRun
+        MarsFeatureGrowthResult
             包含所有成功 step、汇总表和推荐模型的实验结果。
 
         Examples
@@ -569,12 +557,12 @@ class MarsFeatureIncrementalTuner:
             step_size=step_size,
         )
 
-        base_save_path = str(tune_kwargs.get("save_path", "feature_growth_history.csv"))
+        base_history_path = tune_kwargs.get("history_path")
         common_tune_kwargs = dict(tune_kwargs)
-        common_tune_kwargs.pop("save_path", None)
+        common_tune_kwargs.pop("history_path", None)
 
         rows: List[Dict[str, Any]] = []
-        runs: Dict[int, MarsModelingRun] = {}
+        runs: Dict[int, MarsModelTuningResult] = {}
         for feature_count in resolved_steps:
             step_features = ordered_features[:feature_count]
             step_cats = [feature for feature in self.spec.categorical_features if feature in step_features]
@@ -586,15 +574,17 @@ class MarsFeatureIncrementalTuner:
                 categorical_features=step_cats,
                 optimize_metric=self.spec.optimize_metric,
                 seed=self.spec.seed,
-                benchmark_col=self.spec.benchmark_col,
-                time_col=self.spec.time_col,
                 lr_feature_mode=self.spec.lr_feature_mode,
                 lr_binning_type=self.spec.lr_binning_type,
                 lr_binner_kwargs=self.spec.lr_binner_kwargs,
                 lr_binner=self.spec.lr_binner,
             )
             step_kwargs = dict(common_tune_kwargs)
-            step_kwargs["save_path"] = self._step_save_path(base_save_path, feature_count)
+            if base_history_path is not None:
+                step_kwargs["history_path"] = self._step_history_path(
+                    base_history_path,
+                    feature_count,
+                )
             try:
                 # 每个 step 复用成熟的单次 tuner，避免增量实验绕开后端训练和 artifact 逻辑。
                 run = step_tuner.tune(df, **step_kwargs)
@@ -611,7 +601,7 @@ class MarsFeatureIncrementalTuner:
             if best_step is not None:
                 summary_table.loc[summary_table["feature_count"] == best_step, "is_best"] = True
 
-        return MarsFeatureGrowthRun(
+        return MarsFeatureGrowthResult(
             model_type=self.spec.model_type,
             optimize_metric=self.spec.optimize_metric,
             feature_order=ordered_features,

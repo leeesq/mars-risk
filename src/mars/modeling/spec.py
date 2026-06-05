@@ -27,10 +27,14 @@ class ModelingSpec:
         优化指标。
     seed : int, default 1206
         随机种子。
-    benchmark_col : str, optional
-        基准模型分数列。
-    time_col : str, optional
-        时间列名。
+    lr_feature_mode : str, default "numeric"
+        逻辑回归后端使用的特征模式。
+    lr_binning_type : str, default "native"
+        逻辑回归 WOE 模式使用的分箱器类型。
+    lr_binner_kwargs : dict, optional
+        逻辑回归 WOE 模式构造分箱器时使用的参数。
+    lr_binner : object, optional
+        逻辑回归 WOE 模式显式复用的分箱器。
 
     Attributes
     ----------
@@ -48,10 +52,10 @@ class ModelingSpec:
         优化指标。
     seed : int
         随机种子。
-    benchmark_col : str or None
-        基准模型分数列。
-    time_col : str or None
-        时间列名。
+    lr_feature_mode : str
+        逻辑回归后端使用的特征模式。
+    lr_binning_type : str
+        逻辑回归 WOE 模式使用的分箱器类型。
 
     Examples
     --------
@@ -67,8 +71,6 @@ class ModelingSpec:
     categorical_features: List[str] = field(default_factory=list)
     optimize_metric: str = "ks"
     seed: int = 1206
-    benchmark_col: str | None = None
-    time_col: str | None = None
     lr_feature_mode: str = "numeric"
     lr_binning_type: str = "native"
     lr_binner_kwargs: dict[str, Any] = field(default_factory=dict)

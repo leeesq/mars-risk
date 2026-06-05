@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class MarsModelingRun:
+class MarsModelTuningResult:
     """
     单次调参流程的结构化结果对象。
 
@@ -72,7 +72,7 @@ class MarsModelingRun:
 
     Examples
     --------
-    >>> run = MarsModelingRun(
+    >>> run = MarsModelTuningResult(
     ...     model_type="xgb",
     ...     optimize_metric="ks",
     ...     features=["age"],
@@ -104,7 +104,7 @@ class MarsModelingRun:
     best_model: Any
     best_score: float
     history_table: pd.DataFrame
-    history_path: str
+    history_path: str | None
     study: Any
     replay_candidates: List[str]
     importance_table: pd.DataFrame
@@ -132,7 +132,7 @@ class MarsModelingRun:
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> run = MarsModelingRun(
+        >>> run = MarsModelTuningResult(
         ...     model_type="xgb",
         ...     optimize_metric="ks",
         ...     features=["age"],
@@ -176,7 +176,7 @@ class MarsModelingRun:
             diagnostic_files[table_name] = file_name
 
         metadata = {
-            "artifact_type": "mars_modeling_run",
+            "artifact_type": "mars_model_tuning_result",
             "model_type": self.model_type,
             "optimize_metric": self.optimize_metric,
             "features": self.features,
@@ -204,7 +204,7 @@ class MarsModelingRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls: type[MarsModelingRun], path: str) -> MarsModelingRun:
+    def load_artifact(cls: type[MarsModelTuningResult], path: str) -> MarsModelTuningResult:
         """
         从本地 artifact 目录恢复调参结果。
 
@@ -215,13 +215,13 @@ class MarsModelingRun:
 
         Returns
         -------
-        MarsModelingRun
+        MarsModelTuningResult
             恢复后的单次调参结果。
 
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> run = MarsModelingRun(
+        >>> run = MarsModelTuningResult(
         ...     model_type="xgb",
         ...     optimize_metric="ks",
         ...     features=["age"],
@@ -240,13 +240,13 @@ class MarsModelingRun:
         ... )
         >>> with TemporaryDirectory() as tmp:
         ...     _ = run.write_artifact(tmp)
-        ...     MarsModelingRun.load_artifact(tmp).features
+        ...     MarsModelTuningResult.load_artifact(tmp).features
         ['age']
         """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
-        if metadata.get("artifact_type") != "mars_modeling_run":
-            raise ValueError(f"Unsupported artifact type for MarsModelingRun: {metadata.get('artifact_type')!r}")
+        if metadata.get("artifact_type") != "mars_model_tuning_result":
+            raise ValueError(f"Unsupported artifact type for MarsModelTuningResult: {metadata.get('artifact_type')!r}")
 
         files = metadata.get("files", {})
         history_path = artifact_dir / files.get("history", "history.csv")
@@ -293,7 +293,7 @@ class MarsModelingRun:
 
 
 @dataclass(slots=True)
-class MarsReplayRun:
+class MarsModelReplayResult:
     """
     Top-K replay 流程的结构化结果对象。
 
@@ -329,7 +329,7 @@ class MarsReplayRun:
 
     Examples
     --------
-    >>> replay = MarsReplayRun(
+    >>> replay = MarsModelReplayResult(
     ...     model_type="xgb",
     ...     ranking_table=pd.DataFrame(),
     ...     leaderboard_table=pd.DataFrame(),
@@ -370,7 +370,7 @@ class MarsReplayRun:
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> replay = MarsReplayRun(
+        >>> replay = MarsModelReplayResult(
         ...     model_type="xgb",
         ...     ranking_table=pd.DataFrame(),
         ...     leaderboard_table=pd.DataFrame(),
@@ -435,7 +435,7 @@ class MarsReplayRun:
                 self.scored_df.to_pandas().to_parquet(artifact_dir / scored_df_file, index=False)
 
         metadata = {
-            "artifact_type": "mars_replay_run",
+            "artifact_type": "mars_model_replay_result",
             "model_type": self.model_type,
             "include_scored_df": bool(scored_df_file),
             "files": {
@@ -452,7 +452,7 @@ class MarsReplayRun:
         return artifact_dir
 
     @classmethod
-    def load_artifact(cls: type[MarsReplayRun], path: str) -> MarsReplayRun:
+    def load_artifact(cls: type[MarsModelReplayResult], path: str) -> MarsModelReplayResult:
         """
         从本地 artifact 目录恢复 replay 结果。
 
@@ -463,13 +463,13 @@ class MarsReplayRun:
 
         Returns
         -------
-        MarsReplayRun
+        MarsModelReplayResult
             恢复后的 replay 结果。
 
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
-        >>> replay = MarsReplayRun(
+        >>> replay = MarsModelReplayResult(
         ...     model_type="xgb",
         ...     ranking_table=pd.DataFrame(),
         ...     leaderboard_table=pd.DataFrame(),
@@ -480,13 +480,13 @@ class MarsReplayRun:
         ... )
         >>> with TemporaryDirectory() as tmp:
         ...     _ = replay.write_artifact(tmp)
-        ...     MarsReplayRun.load_artifact(tmp).model_type
+        ...     MarsModelReplayResult.load_artifact(tmp).model_type
         'xgb'
         """
         artifact_dir = Path(path)
         metadata = read_json(artifact_dir / "metadata.json")
-        if metadata.get("artifact_type") != "mars_replay_run":
-            raise ValueError(f"Unsupported artifact type for MarsReplayRun: {metadata.get('artifact_type')!r}")
+        if metadata.get("artifact_type") != "mars_model_replay_result":
+            raise ValueError(f"Unsupported artifact type for MarsModelReplayResult: {metadata.get('artifact_type')!r}")
 
         files = metadata.get("files", {})
         ranking_path = artifact_dir / files.get("ranking", "ranking.csv")

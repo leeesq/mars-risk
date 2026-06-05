@@ -13,12 +13,11 @@ def test_build_scorecard_generates_points_and_sql(sample_credit_df):
     y = sample_credit_df.get_column("target")
 
     binner = MarsNativeBinner(
-        features=features,
         method="quantile",
         n_bins=3,
         special_values=[-999],
     )
-    binner.fit(X, y)
+    binner.fit(X, y, features=features)
 
     scorecard = build_scorecard(
         binner=binner,
@@ -48,12 +47,11 @@ def test_scorecard_to_integer_rebalances_base_points(sample_credit_df):
     y = sample_credit_df.get_column("target")
 
     binner = MarsNativeBinner(
-        features=features,
         method="quantile",
         n_bins=3,
         special_values=[-999],
     )
-    binner.fit(X, y)
+    binner.fit(X, y, features=features)
 
     scorecard = build_scorecard(
         binner=binner,
@@ -85,12 +83,11 @@ def test_scorecard_to_integer_preserves_pandas_points_table(sample_credit_pd):
     y = sample_credit_pd["target"]
 
     binner = MarsNativeBinner(
-        features=features,
         method="quantile",
         n_bins=3,
         special_values=[-999],
     ).set_output("pandas")
-    binner.fit(X, y)
+    binner.fit(X, y, features=features)
 
     scorecard = build_scorecard(
         binner=binner,
@@ -113,12 +110,11 @@ def test_scorecard_can_write_csv_and_excel(sample_credit_df):
     y = sample_credit_df.get_column("target")
 
     binner = MarsNativeBinner(
-        features=features,
         method="quantile",
         n_bins=3,
         special_values=[-999],
     )
-    binner.fit(X, y)
+    binner.fit(X, y, features=features)
 
     scorecard = build_scorecard(
         binner=binner,

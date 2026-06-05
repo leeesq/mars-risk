@@ -7,7 +7,7 @@ import pytest
 from mars.modeling import MarsModelingSession
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.results import MarsModelingRun
+from mars.modeling.results import MarsModelTuningResult
 
 
 def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeling_pd, tmp_path: Path):
@@ -18,10 +18,13 @@ def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeli
         model_type="xgb",
         features=["x1", "x2", "x3"],
         target="target",
+    )
+    report = session.evaluate(
+        df,
+        pred_col="pred_score",
         benchmark_col="benchmark_score",
         time_col="biz_dt",
     )
-    report = session.evaluate(df, pred_col="pred_score")
 
     assert isinstance(report, MarsModelingReport)
     assert ("Target: target", "New KS") in report.summary_table.columns
@@ -53,13 +56,15 @@ def test_model_evaluator_generates_same_report_shape(sample_modeling_pd):
     df = sample_modeling_pd.copy()
     df["pred_score"] = 1 / (1 + np.exp(-(1.8 * df["x1"] - 1.0 * df["x2"] + 0.6 * df["x3"])))
 
-    evaluator = MarsModelEvaluator(
+    evaluator = MarsModelEvaluator()
+    report = evaluator.evaluate(
+        df,
+        pred_col="pred_score",
         group_col="dataset_flag",
-        target_col="target",
+        target="target",
         benchmark_col="benchmark_score",
         time_col="biz_dt",
     )
-    report = evaluator.evaluate(df, pred_col="pred_score")
 
     assert isinstance(report, MarsModelingReport)
     assert ("Target: target", "New AUC") in report.summary_table.columns
@@ -83,14 +88,16 @@ def test_modeling_report_to_html_writes_single_file(sample_modeling_pd, tmp_path
         }
     )
 
-    report = MarsModelEvaluator(
+    report = MarsModelEvaluator().evaluate(
+        df,
+        pred_col="pred_score",
         group_col="dataset_flag",
-        target_col="target",
+        target="target",
         benchmark_col="benchmark_score",
         time_col="biz_dt",
         feature_cols=["x1", "x2", "x3"],
         importance_table=importance,
-    ).evaluate(df, pred_col="pred_score")
+    )
     report.metadata["feature_growth_summary"] = pd.DataFrame(
         {
             "feature_count": [1, 2, 3],
@@ -165,10 +172,8 @@ def test_modeling_session_evaluate_attaches_last_run_metadata(sample_modeling_pd
         model_type="xgb",
         features=["x1", "x2", "x3"],
         target="target",
-        benchmark_col="benchmark_score",
-        time_col="biz_dt",
     )
-    session.tuner.last_run = MarsModelingRun(
+    session.tuner.last_run = MarsModelTuningResult(
         model_type="xgb",
         optimize_metric="ks",
         features=["x1", "x2", "x3"],
@@ -190,7 +195,12 @@ def test_modeling_session_evaluate_attaches_last_run_metadata(sample_modeling_pd
         backend_data_mode="pandas_numeric",
     )
 
-    report = session.evaluate(df, pred_col="pred_score")
+    report = session.evaluate(
+        df,
+        pred_col="pred_score",
+        benchmark_col="benchmark_score",
+        time_col="biz_dt",
+    )
 
     assert report.metadata["backend_data_mode"] == "pandas_numeric"
     assert report.metadata["training_config"] == {"training_metric": "ks"}
