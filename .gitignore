@@ -17,6 +17,7 @@ mars_env/
 # 构建打包文件
 dist/
 build/
+site/
 *.egg-info/
 .pytest_cache/
 .pytest-tmp/

@@ -9,6 +9,7 @@
 <h2 align="center">面向信贷风控分析与建模的 Polars-first 高性能工具库</h2>
 
 [![PyPI version](https://img.shields.io/pypi/v/mars-risk?style=for-the-badge&color=2f6f8f)](https://pypi.org/project/mars-risk/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-7c3aed?style=for-the-badge)](https://leeesq.github.io/mars-risk/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/mars-risk?style=for-the-badge&color=364f6b)](https://pypi.org/project/mars-risk/)
 [![Downloads](https://img.shields.io/pepy/dt/mars-risk?style=for-the-badge&label=downloads&color=0f766e)](https://pepy.tech/project/mars-risk)
 [![CI](https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=for-the-badge&label=CI&color=1f7a5a)](https://github.com/leeesq/mars-risk/actions/workflows/test.yml)
@@ -16,7 +17,7 @@
 
 <img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="920">
 
-[项目简介](#项目简介) · [设计理念](#设计理念) · [能力地图](#能力地图) · [性能对比](#性能对比) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [Modeling Pipeline](#modeling-pipeline) · [报表导出](#excelhtml-报表导出与二次加工) · [FAQ](#faq)
+[文档站](https://leeesq.github.io/mars-risk/) · [项目简介](#项目简介) · [设计理念](#设计理念) · [能力地图](#能力地图) · [性能对比](#性能对比) · [安装](#安装) · [快速开始](#快速开始) · [核心-api-约定](#核心-api-约定) · [Modeling Pipeline](#modeling-pipeline) · [报表导出](#excelhtml-报表导出与二次加工) · [FAQ](#faq)
 
 </div>
 
@@ -110,12 +111,13 @@ pip install mars-risk
 | 基础能力（含画像、分箱、筛选、Excel/HTML 报表和图表报告） | `pip install mars-risk` |
 | Notebook 交互 | `pip install "mars-risk[notebook]"` |
 | 树模型与调参 | `pip install "mars-risk[ml,tuning]"` |
-| 本地开发 | `pip install -e ".[dev,ml,tuning]"` |
+| 文档站构建 | `pip install "mars-risk[docs]"` |
+| 本地开发 | `pip install -e ".[dev,ml,tuning,docs]"` |
 
 ```bash
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
-pip install -e ".[dev,ml,tuning]"
+pip install -e ".[dev,ml,tuning,docs]"
 ```
 
 ## 快速开始
@@ -379,6 +381,7 @@ python -m ruff check src tests benchmarks scripts
 python -m mypy src/mars
 pydoclint src/mars
 python scripts/check_private_docstrings.py src/mars
+python -m mkdocs build --strict
 MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 ```
 

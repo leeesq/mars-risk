@@ -1,0 +1,84 @@
+site_name: MARS
+site_description: 面向信贷风控分析与建模的 Polars-first 高性能工具库
+site_url: https://leeesq.github.io/mars-risk/
+repo_url: https://github.com/leeesq/mars-risk
+repo_name: leeesq/mars-risk
+copyright: Copyright &copy; 2026 Christian Li and Tina
+
+theme:
+  name: material
+  language: zh
+  logo: assets/mars-logo.svg
+  favicon: assets/mars-logo.svg
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色模式
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色模式
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - 项目简介: index.md
+  - Getting Started:
+      - 安装: getting-started/installation.md
+      - 快速开始: getting-started/quickstart.md
+      - 核心 API 约定: getting-started/api-conventions.md
+  - 用户指南:
+      - 数据画像与特征分析: user-guide/data-profiling.md
+      - 分箱与风险评估: user-guide/binning-risk-evaluation.md
+      - 特征筛选: user-guide/feature-selection.md
+      - Modeling Pipeline: user-guide/modeling-pipeline.md
+      - 特征/模型监控: user-guide/monitoring.md
+      - 报表导出与二次加工: user-guide/reports-and-exports.md
+  - 性能:
+      - Benchmark: performance/benchmark.md
+  - API Reference:
+      - 公开 API: reference/public-api.md
+      - Report 对象: reference/report-objects.md
+  - FAQ: faq.md
