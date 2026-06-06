@@ -23,7 +23,7 @@ from .monitoring import (
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 
 _BANNER = rf"""
     __________________________________________________________________________
