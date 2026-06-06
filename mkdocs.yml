@@ -8,6 +8,7 @@ copyright: Copyright &copy; 2026 Christian Li and Tina
 theme:
   name: material
   language: zh
+  custom_dir: docs/overrides
   logo: assets/mars-logo.svg
   favicon: assets/mars-logo.svg
   features:
