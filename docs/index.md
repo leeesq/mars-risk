@@ -1,6 +1,7 @@
 # MARS
 
 <div class="mars-home-hero">
+  <img class="mars-home-logo" src="assets/mars-logo.svg" alt="MARS">
   <img class="mars-home-wordmark" src="assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE">
   <p class="mars-home-tagline">面向信贷风控分析与建模的 Polars-first 高性能工具库</p>
   <img class="mars-home-pipeline" src="assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report">

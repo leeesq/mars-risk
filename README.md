@@ -20,7 +20,7 @@
 <img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="920">
 
 <p align="center">
-  <a href="https://leeesq.github.io/mars-risk/">文档站</a> ·
+  <a href="https://leeesq.github.io/mars-risk/">文档&教程</a> ·
   <a href="#项目简介">项目简介</a> ·
   <a href="#设计理念">设计理念</a> ·
   <a href="#能力地图">能力地图</a> ·
