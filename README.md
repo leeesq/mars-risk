@@ -23,7 +23,7 @@
 
 ## 项目简介
 
-MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征/模型监控指标计算和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、特征与模型分稳定性观察和报表导出，让日常风控建模流程更容易复用、审计和交付。
+MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征监控、模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、监控指标计算和报表导出，让日常风控建模流程更容易复用、审计和交付。
 
 MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参与评估结果、导出产物组织在同一套结构化报告体系中。使用者既可以直接生成 Excel/HTML 报表，也可以读取各模块返回的多粒度数据，继续做特征复盘、基于结构化表定制监控规则、内部看板数据接入或定制化分析。
 
@@ -32,15 +32,15 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 - **性能优先**：面向宽表、大样本、多特征风控场景，核心计算优先使用 Polars，减少不必要的数据复制和跨框架转换。
 - **sklearn 风格**：底层算法对象保持 `fit` / `transform` / `evaluate` 等熟悉范式，便于接入现有建模实验和 Pipeline。
 - **Pandas/Polars 兼容**：核心计算优先走 Polars，同时兼容 Pandas 和 Polars 的输入与输出；需要保持原类型的链路尽量减少无意义转换。
-- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征/模型监控指标计算、报表导出组织能力。
+- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征监控、模型监控和报表导出组织能力。
 - **模块可串联**：分箱规则、指标明细、筛选结果、模型结果和 report 对象可在模块间复用，减少 Notebook、Excel 和零散脚本中的重复加工。
-- **监控边界清晰**：模型分、prob、score 可以作为特殊特征进入同一套监控指标计算；MARS 输出结构化指标和默认报警摘要，监控窗口、基准样本、模型版本、调度方式、阈值策略、看板和业务处置流程由使用者定义。
+- **监控边界清晰**：特征监控和模型监控共用一套通用指标计算逻辑；MARS 输出结构化指标和默认报警摘要，监控窗口、基准样本、模型版本、调度方式、阈值策略、看板和业务处置流程由使用者定义。
 - **补齐开源空白**：聚焦通用开源工具通常覆盖不足的信贷风控宽表分析、通用监控指标计算、报表交付和可复盘 report 对象。
 - **可审计与可二次加工**：各模块 report 保留多粒度结构化表，支持 Excel/HTML 导出、内部看板接入，以及借助 Agent 做定制化摘要和报告重排。
 
 ## 能力地图
 
-模块链路：数据画像 -> 分箱评估 -> 特征分析 -> 特征筛选 -> Modeling Pipeline -> 特征/模型监控 -> Excel/HTML 报表导出。
+模块链路：数据画像 -> 分箱评估 -> 特征分析 -> 特征筛选 -> Modeling Pipeline -> 特征监控和模型监控 -> Excel/HTML 报表导出。
 
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
@@ -49,7 +49,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
 | Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
-| 特征/模型监控 | `MarsMonitor` / `generate_monitoring_alert` | 支持**前端监控**、**后端监控**的通用指标计算、PSI、缺失趋势、分箱占比趋势、分箱统计量趋势、target 表现覆盖率、默认报警摘要 | `MarsMonitoringReport`、监控报警摘要 |
+| 特征监控和模型监控 | `MarsMonitor` / `generate_monitoring_alert` | 支持**前端监控**、**后端监控**的通用指标计算、PSI、缺失趋势、分箱占比趋势、分箱统计量趋势、target 表现覆盖率、默认报警摘要 | `MarsMonitoringReport`、监控报警摘要 |
 | Excel/HTML 报表导出 | `write_excel` / `write_html` / `build_scorecard` | 画像报表、风险评估报表、建模评估报表、评分卡映射、部署 SQL | Excel、HTML、`MarsScorecard` |
 
 ## 性能对比
@@ -86,7 +86,7 @@ MARS 的原生等频/等宽分箱不只是生成切点。围绕风控特征分�
 - `merge_small_bins` 可在等频/等宽后自动合并低占比碎片箱，减少极端宽表中的不稳定分箱。
 - `remove_empty_bins` 可在等宽场景自动清理空箱，适配长尾、零膨胀和稀疏分布。
 - 原生分箱支持处理类别特征，最优分箱支持类别合并，用于降低高基数类别带来的不稳定性。
-- 分箱规则可以继续进入特征分析、特征/模型监控指标计算、Modeling Pipeline 结果和后续报表链路，减少从探索到部署之间的规则重写。
+- 分箱规则可以继续进入特征分析、特征监控、模型监控、Modeling Pipeline 结果和后续报表链路，减少从探索到部署之间的规则重写。
 
 ### 最优分箱：MarsOptimalBinner vs optbinning
 
@@ -235,9 +235,9 @@ selected_features = selector.selected_features_
 selection_report = selector.get_eval_report(df)
 ```
 
-### 特征/模型监控
+### 特征监控和模型监控
 
-`mars.monitoring` 的定位是监控指标计算层，`MarsMonitor` 提供特征与模型分的通用监控指标计算能力。无标签场景可以使用 `target=None` 做分布监控；target 成熟后可以继续计算坏账率、IV、KS、AUC、Lift 等标签指标。模型分、prob 或 score 只需要作为一个普通字段放入 `features`。
+`mars.monitoring` 的定位是监控指标计算层，`MarsMonitor` 提供特征监控和模型监控的通用指标计算能力。无标签场景可以使用 `target=None` 做分布监控；target 成熟后可以继续计算坏账率、IV、KS、AUC、Lift 等标签指标。MARS 负责结构化指标和默认报警摘要，监控窗口、模型版本、阈值策略、看板和处置流程由使用者定义。
 
 ```python
 from mars.monitoring import MarsMonitor, generate_monitoring_alert
@@ -333,7 +333,7 @@ Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定�
 
 `MarsModelTuningResult` 会保存最佳模型、调参历史、特征重要性、训练配置和 artifact 元数据。`MarsModelReplayResult` 会保存 replay leaderboard、模型字典、打分数据、评估报告和重要性表。
 
-模型分可以被视为一个特殊特征进入稳定性观察。当前 `MarsModelEvaluator` 是建模评估器，已输出 `Score PSI` 和 `score_psi` 明细，用于建模评估阶段观察模型分在 train/val/oot 或业务切片之间的分布漂移。需要按自定义时间或业务切片观察模型分时，使用者可以将模型分加入 `MarsMonitor` 的 `features`，得到 PSI、缺失率、分箱占比、分箱统计量和已表现样本风险指标等结构化结果。
+当前 `MarsModelEvaluator` 是建模评估器，已输出 `Score PSI` 和 `score_psi` 明细，用于建模评估阶段观察模型输出在 train/val/oot 或业务切片之间的分布漂移。需要按自定义时间或业务切片做模型监控时，可以使用 `MarsMonitor` 得到 PSI、缺失率、分箱占比、分箱统计量和已表现样本风险指标等结构化结果。
 
 ## Excel/HTML 报表导出与二次加工
 
@@ -407,7 +407,7 @@ MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 
 ## 路线图
 
-- 继续扩展模型评估、特征/模型监控指标计算、报警摘要和报表导出的测试覆盖。
+- 继续扩展模型评估、特征监控、模型监控、报警摘要和报表导出的测试覆盖。
 - 增强评分卡 SQL 和 artifact 回放能力。
 - 持续收敛 public API 命名和类型注解。
 

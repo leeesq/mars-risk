@@ -1,6 +1,6 @@
 # 快速开始
 
-本页用一个小样本串起数据画像、分箱评估、分箱器、特征筛选、特征/模型监控和 Modeling Pipeline。
+本页用一个小样本串起数据画像、分箱评估、分箱器、特征筛选、特征监控、模型监控和 Modeling Pipeline。
 
 ## 准备样本
 
@@ -127,7 +127,7 @@ selected_features = selector.selected_features_
 selection_report = selector.get_eval_report(df)
 ```
 
-## 特征/模型监控
+## 特征监控和模型监控
 
 ```python
 from mars.monitoring import MarsMonitor, generate_monitoring_alert
@@ -151,7 +151,7 @@ alert_text = generate_monitoring_alert(
 )
 ```
 
-`MarsMonitor` 是通用监控指标计算层。模型分、prob 或 score 作为普通字段放入 `features` 即可。`trend_column_order="desc"` 可以让最新时间列展示在趋势宽表最前面，报警摘要会按 report 记录的顺序识别基准期和最新期。
+`MarsMonitor` 是特征监控和模型监控的通用指标计算层。`trend_column_order="desc"` 可以让最新时间列展示在趋势宽表最前面，报警摘要会按 report 记录的顺序识别基准期和最新期。
 
 ## Modeling Pipeline
 
@@ -199,4 +199,3 @@ eval_report.write_html("mars_evaluation.html")
 ```
 
 各模块 report 也可以直接读取结构化表，接入内部看板或交给 Agent 做二次加工。
-

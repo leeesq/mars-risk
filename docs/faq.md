@@ -2,7 +2,7 @@
 
 ## MARS 和 toad 有什么区别？
 
-toad 是成熟的传统评分卡工具，强在经典评分卡链路、社区沉淀和易用性。MARS 更强调 Polars-first、宽表性能、结构化 report、特征/模型监控指标计算、Excel/HTML 交付和 Modeling Pipeline 串联。
+toad 是成熟的传统评分卡工具，强在经典评分卡链路、社区沉淀和易用性。MARS 更强调 Polars-first、宽表性能、结构化 report、特征监控、模型监控、Excel/HTML 交付和 Modeling Pipeline 串联。
 
 ## MARS 和 optbinning 有什么区别？
 
@@ -31,4 +31,3 @@ Modeling Pipeline 仍在快速迭代中，可能不稳定。后续接口约定�
 ## `MarsModelTuner.tune(history_path=None)` 会写文件吗？
 
 不会。`history_path=None` 时调参历史只保存在返回对象中。传入路径时才写 CSV；如果路径已存在且 `overwrite=False`，会抛出 `FileExistsError`。
-
