@@ -177,6 +177,71 @@ def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
     assert source_map["utilization"] == "UNMAPPED"
 
 
+def test_stats_selector_rejects_feature_data_source_outside_candidate_features(sample_credit_df):
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_binning_params={"method": "quantile", "n_bins": 3},
+    )
+
+    with pytest.raises(ValueError, match="feature_data_source"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income", "utilization"],
+            feature_data_source={"UNKNOWN": ["age"]},
+        )
+
+
+def test_stats_selector_trims_filtered_feature_data_source_for_eval_report(sample_credit_df):
+    df = sample_credit_df.with_columns(pl.lit(None).alias("mostly_missing"))
+    selector = MarsStatsSelector(
+        missing_thr=0.5,
+        psi_thr=None,
+        corr_thr=None,
+        skip_fine_scan=True,
+        rough_binning_params={
+            "method": "quantile",
+            "n_bins": 3,
+            "min_bin_size": 0.1,
+            "merge_small_bins": True,
+        },
+    )
+
+    selector.fit(
+        df,
+        target="target",
+        features=["income", "utilization", "mostly_missing"],
+        feature_data_source={
+            "APP": ["income"],
+            "BUREAU": ["mostly_missing"],
+        },
+        group_col="month",
+        white_list=["income", "utilization"],
+    )
+    report = selector.get_eval_report(df)
+    decision_report = selector.get_report()
+
+    decision_source_map = {
+        row["feature"]: row["data_source"]
+        for row in decision_report.select(["feature", "data_source"]).unique().to_dicts()
+    }
+    summary_source_map = {
+        row["feature"]: row["data_source"]
+        for row in report.summary_table.select(["feature", "data_source"]).to_dicts()
+    }
+    detail_source_map = {
+        row["feature"]: row["data_source"]
+        for row in report.detail_table.select(["feature", "data_source"]).unique().to_dicts()
+    }
+
+    assert decision_source_map["mostly_missing"] == "BUREAU"
+    assert "mostly_missing" not in summary_source_map
+    assert summary_source_map["income"] == "APP"
+    assert summary_source_map["utilization"] == "UNMAPPED"
+    assert detail_source_map["income"] == "APP"
+    assert detail_source_map["utilization"] == "UNMAPPED"
+
+
 def test_stats_selector_preserves_selected_feature_order(sample_credit_df):
     selector = MarsStatsSelector(
         skip_fine_scan=True,

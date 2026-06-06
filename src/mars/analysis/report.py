@@ -2707,6 +2707,9 @@ __RUNTIME_SCRIPT__
                 if 'mars_group' in df_pd.columns:
                     df_pd['mars_group'] = "'" + df_pd['mars_group'].astype(str)
 
+                # 模板可能落后于明细表结构，先同步表头再写入数据。
+                ws.range((1, 1)).value = [df_pd.columns.tolist()]
+
                 # 写入数据
                 ws.range((START_WRITE_ROW, 1)).value = df_pd.values
                 final_row = START_WRITE_ROW + len(df_pd) - 1
@@ -2760,6 +2763,10 @@ __RUNTIME_SCRIPT__
             mars_group_idx = -1
             if "mars_group" in df_pd.columns:
                 mars_group_idx = list(df_pd.columns).index("mars_group") + 1
+
+            # 模板可能落后于明细表结构，先同步表头再写入数据。
+            for c_offset, column_name in enumerate(df_pd.columns):
+                ws.cell(row=1, column=c_offset + 1, value=column_name)
 
             # 提取并缓存样式模板
             style_map = {}

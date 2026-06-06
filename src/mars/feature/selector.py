@@ -398,6 +398,24 @@ class MarsStatsSelector(MarsBaseSelector):
         """返回特征所属数据源，未映射时使用统一兜底标签。"""
         return self._feature_source_map.get(feature, "UNMAPPED")
 
+    def _feature_data_source_for(self, features: List[str]) -> Dict[str, List[str]]:
+        """按当前活跃特征裁剪数据源配置，避免评估器接收到已过滤字段。"""
+        if not self.feature_data_source:
+            return {}
+
+        active_features = set(features)
+        filtered_source: Dict[str, List[str]] = {}
+        for data_source, source_features in self.feature_data_source.items():
+            matched_features = [
+                feature
+                for feature in source_features or []
+                if feature in active_features
+            ]
+            if matched_features:
+                filtered_source[str(data_source)] = matched_features
+
+        return filtered_source
+
     def _register_feature_decision(
         self,
         feature: str,
@@ -720,7 +738,7 @@ class MarsStatsSelector(MarsBaseSelector):
             df=df,
             target=self.target,
             features=features,
-            feature_data_source=self.feature_data_source,
+            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
@@ -784,7 +802,7 @@ class MarsStatsSelector(MarsBaseSelector):
             target=self.target,
             features=features,
             binner=self._stage3_binner,
-            feature_data_source=self.feature_data_source,
+            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
@@ -816,7 +834,7 @@ class MarsStatsSelector(MarsBaseSelector):
             target=self.target,
             features=features,
             binner=self._stage3_binner,
-            feature_data_source=self.feature_data_source,
+            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
@@ -962,7 +980,7 @@ class MarsStatsSelector(MarsBaseSelector):
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
-            feature_data_source=self.feature_data_source,
+            feature_data_source=self._feature_data_source_for(self.selected_features_),
         )
         report: MarsEvaluationReport = run.report
 

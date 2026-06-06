@@ -257,6 +257,66 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
             artifacts_dir.rmdir()
 
 
+def test_evaluation_report_excel_contains_detail_sheet_and_data_source(sample_credit_df, tmp_path):
+    from openpyxl import load_workbook
+    from openpyxl.utils.cell import range_boundaries
+
+    report, _ = _profile_risk_report(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        feature_data_source={
+            "EXT_SOURCE_1": ["income"],
+            "EXT_SOURCE_2": ["utilization"],
+        },
+        group_col="month",
+        plot=False,
+        binning_type="native",
+        binner_params={"method": "quantile", "n_bins": 3},
+    )
+    output_path = tmp_path / "evaluation_report.xlsx"
+
+    report.write_excel(str(output_path), engine="openpyxl")
+
+    workbook = load_workbook(output_path)
+    try:
+        assert "分组明细" in workbook.sheetnames
+        worksheet = workbook["分组明细"]
+        headers = [
+            worksheet.cell(row=1, column=col_idx).value
+            for col_idx in range(1, worksheet.max_column + 1)
+        ]
+        header_index = {
+            str(header): col_idx + 1
+            for col_idx, header in enumerate(headers)
+            if header is not None
+        }
+        assert {"feature", "data_source", "bin_label", "count"}.issubset(header_index)
+
+        rows = [
+            {
+                column_name: worksheet.cell(row=row_idx, column=col_idx).value
+                for column_name, col_idx in header_index.items()
+            }
+            for row_idx in range(4, worksheet.max_row + 1)
+        ]
+        data_rows = [row for row in rows if row.get("feature")]
+        feature_values = {row["feature"] for row in data_rows}
+        data_sources = {row["data_source"] for row in data_rows}
+
+        assert {"income", "utilization"}.issubset(feature_values)
+        assert {"EXT_SOURCE_1", "EXT_SOURCE_2"}.issubset(data_sources)
+        assert worksheet.tables
+
+        table_ref = next(iter(worksheet.tables.values())).ref
+        _, min_row, max_col, max_row = range_boundaries(table_ref)
+        assert min_row == 1
+        assert max_col >= header_index["data_source"]
+        assert max_row >= worksheet.max_row
+    finally:
+        workbook.close()
+
+
 def test_evaluation_report_can_write_html(sample_credit_df, caplog):
     report, _ = _profile_risk_report(
         sample_credit_df,
