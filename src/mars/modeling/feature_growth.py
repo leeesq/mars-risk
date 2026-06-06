@@ -38,29 +38,6 @@ class MarsFeatureGrowthResult:
     """
     逐步增加特征调参的结构化结果。
 
-    Parameters
-    ----------
-    model_type : str
-        底层模型后端类型。
-    optimize_metric : str
-        单次 tuning 使用的优化指标。
-    feature_order : list of str
-        增量实验使用的稳定特征顺序。
-    steps : list of int
-        每轮使用的前 N 个特征数量。
-    selection_metric : str
-        用于从各 step 中挑选推荐模型的 validation 指标。
-    summary_table : pandas.DataFrame
-        step 级汇总审计表。
-    runs : dict of int to MarsModelTuningResult
-        成功完成的 step 对应的单次 tuning run。
-    best_step : int, optional
-        推荐特征数量。
-    best_run : MarsModelTuningResult, optional
-        推荐 step 对应的 tuning run。
-    metadata : dict, optional
-        额外审计元数据。
-
     Attributes
     ----------
     summary_table : pandas.DataFrame
@@ -223,6 +200,13 @@ class MarsFeatureGrowthResult:
         MarsFeatureGrowthResult
             恢复后的实验结果。
 
+        Raises
+        ------
+        FileNotFoundError
+            当指定路径不存在时抛出。
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
@@ -270,23 +254,6 @@ class MarsFeatureIncrementalTuner:
     """
     按特征数量逐步扩展的调参器。
 
-    Parameters
-    ----------
-    model_type : str
-        底层模型后端类型。
-    features : sequence of str
-        候选特征全集。
-    target : str
-        目标变量列名。
-    dataset_flag_col : str, default "dataset_flag"
-        数据集切片标识列。
-    categorical_features : sequence of str, optional
-        类别特征列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        单次 tuning 的优化指标。
-    seed : int, default 1206
-        随机种子。
-
     Attributes
     ----------
     spec : ModelingSpec
@@ -316,6 +283,34 @@ class MarsFeatureIncrementalTuner:
         lr_binner_kwargs: Mapping[str, Any] | None = None,
         lr_binner: Any | None = None,
     ) -> None:
+        """
+        初始化特征增量调参器。
+
+        Parameters
+        ----------
+        model_type : str
+            模型后端类型。
+        features : Sequence[str]
+            候选特征列。
+        target : str
+            目标列名。
+        dataset_flag_col : str
+            样本切片标记列名。
+        categorical_features : Sequence[str] | None
+            类别特征列。
+        optimize_metric : str
+            调参优化指标。
+        seed : int
+            随机种子。
+        lr_feature_mode : str
+            LR 特征模式。
+        lr_binning_type : str
+            LR WOE 模式使用的分箱器类型。
+        lr_binner_kwargs : Mapping[str, Any] | None
+            构造 LR 分箱器时使用的参数。
+        lr_binner : Any | None
+            显式复用的 LR 分箱器实例。
+        """
         self.spec = _build_spec(
             model_type=model_type,
             features=features,
@@ -507,23 +502,23 @@ class MarsFeatureIncrementalTuner:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已带 train/val/OOT 标识的建模样本。
-        steps : sequence of int, optional
+        steps : Sequence[int] | None
             显式指定每轮使用的前 N 个特征数量。
-        feature_order : sequence of str, optional
+        feature_order : Sequence[str] | None
             人工指定的稳定特征顺序。
-        importance_table : pandas.DataFrame, optional
+        importance_table : pd.DataFrame | None
             包含 ``feature`` 以及可选 ``importance`` / ``rank`` 的特征重要性表。
-        min_features : int, default 10
+        min_features : int
             自动生成 step 时的起始特征数。
-        max_features : int, optional
+        max_features : int | None
             自动生成 step 时的最大特征数。
-        step_size : int, optional
+        step_size : int | None
             自动生成 step 时的步长；默认使用 ``min_features``。
-        mode : {"prefix"}, default "prefix"
+        mode : str
             特征增长模式。当前版本只支持前缀扩展。
-        selection_metric : {"auc", "ks"}, optional
+        selection_metric : str | None
             跨 step 选择推荐模型时使用的 validation 指标。
         **tune_kwargs : Any
             透传给 ``MarsModelTuner.tune`` 的参数。
@@ -532,6 +527,11 @@ class MarsFeatureIncrementalTuner:
         -------
         MarsFeatureGrowthResult
             包含所有成功 step、汇总表和推荐模型的实验结果。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------

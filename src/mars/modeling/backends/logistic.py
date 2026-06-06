@@ -24,19 +24,6 @@ class MarsLogisticModel:
     """
     可序列化的 LR 模型包装器。
 
-    Parameters
-    ----------
-    estimator : Any
-        已训练的 ``sklearn.linear_model.LogisticRegression`` 实例。
-    features : list of str
-        用户传入的原始特征名。
-    model_features : list of str
-        LR 实际消费的数值特征名。WOE 模式下通常为 ``{feature}_woe``。
-    lr_feature_mode : {"numeric", "woe"}, default "numeric"
-        特征预处理模式。
-    binner : MarsBinnerBase, optional
-        WOE 模式下用于 replay/evaluate 的已拟合分箱器。
-
     Attributes
     ----------
     estimator : Any
@@ -77,7 +64,7 @@ class MarsLogisticModel:
 
         Parameters
         ----------
-        X : pandas.DataFrame or polars.DataFrame
+        X : pd.DataFrame | pl.DataFrame
             待转换的原始特征数据。
 
         Returns
@@ -121,7 +108,7 @@ class MarsLogisticModel:
 
         Parameters
         ----------
-        X : pandas.DataFrame or polars.DataFrame
+        X : pd.DataFrame | pl.DataFrame
             待评分特征数据。
 
         Returns
@@ -152,37 +139,6 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     """
     面向传统银行评分卡体系的 LR 建模后端。
 
-    Parameters
-    ----------
-    df : pandas.DataFrame or polars.DataFrame
-        已包含特征、目标列和样本切片标识的建模数据。
-    features : sequence of str
-        参与训练的原始特征名。
-    target : str
-        二分类目标列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        Optuna trial 的优化指标。
-    param_space : mapping, optional
-        LR 超参搜索空间覆盖项。
-    max_diff : float, default 3.0
-        训练集与验证集指标衰减阈值，单位为百分点。
-    seed : int, default 1206
-        随机种子。
-    use_oot_penalty : bool, default False
-        是否将最差 OOT 衰减纳入 trial 有效性约束。
-    dataset_flag_col : str, default "dataset_flag"
-        样本切片标识列。
-    categorical_features : sequence of str, optional
-        WOE 模式下按类别分箱处理的特征。
-    lr_feature_mode : {"numeric", "woe"}, default "numeric"
-        ``"numeric"`` 表示输入已数值化或已 WOE 化；``"woe"`` 表示内部先分箱并转 WOE。
-    lr_binning_type : {"native", "opt", "optimal"}, default "native"
-        WOE 模式下内部使用的分箱器类型。
-    lr_binner_kwargs : mapping, optional
-        内部分箱器初始化参数。
-    lr_binner : MarsBinnerBase, optional
-        用户传入的已配置分箱器。传入后优先复用该实例进行拟合与转换。
-
     Attributes
     ----------
     lr_feature_mode : str
@@ -195,13 +151,6 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         用户传入或内部创建的分箱器。
     model_features : list of str
         LR 实际训练和预测使用的特征名。
-
-    Raises
-    ------
-    ValueError
-        当 LR 模式、分箱类型、样本切片或特征列配置非法时抛出。
-    ImportError
-        缺少 sklearn 或 statsmodels 等可选依赖时抛出。
 
     Examples
     --------
@@ -370,7 +319,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         ----------
         trial : Any
             当前 Optuna Trial。LR v1 暂不直接使用。
-        params : dict of str to Any
+        params : dict[str, Any]
             当前 Trial 解析后的 LR 超参数。
         startup_trials : int
             剪枝预热 Trial 数量。LR v1 暂不直接使用。

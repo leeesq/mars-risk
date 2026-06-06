@@ -23,11 +23,6 @@ class MarsPlotter:
     该工具统一处理分箱明细表到 Matplotlib 图形和嵌入式 HTML 的转换，
     适用于 Notebook 交互展示和 HTML 报告生成。
 
-    Parameters
-    ----------
-    None
-        该工具类不需要初始化参数。
-
     Attributes
     ----------
     UNIT_WIDTH : int
@@ -71,9 +66,9 @@ class MarsPlotter:
 
         Parameters
         ----------
-        fig : matplotlib.figure.Figure
+        fig : plt.Figure
             待显示的图表对象。
-        dpi : int, default 150
+        dpi : int
             图像分辨率。
         """
         # 将图像序列化为 Base64 字符串
@@ -218,15 +213,15 @@ class MarsPlotter:
 
         Parameters
         ----------
-        df_detail : pandas.DataFrame or polars.DataFrame
+        df_detail : Union[pd.DataFrame, pl.DataFrame]
             分箱评估明细表。
         feature : str
             需要绘制的特征名。
-        group_col : str, default "month"
+        group_col : str
             趋势分组列名。
-        target_name : str, default "Target"
+        target_name : str
             目标变量展示名称。
-        dpi : int, optional
+        dpi : int | None
             输出 PNG 的渲染分辨率。为 ``None`` 时使用默认值 ``150``。
 
         Returns
@@ -549,16 +544,17 @@ class MarsPlotter:
 
         Parameters
         ----------
-        df_detail : Union[pd.DataFrame, pl.DataFrame]
+        df_detail : pd.DataFrame | pl.DataFrame
             评估明细数据表，需包含 'feature', 'bin_index', 'count' 等列。
         feature : str
             目标特征名。
-        group_col : str, default "month"
+        group_col : str
             分组维度列名（如月份、客群）。
-        target_name : str, default "Target"
+        target_name : str
             目标变量名称，用于标题显示。
-        dpi : int, optional, default 150
+        dpi : int | None
             绘图分辨率。
+
         Returns
         -------
         None
@@ -605,20 +601,21 @@ class MarsPlotter:
 
         Parameters
         ----------
-        df_detail : Union[pd.DataFrame, pl.DataFrame]
+        df_detail : pd.DataFrame | pl.DataFrame
             评估明细数据表。
-        features : List[str]
+        features : list[str]
             待绘图的特征名称列表。
-        group_col : str, default "month"
+        group_col : str
             分组维度列。
-        target_name : str, default "Target"
+        target_name : str
             目标名。
-        dpi : int, default 150
+        dpi : int
             图像分辨率。
-        sort_by : str, default "iv"
+        sort_by : str
             排序依据指标，可选 'iv', 'ks', 'auc'。
-        ascending : bool, default False
+        ascending : bool
             是否升序排列（默认降序，即最重要的特征排在最前面）。
+
         Returns
         -------
         None

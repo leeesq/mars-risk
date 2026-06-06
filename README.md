@@ -346,10 +346,11 @@ eval_report.write_html("mars_evaluation.html")
 ```bash
 python -m ruff check src tests benchmarks
 python -m mypy src/mars
+pydoclint src/mars
 MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 ```
 
-本仓库使用 `src/` 包结构，并声明 `mars/py.typed`。提交 Python 代码时，请保持类型注解、NumPy 风格 docstring、中文自然语言注释和 README/教程同步。
+本仓库使用 `src/` 包结构，并声明 `mars/py.typed`。提交 Python 代码时，请保持类型注解、NumPy 风格 docstring、中文自然语言注释和 README 同步。public API 的参数、返回值和异常变更必须同步 docstring，CI 会通过 `ruff` 和 `pydoclint` 阻断漏改。
 
 ## FAQ
 

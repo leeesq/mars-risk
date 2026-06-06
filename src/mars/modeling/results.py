@@ -57,39 +57,6 @@ class MarsModelTuningResult:
     """
     单次调参流程的结构化结果对象。
 
-    Parameters
-    ----------
-    model_type : str
-        模型后端类型。
-    optimize_metric : str
-        调参优化指标。
-    features : list of str
-        参与训练的特征列名。
-    target : str
-        目标变量列名。
-    dataset_flag_col : str
-        数据集切分标识列名。
-    categorical_features : list of str
-        类别特征列名。
-    best_params : dict
-        最优 Trial 参数。
-    best_iteration : int, optional
-        最优迭代轮次。
-    best_model : Any
-        验证集最优模型。
-    best_score : float
-        验证集最优分数。
-    history_table : pandas.DataFrame
-        Trial 级训练历史。
-    history_path : str
-        训练历史 CSV 路径。
-    study : Any
-        Optuna study 对象或兼容占位。
-    replay_candidates : list of str
-        推荐进入 replay 的 trial 标识。
-    importance_table : pandas.DataFrame
-        特征重要性表。
-
     Attributes
     ----------
     best_model : Any
@@ -260,6 +227,13 @@ class MarsModelTuningResult:
         MarsModelTuningResult
             恢复后的单次调参结果。
 
+        Raises
+        ------
+        FileNotFoundError
+            当指定路径不存在时抛出。
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         Examples
         --------
         >>> from tempfile import TemporaryDirectory
@@ -350,23 +324,6 @@ class MarsModelReplayResult:
     """
     Top-K replay 流程的结构化结果对象。
 
-    Parameters
-    ----------
-    model_type : str
-        模型后端类型。
-    ranking_table : pandas.DataFrame
-        用于选取 Top-K trial 的排名表。
-    leaderboard_table : pandas.DataFrame
-        replay 后的模型排行榜。
-    models : dict
-        replay 训练得到的模型对象。
-    scored_df : pandas.DataFrame or polars.DataFrame, optional
-        追加预测列后的数据。
-    reports : dict
-        每个 replay 模型对应的评估报告。
-    importance_tables : dict
-        每个 replay 模型对应的特征重要性表。
-
     Attributes
     ----------
     ranking_table : pandas.DataFrame
@@ -412,7 +369,7 @@ class MarsModelReplayResult:
         ----------
         path : str
             输出目录。
-        include_scored_df : bool, default False
+        include_scored_df : bool
             是否保存评分后的数据框。
 
         Returns
@@ -530,6 +487,13 @@ class MarsModelReplayResult:
         -------
         MarsModelReplayResult
             恢复后的 replay 结果。
+
+        Raises
+        ------
+        FileNotFoundError
+            当指定路径不存在时抛出。
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------

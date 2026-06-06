@@ -61,15 +61,6 @@ class SafePlainFormatter(logging.Formatter):
     """
     面向普通文本控制台的安全格式化器。
 
-    Parameters
-    ----------
-    fmt : str, optional
-        继承自 ``logging.Formatter`` 的格式化模板。
-    datefmt : str, optional
-        继承自 ``logging.Formatter`` 的日期格式。
-    style : {"%", "{", "$"}, default "%"
-        继承自 ``logging.Formatter`` 的模板风格。
-
     Attributes
     ----------
     _style : logging.PercentStyle
@@ -109,15 +100,6 @@ if HAS_COLORLOG:
     class SafeColoredFormatter(colorlog.ColoredFormatter):
         """
         面向彩色终端的安全格式化器。
-
-        Parameters
-        ----------
-        fmt : str, optional
-            继承自 ``colorlog.ColoredFormatter`` 的格式化模板。
-        datefmt : str, optional
-            继承自 ``colorlog.ColoredFormatter`` 的日期格式。
-        log_colors : dict, optional
-            日志级别到终端颜色的映射。
 
         Attributes
         ----------
@@ -162,7 +144,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
 
     Parameters
     ----------
-    level : int, optional
+    level : int
         日志的初始过滤级别 (例如 logging.INFO, logging.DEBUG)。
         默认值为 logging.INFO。
 

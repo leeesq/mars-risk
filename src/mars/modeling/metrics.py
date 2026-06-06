@@ -15,9 +15,9 @@ def calculate_ks(y_true: np.ndarray | pd.Series, y_pred: np.ndarray | pd.Series)
 
     Parameters
     ----------
-    y_true : numpy.ndarray or pandas.Series
+    y_true : np.ndarray | pd.Series
         真实二分类标签。
-    y_pred : numpy.ndarray or pandas.Series
+    y_pred : np.ndarray | pd.Series
         预测为正类的概率或风险分。
 
     Returns
@@ -44,9 +44,9 @@ def calculate_auc(y_true: np.ndarray | pd.Series, y_pred: np.ndarray | pd.Series
 
     Parameters
     ----------
-    y_true : numpy.ndarray or pandas.Series
+    y_true : np.ndarray | pd.Series
         真实二分类标签。
-    y_pred : numpy.ndarray or pandas.Series
+    y_pred : np.ndarray | pd.Series
         预测为正类的概率或风险分。
 
     Returns
@@ -97,7 +97,7 @@ def xgb_ks_metric(preds: np.ndarray, dmatrix: Any) -> tuple[str, float]:
 
     Parameters
     ----------
-    preds : numpy.ndarray
+    preds : np.ndarray
         当前迭代的预测输出。
     dmatrix : Any
         XGBoost DMatrix，需提供 ``get_label``。
@@ -125,7 +125,7 @@ def lgb_ks_metric(preds: np.ndarray, dataset: Any) -> tuple[str, float, bool]:
 
     Parameters
     ----------
-    preds : numpy.ndarray
+    preds : np.ndarray
         当前迭代的预测输出。
     dataset : Any
         LightGBM Dataset，需提供 ``get_label``。
@@ -150,11 +150,6 @@ def lgb_ks_metric(preds: np.ndarray, dataset: Any) -> tuple[str, float, bool]:
 class CatBoostKSMetric:
     """
     CatBoost 自定义 KS 评估指标。
-
-    Parameters
-    ----------
-    None
-        该指标对象不需要初始化参数。
 
     Attributes
     ----------

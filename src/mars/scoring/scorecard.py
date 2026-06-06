@@ -54,29 +54,6 @@ class MarsScorecard:
     该对象封装了由已拟合分箱器和逻辑回归系数推导出的分值明细表，
     同时保留评分卡刻度参数，便于导出 CSV、Excel 或生成部署 SQL。
 
-    Parameters
-    ----------
-    points_table : pl.DataFrame or pd.DataFrame
-        评分卡分值明细表，包含特征、分箱、WOE、系数与最终分值。
-    base_points : float
-        基础分。
-    factor : float
-        评分卡缩放因子。
-    offset : float
-        评分卡偏移量。
-    pdo : float
-        Points to Double the Odds 参数。
-    base_score : float
-        基准分数。
-    base_odds : float
-        基准赔率。
-    intercept : float
-        逻辑回归截距项。
-    coefficients : dict of str to float
-        特征系数字典。
-    _binner : MarsBinnerBase
-        生成评分卡时使用的已拟合分箱器。
-
     Attributes
     ----------
     points_table : pl.DataFrame or pd.DataFrame
@@ -141,15 +118,20 @@ class MarsScorecard:
 
         Parameters
         ----------
-        round_decimals : int, default 0
+        round_decimals : int
             分值保留的小数位数。为 ``0`` 时，分箱分值列会转为整数。
-        rebalance : bool, default True
+        rebalance : bool
             是否把四舍五入产生的总分漂移回补到基础分。
 
         Returns
         -------
         MarsScorecard
             取整后的新评分卡对象，原对象不被修改。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------
@@ -212,7 +194,7 @@ class MarsScorecard:
 
         Parameters
         ----------
-        path : str, default "mars_scorecard.csv"
+        path : str
             输出文件路径。
 
         Returns
@@ -251,7 +233,7 @@ class MarsScorecard:
 
         Parameters
         ----------
-        path : str, default "mars_scorecard.xlsx"
+        path : str
             输出文件路径。
 
         Returns
@@ -382,13 +364,13 @@ class MarsScorecard:
 
         Parameters
         ----------
-        features : list of str, optional
+        features : List[str] | None
             需要生成 SQL 的特征列表。默认为全部系数特征。
-        table_prefix : str, default "t"
+        table_prefix : str
             SQL 中引用特征列时使用的表别名前缀。传空字符串表示不加前缀。
-        score_name : str, default "score"
+        score_name : str
             最终总分字段名称。
-        include_base_points : bool, default True
+        include_base_points : bool
             是否在总分表达式中包含基础分。
 
         Returns
@@ -449,7 +431,7 @@ def build_scorecard(
     ----------
     binner : MarsBinnerBase
         已拟合的分箱器，且能够提供分箱映射与 WOE 信息。
-    coefficients : dict of str to float
+    coefficients : Dict[str, float]
         特征系数字典，键为特征名，值为对应逻辑回归系数。
     intercept : float
         逻辑回归截距项。

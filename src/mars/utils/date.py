@@ -12,11 +12,6 @@ class MarsDate:
     专为 Polars DataFrame 操作设计。
     所有方法均返回 ``pl.Expr`` 对象，可直接用于 Polars 的表达式系统中。
 
-    Parameters
-    ----------
-    None
-        该工具类只提供静态方法，不需要初始化参数。
-
     Attributes
     ----------
     None
@@ -62,8 +57,8 @@ class MarsDate:
 
         采用 "Coalesce" (多路合并) 策略，能够自动处理混合格式的脏数据。
 
-        优化策略
-        --------
+        Notes
+        -----
         1. **类型优先保护**: 优先尝试直接 Cast。如果输入已经是 Date/Datetime，
            则跳过后续字符串解析，大幅提升处理规整数据时的性能。
         2. **强制转 String**: 对于无法直接 Cast 的类型，转换为 ``pl.Utf8`` 统一处理。
@@ -79,6 +74,7 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Date`` 的表达式。无法解析的值将变为 Null。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-02", "20260103"]})
@@ -115,6 +111,7 @@ class MarsDate:
     def dt2day(dt: Union[str, pl.Expr], interval: str = "1d") -> pl.Expr:
         """
         将日期转换为指定天数粒度 (如 '1d', '3d', '14d')。
+
         如果是多天 (>1d)，则以该列的最小日期 (min) 作为锚点计算区间，
         并返回类似周粒度的字符串区间表现形式 (如 '20260101-0103')。
 
@@ -122,7 +119,7 @@ class MarsDate:
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
-        interval : str, default "1d"
+        interval : str
             时间间隔，支持 "day", "1d", "3d", "14d", "30d" 等格式。
 
         Returns
@@ -130,6 +127,12 @@ class MarsDate:
         pl.Expr
             当 interval 为 1d 时，返回 pl.Date 类型。
             当 interval > 1d 时，返回 pl.Utf8 (String) 区间格式。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-01", "2026-01-03"]})
@@ -189,6 +192,7 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
@@ -221,6 +225,7 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
@@ -239,13 +244,14 @@ class MarsDate:
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
-        fmt : str, optional
+        fmt : str
             输出的格式化字符串，默认 "%Y-%m-%d"。
 
         Returns
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-28"]})

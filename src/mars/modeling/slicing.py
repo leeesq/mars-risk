@@ -210,15 +210,15 @@ class MarsModelDataSplitter:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             原始建模样本。
         time_col : str
             原始时间列名，切分时按自然日保持完整。
         target : str
             二分类目标列名，仅 `0`/`1` 样本参与切分。
-        split_ratios : dict of str to float
+        split_ratios : Dict[str, float]
             切分名称到比例的映射，比例合计必须为 1。
-        dataset_flag_col : str, default "dataset_flag"
+        dataset_flag_col : str
             输出的数据集切片列名。
 
         Returns
@@ -269,21 +269,21 @@ class MarsModelDataSplitter:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             原始建模样本。
         time_col : str
             原始时间列名，切分时按自然日保持完整。
         target : str
             二分类目标列名，仅 `0`/`1` 样本参与切分。
-        split_ratios : dict of str to float
+        split_ratios : Dict[str, float]
             切分名称到比例的映射，比例合计必须为 1。
-        dataset_flag_col : str, default "dataset_flag"
+        dataset_flag_col : str
             输出的数据集切片列名。
-        train_key : str, default "train"
+        train_key : str
             训练集标识。
-        val_key : str, default "val"
+        val_key : str
             验证集标识。
-        random_seed : int, default 42
+        random_seed : int
             随机种子。
 
         Returns

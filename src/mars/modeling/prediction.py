@@ -25,17 +25,6 @@ class ModelPredictor:
     """
     训练后模型预测辅助器。
 
-    Parameters
-    ----------
-    model : Any
-        已训练模型对象。
-    feature_list : sequence of str
-        预测所需特征列。
-    categorical_features : sequence of str, optional
-        需要固定类别字典的特征列。
-    category_levels : dict, optional
-        train split 中抽取的稳定类别字典。
-
     Attributes
     ----------
     model : Any
@@ -61,6 +50,20 @@ class ModelPredictor:
         categorical_features: Sequence[str] | None = None,
         category_levels: Dict[str, Sequence[Any]] | None = None,
     ) -> None:
+        """
+        初始化模型预测辅助器。
+
+        Parameters
+        ----------
+        model : Any
+            已训练模型对象。
+        feature_list : Sequence[str]
+            预测时需要使用的特征列。
+        categorical_features : Sequence[str] | None
+            需要固定类别字典的类别特征列。
+        category_levels : Dict[str, Sequence[Any]] | None
+            训练阶段抽取的类别取值字典。
+        """
         self.model: Any = model
         self.features: List[str] = list(feature_list)
         self.categorical_features: List[str] = list(categorical_features or [])
@@ -157,11 +160,11 @@ class ModelPredictor:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             待打分样本表。
-        pred_col : str, default "pred_score"
+        pred_col : str
             追加到结果表中的预测分列名。
-        inplace : bool, default False
+        inplace : bool
             当输入是 pandas DataFrame 时，是否直接在原对象上写入预测分。
 
         Returns
@@ -193,19 +196,19 @@ class ModelPredictor:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             待打分和评估的样本表。
         group_col : str
             已存在的样本分组列名。
         target : str
             二分类目标列名。
-        time_col : str, optional
+        time_col : str | None
             原始时间列名，用于补充报告中的时间边界。
-        val_target : str, optional
+        val_target : str | None
             替代验证目标列名。
-        benchmark_col : str, optional
+        benchmark_col : str | None
             benchmark 或 champion 模型分数列名。
-        pred_col : str, default "pred_score"
+        pred_col : str
             追加并用于评估的预测分列名。
 
         Returns

@@ -30,17 +30,6 @@ class MarsLGBStrategy(MarsBaseModelStrategy):
     """
     基于 LightGBM 原生接口的调参策略。
 
-    Parameters
-    ----------
-    df : pandas.DataFrame or polars.DataFrame
-        继承自基类的建模数据集，需包含训练、验证和可选 OOT 切片标识。
-    features : sequence of str
-        参与 LightGBM 训练的特征列名。
-    target : str
-        二分类目标列名。
-    categorical_features : sequence of str, optional
-        需要交给 LightGBM 原生类别特征处理的字段名。
-
     Attributes
     ----------
     dataset_dict : dict of str to Any
@@ -146,7 +135,7 @@ class MarsLGBStrategy(MarsBaseModelStrategy):
         ----------
         trial : Any
             当前 Optuna Trial。
-        params : dict of str to Any
+        params : Dict[str, Any]
             当前 Trial 的确定性超参数。
         startup_trials : int
             启用剪枝前的预热 Trial 数量。

@@ -23,6 +23,7 @@ jobs:
       run: |
         python -m ruff check src tests
         python -m mypy src/mars
+        pydoclint src/mars
     - name: Run test suite
       run: |
         python -m pytest -q tests/test_binner.py tests/test_selector.py tests/test_evaluator.py tests/test_profiler.py tests/test_scoring.py
@@ -47,6 +48,7 @@ jobs:
       run: |
         python -m ruff check src tests
         python -m mypy src/mars
+        pydoclint src/mars
     - name: Run modeling test suite
       run: |
         python -m pytest -q tests/test_modeling_slicer.py tests/test_modeling_tuner.py tests/test_modeling_evaluator.py tests/test_modeling_testbench.py tests/test_modeling_pipeline.py

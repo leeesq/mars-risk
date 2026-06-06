@@ -23,7 +23,7 @@ def time_it(func: F) -> F:
 
     Parameters
     ----------
-    func : Callable
+    func : F
         需要计时的函数。
 
     Returns
@@ -110,7 +110,7 @@ def safe_run(default_return: Any = None) -> Callable[[F], F]:
 
     Parameters
     ----------
-    default_return : Any, optional
+    default_return : Any
         发生异常时返回的默认值。默认为 None。
 
     Returns

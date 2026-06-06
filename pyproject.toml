@@ -70,6 +70,7 @@ dev = [
     "pytest>=7.4.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    "pydoclint>=0.8.0",
     "black>=23.0.0",
     "jupyterlab>=4.0.0",
     "tqdm>=4.66.0",        
@@ -92,20 +93,56 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "D"]
 ignore = [
-    # The codebase still contains HTML/CSS/JS templates and generated report strings.
-    # Keep line-length visible in editor tooling, but do not block CI on E501 yet.
+    # 代码中包含 HTML/CSS/JS 模板和生成报告字符串，暂不让 E501 阻断 CI。
     "E501",
-    # Gradual Python 3.10 typing migration: touched files should use native syntax,
-    # but the historical baseline still contains typing.List/Dict/Optional/Union.
+    # 项目大量 docstring 使用中文自然语言，不适用英文祈使句检查。
+    "D401",
+    # 中文摘要句使用中文句号，Ruff 的 D400 只识别英文句点。
+    "D400",
+    # NumPy 风格使用 D212，避免和 D213 的多行摘要空行规则互相冲突。
+    "D213",
+    # 顶层包和模块入口不承担 API 参数契约说明，避免文档噪音。
+    "D100",
+    "D104",
+    # Ruff 不强制魔术方法和 __init__ 的缺失 docstring，签名一致性由 pydoclint 兜底。
+    "D105",
+    "D107",
+    # 历史代码仍包含 typing.List/Dict/Optional/Union，触碰文件时逐步迁移。
     "UP006",
     "UP007",
     "UP035",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"benchmarks/**" = ["D"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["mars"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.pydoclint]
+style = "numpy"
+check-arg-order = true
+arg-type-hints-in-docstring = true
+skip-checking-short-docstrings = true
+skip-checking-raises = false
+skip-checking-private-functions = true
+allow-init-docstring = true
+require-return-section-when-returning-nothing = false
+check-return-types = false
+require-yield-section-when-yielding-nothing = false
+check-yield-types = false
+ignore-private-args = false
+check-class-attributes = false
+should-document-star-arguments = true
+omit-stars-when-documenting-varargs = false
+check-style-mismatch = false
+check-arg-defaults = false
 
 [tool.mypy]
 python_version = "3.10"

@@ -92,9 +92,9 @@ def build_importance_table(
         模型后端名称。
     importance_type : str
         重要性类型，例如 ``gain``。
-    features : list of str
+    features : list[str]
         原始特征顺序。
-    importance_map : dict of str to float
+    importance_map : Dict[str, float]
         后端返回的特征重要性映射。
 
     Returns
@@ -137,7 +137,7 @@ def validate_numeric_polars(X: pl.DataFrame, backend_name: str) -> None:
 
     Parameters
     ----------
-    X : polars.DataFrame
+    X : pl.DataFrame
         特征数据框。
     backend_name : str
         后端名称，用于错误提示。
@@ -175,7 +175,7 @@ def validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
 
     Parameters
     ----------
-    X : pandas.DataFrame
+    X : pd.DataFrame
         特征数据框。
     backend_name : str
         后端名称，用于错误提示。

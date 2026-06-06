@@ -591,7 +591,7 @@ class MarsModelEvaluator:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已包含预测分和目标列的样本表。
         pred_col : str
             当前模型预测分列名。
@@ -599,15 +599,15 @@ class MarsModelEvaluator:
             已存在的样本分组列名，常见取值是 `dataset_flag`。
         target : str
             二分类目标列名。
-        benchmark_col : str, optional
+        benchmark_col : str | None
             benchmark 或 champion 模型分数列名；传入后会计算 AUC/KS 差异。
-        time_col : str, optional
+        time_col : str | None
             原始时间列名；传入后会在汇总表中展示每个分组的起止时间。
-        val_target : str, optional
+        val_target : str | None
             替代验证目标列名；适合在主目标之外同时观察另一个口径。
-        feature_cols : sequence of str, optional
+        feature_cols : Sequence[str] | None
             用于计算特征 PSI 明细的特征列名。
-        importance_table : pandas.DataFrame, optional
+        importance_table : pd.DataFrame | None
             特征重要性表；会复制进报告元数据，便于导出和追踪。
 
         Returns

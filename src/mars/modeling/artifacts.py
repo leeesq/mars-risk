@@ -49,9 +49,9 @@ def write_json(path: Path, data: Dict[str, Any]) -> None:
 
     Parameters
     ----------
-    path : pathlib.Path
+    path : Path
         输出路径。
-    data : dict
+    data : Dict[str, Any]
         元数据字典。
 
     Returns
@@ -80,7 +80,7 @@ def read_json(path: Path) -> Dict[str, Any]:
 
     Parameters
     ----------
-    path : pathlib.Path
+    path : Path
         JSON 文件路径。
 
     Returns
@@ -114,9 +114,9 @@ def save_report_tables(reports: Dict[str, MarsModelingReport], reports_dir: Path
 
     Parameters
     ----------
-    reports : dict of str to MarsModelingReport
+    reports : Dict[str, MarsModelingReport]
         各 replay 模型的评估报告。
-    reports_dir : pathlib.Path
+    reports_dir : Path
         输出目录。
 
     Returns
@@ -150,15 +150,20 @@ def load_report_tables(reports_dir: Path, report_files: Dict[str, str]) -> Dict[
 
     Parameters
     ----------
-    reports_dir : pathlib.Path
+    reports_dir : Path
         报告 CSV 目录。
-    report_files : dict of str to str
+    report_files : Dict[str, str]
         模型名到 CSV 文件名的映射。
 
     Returns
     -------
     dict of str to MarsModelingReport
         恢复后的报告对象。
+
+    Raises
+    ------
+    FileNotFoundError
+        当指定路径不存在时抛出。
 
     Examples
     --------

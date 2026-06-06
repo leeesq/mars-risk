@@ -38,6 +38,7 @@ class MarsStatsSelector(MarsBaseSelector):
     >>> selector.fit(df, target="y", features=["age"]).selected_features_
     ['age']
     """
+
     def __init__(
         self,
         *,
@@ -73,45 +74,45 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        missing_thr : float, default 0.90
+        missing_thr : float
             缺失率剔除阈值。
-        zeros_thr : float, default 0.90
+        zeros_thr : float
             零值率剔除阈值。
-        mode_thr : float, default 0.90
+        mode_thr : float
             单一众数占比剔除阈值。
-        iv_thr : float, default 0.01
+        iv_thr : float
             精筛阶段保留特征所需的最低 IV。
-        lift_thr : float, optional, default 1.2
+        lift_thr : float | None
             精筛阶段保留特征所需的最低 Lift。
-        min_sample_rate : float, default 0.05
+        min_sample_rate : float
             计算 Lift 时单个分箱所需的最低样本占比。
-        psi_thr : float, optional, default 0.25
+        psi_thr : float | None
             稳定性筛选的 PSI 上限。
-        rc_thr : float, optional, default 0.5
+        rc_thr : float | None
             排名变化率筛选阈值。
-        corr_thr : float, optional, default 0.95
+        corr_thr : float | None
             WOE 相关性筛选阈值。
-        skip_rough_scan : bool, default False
+        skip_rough_scan : bool
             是否跳过粗筛分箱阶段。
-        skip_fine_scan : bool, default False
+        skip_fine_scan : bool
             是否跳过精筛分箱阶段。
-        rough_iv_thr : float, default 0.01
+        rough_iv_thr : float
             粗筛阶段保留特征所需的最低 IV。
-        rough_lift_thr : float, default 1.2
+        rough_lift_thr : float
             粗筛阶段保留特征所需的最低 Lift。
-        rough_min_sample_rate : float, default 0.02
+        rough_min_sample_rate : float
             粗筛阶段计算 Lift 时单个分箱所需的最低样本占比。
-        missing_values : list, optional
+        missing_values : List[Any] | None
             需要视为缺失的取值列表。
-        special_values : list, optional
+        special_values : List[Any] | None
             需要单独处理的特殊值列表。
-        binning_params : dict, optional
+        binning_params : Dict[str, Any] | None
             精筛阶段分箱器参数。
-        rough_binning_params : dict, optional
+        rough_binning_params : Dict[str, Any] | None
             粗筛阶段分箱器参数。
-        batch_size : int, optional, default 100
+        batch_size : int | None
             批量评估时的特征批大小。
-        n_jobs : int, default -1
+        n_jobs : int
             并行任务数，含义遵循 joblib 约定。
         """
         super().__init__()
@@ -188,33 +189,39 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        df : polars.DataFrame or pandas.DataFrame
+        df : pl.DataFrame | pd.DataFrame
             待筛选样本表。
         target : str
             二分类目标列名。
-        features : list of str, optional
+        features : List[str] | None
             候选特征列；不传时会从样本表中自动推断。
-        feature_data_source : dict, optional
+        feature_data_source : Dict[str, List[str]] | None
             特征来源映射，用于报告中追踪特征所属来源。
-        group_col : str, optional
+        group_col : str | None
             已存在的分组列名，用于趋势和稳定性筛选。
-        time_col : str, optional
+        time_col : str | None
             原始日期列名；与 `time_grain` 配合时生成时间分组。
-        time_grain : str, optional
+        time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-        white_list : list of str, optional
+        white_list : List[str] | None
             白名单特征，尽量绕过自动剔除规则。
-        black_list : list of str, optional
+        black_list : List[str] | None
             黑名单特征，会被强制剔除。
-        max_samples : int, optional
+        max_samples : int | None
             本次筛选允许使用的最大样本量。
-        feature_start_aware_baseline : bool, default False
+        feature_start_aware_baseline : bool
             是否按特征首次出现分组选择 PSI 基准。
 
         Returns
         -------
         MarsStatsSelector
             拟合后的筛选器，`selected_features_` 中保存最终特征列表。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         """
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
@@ -589,7 +596,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_quality(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：计算并核验数据质量约束向量。"""
-
         from mars.analysis.profiler import MarsDataProfiler
         profiler = MarsDataProfiler(
             missing_values=self.missing_values,
@@ -636,7 +642,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_rough(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：执行基于高并发原生分箱器的粗略信息增益下限校验。"""
-
         if not features:
             return []
 
@@ -773,7 +778,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_psi(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：跨维度投射特征区间计算群体偏移极值。"""
-
         from mars.analysis.evaluator import MarsBinEvaluator
         run = MarsBinEvaluator().evaluate(
             df=df,
@@ -806,7 +810,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_rc(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：追踪特征序列区间逻辑相关性的变异下限。"""
-
         from mars.analysis.evaluator import MarsBinEvaluator
         run = MarsBinEvaluator().evaluate(
             df=df,
@@ -844,7 +847,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_corr(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：执行目标感知导向的共线性惩罚计算。"""
-
         if len(features) < 2:
             return features
 
@@ -897,7 +899,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        df : polars.DataFrame or pandas.DataFrame
+        df : Union[pl.DataFrame, pd.DataFrame]
             用于重新评估已选中特征的样本表。
 
         Returns
@@ -972,7 +974,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        path : str, default "mars_selector_report.xlsx"
+        path : str
             持久化导出路径。引擎根据扩展名执行 `.csv` 或复合样式 `.xlsx` 的落盘处理。
 
         Returns
@@ -1032,9 +1034,9 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        path : str, default "mars_lists.json"
+        path : str
             JSON 结构存储路径。
-        blacklist_stages : list of str, optional
+        blacklist_stages : List[str] | None
             界定需写入惩罚名单的阶段。支持字符串模糊匹配（例如 'quality' 匹配质量校验环节）。
 
         Returns
@@ -1135,7 +1137,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        iv_thresholds : list of float, optional
+        iv_thresholds : List[float] | None
             自定义统计边界截断数组。默认渲染 [0.02, 0.05, 0.10] 区间梯度。
 
         Returns
@@ -1195,31 +1197,6 @@ class MarsLinearSelector(MarsBaseSelector):
     输入可以是 Polars 或 Pandas；统计建模边界会转换为 Pandas/NumPy，
     以复用 statsmodels 的 Logit、AIC/BIC 和 VIF 实现。
 
-    Parameters
-    ----------
-    target : str
-        二分类目标列名。若 ``fit`` 未显式传入 ``y``，输入数据必须包含该列。
-    enable_corr_filter : bool, default True
-        是否启用高相关特征去重。
-    corr_thr : float, default 0.8
-        绝对相关系数阈值。超过阈值时保留与目标关联更强的一侧。
-    corr_method : str, default "spearman"
-        Pandas correlation 方法，常用 ``"spearman"`` 或 ``"pearson"``。
-    enable_vif_filter : bool, default False
-        是否启用 VIF 迭代过滤。
-    vif_threshold : float, default 5.0
-        最大允许 VIF。
-    enable_stepwise : bool, default False
-        是否启用基于信息准则的逐步回归。
-    stepwise_direction : {"forward", "backward", "both"}, default "forward"
-        逐步回归方向。
-    stepwise_criterion : {"aic", "bic"}, default "aic"
-        逐步回归优化准则。
-    max_features : int, optional
-        最终保留特征数上限。
-    n_jobs : int, default -1
-        预留并行参数，当前版本不改变统计建模的单进程执行路径。
-
     Attributes
     ----------
     selected_features_ : list of str
@@ -1236,7 +1213,7 @@ class MarsLinearSelector(MarsBaseSelector):
     >>> import pandas as pd
     >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
     >>> selector = MarsLinearSelector(corr_thr=0.95)
-    >>> selector.fit(df, target="y", features=["age"]).selected_features_
+    >>> selector.fit(df[["age"]], df["y"], features=["age"]).selected_features_
     ['age']
     """
 
@@ -1258,28 +1235,32 @@ class MarsLinearSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        target : str
-            目标变量列名。
-        enable_corr_filter : bool, default True
+        enable_corr_filter : bool
             是否启用相关性去重阶段。
-        corr_thr : float, default 0.8
+        corr_thr : float
             相关性去重阈值。
-        corr_method : str, default "spearman"
+        corr_method : str
             相关性计算方法。
-        enable_vif_filter : bool, default False
+        enable_vif_filter : bool
             是否启用 VIF 筛查阶段。
-        vif_threshold : float, default 5.0
+        vif_threshold : float
             VIF 阈值。
-        enable_stepwise : bool, default False
+        enable_stepwise : bool
             是否启用逐步回归阶段。
-        stepwise_direction : str, default "forward"
+        stepwise_direction : str
             逐步回归方向。
-        stepwise_criterion : str, default "aic"
+        stepwise_criterion : str
             逐步回归优化准则。
-        max_features : int, optional
+        max_features : int | None
             最终保留特征数上限。
-        n_jobs : int, default -1
+        n_jobs : int
             并行任务数量。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         """
         super().__init__()
         self.enable_corr_filter = bool(enable_corr_filter)
@@ -1621,10 +1602,12 @@ class MarsLinearSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        X : polars.DataFrame or pandas.DataFrame
-            输入特征表。若未显式传入 ``y``，则必须包含目标列。
-        y : Any, optional
+        X : pl.DataFrame | pd.DataFrame
+            输入特征表。
+        y : Any
             二分类目标数组。
+        features : Sequence[str] | None
+            本次参与筛选的特征列；不传时使用输入表中的全部候选列。
 
         Returns
         -------
@@ -1730,30 +1713,6 @@ class MarsImportanceSelector(MarsBaseSelector):
     读取 ``feature_importances_`` 或 ``coef_``。当 ``method="shap"`` 时，
     选择器计算 mean absolute SHAP value 并统一输出 MARS importance table。
 
-    Parameters
-    ----------
-    target : str
-        二分类目标列名。若 ``fit`` 未显式传入 ``y``，输入数据必须包含该列。
-    estimator : str or Any, default "lgbm"
-        底层模型类型或已实例化 estimator。字符串支持 ``"rf"``,
-        ``"extra_trees"``, ``"lr"``, ``"lgbm"``, ``"xgb"`` 和 ``"cat"``。
-    estimator_params : dict, optional
-        构造 estimator 时透传的参数。
-    importance_table : pandas.DataFrame or polars.DataFrame, optional
-        已计算好的重要性表，至少包含 ``feature`` 与 ``importance`` 列。
-    method : {"importance", "shap", "rfe", "sfm"}, default "importance"
-        筛选策略。``"rfe"`` 与 ``"sfm"`` 在 v1 中保留接口但暂不实现。
-    selection_mode : {"top_k", "threshold", "percentile"}, default "top_k"
-        按排名、绝对阈值或百分位保留特征。
-    selection_threshold : int, float or str, default 50
-        与 ``selection_mode`` 对应的阈值。百分位模式支持 ``"20%"``。
-    cv : int, default 3
-        预留交叉验证参数，当前版本不改变单次 estimator 训练路径。
-    n_jobs : int, default -1
-        透传给支持并行的 estimator。
-    random_state : int, default 42
-        estimator 的随机种子。
-
     Attributes
     ----------
     selected_features_ : list of str
@@ -1769,7 +1728,7 @@ class MarsImportanceSelector(MarsBaseSelector):
     >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
     >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
     >>> selector = MarsImportanceSelector()
-    >>> selector.fit(df, target="y", features=["age"]).selected_features_
+    >>> selector.fit(df[["age"]], df["y"], features=["age"], importance_table=importance).selected_features_
     ['age']
     """
 
@@ -1789,24 +1748,28 @@ class MarsImportanceSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        target : str
-            目标变量列名。
-        estimator : str or Any, default "lgbm"
+        estimator : Union[str, Any]
             底层模型类型或实例。
-        estimator_params : dict, optional
+        estimator_params : dict | None
             底层模型初始化参数。
-        method : {"importance", "shap", "rfe", "sfm"}, default "importance"
+        method : Literal['importance', 'shap', 'rfe', 'sfm']
             重要性筛选策略。
-        selection_mode : {"top_k", "threshold", "percentile"}, default "top_k"
+        selection_mode : Literal['top_k', 'threshold', 'percentile']
             特征保留模式。
-        selection_threshold : int or float or str, default 50
+        selection_threshold : Union[int, float, str]
             对应筛选模式下的阈值。
-        cv : int, default 3
+        cv : int
             交叉验证折数。
-        n_jobs : int, default -1
+        n_jobs : int
             并行任务数量。
-        random_state : int, default 42
+        random_state : int
             随机种子。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         """
         super().__init__()
         self.estimator = estimator
@@ -2089,17 +2052,26 @@ class MarsImportanceSelector(MarsBaseSelector):
 
         Parameters
         ----------
-        X : polars.DataFrame or pandas.DataFrame
+        X : pl.DataFrame | pd.DataFrame
             输入特征表。若未显式传入 ``y``，则必须包含目标列。
-        y : Any, optional
+        y : Any | None
             二分类目标数组。
-        importance_table : pandas.DataFrame or polars.DataFrame, optional
+        features : Sequence[str] | None
+            本次参与筛选的特征列；不传时使用输入表中的全部候选列。
+        importance_table : pd.DataFrame | pl.DataFrame | None
             预先计算好的重要性表，需包含 ``feature`` 与 ``importance`` 列。
 
         Returns
         -------
         MarsImportanceSelector
             已拟合的重要性筛选器实例。
+
+        Raises
+        ------
+        NotImplementedError
+            当当前选项尚未实现时抛出。
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------

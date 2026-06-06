@@ -20,23 +20,6 @@ class MarsModelingSession:
     """
     组织切分、调参、评估和 replay 的会话级入口。
 
-    Parameters
-    ----------
-    model_type : {"xgb", "lgb", "cbt", "cat", "catboost"}
-        底层模型后端类型。
-    features : sequence of str
-        参与训练和预测的特征列名。
-    target : str
-        二分类目标变量列名。
-    dataset_flag_col : str, default "dataset_flag"
-        数据集切片标识列，按包含 train/val/oot 的规则识别角色。
-    categorical_features : sequence of str, optional
-        需要按类别特征处理的列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        调参和 replay 使用的优化指标。
-    seed : int, default 1206
-        随机种子。
-
     Attributes
     ----------
     tuner : MarsModelTuner
@@ -70,6 +53,34 @@ class MarsModelingSession:
         lr_binner_kwargs: Mapping[str, Any] | None = None,
         lr_binner: Any | None = None,
     ) -> None:
+        """
+        初始化建模会话。
+
+        Parameters
+        ----------
+        model_type : str
+            模型后端类型。
+        features : Sequence[str]
+            建模特征列。
+        target : str
+            目标列名。
+        dataset_flag_col : str
+            样本切片标记列名。
+        categorical_features : Sequence[str] | None
+            类别特征列。
+        optimize_metric : str
+            调参优化指标。
+        seed : int
+            随机种子。
+        lr_feature_mode : str
+            LR 特征模式。
+        lr_binning_type : str
+            LR WOE 模式使用的分箱器类型。
+        lr_binner_kwargs : Mapping[str, Any] | None
+            构造 LR 分箱器时使用的参数。
+        lr_binner : Any | None
+            显式复用的 LR 分箱器实例。
+        """
         self.tuner = MarsModelTuner(
             model_type=model_type,
             features=features,
@@ -224,27 +235,32 @@ class MarsModelingSession:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             原始建模样本。
         time_col : str
             时间列名。
-        split_ratios : mapping of str to float
+        split_ratios : Mapping[str, float]
             数据集切分比例，合计必须为 1。
-        target : str, optional
+        target : str | None
             标签列；默认使用 session 的 target。
-        mode : {"strict", "hybrid"}, default "strict"
+        mode : str
             时间严格切分或建模窗口内随机 validation 切分。
-        train_key : str, default "train"
+        train_key : str
             hybrid 模式训练集标识。
-        val_key : str, default "val"
+        val_key : str
             hybrid 模式验证集标识。
-        random_seed : int, default 42
+        random_seed : int
             hybrid 模式随机种子。
 
         Returns
         -------
         pandas.DataFrame or polars.DataFrame
             与输入类型一致、已追加 dataset flag 的数据框。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------
@@ -292,7 +308,7 @@ class MarsModelingSession:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已带 train/val/OOT 标识的建模样本。
         **kwargs : Any
             透传给 ``MarsModelTuner.tune`` 的调参参数。
@@ -329,23 +345,23 @@ class MarsModelingSession:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已带 train/val/OOT 标识的建模样本。
-        steps : sequence of int, optional
+        steps : Sequence[int] | None
             显式指定每轮使用的前 N 个特征数量。
-        feature_order : sequence of str, optional
+        feature_order : Sequence[str] | None
             人工指定的稳定特征顺序。
-        importance_table : pandas.DataFrame, optional
+        importance_table : pd.DataFrame | None
             特征重要性表；若提供且未指定 ``feature_order``，按重要性或 rank 排序。
-        min_features : int, default 10
+        min_features : int
             自动生成 step 时的起始特征数。
-        max_features : int, optional
+        max_features : int | None
             自动生成 step 时的最大特征数。
-        step_size : int, optional
+        step_size : int | None
             自动生成 step 时的步长。
-        mode : {"prefix"}, default "prefix"
+        mode : str
             特征增长模式。当前版本只支持前缀扩展。
-        selection_metric : {"auc", "ks"}, optional
+        selection_metric : str | None
             跨 step 选择推荐模型时使用的 validation 指标。
         **tune_kwargs : Any
             透传给 ``MarsModelTuner.tune`` 的参数。
@@ -394,19 +410,19 @@ class MarsModelingSession:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已包含预测分数的数据框。
         pred_col : str
             预测分数列名。
-        benchmark_col : str, optional
+        benchmark_col : str | None
             覆盖会话默认基准分数列。
-        time_col : str, optional
+        time_col : str | None
             覆盖会话默认时间列。
-        val_target : str, optional
+        val_target : str | None
             可选校验标签列。
-        feature_cols : sequence of str, optional
+        feature_cols : Sequence[str] | None
             用于计算特征 PSI 的特征列。
-        importance_table : pandas.DataFrame, optional
+        importance_table : pd.DataFrame | None
             特征重要性表。
 
         Returns
@@ -476,7 +492,7 @@ class MarsModelingSession:
         ----------
         tuning_result : MarsModelTuningResult
             调参阶段产出的结果对象。
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             需要重训和评分的数据。
         **kwargs : Any
             透传给 ``MarsModelReplayRunner.run`` 的 replay 参数。

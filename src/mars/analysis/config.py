@@ -12,23 +12,6 @@ class MarsProfileConfig:
     该配置用于统一控制画像流程中的统计指标范围、数据质量指标范围、
     Sparkline 渲染行为，以及 PSI 计算时是否纳入缺失值箱与特殊值箱。
 
-    Parameters
-    ----------
-    stat_metrics : List[str], optional
-        需要计算的统计指标列表。
-    dq_metrics : List[str], optional
-        需要计算的数据质量指标列表。
-    enable_sparkline : bool, default True
-        是否在概览表中生成字符画形式的分布图。
-    sparkline_bins : int, default 8
-        Sparkline 的分箱数量。
-    sparkline_sample_size : int, default 200000
-        生成 Sparkline 时允许使用的最大采样行数。
-    psi_include_missing : bool, default False
-        计算 PSI 时是否包含缺失值箱。
-    psi_include_special : bool, default False
-        计算 PSI 时是否包含特殊值箱。
-
     Attributes
     ----------
     stat_metrics : List[str]

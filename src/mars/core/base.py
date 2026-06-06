@@ -18,11 +18,6 @@ class MarsBaseEstimator(BaseEstimator):
     """
     MARS 估计器基类。
 
-    Parameters
-    ----------
-    None
-        该基类不暴露初始化参数，子类通过自身构造函数声明业务配置。
-
     Attributes
     ----------
     _return_pandas : bool
@@ -63,13 +58,18 @@ class MarsBaseEstimator(BaseEstimator):
 
         Parameters
         ----------
-        transform : {"default", "pandas", "polars"}, default "default"
+        transform : Literal['default', 'pandas', 'polars']
             目标输出格式。
 
         Returns
         -------
         MarsBaseEstimator
             当前实例，支持链式调用。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Examples
         --------
@@ -105,7 +105,7 @@ class MarsBaseEstimator(BaseEstimator):
 
         Parameters
         ----------
-        X : pl.DataFrame or pl.LazyFrame or pd.DataFrame
+        X : pl.DataFrame | pl.LazyFrame | pd.DataFrame
             输入数据。
 
         Returns
@@ -171,7 +171,7 @@ class MarsBaseEstimator(BaseEstimator):
         ----------
         df_pd : pd.DataFrame
             原始 Pandas 数据。
-        df_pl : pl.DataFrame or pl.LazyFrame
+        df_pl : Union[pl.DataFrame, pl.LazyFrame]
             转换后的 Polars 数据。
         """
         pl_schema = df_pl.schema
@@ -273,11 +273,6 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     """
     MARS 转换器抽象基类。
 
-    Parameters
-    ----------
-    None
-        该抽象基类不暴露初始化参数，子类负责声明自身的转换配置。
-
     Attributes
     ----------
     feature_names_in_ : list of str
@@ -311,7 +306,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Parameters
         ----------
-        input_features : Any, optional
+        input_features : Any | None
             sklearn 兼容保留参数，当前实现未使用。
 
         Returns
@@ -343,9 +338,9 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pd.DataFrame
+        X : pl.DataFrame | pd.DataFrame
             输入特征矩阵。
-        y : pl.Series or pd.Series or np.ndarray or list, optional
+        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
             目标变量。若为 ``None``，则执行无监督拟合流程。
 
         Returns
@@ -399,7 +394,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pl.LazyFrame or pd.DataFrame
+        X : pl.DataFrame | pl.LazyFrame | pd.DataFrame
             待转换的数据集。
 
         Returns
@@ -439,9 +434,9 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pd.DataFrame
+        X : Union[pl.DataFrame, pd.DataFrame]
             输入特征矩阵。
-        y : Any, optional
+        y : Any | None
             目标变量。
 
         Returns
@@ -491,11 +486,6 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
     """
     MARS 特征筛选器抽象基类。
 
-    Parameters
-    ----------
-    target : str
-        目标变量列名。
-
     Attributes
     ----------
     target : str
@@ -534,9 +524,9 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pd.DataFrame
+        X : Union[pl.DataFrame, pd.DataFrame]
             输入特征数据集。
-        y : Any, optional
+        y : Any | None
             目标变量。若子类无需单独传入标签，可从 ``X`` 中自行解析。
 
         Returns
@@ -563,7 +553,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pd.DataFrame
+        X : Union[pl.DataFrame, pd.DataFrame]
             待裁剪的数据集。
 
         Returns
@@ -601,11 +591,11 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
         Parameters
         ----------
-        X : pl.DataFrame or pd.DataFrame
+        X : Union[pl.DataFrame, pd.DataFrame]
             输入特征数据集。
-        y : Any, optional
+        y : Any | None
             目标变量。
-        **kwargs
+        **kwargs : Any
             透传给子类 ``fit`` 实现的附加参数。
 
         Returns
@@ -695,13 +685,13 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
             决策状态，例如 ``"Selected"`` 或 ``"Dropped"``。
         stage : str
             当前筛选阶段。
-        reason : str, default ""
+        reason : str
             决策依据。
-        value : float, default -1.0
+        value : float
             关键指标值。
-        desc : str, default ""
+        desc : str
             详细描述。
-        data_source : str, optional
+        data_source : str | None
             特征所属数据源。
         """
         self.report_records_.append(

@@ -37,38 +37,44 @@ def profile_stats(
 
     Parameters
     ----------
-    df : polars.DataFrame or pandas.DataFrame
+    df : Union[pl.DataFrame, pd.DataFrame]
         待画像样本表。
-    metrics : list of str
+    metrics : List[str]
         数据质量或统计指标名称，例如 `["missing", "mean"]`。
-    features : list of str, optional
+    features : List[str] | None
         本次画像的特征列。
-    group_col : str, optional
+    group_col : str | None
         已存在的分组列名。
-    time_col : str, optional
+    time_col : str | None
         原始日期列名，用于生成趋势分组。
-    time_grain : str, optional
+    time_grain : str | None
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`；
         传入 `time_col` 时默认按 `"month"` 聚合。
-    missing_values : list, optional
+    missing_values : List[Union[int, float, str]] | None
         额外视为缺失的取值。
-    special_values : list, optional
+    special_values : List[Any] | None
         连续分布计算中需要排除的特殊值。
-    exclude_features : list of str, optional
+    exclude_features : List[str] | None
         本次画像需要排除的列名。
-    include_dtypes : type, polars.DataType or list, optional
+    include_dtypes : Union[type, pl.DataType, List[Union[type, pl.DataType]], None]
         本次画像允许保留的数据类型。
-    sample_frac : float, optional
+    sample_frac : float | None
         本次画像的抽样比例。
-    enable_sparkline : bool, default False
+    enable_sparkline : bool
         是否生成 overview 中的迷你趋势图。
-    config_overrides : dict, optional
+    config_overrides : Dict[str, Any] | None
         对 `MarsProfileConfig` 的本次运行覆盖配置。
 
     Returns
     -------
     MarsProfileReport
         包含所请求指标表的画像报告。
+
+    Raises
+    ------
+    ValueError
+        当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
     """
     if not metrics:
         raise ValueError("`metrics` must contain at least one metric name.")
@@ -128,25 +134,6 @@ class MarsDataProfiler(MarsBaseEstimator):
     分组列、时间聚合、抽样比例和本次运行覆盖项都通过 :meth:`generate_profile`
     传入，以便同一个实例可以自然复用到不同数据集。
 
-    Parameters
-    ----------
-    missing_values : list, optional
-        数据质量指标中额外视为缺失的取值。
-    special_values : list, optional
-        连续分布计算中需要排除的特殊值。
-    psi_n_bins : int, default 10
-        PSI 计算使用的最大分箱数。
-    psi_bin_method : {"quantile", "uniform"}, default "quantile"
-        PSI 计算使用的无监督分箱策略。
-    psi_cv_ignore_threshold : float, default 0.05
-        分组 PSI 波动过小时的忽略阈值。
-    psi_batch_size : int, default 50
-        PSI 趋势计算的特征批大小。
-    overview_batch_size : int, default 500
-        overview 计算的特征批大小。
-    config : MarsProfileConfig, optional
-        基础画像配置。
-
     Examples
     --------
     >>> import polars as pl
@@ -174,21 +161,21 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Parameters
         ----------
-        missing_values : list, optional
+        missing_values : List[Union[int, float, str]] | None
             额外视为缺失的取值。
-        special_values : list, optional
+        special_values : List[Any] | None
             连续分布计算中需要排除的特殊值。
-        psi_n_bins : int, default 10
+        psi_n_bins : int
             PSI 计算使用的最大分箱数。
-        psi_bin_method : {"quantile", "uniform"}, default "quantile"
+        psi_bin_method : Literal['quantile', 'uniform']
             PSI 计算使用的无监督分箱策略。
-        psi_cv_ignore_threshold : float, default 0.05
+        psi_cv_ignore_threshold : float
             分组 PSI 波动过小时的忽略阈值。
-        psi_batch_size : int, default 50
+        psi_batch_size : int
             PSI 趋势计算的特征批大小。
-        overview_batch_size : int, default 500
+        overview_batch_size : int
             overview 计算的特征批大小。
-        config : MarsProfileConfig, optional
+        config : MarsProfileConfig | None
             基础画像配置。
         """
         super().__init__()
@@ -235,23 +222,23 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Parameters
         ----------
-        df : polars.DataFrame or pandas.DataFrame
+        df : Union[pl.DataFrame, pd.DataFrame]
             待画像样本表。
-        features : list of str, optional
+        features : List[str] | None
             本次画像的特征列；不传时使用过滤后的全部候选列。
-        exclude_features : list of str, optional
+        exclude_features : List[str] | None
             本次画像需要排除的列名。
-        include_dtypes : type, polars.DataType or list, optional
+        include_dtypes : Union[type, pl.DataType, List[Union[type, pl.DataType]], None]
             只保留指定数据类型的特征列。
-        group_col : str, optional
+        group_col : str | None
             已存在的分组列名，例如月份、客群或样本切片。
-        time_col : str, optional
+        time_col : str | None
             原始日期列名；与 `time_grain` 配合时会生成临时时间分组列。
-        time_grain : str, optional
+        time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-        sample_frac : float, optional
+        sample_frac : float | None
             本次运行的抽样比例，必须位于 `(0, 1)`。
-        config_overrides : dict, optional
+        config_overrides : Dict[str, Any] | None
             覆盖 `MarsProfileConfig` 的部分字段，例如 `dq_metrics`、`stat_metrics`
             或 `enable_sparkline`。
 
@@ -451,8 +438,6 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         Returns
         -------
-        Returns
-        -------
         pl.DataFrame
             包含所有特征统计指标的宽表。
             Schema:
@@ -508,7 +493,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         ----------
         cols : List[str]
             待计算指标的特征名称列表。
-        config : MarsProfileConfig, optional
+        config : MarsProfileConfig | None
             配置对象。控制具体的统计指标计算范围。
 
         Returns
@@ -722,11 +707,11 @@ class MarsDataProfiler(MarsBaseEstimator):
         metric : str
             待计算的指标名称 (例如 'missing', 'mean', 'max')。
             必须能够被 `_get_single_metric_expr` 解析。
-        group_col : str, optional
+        group_col : str | None
             分组列名 (例如 'month', 'vintage')。
             - 如果为 None，则只计算并返回 Total 列。
             - 如果存在，结果表将包含该分组下列的所有取值作为列名。
-        context_df : pl.DataFrame, optional
+        context_df : pl.DataFrame | None
             上下文数据集。
             通常传入包含临时生成的自动聚合时间列（如 '_mars_auto_month'）的 DataFrame。
             如果为 None，则默认使用 `self.df`。
@@ -862,9 +847,9 @@ class MarsDataProfiler(MarsBaseEstimator):
         ----------
         group_col : str
             分组列名。通常是时间列 (如 'month') 或 Vintage 列。
-        features : List[str], optional
+        features : List[str] | None
             指定需要计算 PSI 的特征子集。如果为 None，则计算 `self.features` 中的所有列。
-        context_df : pl.DataFrame, optional
+        context_df : pl.DataFrame | None
             上下文数据集。通常传入包含临时生成的自动聚合时间列的 DataFrame。
             如果为 None，则使用实例内部的 `self.df`。
 
@@ -1138,9 +1123,6 @@ class MarsDataProfiler(MarsBaseEstimator):
         stats_df : pl.LazyFrame
             聚合后的频次统计表。
             结构必须包含: ``[group_col, feature (or feat_idx), bin_id, len]``。
-        skeleton : pl.LazyFrame
-            (Group x Feature x Bin) 的全排列骨架表。
-            用于 Left Join 以确保计数为 0 的空箱不会丢失（会被填充 epsilon）。
         unique_bins_skel : pl.LazyFrame
             (Feature x Bin) 的唯一组合骨架表。
             用于计算全量数据 (Total) 的 PSI。
@@ -1149,6 +1131,12 @@ class MarsDataProfiler(MarsBaseEstimator):
         baseline_group : Any
             基准组的具体取值 (例如 '2023-01')。
             该组的数据分布将作为 Expected 分布。
+        is_numeric_bin_id : bool
+            分箱编号是否为数值型索引；数值型索引用于识别缺失箱和特殊值箱。
+        include_missing : bool
+            计算 PSI 时是否保留缺失值箱。
+        include_special : bool
+            计算 PSI 时是否保留特殊值箱。
 
         Returns
         -------
@@ -1297,7 +1285,6 @@ class MarsDataProfiler(MarsBaseEstimator):
         List[pl.Expr]
             包含该列所有待计算指标的表达式列表。
         """
-
         total_len = pl.len()
         is_num = self._is_numeric(col)
         exprs = []

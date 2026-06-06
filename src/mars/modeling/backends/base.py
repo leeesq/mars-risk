@@ -27,29 +27,6 @@ class MarsBaseModelStrategy(ABC):
     """
     MARS 二分类模型调参基类。
 
-    Parameters
-    ----------
-    df : pandas.DataFrame or polars.DataFrame
-        输入数据集，需包含特征列、目标列和数据集标识列。
-    features : sequence of str
-        参与训练的特征列名。
-    target : str
-        目标变量列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        Trial 优化目标。
-    param_space : dict, optional
-        用户自定义搜索空间，会覆盖或补充默认搜索空间。
-    max_diff : float, default 3.0
-        允许的训练集与验证集指标衰减阈值，单位为百分点。
-    seed : int, default 1206
-        随机种子。
-    use_oot_penalty : bool, default False
-        是否额外使用最差 OOT 衰减对 Trial 进行惩罚。
-    dataset_flag_col : str, default "dataset_flag"
-        数据集切分标识列名。
-    categorical_features : sequence of str, optional
-        需要按类别特征处理的字段名，仅对支持原生类别特征的后端生效。
-
     Attributes
     ----------
     data_dict : dict of str to pandas.DataFrame
@@ -332,7 +309,7 @@ class MarsBaseModelStrategy(ABC):
 
         Parameters
         ----------
-        df : pandas.DataFrame
+        df : FrameLike
             单个切片的数据集。
         for_categorical_backend : bool
             是否需要为支持原生类别特征的后端转换类别 dtype。
@@ -374,7 +351,7 @@ class MarsBaseModelStrategy(ABC):
 
         Parameters
         ----------
-        df : pandas.DataFrame
+        df : FrameLike
             单个切片的数据集。
 
         Returns
@@ -394,9 +371,9 @@ class MarsBaseModelStrategy(ABC):
 
         Parameters
         ----------
-        y_true : numpy.ndarray
+        y_true : np.ndarray
             真实标签。
-        y_pred : numpy.ndarray
+        y_pred : np.ndarray
             预测分数。
 
         Returns
@@ -450,13 +427,18 @@ class MarsBaseModelStrategy(ABC):
         ----------
         trial : Any
             当前 Optuna Trial 对象。
-        default_space : mapping of str to Any
+        default_space : Mapping[str, Any]
             当前后端的默认搜索空间。
 
         Returns
         -------
         dict of str to Any
             可直接传给模型训练接口的确定性参数字典。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
         Notes
         -----
@@ -520,9 +502,9 @@ class MarsBaseModelStrategy(ABC):
 
         Parameters
         ----------
-        record : mapping of str to Any
+        record : Mapping[str, Any]
             单次 Trial 的记录内容。
-        path : str
+        path : str | Path | None
             CSV 输出路径。
         """
         if path is None:
@@ -598,7 +580,7 @@ class MarsBaseModelStrategy(ABC):
             Current Optuna trial object.
         startup_trials : int
             Warmup trial count before pruning.
-        history_path : str or pathlib.Path, optional
+        history_path : str | Path | None
             CSV path for trial history. ``None`` disables disk writes.
 
         Returns
@@ -606,6 +588,12 @@ class MarsBaseModelStrategy(ABC):
         float
             Trial objective score, or a penalty score when generalization
             constraints fail.
+
+        Raises
+        ------
+        Exception
+            当底层调参流程抛出未细分异常时向上透传。
+
         """
         record: Dict[str, Any] = {
             "trial_num": getattr(trial, "number", -1),
@@ -773,7 +761,7 @@ class MarsBaseModelStrategy(ABC):
         ----------
         trial : Any
             当前 Trial 对象。
-        params : dict of str to Any
+        params : Dict[str, Any]
             当前 Trial 的确定性超参数。
         startup_trials : int
             启用剪枝前的预热 Trial 数量。

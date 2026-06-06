@@ -54,10 +54,26 @@ def _build_spec(
     ----------
     model_type : str
         模型后端类型。
-    features : sequence of str
+    features : Sequence[str]
         特征列名。
     target : str
         目标列名。
+    dataset_flag_col : str
+        建模样本切片标记列名。
+    categorical_features : Sequence[str] | None
+        类别特征列名。
+    optimize_metric : str
+        调参优化指标，支持 ``"auc"`` 和 ``"ks"``。
+    seed : int
+        随机种子。
+    lr_feature_mode : str
+        Logistic Regression 特征模式，支持 ``"numeric"`` 和 ``"woe"``。
+    lr_binning_type : str
+        LR WOE 模式使用的分箱器类型。
+    lr_binner_kwargs : Mapping[str, Any] | None
+        构造 LR 分箱器时使用的参数。
+    lr_binner : Any | None
+        已拟合或待复用的 LR 分箱器实例。
 
     Returns
     -------
@@ -132,23 +148,6 @@ class MarsModelTuner:
     """
     二分类风险模型调参工具。
 
-    Parameters
-    ----------
-    model_type : str
-        模型后端类型。
-    features : sequence of str
-        参与训练的特征列名。
-    target : str
-        目标变量列名。
-    dataset_flag_col : str, default "dataset_flag"
-        数据集切片标识列。
-    categorical_features : sequence of str, optional
-        需要按类别特征处理的列名。
-    optimize_metric : {"auc", "ks"}, default "ks"
-        trial 最终优化指标。
-    seed : int, default 1206
-        随机种子。
-
     Attributes
     ----------
     spec : ModelingSpec
@@ -178,6 +177,34 @@ class MarsModelTuner:
         lr_binner_kwargs: Mapping[str, Any] | None = None,
         lr_binner: Any | None = None,
     ) -> None:
+        """
+        初始化 Modeling Pipeline 调参器。
+
+        Parameters
+        ----------
+        model_type : str
+            模型后端类型。
+        features : Sequence[str]
+            建模特征列。
+        target : str
+            目标列名。
+        dataset_flag_col : str
+            样本切片标记列名。
+        categorical_features : Sequence[str] | None
+            类别特征列。
+        optimize_metric : str
+            调参优化指标。
+        seed : int
+            随机种子。
+        lr_feature_mode : str
+            LR 特征模式。
+        lr_binning_type : str
+            LR WOE 模式使用的分箱器类型。
+        lr_binner_kwargs : Mapping[str, Any] | None
+            构造 LR 分箱器时使用的参数。
+        lr_binner : Any | None
+            显式复用的 LR 分箱器实例。
+        """
         self.spec: ModelingSpec = _build_spec(
             model_type=model_type,
             features=features,
@@ -310,33 +337,43 @@ class MarsModelTuner:
 
         Parameters
         ----------
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             已经带有 train、validation、OOT 切片标记的建模样本。
-        param_space : mapping, optional
+        param_space : Mapping[str, Any] | None
             对后端搜索空间的覆盖或扩展。
-        max_diff : float, default 3.0
+        max_diff : float
             泛化衰减阈值，单位是百分点。
-        use_oot_penalty : bool, default False
+        use_oot_penalty : bool
             是否将 OOT 衰减纳入 trial 有效性判断。
-        n_trials : int, default 50
+        n_trials : int
             Optuna 试验次数。
-        startup_trials : int, default 20
+        startup_trials : int
             剪枝器开始工作前的预热试验次数。
-        warmup_steps : int, default 100
+        warmup_steps : int
             剪枝器预热步数。
-        num_boost_round : int, default 500
+        num_boost_round : int
             最大 boosting 轮数。
-        early_stopping_rounds : int, default 50
+        early_stopping_rounds : int
             early stopping 轮数。
-        history_path : str or pathlib.Path, optional
+        history_path : str | Path | None
             trial 历史记录 CSV 路径；`None` 表示只保存在内存中，不落盘。
-        overwrite : bool, default False
+        overwrite : bool
             当 `history_path` 已存在时，是否允许覆盖。
 
         Returns
         -------
         MarsModelTuningResult
             包含最佳模型、调参历史、训练配置和元数据的建模调优结果。
+
+        Raises
+        ------
+        FileExistsError
+            当运行过程中触发该异常时抛出。
+        ImportError
+            当当前功能依赖的可选组件不可用时抛出。
+        RuntimeError
+            当底层训练、评估或导出流程失败时抛出。
+
         """
         try:
             import optuna
@@ -533,31 +570,37 @@ class MarsModelReplayRunner:
         ----------
         tuning_result : MarsModelTuningResult
             提供模型类型、特征列、目标列和样本切片配置的调优结果。
-        df : pandas.DataFrame or polars.DataFrame
+        df : FrameLike
             用于重新训练和打分的样本表。
-        top_k : int, default 5
+        top_k : int
             要回放的 trial 数量。
-        sort_metric : {"auc", "ks"}, default "ks"
+        sort_metric : str
             leaderboard 排序指标。
-        include_val : bool, default True
+        include_val : bool
             是否将 validation 切片指标纳入平均排序。
-        num_boost_round : int, default 500
+        num_boost_round : int
             当调优结果中没有保存该配置时使用的最大 boosting 轮数。
-        early_stopping_rounds : int, default 50
+        early_stopping_rounds : int
             当调优结果中没有保存该配置时使用的 early stopping 轮数。
-        optimize_metric : str, optional
+        optimize_metric : str | None
             覆盖 replay 后端使用的优化指标。
-        benchmark_col : str, optional
+        benchmark_col : str | None
             benchmark 或 champion 模型分数列名。
-        time_col : str, optional
+        time_col : str | None
             原始时间列名，用于补充报告中的时间边界。
-        val_target : str, optional
+        val_target : str | None
             替代验证目标列名。
 
         Returns
         -------
         MarsModelReplayResult
             包含 replay leaderboard、模型、打分数据和评估报告的结果对象。
+
+        Raises
+        ------
+        ValueError
+            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+
         """
         self.spec = self._build_spec_from_result(tuning_result)
         spec = self.spec

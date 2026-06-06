@@ -12,17 +12,6 @@ class MarsModelingReport:
     """
     建模评估报告的数据容器。
 
-    Parameters
-    ----------
-    summary_table : pandas.DataFrame
-        分数据集的核心指标汇总表。
-    caption : str, default "MARS Model Evaluation"
-        Notebook 样式展示标题。
-    detail_tables : dict of str to pandas.DataFrame, optional
-        ROC、KS、PSI、风险水位图等轻量明细表。
-    metadata : dict, optional
-        训练配置、版本、特征重要性等报告元数据。
-
     Attributes
     ----------
     summary_table : pandas.DataFrame
@@ -49,6 +38,20 @@ class MarsModelingReport:
         detail_tables: Dict[str, pd.DataFrame] | None = None,
         metadata: Dict[str, Any] | None = None,
     ) -> None:
+        """
+        初始化建模评估报告对象。
+
+        Parameters
+        ----------
+        summary_table : pd.DataFrame
+            建模评估汇总表。
+        caption : str
+            报告标题。
+        detail_tables : Dict[str, pd.DataFrame] | None
+            多粒度明细表集合。
+        metadata : Dict[str, Any] | None
+            报告元数据。
+        """
         self.summary_table: pd.DataFrame = summary_table
         self.caption: str = caption
         self.detail_tables: Dict[str, pd.DataFrame] = dict(detail_tables or {})
@@ -158,9 +161,9 @@ class MarsModelingReport:
 
         Parameters
         ----------
-        path : str, default "mars_model_evaluation.xlsx"
+        path : str
             输出文件路径。
-        engine : str, optional
+        engine : str | None
             Pandas ExcelWriter 引擎。
 
         Returns
@@ -206,21 +209,21 @@ class MarsModelingReport:
 
         Parameters
         ----------
-        path : str, default "mars_model_report.html"
+        path : str
             输出路径。
-        title : str, optional
+        title : str | None
             HTML 报告标题。
-        run : Any, optional
+        run : Any | None
             调参结果对象，用于补充审计元数据。
-        scorecard : Any, optional
+        scorecard : Any | None
             评分卡对象，用于展示评分刻度。
-        importance_table : pandas.DataFrame, optional
+        importance_table : pd.DataFrame | None
             特征重要性表。
-        history_table : pandas.DataFrame, optional
+        history_table : pd.DataFrame | None
             调参历史表。
-        top_features : int, default 20
+        top_features : int
             HTML 中展示的重要特征数量。
-        dpi : int, default 150
+        dpi : int
             Matplotlib 图片分辨率。
 
         Returns

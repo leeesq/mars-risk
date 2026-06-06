@@ -43,7 +43,7 @@ def to_pandas_frame(df: FrameLike) -> pd.DataFrame:
 
     Parameters
     ----------
-    df : pandas.DataFrame or polars.DataFrame
+    df : FrameLike
         输入数据框。
 
     Returns
@@ -75,13 +75,18 @@ def to_polars_frame(df: FrameLike) -> pl.DataFrame:
 
     Parameters
     ----------
-    df : pandas.DataFrame or polars.DataFrame
+    df : FrameLike
         输入数据框。
 
     Returns
     -------
     polars.DataFrame
         Polars eager 数据框副本。
+
+    Raises
+    ------
+    TypeError
+        当输入对象类型不受支持时抛出。
 
     Examples
     --------
@@ -102,7 +107,7 @@ def restore_frame_type(df: FrameLike, prefer_polars: bool) -> FrameLike:
 
     Parameters
     ----------
-    df : pandas.DataFrame or polars.DataFrame
+    df : FrameLike
         内部处理后的数据框。
     prefer_polars : bool
         是否优先返回 Polars DataFrame。
@@ -163,7 +168,7 @@ def normalize_dataset_flags(flags: pd.Series | pl.Series) -> pd.Series:
 
     Parameters
     ----------
-    flags : pandas.Series or polars.Series
+    flags : pd.Series | pl.Series
         原始 dataset flag 列。
 
     Returns
@@ -187,7 +192,7 @@ def validate_dataset_flag_roles(flags: pd.Series | pl.Series) -> None:
 
     Parameters
     ----------
-    flags : pandas.Series or polars.Series
+    flags : pd.Series | pl.Series
         原始或标准化后的数据集标识。
 
     Returns

@@ -57,15 +57,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
     分箱器。评估器实例不会把上一次拟合出的分箱器作为下一次调用的隐式状态，
     因此同一个实例可以安全地连续评估不同特征集合或不同数据集。
 
-    Parameters
-    ----------
-    binning_type : {"native", "opt"}, default "native"
-        未显式传入 `binner` 时使用的分箱器类型。`"native"` 使用
-        `MarsNativeBinner`，`"opt"` 使用 `MarsOptimalBinner`。
-    binner_params : dict, optional
-        构造默认分箱器时使用的参数。如果 `evaluate` 同时收到显式 `binner`，
-        则会抛出 `ValueError`，避免同一次评估中出现两套规则来源。
-
     Attributes
     ----------
     binning_type : str
@@ -100,9 +91,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        binning_type : {"native", "opt"}, default "native"
+        binning_type : Literal['native', 'opt']
             未显式传入分箱器时使用的默认分箱策略。
-        binner_params : dict, optional
+        binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
         """
         super().__init__()
@@ -136,36 +127,36 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        df : polars.DataFrame or pandas.DataFrame
+        df : Union[pl.DataFrame, pd.DataFrame]
             待评估样本表。
-        target : str, optional
+        target : str | None
             二分类目标列名。为 `None` 或列不存在时会进入无标签模式，只计算分布类指标
             和 PSI，不计算 IV、KS、AUC 等依赖标签的指标。
-        features : list of str, optional
+        features : List[str] | None
             本次评估的特征列；不传时自动排除目标列和分组列后选择候选特征。
-        binner : MarsBinnerBase, optional
+        binner : MarsBinnerBase | None
             显式复用的分箱器；传入后不会再根据 `binning_type` 和 `binner_params`
             构造新分箱器。
-        feature_data_source : dict, optional
+        feature_data_source : Dict[str, List[str]] | None
             特征来源映射，只对本次 active features 生效，用于报告中保留来源分层。
-        group_col : str, optional
+        group_col : str | None
             已存在的分组列名，例如月份、客群或样本切片。
-        time_col : str, optional
+        time_col : str | None
             原始日期列名；与 `time_grain` 配合时会生成临时时间分组列。
-        time_grain : str, optional
+        time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
             仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
-        feature_start_aware_baseline : bool, default False
+        feature_start_aware_baseline : bool
             是否按特征首次出现的分组选择 PSI 基准，适合特征上线时间不一致的场景。
-        psi_include_missing : bool, default False
+        psi_include_missing : bool
             计算 PSI 时是否单独保留缺失值分布。
-        psi_include_special : bool, default False
+        psi_include_special : bool
             计算 PSI 时是否单独保留特殊值分布。
-        benchmark_df : polars.DataFrame or pandas.DataFrame, optional
+        benchmark_df : Union[pl.DataFrame, pd.DataFrame, None]
             外部 benchmark 样本；传入后分布稳定性可与该样本进行对比。
-        weights_col : str, optional
+        weights_col : str | None
             样本权重列名。
-        batch_size : int, default 100
+        batch_size : int
             批量评估时的特征批大小。
 
         Returns
@@ -178,7 +169,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ValueError
             当必要列缺失、分箱器配置冲突或输入数据无法评估时抛出。
         """
-
         # 上下文准备
         working_df = self._ensure_polars_dataframe(df)
         if benchmark_df is not None:
@@ -540,7 +530,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             特征名列表。
         y_col : str
             目标变量列。
-        weights_col : Optional[str]
+        weights_col : str | None
             权重列。
         batch_size : int
             每次聚合处理的特征数量。
@@ -710,15 +700,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
         """
         获取用于 PSI 计算的基准分布 (Expected Distribution).
 
-        该方法负责计算 PSI 公式 $\\sum (A - E) \\times \\ln(A/E)$ 中的 $E$ (Expected Distribution)。
-        支持两种基准策略，自动根据 `bench_df` 是否传入进行切换。
+        该方法负责计算 PSI 公式中的期望分布项 E，并支持两种基准策略，
+        自动根据 `bench_df` 是否传入进行切换。
 
         Parameters
         ----------
         group_stats_raw : pl.DataFrame
             当前数据集的统计长表 (Actual Data Stats)。
             仅在 `bench_df` 为 None 时使用，用于提取时间最早的分组作为基准。
-        bench_df : Optional[pl.DataFrame]
+        bench_df : pl.DataFrame | None
             外部基准数据集 (OOT/Training Set)。
             若提供，将对其执行 `transform` -> `unpivot` -> `agg` 流程以获取基准分布。
         group_col : str
@@ -813,6 +803,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         group_col : str
             分组维度列名 (如 'month')。
             计算累积指标 (KS/AUC) 时，会以此列和 'feature' 作为窗口分区 (Partition)。
+        include_missing : bool
+            计算 PSI 时是否保留缺失值箱。
+        include_special : bool
+            计算 PSI 时是否保留特殊值箱。
 
         Returns
         -------
@@ -970,25 +964,22 @@ class MarsBinEvaluator(MarsBaseEstimator):
                          dt_col: str | None
                          ) -> Tuple[pl.DataFrame, str]:
         """
-        Build the internal trend-group context.
+        构造内部趋势分组上下文。
 
         Parameters
         ----------
-        df : polars.DataFrame
-            Input frame.
-        profile_by : str, optional
-            Internal resolved grouping directive produced from public
-            ``group_col`` or ``time_grain``.
-        dt_col : str, optional
-            Internal raw date column produced from public ``time_col``.
+        df : pl.DataFrame
+            输入样本表。
+        profile_by : str | None
+            由公开参数 ``group_col`` 或 ``time_grain`` 解析出的内部分组指令。
+        dt_col : str | None
+            由公开参数 ``time_col`` 传入的原始日期列名。
 
         Returns
         -------
         tuple of (polars.DataFrame, str)
-            Frame with any derived grouping column and the final grouping column
-            name.
+            包含派生分组列的样本表，以及最终使用的内部分组列名。
         """
-
         # 有时间没分组 -> 默认按月
         if dt_col and not profile_by:
             logger.info("`dt_col` was provided without `profile_by`; defaulting trend grouping to 'month'.")
@@ -1461,6 +1452,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
             分组维度列名（如 'month'）。
         monotonicity_df : pl.DataFrame
             单调性检查结果。包含特征在全量分组下的 Spearman 相关系数 (mono)。
+        feature_source_map : Dict[str, str] | None
+            特征到来源分组的映射，用于在汇总报告中保留来源字段。
+        dt_col : str | None
+            原始日期列名，用于生成按日缺失率附表。
+        missing_by_day_table : Union[pl.DataFrame, pd.DataFrame] | None
+            已计算好的按日缺失率附表。
+        risk_corr_baseline_df : pl.DataFrame | None
+            RiskCorr 基准分布表。
+        feature_valid_groups_df : pl.DataFrame | None
+            特征有效分组数量表。
+        monitor_metrics_groups : pl.DataFrame | None
+            分组粒度监控指标表。
+        monitor_metrics_total : pl.DataFrame | None
+            全量粒度监控指标表。
 
         Returns
         -------
@@ -1951,21 +1956,21 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        report : MarsEvaluationReport, optional
+        report : Optional['MarsEvaluationReport']
             由 ``evaluate`` 生成的评估报告对象。
-        df_detail : Union[pl.DataFrame, pd.DataFrame], optional
+        df_detail : Union[pl.DataFrame, pd.DataFrame, None]
             直接传入分箱明细表；当未提供 ``report`` 时使用。
-        features : str or List[str], optional
+        features : Union[str, List[str], None]
             需要绘图的特征名称。若为 ``None``，绘制明细表中的全部特征。
-        group_col : str, optional
+        group_col : str | None
             分组列名。当直接传入 ``df_detail`` 且无法自动推断时可显式指定。
-        target_name : str, optional
+        target_name : str | None
             图表标题中展示的目标名称。未提供时默认使用 ``self.target``。
-        sort_by : str, default "iv"
+        sort_by : str
             绘图特征的排序依据。
-        ascending : bool, default False
+        ascending : bool
             是否按 ``sort_by`` 升序绘制。
-        dpi : int, default 150
+        dpi : int
             图像分辨率。
 
         Raises
@@ -2085,45 +2090,45 @@ def profile_risk(
 
     Parameters
     ----------
-    df : polars.DataFrame or pandas.DataFrame
+    df : Union[pl.DataFrame, pd.DataFrame]
         待画像样本表。
-    target : str or list of str, optional
+    target : Union[str, List[str]] | None
         二分类目标列名或目标列列表；`None` 表示无标签画像。
-    features : list of str, optional
+    features : List[str] | None
         本次参与画像的特征列。
-    feature_data_source : dict, optional
+    feature_data_source : Dict[str, List[str]] | None
         特征来源映射，只保留方法级入口，因为它依赖本次 active features。
-    group_col : str, optional
+    group_col : str | None
         已存在的分组列名。
-    time_col : str, optional
+    time_col : str | None
         原始日期列名。
-    time_grain : str, optional
+    time_grain : str | None
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-    feature_start_aware_baseline : bool, default False
+    feature_start_aware_baseline : bool
         是否按特征首次出现的分组选择 PSI 基准。
-    binning_type : {"native", "opt"}, default "native"
+    binning_type : Literal['native', 'opt']
         未显式传入 `binner` 时使用的分箱器类型。
-    binner : MarsBinnerBase, optional
+    binner : MarsBinnerBase | None
         显式复用的分箱器；传入后不允许再传 `binner_params`。
-    binner_params : dict, optional
+    binner_params : Dict[str, Any] | None
         构造默认分箱器时使用的参数。
-    benchmark_df : polars.DataFrame or pandas.DataFrame, optional
+    benchmark_df : Union[pl.DataFrame, pd.DataFrame] | None
         外部 benchmark 样本。
-    weights_col : str, optional
+    weights_col : str | None
         样本权重列名。
-    plot : bool, default True
+    plot : bool
         是否生成图表明细。
-    plot_target : str or list of str, optional
+    plot_target : Union[str, List[str], None]
         指定需要绘图的目标列。
-    max_plots : int, default 10
+    max_plots : int
         最多绘制的特征数量。
-    sort_by : str, default "iv"
+    sort_by : str
         绘图特征排序指标。
-    ascending : bool, default False
+    ascending : bool
         是否按 `sort_by` 升序排序。
-    dpi : int, default 300
+    dpi : int
         图表分辨率。
-    batch_size : int, default 100
+    batch_size : int
         批量评估时的特征批大小。
 
     Returns
@@ -2145,7 +2150,6 @@ def profile_risk(
     >>> profile.report.summary_table is not None and profile.targets == ["y"]
     True
     """
-
     input_is_pandas = isinstance(df, pd.DataFrame)
     if binner is not None and binner_params:
         raise ValueError("`binner` and `binner_params` cannot be provided together.")
