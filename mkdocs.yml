@@ -71,19 +71,19 @@ markdown_extensions:
       alternate_style: true
 
 nav:
-  - 项目简介: index.md
+  - Overview: index.md
   - Getting Started:
       - 安装: getting-started/installation.md
       - 快速开始: getting-started/quickstart.md
       - 核心 API 约定: getting-started/api-conventions.md
-  - 用户指南:
+  - User Guide:
       - 数据画像与特征分析: user-guide/data-profiling.md
       - 分箱与风险评估: user-guide/binning-risk-evaluation.md
       - 特征筛选: user-guide/feature-selection.md
       - Modeling Pipeline: user-guide/modeling-pipeline.md
       - 特征/模型监控: user-guide/monitoring.md
       - 报表导出与二次加工: user-guide/reports-and-exports.md
-  - 性能:
+  - Performance:
       - Benchmark: performance/benchmark.md
   - Demo:
       - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
