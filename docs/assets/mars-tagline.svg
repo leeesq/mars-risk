@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="64" viewBox="0 0 920 64" role="img" aria-labelledby="title desc">
+  <title id="title">面向信贷风控分析与建模的 Polars-first 高性能工具库</title>
+  <desc id="desc">MARS 中文定位标语，与英文 wordmark 保持相近视觉宽度。</desc>
+  <defs>
+    <linearGradient id="tagline-highlight" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="48%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="polars-tech" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#67e8f9"/>
+      <stop offset="42%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="tagline-glow" x="-8%" y="-45%" width="116%" height="190%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.4" flood-color="#8b5cf6" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2.4" flood-color="#111827" flood-opacity="0.18"/>
+    </filter>
+    <filter id="polars-glow" x="-14%" y="-55%" width="128%" height="210%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.2" flood-color="#22d3ee" flood-opacity="0.48"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#8b5cf6" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#111827" flood-opacity="0.24"/>
+    </filter>
+    <style>
+      .tagline {
+        fill: #111827;
+        font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", "Segoe UI", Arial, sans-serif;
+        font-size: 34px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .accent {
+        fill: url(#tagline-highlight);
+        filter: url(#tagline-glow);
+      }
+
+      .polars {
+        fill: url(#polars-tech);
+        filter: url(#polars-glow);
+        font-family: Orbitron, Rajdhani, Eurostile, "Segoe UI", Arial, sans-serif;
+        font-size: 36px;
+        font-style: italic;
+        font-weight: 900;
+        letter-spacing: 1.1px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .tagline {
+          fill: #e5e7eb;
+        }
+      }
+    </style>
+  </defs>
+  <text class="tagline accent" x="460" y="43" text-anchor="middle" textLength="768" lengthAdjust="spacing">
+    <tspan>面向信贷风控分析与建模的 </tspan><tspan class="polars">Polars</tspan><tspan>-first 高性能工具库</tspan>
+  </text>
+</svg>

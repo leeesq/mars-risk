@@ -4,29 +4,27 @@
 }
 
 .mars-home-hero {
-  max-width: 46rem;
-  margin: 0.9rem auto 1.6rem;
+  max-width: 47rem;
+  margin: 0.85rem auto 1.7rem;
   text-align: center;
 }
 
 .mars-home-logo {
   display: block;
-  width: min(25rem, 64%);
-  margin: 0 auto 0.95rem;
+  width: min(41rem, 96%);
+  margin: 0 auto 1rem;
 }
 
 .mars-home-wordmark {
   display: block;
-  width: min(35rem, 92%);
-  margin: 0 auto 0.6rem;
+  width: min(36rem, 88%);
+  margin: 0 auto 0.35rem;
 }
 
 .mars-home-tagline {
-  margin: 0.7rem auto 1rem;
-  color: var(--md-default-fg-color--light);
-  font-size: 1.15rem;
-  font-weight: 500;
-  line-height: 1.6;
+  display: block;
+  width: min(36rem, 88%);
+  margin: 0 auto 1.15rem;
 }
 
 .mars-home-pipeline {
