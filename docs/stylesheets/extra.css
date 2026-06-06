@@ -1,0 +1,30 @@
+.jupyter-wrapper .jp-InputPrompt,
+.jupyter-wrapper .jp-OutputPrompt {
+  display: none !important;
+}
+
+.mars-home-hero {
+  max-width: 46rem;
+  margin: 1.2rem auto 1.6rem;
+  text-align: center;
+}
+
+.mars-home-wordmark {
+  display: block;
+  width: min(36rem, 92%);
+  margin: 0 auto 0.6rem;
+}
+
+.mars-home-tagline {
+  margin: 0.7rem auto 1rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 1.15rem;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.mars-home-pipeline {
+  display: block;
+  width: min(42rem, 100%);
+  margin: 0 auto;
+}

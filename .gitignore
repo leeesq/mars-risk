@@ -40,6 +40,7 @@ secret_config.py
 
 # Jupyter Notebooks
 *.ipynb
+!docs/**/*.ipynb
 .ipynb_checkpoints/
 
 # 示例文件

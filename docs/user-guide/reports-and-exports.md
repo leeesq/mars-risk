@@ -13,7 +13,7 @@ MARS 的 report 对象同时承担两类职责：一是导出 Excel/HTML 报表�
 | `MarsProfileReport` | 数据画像 |
 | `MarsEvaluationReport` | 分箱评估 |
 | `MarsModelingReport` | 建模评估 |
-| `MarsMonitoringReport` | 特征监控和模型监控 |
+| `MarsMonitoringReport` | 特征/模型监控 |
 
 ## 结构化数据
 

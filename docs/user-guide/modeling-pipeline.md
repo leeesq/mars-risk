@@ -74,4 +74,4 @@ replay_result = MarsModelReplayRunner().run(
 
 `MarsModelEvaluator` 是建模评估器，不是完整模型监控平台。它用于对已打分样本构建 train/val/oot 或业务切片上的评估报告。
 
-模型输出稳定性可以通过 `Score PSI` 和 `score_psi` 观察。如果需要按自定义时间或业务切片进行特征监控和模型监控，可以使用 `MarsMonitor` 输出结构化监控指标。
+模型输出稳定性可以通过 `Score PSI` 和 `score_psi` 观察。如果需要按自定义时间或业务切片进行特征/模型监控，可以使用 `MarsMonitor` 输出结构化监控指标。

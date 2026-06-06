@@ -33,8 +33,15 @@ theme:
         icon: material/weather-night
         name: 切换到深色模式
 
+extra_css:
+  - stylesheets/extra.css
+
 plugins:
   - search
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      ignore_h1_titles: true
   - mkdocstrings:
       handlers:
         python:
@@ -74,12 +81,12 @@ nav:
       - 分箱与风险评估: user-guide/binning-risk-evaluation.md
       - 特征筛选: user-guide/feature-selection.md
       - Modeling Pipeline: user-guide/modeling-pipeline.md
-      - 特征监控和模型监控: user-guide/monitoring.md
+      - 特征/模型监控: user-guide/monitoring.md
       - 报表导出与二次加工: user-guide/reports-and-exports.md
   - 性能:
       - Benchmark: performance/benchmark.md
   - Demo:
-      - LightGBM 建模与监控: demos/lgb-modeling-monitoring.md
+      - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
   - API Reference:
       - 总览: reference/index.md
       - Analysis: reference/analysis.md

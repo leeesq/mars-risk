@@ -69,6 +69,7 @@ docs = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+    "mkdocs-jupyter>=0.25.0",
 ]
 
 # 开发与测试环境
@@ -80,6 +81,7 @@ dev = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+    "mkdocs-jupyter>=0.25.0",
     "black>=23.0.0",
     "jupyterlab>=4.0.0",
     "tqdm>=4.66.0",        
