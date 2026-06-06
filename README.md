@@ -2,9 +2,9 @@
 
 <div align="center">
 
-<img src="docs/assets/mars-logo.svg" alt="MARS" width="620">
+<img src="docs/assets/mars-logo.svg" alt="MARS" width="500">
 
-<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="760">
+<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="700">
 
 <h2 align="center">面向信贷风控分析与建模的 Polars-first 高性能工具库</h2>
 
@@ -17,7 +17,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
-<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="920">
+<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="860">
 
 <p align="center">
   <a href="https://leeesq.github.io/mars-risk/">文档&教程</a> ·
