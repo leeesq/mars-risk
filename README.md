@@ -2,13 +2,11 @@
 
 <div align="center">
 
-<img src="docs/assets/mars-logo.svg" alt="MARS" width="620">
+<img src="docs/assets/mars-logo.svg" alt="MARS" width="820">
 
-<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="640">
+<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="720">
 
-<p align="center">
-  <strong>面向信贷风控分析与建模的 Polars-first 高性能工具库</strong>
-</p>
+<h2 align="center">面向信贷风控分析与建模的 Polars-first 高性能工具库</h2>
 
 <img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="820">
 
