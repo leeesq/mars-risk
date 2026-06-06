@@ -120,7 +120,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         psi_include_special: bool = False,
         benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
         weights_col: str | None = None,
-        batch_size: int = 100
+        batch_size: int = 100,
     ) -> MarsRiskProfile:
         """
         对一次数据上下文执行分箱评估。
@@ -198,11 +198,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
             working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
         self.target = effective_target
 
-        # 检查 Target 有效性 (仅在有真实标签时检查)
+        # 检查 Target 有效性，并把未到表现期的空值保留为 null。
         if self.has_target_:
-            n_unique = working_df.select(pl.col(self.target).n_unique()).item()
+            working_df = self._normalize_binary_target_column(working_df, self.target)
+            n_unique = (
+                working_df
+                .filter(pl.col(self.target).is_not_null())
+                .select(pl.col(self.target).n_unique())
+                .item()
+            )
             if n_unique < 2:
-                raise ValueError(f"Target column '{self.target}' must have at least 2 unique values for evaluation.")
+                raise ValueError(
+                    f"Target column '{self.target}' must have at least 2 observed classes "
+                    "after excluding null / NaN values."
+                )
 
         working_df, group_col = self._prepare_context(working_df, profile_by, dt_col)
 
@@ -268,8 +277,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     clean_kwargs["method"] = "quantile"
 
             active_binner = binner_cls(**clean_kwargs)
-            y_series = working_df.get_column(self.target)
-            active_binner.fit(working_df, y_series, features=target_features)
+            fit_df = working_df
+            y_series = None
+
+            # 有监督分箱只能使用已表现样本；无监督分箱保留全量样本拟合切点，
+            # 后续 WOE 和风险指标会基于 observed_count 重新计算。
+            if self.has_target_:
+                is_supervised_binner = (
+                    binner_cls is MarsOptimalBinner
+                    or clean_kwargs.get("method") == "cart"
+                )
+                if is_supervised_binner:
+                    fit_df = working_df.filter(pl.col(self.target).is_not_null())
+                    y_series = fit_df.get_column(self.target)
+            active_binner.fit(fit_df, y_series, features=target_features)
 
         self.binner = active_binner
 
@@ -333,7 +354,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .group_by(["feature", "bin_index"])
             .agg([
                 pl.col("count").sum(),
-                pl.col("bad").sum()
+                pl.col("observed_count").sum(),
+                pl.col("bad").sum(),
             ])
             .with_columns(pl.lit("Total").alias(group_col)) # 显式标记为全量
         )
@@ -369,6 +391,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     .group_by(["feature", "bin_index"])
                     .agg([
                         pl.col("count").sum().alias("count"),
+                        pl.col("observed_count").sum().alias("observed_count"),
                         pl.col("bad").sum().alias("bad"),
                     ])
                     .with_columns(pl.lit("Total").alias(group_col))
@@ -467,7 +490,22 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # 无标签模式下擦除依赖真实坏样本标签的指标，保留分布类结果。
         if not self.has_target_:
-            null_cols = ["bad", "bad_rate", "lift", "trend", "cum_bad", "cum_bad_rate", "ks_bin", "auc_bin", "iv_bin", "mono"]
+            null_cols = [
+                "observed_count",
+                "bad",
+                "good",
+                "bad_rate",
+                "lift",
+                "trend",
+                "cum_observed_count",
+                "cum_bad",
+                "cum_good",
+                "cum_bad_rate",
+                "ks_bin",
+                "auc_bin",
+                "iv_bin",
+                "mono",
+            ]
 
             # detail_table 擦除
             dt_cols = [c for c in null_cols if c in report._detail.columns]
@@ -508,6 +546,70 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self.has_target_ = prev_has_target
         return run
 
+    @staticmethod
+    def _normalize_binary_target_column(df: pl.DataFrame, target: str) -> pl.DataFrame:
+        """
+        校验并归一化二分类 target 列。
+
+        风控样本经常存在尚未到表现期的最新数据，这类样本应以 ``null`` 或 ``NaN``
+        表达。该方法只接受 ``0``、``1``、``True``、``False`` 和空值；其他非空值
+        一律视为上游清洗问题。
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            待校验的数据集。
+        target : str
+            目标变量列名。
+
+        Returns
+        -------
+        pl.DataFrame
+            target 已归一为 ``Int8`` 且保留空值的数据集。
+
+        Raises
+        ------
+        ValueError
+            当 target 包含非 ``0/1/True/False/null`` 的非空值时抛出。
+        """
+        dtype = df.schema[target]
+
+        if dtype in {pl.Float32, pl.Float64}:
+            df = df.with_columns(pl.col(target).fill_nan(None).alias(target))
+            dtype = df.schema[target]
+
+        if dtype == pl.Boolean:
+            return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
+
+        if dtype.is_numeric():
+            invalid_values = (
+                df
+                .filter(pl.col(target).is_not_null() & ~pl.col(target).is_in([0, 1]))
+                .select(pl.col(target).unique().head(5))
+                .to_series()
+                .to_list()
+            )
+            if invalid_values:
+                raise ValueError(
+                    f"Target column '{target}' contains invalid values {invalid_values}. "
+                    "Please clean it to 0/1/True/False/null before evaluation."
+                )
+            return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
+
+        invalid_values = (
+            df
+            .filter(pl.col(target).is_not_null())
+            .select(pl.col(target).unique().head(5))
+            .to_series()
+            .to_list()
+        )
+        if invalid_values:
+            raise ValueError(
+                f"Target column '{target}' contains invalid values {invalid_values}. "
+                "Please clean it to 0/1/True/False/null before evaluation."
+            )
+        return df.with_columns(pl.lit(None).cast(pl.Int8).alias(target))
+
     def _agg_basic_stats(
         self,
         df_binned: pl.DataFrame,
@@ -538,7 +640,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         Returns
         -------
         pl.DataFrame
-            长表格式的统计汇总表，包含 [group_col, feature, bin_index, count, bad]。
+            长表格式的统计汇总表，包含 [group_col, feature, bin_index, count, observed_count, bad]。
         """
         # 构造 bin 列名
         theoretical_bin_cols = [f"{f}_bin" for f in features]
@@ -567,15 +669,27 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if weights_col:
             index_cols.append(weights_col)
 
-        # 预定义聚合表达式 (Lazy Expr)，避免在循环中重复构建
-        # 统计样本数 (Count)
+        # 预定义聚合表达式，count 保留全量分布，observed_count 只记录已表现样本。
         expr_count = pl.col(weights_col).sum() if weights_col else pl.len()
-        # 统计坏样本数 (Bad)
-        expr_bad = (pl.col(y_col) * pl.col(weights_col)).sum() if weights_col else pl.col(y_col).sum()
+        if weights_col:
+            expr_observed_count = (
+                pl.when(pl.col(y_col).is_not_null())
+                .then(pl.col(weights_col))
+                .otherwise(0)
+                .sum()
+            )
+            expr_bad = (
+                (pl.col(y_col).fill_null(0).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64))
+                .sum()
+            )
+        else:
+            expr_observed_count = pl.col(y_col).is_not_null().sum()
+            expr_bad = pl.col(y_col).fill_null(0).cast(pl.Float64).sum()
 
         agg_exprs = [
             expr_count.alias("count"),
-            expr_bad.alias("bad")
+            expr_observed_count.alias("observed_count"),
+            expr_bad.alias("bad"),
         ]
 
         result_frames: List[pl.DataFrame] = []
@@ -625,7 +739,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         Parameters
         ----------
         group_stats_raw : pl.DataFrame
-            Map 阶段产出的统计长表。必须包含以下列：`['feature', 'bin_index', 'count', 'bad']`。
+            Map 阶段产出的统计长表。必须包含以下列：
+            `['feature', 'bin_index', 'count', 'observed_count', 'bad']`。
 
         Returns
         -------
@@ -651,14 +766,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 计算 WOE
         woe_df = (
             target_stats
-            .group_by(["feature", "bin_index"])
-            .agg([
-                pl.col("bad").sum().alias("bin_bad"),
-                pl.col("count").sum().alias("bin_total")
-            ])
-            .with_columns([
-                (pl.col("bin_total") - pl.col("bin_bad")).alias("bin_good")
-            ])
+                .group_by(["feature", "bin_index"])
+                .agg([
+                    pl.col("bad").sum().alias("bin_bad"),
+                    pl.col("observed_count").sum().alias("bin_observed"),
+                ])
+                .with_columns([
+                    (pl.col("bin_observed") - pl.col("bin_bad")).alias("bin_good")
+                ])
             .with_columns([
                 pl.col("bin_bad").sum().over("feature").alias("feature_total_bad"),
                 pl.col("bin_good").sum().over("feature").alias("feature_total_good")
@@ -796,7 +911,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ----------
         stats_df : pl.DataFrame
             基础统计长表。
-            必须包含列：`[group_col, 'feature', 'bin_index', 'count', 'bad']`。
+            必须包含列：`[group_col, 'feature', 'bin_index', 'count', 'observed_count', 'bad']`。
         expected_dist : pl.DataFrame
             PSI 基准分布表。
             必须包含列：`['feature', 'bin_index', 'expected_dist']`。
@@ -821,13 +936,16 @@ class MarsBinEvaluator(MarsBaseEstimator):
         schema = {"feature": pl.String, "bin_index": pl.Int16, "woe": pl.Float64}
         woe_df = pl.DataFrame(woe_data, schema=schema) if woe_data else pl.DataFrame([], schema=schema)
 
+        if "observed_count" not in stats_df.columns:
+            stats_df = stats_df.with_columns(pl.col("count").alias("observed_count"))
+
         # 合并统计量、基准分布与 WOE
         base_df = (
             stats_df
             .join(expected_dist, on=["feature", "bin_index"], how="left")
             .join(woe_df, on=["feature", "bin_index"], how="left")
             .with_columns([
-                (pl.col("count") - pl.col("bad")).alias("good"),
+                (pl.col("observed_count") - pl.col("bad")).alias("good"),
                 pl.col("expected_dist").fill_null(1e-9),
                 pl.col("woe").fill_null(0)
             ])
@@ -846,10 +964,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if not include_special:
             psi_valid_cond &= (pl.col("bin_index") > -3)
 
-        # 计算双套分布
-        # 全量分布 (用于 IV, BadRate, Lift)
+        # 计算双套分布：count 负责全量分布，observed_count 负责监督指标。
         base_df = base_df.with_columns([
             pl.col("count").sum().over([group_col, "feature"]).alias("total_count"),
+            pl.col("observed_count").sum().over([group_col, "feature"]).alias("total_observed"),
             pl.col("bad").sum().over([group_col, "feature"]).alias("total_bad"),
             pl.col("good").sum().over([group_col, "feature"]).alias("total_good"),
         ])
@@ -876,7 +994,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             ((pl.col("count") + epsilon) / (pl.col("total_count") + epsilon)).alias("actual_dist"),
             (pl.col("bad") / (pl.col("total_bad") + epsilon)).alias("bad_dist"),
             (pl.col("good") / (pl.col("total_good") + epsilon)).alias("good_dist"),
-            (pl.col("bad") / (pl.col("count") + epsilon)).alias("bad_rate"),
+            pl.when(pl.col("observed_count") > 0)
+            .then(pl.col("bad") / pl.col("observed_count"))
+            .otherwise(None)
+            .alias("bad_rate"),
 
             # PSI 概率基准
             # 计算归一化后的 Actual% (只针对有效箱)
@@ -899,18 +1020,26 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .alias("psi_bin"),
 
             # 计算 Lift
-            (
+            pl.when(pl.col("total_observed") > 0)
+            .then(
                 pl.col("bad_rate")
                 /
-                ((pl.col("total_bad") + epsilon) / (pl.col("total_count") + epsilon))
-            ).alias("lift"),
+                ((pl.col("total_bad") + epsilon) / (pl.col("total_observed") + epsilon))
+            )
+            .otherwise(None)
+            .alias("lift"),
 
             # IV
-            (
-                (pl.col("bad_dist") - pl.col("good_dist"))
-                *
-                ((pl.col("bad_dist") + epsilon) / (pl.col("good_dist") + epsilon)).log()
-            ).cast(pl.Float32).alias("iv_bin")
+            pl.when(pl.col("total_observed") > 0)
+            .then(
+                (
+                    (pl.col("bad_dist") - pl.col("good_dist"))
+                    *
+                    ((pl.col("bad_dist") + epsilon) / (pl.col("good_dist") + epsilon)).log()
+                ).cast(pl.Float32)
+            )
+            .otherwise(None)
+            .alias("iv_bin")
         ])
 
         # 计算有序指标 (AUC, KS, IV)：必须按 WOE 风险程度排序
@@ -924,15 +1053,21 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         sorted_df = sorted_df.with_columns([
 
-            ((pl.col("cum_bad_dist") - pl.col("cum_good_dist")).abs() * 100).alias("ks_bin"),
+            pl.when(pl.col("total_observed") > 0)
+            .then((pl.col("cum_bad_dist") - pl.col("cum_good_dist")).abs() * 100)
+            .otherwise(None)
+            .alias("ks_bin"),
 
             # AUC 梯形法则计算面积
-            (
+            pl.when(pl.col("total_observed") > 0)
+            .then(
                 (pl.col("cum_good_dist") - pl.col("cum_good_dist").shift(1, fill_value=0).over([group_col, "feature"]))
                 *
                 (pl.col("cum_bad_dist") + pl.col("cum_bad_dist").shift(1, fill_value=0).over([group_col, "feature"]))
                 / 2
-            ).alias("auc_bin")
+            )
+            .otherwise(None)
+            .alias("auc_bin")
         ])
 
         sorted_df = sorted_df.with_columns([
@@ -1266,23 +1401,34 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             if self.has_target_ and self.target in post_start_df.columns:
                 if weights_col and weights_col in post_start_df.columns:
+                    monitor_observed_expr = (
+                        pl.when(pl.col(self.target).is_not_null())
+                        .then(pl.col(weights_col).cast(pl.Float64))
+                        .otherwise(0)
+                        .sum()
+                        .alias("observed_count")
+                    )
                     monitor_bad_expr = (
-                        pl.col(self.target).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64)
+                        pl.col(self.target).fill_null(0).cast(pl.Float64)
+                        * pl.col(weights_col).cast(pl.Float64)
                     ).sum().alias("bad")
                 else:
-                    monitor_bad_expr = pl.col(self.target).cast(pl.Float64).sum().alias("bad")
+                    monitor_observed_expr = pl.col(self.target).is_not_null().sum().alias("observed_count")
+                    monitor_bad_expr = pl.col(self.target).fill_null(0).cast(pl.Float64).sum().alias("bad")
             else:
+                monitor_observed_expr = monitor_count_expr.alias("observed_count")
                 monitor_bad_expr = pl.lit(0.0).alias("bad")
 
             monitor_group_stats_df = (
                 post_start_df
                 .group_by([group_col, "bin_index"])
-                .agg([monitor_count_expr, monitor_bad_expr])
+                .agg([monitor_count_expr, monitor_observed_expr, monitor_bad_expr])
                 .select([
                     pl.col(group_col).cast(pl.String).alias(group_col),
                     pl.lit(feature).alias("feature"),
                     pl.col("bin_index"),
                     pl.col("count").cast(pl.Float64),
+                    pl.col("observed_count").cast(pl.Float64),
                     pl.col("bad").cast(pl.Float64),
                 ])
             )
@@ -1325,12 +1471,19 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if self.has_target_ and self.target in baseline_rows.columns:
                 if weights_col and weights_col in baseline_rows.columns:
                     bad_expr = (
-                        pl.col(self.target).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64)
+                        pl.col(self.target).fill_null(0).cast(pl.Float64)
+                        * pl.col(weights_col).cast(pl.Float64)
                     ).sum().alias("base_bad")
-                    total_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("base_total")
+                    total_expr = (
+                        pl.when(pl.col(self.target).is_not_null())
+                        .then(pl.col(weights_col).cast(pl.Float64))
+                        .otherwise(0)
+                        .sum()
+                        .alias("base_total")
+                    )
                 else:
-                    bad_expr = pl.col(self.target).cast(pl.Float64).sum().alias("base_bad")
-                    total_expr = pl.len().cast(pl.Float64).alias("base_total")
+                    bad_expr = pl.col(self.target).fill_null(0).cast(pl.Float64).sum().alias("base_bad")
+                    total_expr = pl.col(self.target).is_not_null().sum().cast(pl.Float64).alias("base_total")
 
                 baseline_bad_rate_df = (
                     baseline_rows
@@ -1338,7 +1491,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     .group_by("bin_index")
                     .agg([bad_expr, total_expr])
                     .with_columns(
-                        (pl.col("base_bad") / (pl.col("base_total") + 1e-9)).alias("base_br")
+                        pl.when(pl.col("base_total") > 0)
+                        .then(pl.col("base_bad") / pl.col("base_total"))
+                        .otherwise(None)
+                        .alias("base_br")
                     )
                     .select([
                         pl.lit(feature).alias("feature"),
@@ -1374,6 +1530,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     "feature": pl.String,
                     "bin_index": pl.Int16,
                     "count": pl.Float64,
+                    "observed_count": pl.Float64,
                     "bad": pl.Float64,
                 }
             )
@@ -1524,13 +1681,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
         detail_table = detail_table.with_columns([
             # 累积样本数
             pl.col("count").cum_sum().over(["feature", group_col]).alias("cum_count"),
+            # 累积已表现样本数
+            pl.col("observed_count").cum_sum().over(["feature", group_col]).alias("cum_observed_count"),
             # 累积坏样本数
             pl.col("bad").cum_sum().over(["feature", group_col]).alias("cum_bad"),
             # 累积好样本数
-            (pl.col("count") - pl.col("bad")).cum_sum().over(["feature", group_col]).alias("cum_good")
+            (pl.col("observed_count") - pl.col("bad")).cum_sum().over(["feature", group_col]).alias("cum_good")
         ]).with_columns([
-            # 累积坏账率 = 累积坏 / 累积总
-            (pl.col("cum_bad") / (pl.col("cum_count") + 1e-9)).alias("cum_bad_rate"),
+            # 累积坏账率 = 累积坏 / 累积已表现样本
+            pl.when(pl.col("cum_observed_count") > 0)
+            .then(pl.col("cum_bad") / pl.col("cum_observed_count"))
+            .otherwise(None)
+            .alias("cum_bad_rate"),
 
             # 计算箱占比 pct = count / total_count
             # total_count 已经在 _calc_metrics_from_stats 中计算并包含在 stats_long 中
@@ -1567,6 +1729,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .agg([
                 # 基础统计量汇总
                 pl.col("count").sum().alias("count"),
+                pl.col("observed_count").sum().alias("observed_count"),
                 pl.col("bad").sum().alias("bad"),
                 pl.col("iv_bin").sum().alias("iv_bin"),
                 pl.col("psi_bin").sum().alias("psi_bin"),
@@ -1577,16 +1740,23 @@ class MarsBinEvaluator(MarsBaseEstimator):
             ])
             .with_columns([
                 # 衍生列
-                (pl.col("count") - pl.col("bad")).alias("good"),
-                (pl.col("bad") / (pl.col("count") + 1e-9)).alias("bad_rate"),
+                (pl.col("observed_count") - pl.col("bad")).alias("good"),
+                pl.when(pl.col("observed_count") > 0)
+                .then(pl.col("bad") / pl.col("observed_count"))
+                .otherwise(None)
+                .alias("bad_rate"),
 
                 # total 行代表全量样本，占比固定为 1.0。
                 pl.lit(1.0).alias("pct"),
 
                 # 累积列 (对于 total 行，累积值等于自身)
                 pl.col("count").alias("cum_count"),
+                pl.col("observed_count").alias("cum_observed_count"),
                 pl.col("bad").alias("cum_bad"),
-                (pl.col("bad") / (pl.col("count") + 1e-9)).alias("cum_bad_rate"),
+                pl.when(pl.col("observed_count") > 0)
+                .then(pl.col("bad") / pl.col("observed_count"))
+                .otherwise(None)
+                .alias("cum_bad_rate"),
 
                 # AUC 方向修正
                 pl.when(pl.col("auc_bin") < 0.5)
@@ -1610,8 +1780,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         targets = [
             "feature", group_col, "bin_index", "bin_label", "_sort_group", "_sort_idx",
-            "count", "pct", "bad", "good", "bad_rate", "lift", "trend",
-            "cum_count", "cum_bad", "cum_bad_rate",
+            "count", "observed_count", "pct", "bad", "good", "bad_rate", "lift", "trend",
+            "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
             "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
             "bin_type"
         ]
@@ -1627,8 +1797,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         detail_table = detail_table.select([
             pl.lit(self.target).alias("y"),
             "feature", "trend", group_col, "bin_index", "bin_label",
-            "count", "bad", "good", "pct", "bad_rate", "lift",
-            "cum_count", "cum_bad", "cum_bad_rate",
+            "count", "observed_count", "bad", "good", "pct", "bad_rate", "lift",
+            "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
             "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
             "bin_type"
         ])
@@ -1711,8 +1881,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # 构造用于计算相关性的全量数据流
         all_metrics_for_corr = pl.concat([
-            monitoring_groups.select(["feature", group_col, "bin_index", "bad_rate"]),
-            monitoring_total.select(["feature", group_col, "bin_index", "bad_rate"])
+            monitoring_groups.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"]),
+            monitoring_total.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"])
         ])
 
         # 计算 RiskCorr 长表: [feature, group_col, risk_corr]
@@ -1725,11 +1895,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 # 1. 只有当正常箱数 > 1 时，才去计算皮尔逊相关系数
                 # 2. 如果正常箱 <= 1, 直接赋予 1.0 放行
                 # 3. .fill_nan(1.0) 用于兜底多箱但坏率完全一致导致方差为 0 报错的情况
-                pl.when(pl.len() > 1)
+                pl.when(pl.col("observed_count").sum() <= 0)
+                  .then(pl.lit(None).cast(pl.Float64))
+                  .when(pl.len() > 1)
                   .then(pl.corr("bad_rate", "base_br", method="pearson"))
                   .otherwise(pl.lit(1.0))
                   .fill_nan(1.0)
-                  .fill_null(1.0)
                   .alias("risk_corr")
             )
         )
@@ -1741,8 +1912,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
             metrics_groups
             .group_by(["feature", group_col])
             .agg([
-                pl.col("iv_bin").sum().alias("iv"),
-                pl.col("auc_bin").sum().alias("auc"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("iv_bin").sum())
+                .otherwise(None)
+                .alias("iv"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("auc_bin").sum())
+                .otherwise(None)
+                .alias("auc"),
                 (
                     pl.when(pl.col("bin_index") == MarsBinnerBase.IDX_MISSING)
                     .then(pl.col("count"))
@@ -1751,7 +1928,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     /
                     (pl.col("count").sum() + 1e-9)
                 ).alias("missing"),
-                pl.col("lift").max().alias("lift"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("lift").max())
+                .otherwise(None)
+                .alias("lift"),
             ])
             # 确保 AUC 方向正确 (>= 0.5)
             .with_columns(
@@ -1789,8 +1969,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .filter(pl.col("bin_index") >= 0)
             .group_by("feature")
             .agg([
-                pl.col("lift").min().alias("lift_min"),
-                pl.col("lift").max().alias("lift_max"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("lift").min())
+                .otherwise(None)
+                .alias("lift_min"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("lift").max())
+                .otherwise(None)
+                .alias("lift_max"),
             ])
         )
 
@@ -1798,9 +1984,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
         total_metrics_agg = (
             metrics_total.group_by("feature")
             .agg([
-                pl.col("iv_bin").sum().alias("iv"),
-                pl.col("ks_bin").max().alias("ks"),
-                pl.col("auc_bin").sum().alias("auc")
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("iv_bin").sum())
+                .otherwise(None)
+                .alias("iv"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("ks_bin").max())
+                .otherwise(None)
+                .alias("ks"),
+                pl.when(pl.col("observed_count").sum() > 0)
+                .then(pl.col("auc_bin").sum())
+                .otherwise(None)
+                .alias("auc"),
             ])
             .with_columns(
                 pl.when(pl.col("auc") < 0.5)
@@ -1890,7 +2085,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 )
             else:
                 if metric == "bad_rate":
-                    agg_func = (pl.col("bad").sum() / (pl.col("count").sum() + 1e-9))
+                    agg_func = (
+                        pl.when(pl.col("observed_count").sum() > 0)
+                        .then(pl.col("bad").sum() / pl.col("observed_count").sum())
+                        .otherwise(None)
+                    )
                 elif metric == "missing":
                     agg_func = (
                         pl.when(pl.col("bin_index") == MarsBinnerBase.IDX_MISSING)
@@ -1901,11 +2100,23 @@ class MarsBinEvaluator(MarsBaseEstimator):
                         (pl.col("count").sum() + 1e-9)
                     )
                 elif metric == "lift":
-                    agg_func = pl.col("lift").max()
+                    agg_func = (
+                        pl.when(pl.col("observed_count").sum() > 0)
+                        .then(pl.col("lift").max())
+                        .otherwise(None)
+                    )
                 elif metric == "ks":
-                    agg_func = pl.col(f"{metric}_bin").max()
+                    agg_func = (
+                        pl.when(pl.col("observed_count").sum() > 0)
+                        .then(pl.col(f"{metric}_bin").max())
+                        .otherwise(None)
+                    )
                 else:
-                    agg_func = pl.col(f"{metric}_bin").sum()
+                    agg_func = (
+                        pl.when(pl.col("observed_count").sum() > 0)
+                        .then(pl.col(f"{metric}_bin").sum())
+                        .otherwise(None)
+                    )
 
                 pivot_src = stats_long.group_by([group_col, "feature"]).agg(agg_func.alias(metric))
 
@@ -2021,7 +2232,23 @@ class MarsBinEvaluator(MarsBaseEstimator):
             else:
                 # 自动推断分组列
                 # 排除已知列，剩下的通常就是分组列
-                known = {"feature", "bin_index", "bin_label", "count", "bad", "bad_rate", "lift", "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count", "trend", "y"}
+                known = {
+                    "feature",
+                    "bin_index",
+                    "bin_label",
+                    "count",
+                    "observed_count",
+                    "bad",
+                    "bad_rate",
+                    "lift",
+                    "psi_bin",
+                    "ks_bin",
+                    "auc_bin",
+                    "iv_bin",
+                    "total_count",
+                    "trend",
+                    "y",
+                }
                 candidates = [c for c in target_df.columns if c not in known]
                 target_group_col = candidates[0] if candidates else "month"
                 logger.debug(f"Auto-inferred group_col: '{target_group_col}'")

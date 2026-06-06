@@ -106,7 +106,7 @@
     </g>
     <g transform="translate(878 62)">
       <circle class="dot" r="10"/>
-      <text class="label" y="-24">Monitor <tspan class="todo">TODO</tspan></text>
+      <text class="label" y="-24">Monitor</text>
       <text class="sub" y="36">STABILITY</text>
     </g>
     <g transform="translate(1032 62)">
