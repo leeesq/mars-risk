@@ -160,6 +160,35 @@ alert_text = generate_monitoring_alert(
 
 Modeling Pipeline 仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。当前支持 XGBoost、LightGBM、CatBoost 和 Logistic Regression。
 
+如果希望把筛选、可选 WOE 和建模串成一条链路，可以使用 `mars.pipeline`：
+
+```python
+from mars.feature import MarsStatsSelector
+from mars.pipeline import MarsModelingPipeline, MarsModelingStep, MarsSelectionStep
+
+pipeline = MarsModelingPipeline(
+    target="target",
+    features=["income", "utilization", "segment"],
+    steps=[
+        MarsSelectionStep(
+            name="stats_filter",
+            selector=MarsStatsSelector(iv_thr=0.02),
+        ),
+        MarsModelingStep(
+            name="modeling",
+            model_type="lgb",
+            time_col="apply_dt",
+            split_ratios={"train": 0.6, "val": 0.2, "oot": 0.2},
+            tune_params={"n_trials": 20, "artifact_dir": None},
+        ),
+    ],
+)
+
+pipeline_result = pipeline.fit(df)
+```
+
+LR / 评分卡链路可以在中间显式加入 `MarsWOEBinningStep`，让后续步骤消费 `*_woe` 特征。
+
 ```python
 from mars.modeling import MarsModelingSession
 from mars.modeling.tuning import MarsModelReplayRunner

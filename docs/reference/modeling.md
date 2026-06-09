@@ -16,6 +16,22 @@
 | 特征重要性 | `importance_methods` | 默认 native importance，显式请求可计算 SHAP importance |
 | 多口径评估 | `benchmark_cols` / `aux_targets` / `target_group_cols` | 多 benchmark、多辅助 target 和长短 y 独立评估 |
 
+## Pipeline 编排
+
+::: mars.pipeline.MarsModelingPipeline
+
+::: mars.pipeline.MarsPipelineStep
+
+::: mars.pipeline.MarsSelectionStep
+
+::: mars.pipeline.MarsWOEBinningStep
+
+::: mars.pipeline.MarsModelingStep
+
+::: mars.pipeline.MarsPipelineResult
+
+::: mars.pipeline.MarsStepResult
+
 ## Session
 
 ::: mars.modeling.MarsModelingSession

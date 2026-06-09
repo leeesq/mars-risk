@@ -20,6 +20,15 @@ from .monitoring import (
     MarsMonitoringReport,
     generate_monitoring_alert,
 )
+from .pipeline import (
+    MarsModelingPipeline,
+    MarsModelingStep,
+    MarsPipelineResult,
+    MarsPipelineStep,
+    MarsSelectionStep,
+    MarsStepResult,
+    MarsWOEBinningStep,
+)
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
@@ -71,6 +80,13 @@ __all__ = [
     "MarsMonitoringData",
     "MarsMonitoringReport",
     "generate_monitoring_alert",
+    "MarsModelingPipeline",
+    "MarsModelingStep",
+    "MarsPipelineStep",
+    "MarsPipelineResult",
+    "MarsSelectionStep",
+    "MarsStepResult",
+    "MarsWOEBinningStep",
     "MarsScorecard",
     "build_scorecard",
     "logger",

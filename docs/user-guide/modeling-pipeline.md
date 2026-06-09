@@ -1,6 +1,6 @@
 # Modeling Pipeline
 
-Modeling Pipeline 用于组织样本切分、模型调参、按 trial 回放、建模评估和特征重要性输出。
+Modeling Pipeline 用于组织特征筛选、可选 WOE 分箱、样本切分、模型调参、按 trial 回放、建模评估和特征重要性输出。
 
 !!! warning "快速迭代模块"
     Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
@@ -15,6 +15,81 @@ Modeling Pipeline 用于组织样本切分、模型调参、按 trial 回放、�
 | `lr` / `logistic` | Logistic Regression |
 
 Logistic Regression 支持 numeric 与 WOE 两种特征模式。
+
+## 建模编排 Pipeline
+
+`mars.pipeline` 提供 MARS 自己的轻量编排层，用于把多个特征筛选步骤、可选 WOE 分箱步骤和最终建模步骤串起来。它不是 sklearn `Pipeline` 的严格子类，但保留 `fit`、`transform` 和 `predict` 的调用习惯。
+
+树模型通常不需要先做 WOE 分箱，推荐直接走“筛选 -> 建模”：
+
+```python
+from mars.feature import MarsImportanceSelector, MarsStatsSelector
+from mars.pipeline import MarsModelingPipeline, MarsModelingStep, MarsSelectionStep
+
+pipeline = MarsModelingPipeline(
+    target="target",
+    features=["income", "utilization", "segment"],
+    steps=[
+        MarsSelectionStep(
+            name="stats_filter",
+            selector=MarsStatsSelector(iv_thr=0.02),
+        ),
+        MarsSelectionStep(
+            name="importance_filter",
+            selector=MarsImportanceSelector(selection_mode="top_k", selection_threshold=80),
+            fit_params={"importance_table": importance_table},
+        ),
+        MarsModelingStep(
+            name="modeling",
+            model_type="lgb",
+            time_col="apply_dt",
+            split_ratios={"train": 0.6, "val": 0.2, "oot": 0.2},
+            tune_params={"n_trials": 20, "artifact_dir": None},
+        ),
+    ],
+)
+
+pipeline_result = pipeline.fit(df)
+scored_df = pipeline.predict(df, pred_col="model_score")
+```
+
+LR / 评分卡链路可以显式加入 `MarsWOEBinningStep`。该模式会先生成 `*_woe` 特征，再让后续筛选和 LR numeric 后端消费这些 WOE 列，避免重复触发 LR 后端内部 WOE：
+
+```python
+from mars.feature import MarsLinearSelector, MarsLiteOptBinner, MarsStatsSelector
+from mars.pipeline import (
+    MarsModelingPipeline,
+    MarsModelingStep,
+    MarsSelectionStep,
+    MarsWOEBinningStep,
+)
+
+pipeline = MarsModelingPipeline(
+    target="target",
+    features=["income", "utilization"],
+    steps=[
+        MarsSelectionStep(
+            name="stats_filter",
+            selector=MarsStatsSelector(iv_thr=0.02),
+        ),
+        MarsWOEBinningStep(
+            name="woe",
+            binner=MarsLiteOptBinner(n_bins=6, monotonic_trend="auto_asc_desc"),
+        ),
+        MarsSelectionStep(
+            name="linear_filter",
+            selector=MarsLinearSelector(corr_thr=0.8),
+        ),
+        MarsModelingStep(
+            name="modeling",
+            model_type="lr",
+            tune_params={"n_trials": 10, "artifact_dir": None},
+        ),
+    ],
+)
+```
+
+`MarsSelectionStep` 可以出现多次，每一步都只消费上一阶段的 active features。`MarsModelingStep` 最多出现一次且必须放在最后；如果任意筛选步骤筛空特征，Pipeline 会直接抛出 `ValueError`。
 
 ## 建模会话
 

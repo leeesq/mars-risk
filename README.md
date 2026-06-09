@@ -345,6 +345,41 @@ Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定�
 
 当前支持 XGBoost（`xgb`）、LightGBM（`lgb`）、CatBoost（`cbt` / `cat` / `catboost`）和 Logistic Regression（`lr` / `logistic`）。逻辑回归支持 numeric 与 WOE 两种特征模式。
 
+`mars.pipeline` 提供轻量编排入口，可以把多个特征筛选步骤、可选 WOE 分箱步骤和最终建模步骤串起来。树模型通常直接使用“筛选 -> 建模”；LR / 评分卡链路可以显式加入 `MarsWOEBinningStep`，让后续筛选和建模消费 `*_woe` 特征。
+
+```python
+from mars.feature import MarsLiteOptBinner, MarsStatsSelector
+from mars.pipeline import (
+    MarsModelingPipeline,
+    MarsModelingStep,
+    MarsSelectionStep,
+    MarsWOEBinningStep,
+)
+
+pipeline = MarsModelingPipeline(
+    target="target",
+    features=["income", "utilization"],
+    steps=[
+        MarsSelectionStep(
+            name="stats_filter",
+            selector=MarsStatsSelector(iv_thr=0.02),
+        ),
+        MarsWOEBinningStep(
+            name="woe",
+            binner=MarsLiteOptBinner(n_bins=6, monotonic_trend="auto_asc_desc"),
+        ),
+        MarsModelingStep(
+            name="modeling",
+            model_type="lr",
+            tune_params={"n_trials": 10, "artifact_dir": None},
+        ),
+    ],
+)
+
+pipeline_result = pipeline.fit(modeling_df)
+scored_df = pipeline.predict(modeling_df, pred_col="model_score")
+```
+
 调参指标支持 `auc`、`ks`、`f1` 和自定义 metric；自定义 metric 使用 `custom_metrics={"name": func}` 注册，并可通过 `metric_directions` 指定 maximize/minimize。`MarsModelTuner.tune()` 默认会在 `modeling_artifacts/` 下为每次运行生成独立目录，保留 `history.csv`、`run_config.json`、`metadata.json`、最优模型、动态保留的 Top-N 模型和特征重要性；如果只想内存运行，传 `artifact_dir=None`。显式请求 `importance_methods=("native", "shap")` 时会计算 SHAP importance。
 
 `MarsModelReplayRunner` 既支持按 Top-K 自动回放，也支持 `trial_nums=[...]` 按用户指定 trial 编号回放；`retrain=False` 时会直接使用调参阶段已保留的模型。评估阶段支持多个 `benchmark_cols` 和多个 `aux_targets`，长 y / 短 y 表现期不一致时可配合 `target_group_cols` 使用各自独立的样本切片。
@@ -387,6 +422,7 @@ eval_report.write_html("mars_evaluation.html")
 | `mars.analysis` | `MarsDataProfiler`、`MarsBinEvaluator`、`MarsRiskProfile`、`profile_stats`、`profile_risk` |
 | `mars.feature` | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` |
 | `mars.modeling` | `MarsModelingSession` |
+| `mars.pipeline` | `MarsModelingPipeline`、`MarsPipelineStep`、`MarsSelectionStep`、`MarsWOEBinningStep`、`MarsModelingStep`、`MarsPipelineResult` |
 | `mars.modeling.tuning` | `MarsModelTuner`、`MarsModelReplayRunner` |
 | `mars.modeling.slicing` | `MarsModelDataSplitter` |
 | `mars.modeling.results` | `MarsModelTuningResult`、`MarsModelReplayResult` |
