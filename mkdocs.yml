@@ -81,7 +81,7 @@ nav:
       - 数据画像与特征分析: user-guide/data-profiling.md
       - 分箱与风险评估: user-guide/binning-risk-evaluation.md
       - 特征筛选: user-guide/feature-selection.md
-      - Modeling Pipeline: user-guide/modeling-pipeline.md
+      - Modeling / Pipeline: user-guide/modeling-pipeline.md
       - 特征/模型监控: user-guide/monitoring.md
       - 报表导出与二次加工: user-guide/reports-and-exports.md
   - Performance:
@@ -93,7 +93,7 @@ nav:
       - Analysis: reference/analysis.md
       - Feature: reference/feature.md
       - Monitoring: reference/monitoring.md
-      - Modeling Pipeline: reference/modeling.md
+      - Modeling / Pipeline: reference/modeling.md
       - Scoring: reference/scoring.md
       - Report 对象: reference/report-objects.md
   - FAQ: faq.md

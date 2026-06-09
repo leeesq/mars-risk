@@ -2,7 +2,7 @@
 
 ## MARS 和 toad 有什么区别？
 
-toad 是成熟的传统评分卡工具，强在经典评分卡链路、社区沉淀和易用性。MARS 更强调 Polars-first、宽表性能、结构化 report、特征/模型监控、Excel/HTML 交付和 Modeling Pipeline 串联。
+toad 是成熟的传统评分卡工具，强在经典评分卡链路、社区沉淀和易用性。MARS 更强调 Polars-first、宽表性能、结构化 report、特征/模型监控、Excel/HTML 交付，以及 Modeling 建模和 Pipeline 编排的串联。
 
 ## MARS 和 optbinning 有什么区别？
 
@@ -24,9 +24,9 @@ optbinning 是优秀的最优分箱算法库。MARS 使用 `MarsOptimalBinner` �
 
 不可以。监控模块只接受 `0`、`1`、`True`、`False` 和空值。字符串、`-1`、`2`、`"pending"` 等非空异常值会直接抛出 `ValueError`。
 
-## Modeling Pipeline 稳定吗？
+## Modeling 和 Pipeline 稳定吗？
 
-Modeling Pipeline 仍在快速迭代中，可能不稳定。后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
+Modeling 建模和 Pipeline 编排仍在快速迭代中，可能不稳定。后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
 
 ## `MarsModelTuner.tune(artifact_dir=None)` 会写文件吗？
 

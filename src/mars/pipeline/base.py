@@ -78,15 +78,17 @@ class MarsPipelineStep(ABC):
 
     子类负责管理自身的 ``fit_transform`` 和 ``transform`` 生命周期；Pipeline 主类只负责
     调度、拓扑校验和最终结果组装。
-
-    Parameters
-    ----------
-    name : str
-        step 唯一名称。
     """
 
     def __init__(self, name: str) -> None:
-        """初始化 step 名称。"""
+        """
+        初始化 step 名称。
+
+        Parameters
+        ----------
+        name : str
+            step 唯一名称。
+        """
         self.name = name
 
     @abstractmethod
@@ -103,7 +105,7 @@ class MarsPipelineStep(ABC):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         target : str
             建模主目标列。
@@ -131,7 +133,7 @@ class MarsPipelineStep(ABC):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         active_features : Sequence[str]
             当前 step 可消费的特征列。

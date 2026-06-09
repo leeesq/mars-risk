@@ -1,6 +1,6 @@
 # 快速开始
 
-本页用一个小样本串起数据画像、分箱评估、分箱器、特征筛选、特征/模型监控和 Modeling Pipeline。
+本页用一个小样本串起数据画像、分箱评估、分箱器、特征筛选、特征/模型监控、Modeling 建模和 Pipeline 编排。
 
 ## 准备样本
 
@@ -156,11 +156,11 @@ alert_text = generate_monitoring_alert(
 
 `MarsMonitor` 是特征/模型监控的通用指标计算层。`trend_column_order="desc"` 可以让最新时间列展示在趋势宽表最前面，报警摘要会按 report 记录的顺序识别基准期和最新期。
 
-## Modeling Pipeline
+## Modeling / Pipeline
 
-Modeling Pipeline 仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。当前支持 XGBoost、LightGBM、CatBoost 和 Logistic Regression。
+Modeling 建模和 Pipeline 编排仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。当前 Modeling 支持 XGBoost、LightGBM、CatBoost 和 Logistic Regression。
 
-如果希望把筛选、可选 WOE 和建模串成一条链路，可以使用 `mars.pipeline`：
+如果希望把筛选、可选 WOE 和建模串成一条链路，可以使用 `mars.pipeline`。树模型通常走“筛选 -> 建模”：
 
 ```python
 from mars.feature import MarsStatsSelector
@@ -187,7 +187,7 @@ pipeline = MarsModelingPipeline(
 pipeline_result = pipeline.fit(df)
 ```
 
-LR / 评分卡链路可以在中间显式加入 `MarsWOEBinningStep`，让后续步骤消费 `*_woe` 特征。
+LR / 评分卡链路可以在中间显式加入 `MarsWOEBinningStep`，让后续步骤消费 `*_woe` 特征。也可以直接使用 `mars.modeling` 做单次建模会话：
 
 ```python
 from mars.modeling import MarsModelingSession

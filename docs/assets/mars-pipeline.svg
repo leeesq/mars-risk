@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="132" viewBox="0 0 1120 132" role="img" aria-labelledby="title desc">
   <title id="title">MARS pipeline</title>
-  <desc id="desc">MARS 从数据画像到报表导出的风控分析建模流程轨道。</desc>
+  <desc id="desc">MARS 从数据画像、Pipeline 编排、Modeling 建模到报表导出的风控分析建模流程轨道。</desc>
   <defs>
     <linearGradient id="rail-gradient" x1="0" x2="1" y1="0" y2="0">
       <stop offset="0%" stop-color="#14b8a6"/>
@@ -77,39 +77,44 @@
     </style>
   </defs>
   <rect class="panel" x="12" y="12" width="1096" height="108" rx="18"/>
-  <path class="rail" d="M88 62 H1032"/>
+  <path class="rail" d="M78 62 H1044"/>
   <g text-anchor="middle">
-    <g transform="translate(88 62)">
+    <g transform="translate(78 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Profile</text>
       <text class="sub" y="36">DATA</text>
     </g>
-    <g transform="translate(242 62)">
+    <g transform="translate(216 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Bin/Evaluate</text>
       <text class="sub" y="36">RISK</text>
     </g>
-    <g transform="translate(396 62)">
+    <g transform="translate(354 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Analyze</text>
       <text class="sub" y="36">FEATURE</text>
     </g>
-    <g transform="translate(550 62)">
+    <g transform="translate(492 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Select</text>
       <text class="sub" y="36">FILTER</text>
     </g>
-    <g transform="translate(704 62)">
+    <g transform="translate(630 62)">
       <circle class="dot-main" r="12"/>
-      <text class="label" y="-24">Modeling Pipeline</text>
+      <text class="label" y="-24">Modeling</text>
       <text class="sub" y="38">MODEL</text>
     </g>
-    <g transform="translate(878 62)">
+    <g transform="translate(768 62)">
+      <circle class="dot" r="10"/>
+      <text class="label" y="-24">Pipeline</text>
+      <text class="sub" y="36">ORCHESTRATE</text>
+    </g>
+    <g transform="translate(906 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Monitor</text>
       <text class="sub" y="36">STABILITY</text>
     </g>
-    <g transform="translate(1032 62)">
+    <g transform="translate(1044 62)">
       <circle class="dot" r="10"/>
       <text class="label" y="-24">Report</text>
       <text class="sub" y="36">DELIVER</text>

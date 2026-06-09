@@ -1,12 +1,13 @@
-# Modeling Pipeline
+# Modeling / Pipeline
 
 !!! warning "快速迭代模块"
-    Modeling Pipeline 仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
+    Modeling 建模和 Pipeline 编排仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
 
 ## 能力索引
 
 | 能力 | 主要入口 | 说明 |
 | --- | --- | --- |
+| Pipeline 编排 | `MarsModelingPipeline` / `MarsSelectionStep` / `MarsWOEBinningStep` / `MarsModelingStep` | 串联多层筛选、可选 WOE 分箱和最终建模 |
 | 样本切分 | `MarsModelingSession.slice` / `MarsModelDataSplitter` | 按时间严格切分 train/val/oot，或为长短 y 生成独立切片列 |
 | 模型调参 | `MarsModelingSession.tune` / `MarsModelTuner.tune` | 支持 XGBoost、LightGBM、CatBoost、Logistic Regression |
 | 指标体系 | `optimize_metric` / `custom_metrics` | 内置 `auc`、`ks`、`f1`，支持自定义 metric 和 maximize/minimize |

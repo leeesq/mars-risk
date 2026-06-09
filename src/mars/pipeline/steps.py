@@ -19,16 +19,8 @@ class MarsSelectionStep(MarsPipelineStep):
     """
     Pipeline 中的特征筛选 step。
 
-    Parameters
-    ----------
-    name : str
-        step 唯一名称。
-    selector : MarsBaseSelector
-        已配置好筛选策略的 MARS selector。
-    fit_params : Mapping[str, Any] | None
-        传给 selector ``fit`` 的本次任务参数。对于 ``MarsStatsSelector``，会额外自动传入
-        ``target`` 和当前 active features；对于 sklearn 风格 selector，会自动传入 ``X``、``y``
-        和当前 active features。
+    该 step 可以在同一个 Pipeline 中出现多次，每一步都只消费上一阶段输出的
+    active features。
     """
 
     def __init__(
@@ -37,7 +29,20 @@ class MarsSelectionStep(MarsPipelineStep):
         selector: MarsBaseSelector,
         fit_params: Mapping[str, Any] | None = None,
     ) -> None:
-        """初始化筛选 step。"""
+        """
+        初始化筛选 step。
+
+        Parameters
+        ----------
+        name : str
+            step 唯一名称。
+        selector : MarsBaseSelector
+            已配置好筛选策略的 MARS selector。
+        fit_params : Mapping[str, Any] | None
+            传给 selector ``fit`` 的本次任务参数。对于 ``MarsStatsSelector``，会额外
+            自动传入 ``target`` 和当前 active features；对于 sklearn 风格 selector，
+            会自动传入 ``X``、``y`` 和当前 active features。
+        """
         super().__init__(name)
         self.selector = selector
         self.fit_params = dict(fit_params or {})
@@ -55,7 +60,7 @@ class MarsSelectionStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         target : str
             建模主目标列。
@@ -120,7 +125,7 @@ class MarsSelectionStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         active_features : Sequence[str]
             当前 active features。
@@ -147,16 +152,7 @@ class MarsWOEBinningStep(MarsPipelineStep):
     """
     Pipeline 中显式生成 WOE 特征的分箱 step。
 
-    Parameters
-    ----------
-    name : str
-        step 唯一名称。
-    binner : MarsBinnerBase
-        已配置好分箱策略的 MARS binner。
-    cat_features : Sequence[str] | None
-        当前 active features 中需要按类别特征处理的列。
-    woe_batch_size : int
-        WOE 映射物化时的批大小。
+    该 step 主要服务 LR 和评分卡链路；树模型可以显式使用，但不作为默认推荐路径。
     """
 
     def __init__(
@@ -166,7 +162,20 @@ class MarsWOEBinningStep(MarsPipelineStep):
         cat_features: Sequence[str] | None = None,
         woe_batch_size: int = 200,
     ) -> None:
-        """初始化 WOE 分箱 step。"""
+        """
+        初始化 WOE 分箱 step。
+
+        Parameters
+        ----------
+        name : str
+            step 唯一名称。
+        binner : MarsBinnerBase
+            已配置好分箱策略的 MARS binner。
+        cat_features : Sequence[str] | None
+            当前 active features 中需要按类别特征处理的列。
+        woe_batch_size : int
+            WOE 映射物化时的批大小。
+        """
         super().__init__(name)
         self.binner = binner
         self.cat_features = list(cat_features or [])
@@ -185,7 +194,7 @@ class MarsWOEBinningStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         target : str
             建模主目标列。
@@ -198,11 +207,6 @@ class MarsWOEBinningStep(MarsPipelineStep):
         -------
         tuple of polars.DataFrame, list of str, MarsStepResult
             追加 WOE 列后的工作表、WOE 特征列和 step 结果。
-
-        Raises
-        ------
-        ValueError
-            分箱转换没有生成预期 WOE 列时抛出。
         """
         logger.info("Running WOE binning step %s.", self.name)
         input_features = list(active_features)
@@ -250,7 +254,7 @@ class MarsWOEBinningStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         active_features : Sequence[str]
             当前需要转换的特征列。
@@ -261,11 +265,6 @@ class MarsWOEBinningStep(MarsPipelineStep):
         -------
         tuple of polars.DataFrame and list of str
             追加 WOE 列后的工作表和 WOE 特征列。
-
-        Raises
-        ------
-        ValueError
-            分箱转换没有生成预期 WOE 列时抛出。
         """
         input_features = list(active_features)
         transformed = self.binner.transform(
@@ -284,28 +283,7 @@ class MarsModelingStep(MarsPipelineStep):
     """
     Pipeline 中的最终建模 step。
 
-    Parameters
-    ----------
-    name : str
-        step 唯一名称。
-    model_type : str
-        建模后端类型，例如 ``"lgb"``、``"xgb"``、``"cbt"`` 或 ``"lr"``。
-    time_col : str | None
-        需要自动切分样本时使用的时间列。
-    split_ratios : Mapping[str, float] | None
-        训练、验证和 OOT 的切分比例；与 ``time_col`` 同时提供时自动调用 session.slice。
-    dataset_flag_col : str
-        建模样本切片列名。
-    categorical_features : Sequence[str] | None
-        进入建模后端的类别特征列。若上游已生成 WOE 特征，通常应保持为空。
-    optimize_metric : str
-        调参优化指标。
-    seed : int
-        随机种子。
-    tune_params : Mapping[str, Any] | None
-        传给 ``MarsModelingSession.tune`` 的参数。
-    slice_params : Mapping[str, Any] | None
-        传给 ``MarsModelingSession.slice`` 的额外参数。
+    该 step 最多出现一次，且必须位于 Pipeline 最后。
     """
 
     def __init__(
@@ -322,7 +300,33 @@ class MarsModelingStep(MarsPipelineStep):
         tune_params: Mapping[str, Any] | None = None,
         slice_params: Mapping[str, Any] | None = None,
     ) -> None:
-        """初始化建模 step。"""
+        """
+        初始化建模 step。
+
+        Parameters
+        ----------
+        name : str
+            step 唯一名称。
+        model_type : str
+            建模后端类型，例如 ``"lgb"``、``"xgb"``、``"cbt"`` 或 ``"lr"``。
+        time_col : str | None
+            需要自动切分样本时使用的时间列。
+        split_ratios : Mapping[str, float] | None
+            训练、验证和 OOT 的切分比例；与 ``time_col`` 同时提供时自动调用
+            ``session.slice``。
+        dataset_flag_col : str
+            建模样本切片列名。
+        categorical_features : Sequence[str] | None
+            进入建模后端的类别特征列。若上游已生成 WOE 特征，通常应保持为空。
+        optimize_metric : str
+            调参优化指标。
+        seed : int
+            随机种子。
+        tune_params : Mapping[str, Any] | None
+            传给 ``MarsModelingSession.tune`` 的参数。
+        slice_params : Mapping[str, Any] | None
+            传给 ``MarsModelingSession.slice`` 的额外参数。
+        """
         super().__init__(name)
         self.model_type = model_type
         self.time_col = time_col
@@ -349,14 +353,15 @@ class MarsModelingStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         target : str
             建模主目标列。
         active_features : Sequence[str]
             最终进入建模的特征列。
         pipeline_state : MutableMapping[str, Any]
-            Pipeline 级状态；如果已经执行 WOE step，LR 会按 numeric 模式消费外部 WOE 列。
+            Pipeline 级状态；如果已经执行 WOE step，LR 会按 numeric 模式消费外部 WOE
+            列；否则 LR 会启用后端自身的 WOE 转换。
 
         Returns
         -------
@@ -375,6 +380,8 @@ class MarsModelingStep(MarsPipelineStep):
         categorical_features = [
             feature for feature in self.categorical_features if feature in set(input_features)
         ]
+        has_woe_step = bool(pipeline_state.get("has_woe_step", False))
+        lr_feature_mode = "numeric" if has_woe_step else "woe"
         self.session = MarsModelingSession(
             model_type=self.model_type,
             features=input_features,
@@ -383,7 +390,7 @@ class MarsModelingStep(MarsPipelineStep):
             categorical_features=categorical_features,
             optimize_metric=self.optimize_metric,
             seed=self.seed,
-            lr_feature_mode="numeric",
+            lr_feature_mode=lr_feature_mode,
         )
 
         modeling_df: FrameLike = df
@@ -421,7 +428,8 @@ class MarsModelingStep(MarsPipelineStep):
                 "model_type": self.model_type,
                 "dataset_flag_col": self.dataset_flag_col,
                 "backend_data_mode": tuning_result.backend_data_mode,
-                "has_prior_woe_step": bool(pipeline_state.get("has_woe_step", False)),
+                "has_prior_woe_step": has_woe_step,
+                "lr_feature_mode": lr_feature_mode,
             },
         )
 
@@ -437,7 +445,7 @@ class MarsModelingStep(MarsPipelineStep):
 
         Parameters
         ----------
-        df : polars.DataFrame
+        df : pl.DataFrame
             当前 Pipeline 工作表。
         active_features : Sequence[str]
             最终建模特征列。

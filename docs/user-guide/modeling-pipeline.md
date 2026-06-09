@@ -1,9 +1,9 @@
-# Modeling Pipeline
+# Modeling / Pipeline
 
-Modeling Pipeline 用于组织特征筛选、可选 WOE 分箱、样本切分、模型调参、按 trial 回放、建模评估和特征重要性输出。
+`mars.modeling` 负责样本切分、模型调参、按 trial 回放、建模评估和特征重要性输出。`mars.pipeline` 负责把多层特征筛选、可选 WOE 分箱和最终建模串成一条可复用链路。
 
 !!! warning "快速迭代模块"
-    Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
+    Modeling 建模和 Pipeline 编排仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
 
 ## 支持模型
 
@@ -16,7 +16,7 @@ Modeling Pipeline 用于组织特征筛选、可选 WOE 分箱、样本切分、
 
 Logistic Regression 支持 numeric 与 WOE 两种特征模式。
 
-## 建模编排 Pipeline
+## Pipeline 编排
 
 `mars.pipeline` 提供 MARS 自己的轻量编排层，用于把多个特征筛选步骤、可选 WOE 分箱步骤和最终建模步骤串起来。它不是 sklearn `Pipeline` 的严格子类，但保留 `fit`、`transform` 和 `predict` 的调用习惯。
 
@@ -91,7 +91,7 @@ pipeline = MarsModelingPipeline(
 
 `MarsSelectionStep` 可以出现多次，每一步都只消费上一阶段的 active features。`MarsModelingStep` 最多出现一次且必须放在最后；如果任意筛选步骤筛空特征，Pipeline 会直接抛出 `ValueError`。
 
-## 建模会话
+## Modeling 建模会话
 
 ```python
 from mars.modeling import MarsModelingSession

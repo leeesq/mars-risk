@@ -8,7 +8,7 @@
 
 <img src="docs/assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库" width="720">
 
-<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling Pipeline -> Monitor -> Report" width="820">
+<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
 
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
@@ -29,7 +29,7 @@
   <br>
   <a href="#快速开始">快速开始</a> ·
   <a href="#核心-api-约定">核心 API 约定</a> ·
-  <a href="#modeling-pipeline">Modeling Pipeline</a> ·
+  <a href="#modeling-pipeline">Modeling / Pipeline</a> ·
   <a href="#excelhtml-报表导出与二次加工">报表导出</a> ·
   <a href="#faq">FAQ</a>
 </p>
@@ -38,7 +38,7 @@
 
 ## 项目简介
 
-MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征/模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、监控指标计算和报表导出，让日常风控建模流程更容易复用、审计和交付。
+MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling 建模、Pipeline 编排、特征/模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、流程编排、监控指标计算和报表导出，让日常风控建模流程更容易复用、审计和交付。
 
 MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参与评估结果、导出产物组织在同一套结构化报告体系中。使用者既可以直接生成 Excel/HTML 报表，也可以读取各模块返回的多粒度数据，继续做特征复盘、基于结构化表定制监控规则、内部看板数据接入或定制化分析。
 
@@ -47,7 +47,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 - **性能优先**：面向宽表、大样本、多特征风控场景，核心计算优先使用 Polars，减少不必要的数据复制和跨框架转换。
 - **sklearn 风格**：底层算法对象保持 `fit` / `transform` / `evaluate` 等熟悉范式，便于接入现有建模实验和 Pipeline。
 - **Pandas/Polars 兼容**：核心计算优先走 Polars，同时兼容 Pandas 和 Polars 的输入与输出；需要保持原类型的链路尽量减少无意义转换。
-- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、Modeling Pipeline、特征/模型监控和报表导出组织能力。
+- **风控全链路**：围绕数据画像、分箱评估、特征分析、特征筛选、Modeling 建模、Pipeline 编排、特征/模型监控和报表导出组织能力。
 - **模块可串联**：分箱规则、指标明细、筛选结果、模型结果和 report 对象可在模块间复用，减少 Notebook、Excel 和零散脚本中的重复加工。
 - **监控边界清晰**：特征/模型监控共用一套通用指标计算逻辑；MARS 输出结构化指标和默认报警摘要，监控窗口、基准样本、模型版本、调度方式、阈值策略、看板和业务处置流程由使用者定义。
 - **补齐开源空白**：聚焦通用开源工具通常覆盖不足的信贷风控宽表分析、通用监控指标计算、报表交付和可复盘 report 对象。
@@ -55,7 +55,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 
 ## 能力地图
 
-模块链路：数据画像 -> 分箱评估 -> 特征分析 -> 特征筛选 -> Modeling Pipeline -> 特征/模型监控 -> Excel/HTML 报表导出。
+模块链路：数据画像 -> 分箱评估 -> 特征分析 -> 特征筛选 -> Modeling 建模 -> Pipeline 编排 -> 特征/模型监控 -> Excel/HTML 报表导出。
 
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
@@ -63,7 +63,8 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 | 分箱评估 | `MarsNativeBinner` / `MarsLiteOptBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
-| Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K / 指定 trial replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
+| Modeling 建模 | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K / 指定 trial replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
+| Pipeline 编排 | `MarsModelingPipeline` / `MarsSelectionStep` / `MarsWOEBinningStep` / `MarsModelingStep` | 多层特征筛选、可选 WOE 分箱、树模型筛选后建模、LR / 评分卡 WOE 后建模 | `MarsPipelineResult` |
 | 特征/模型监控 | `MarsMonitor` / `generate_monitoring_alert` | 支持**前端监控**、**后端监控**的通用指标计算、PSI、缺失趋势、分箱占比趋势、分箱统计量趋势、target 表现覆盖率、默认报警摘要 | `MarsMonitoringReport`、监控报警摘要 |
 | Excel/HTML 报表导出 | `write_excel` / `write_html` / `build_scorecard` | 画像报表、风险评估报表、建模评估报表、评分卡映射、部署 SQL | Excel、HTML、`MarsScorecard` |
 
@@ -101,7 +102,7 @@ MARS 的原生等频/等宽分箱不只是生成切点。围绕风控特征分�
 - `merge_small_bins` 可在等频/等宽后自动合并低占比碎片箱，减少极端宽表中的不稳定分箱。
 - `remove_empty_bins` 可在等宽场景自动清理空箱，适配长尾、零膨胀和稀疏分布。
 - 原生分箱支持处理类别特征，最优分箱支持类别合并，用于降低高基数类别带来的不稳定性。
-- 分箱规则可以继续进入特征分析、特征监控、模型监控、Modeling Pipeline 结果和后续报表链路，减少从探索到部署之间的规则重写。
+- 分箱规则可以继续进入特征分析、特征监控、模型监控、Modeling 建模结果、Pipeline 编排结果和后续报表链路，减少从探索到部署之间的规则重写。
 
 ### 最优分箱：MarsOptimalBinner vs optbinning
 
@@ -290,7 +291,7 @@ alert_text = generate_monitoring_alert(
 
 监控也可以在有 target 时使用 `binning_type="lite_opt"` 复用轻量监督式最优分箱；无标签分布监控建议保持 `binning_type="native"`。
 
-### Modeling Pipeline
+### Modeling / Pipeline
 
 建模调参需要安装 `ml` 和 `tuning` 可选依赖。
 
@@ -339,13 +340,15 @@ replay_result = MarsModelReplayRunner().run(
 | 建模切片 | `dataset_flag_col` 只表示 train/val/oot 等建模样本切片 |
 | 文件输出 | 路径参数支持 `str | Path`；`artifact_dir=None` 表示不写建模调参产物 |
 
-## Modeling Pipeline
+<a id="modeling-pipeline"></a>
 
-Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。
+## Modeling / Pipeline
+
+Modeling 建模和 Pipeline 编排仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。
 
 当前支持 XGBoost（`xgb`）、LightGBM（`lgb`）、CatBoost（`cbt` / `cat` / `catboost`）和 Logistic Regression（`lr` / `logistic`）。逻辑回归支持 numeric 与 WOE 两种特征模式。
 
-`mars.pipeline` 提供轻量编排入口，可以把多个特征筛选步骤、可选 WOE 分箱步骤和最终建模步骤串起来。树模型通常直接使用“筛选 -> 建模”；LR / 评分卡链路可以显式加入 `MarsWOEBinningStep`，让后续筛选和建模消费 `*_woe` 特征。
+`mars.modeling` 提供样本切分、模型调参、trial replay 和建模评估能力。`mars.pipeline` 提供轻量编排入口，可以把多个特征筛选步骤、可选 WOE 分箱步骤和最终建模步骤串起来。树模型通常直接使用“筛选 -> 建模”；LR / 评分卡链路可以显式加入 `MarsWOEBinningStep`，让后续筛选和建模消费 `*_woe` 特征。
 
 ```python
 from mars.feature import MarsLiteOptBinner, MarsStatsSelector

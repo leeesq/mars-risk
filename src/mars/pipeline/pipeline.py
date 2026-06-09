@@ -16,22 +16,12 @@ from mars.utils.logger import logger
 
 class MarsModelingPipeline:
     """
-    串联特征筛选、可选 WOE 分箱和 Modeling Pipeline 的高层编排器。
+    串联特征筛选、可选 WOE 分箱和 Modeling 建模的高层 Pipeline 编排器。
 
     Pipeline 面向风控建模宽表场景，默认保持树模型链路简单：先筛选特征，再进入建模。
     LR 或评分卡链路可以显式加入 ``MarsWOEBinningStep``，把原始特征转换为 ``*_woe`` 后再筛选
     或建模。该类不是 sklearn ``Pipeline`` 的严格子类，但保留熟悉的 ``fit``、``transform`` 和
     ``predict`` 调用方式。
-
-    Parameters
-    ----------
-    target : str
-        建模主目标列。
-    features : Sequence[str]
-        初始候选特征列。
-    steps : Sequence[MarsPipelineStep]
-        按顺序执行的 step 列表。``MarsSelectionStep`` 可出现多次；
-        ``MarsModelingStep`` 最多出现一次且必须放在最后。
 
     Examples
     --------
@@ -52,7 +42,19 @@ class MarsModelingPipeline:
         features: Sequence[str],
         steps: Sequence[MarsPipelineStep],
     ) -> None:
-        """初始化建模编排器并校验 step 拓扑。"""
+        """
+        初始化建模编排器并校验 step 拓扑。
+
+        Parameters
+        ----------
+        target : str
+            建模主目标列。
+        features : Sequence[str]
+            初始候选特征列。
+        steps : Sequence[MarsPipelineStep]
+            按顺序执行的 step 列表。``MarsSelectionStep`` 可出现多次；
+            ``MarsModelingStep`` 最多出现一次且必须放在最后。
+        """
         self.target = target
         self.features = list(features)
         self.steps = list(steps)
@@ -76,11 +78,6 @@ class MarsModelingPipeline:
         -------
         MarsPipelineResult
             Pipeline 执行结果，包含最终特征、每步报告和建模调参结果。
-
-        Raises
-        ------
-        ValueError
-            当输入缺少必要列、某一步筛空特征或建模切分配置不完整时抛出。
         """
         self._prefer_polars = is_polars_dataframe(df)
         working_df = self._to_polars(df)
@@ -147,13 +144,6 @@ class MarsModelingPipeline:
         -------
         pandas.DataFrame or polars.DataFrame
             保留原始上下文列，并追加已拟合 WOE 特征后的样本。返回类型尽量与输入一致。
-
-        Raises
-        ------
-        RuntimeError
-            Pipeline 尚未拟合时抛出。
-        ValueError
-            输入样本缺少必要特征列时抛出。
         """
         self._check_is_fitted()
         working_df = self._to_polars(df)

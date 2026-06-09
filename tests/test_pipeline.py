@@ -109,7 +109,9 @@ def test_pipeline_selection_step_empty_features_raises(sample_modeling_pd: pd.Da
         pipeline.fit(sample_modeling_pd)
 
 
-def test_pipeline_runs_selection_to_numeric_lr_modeling(sample_modeling_pd: pd.DataFrame) -> None:
+def test_pipeline_runs_selection_to_internal_woe_lr_modeling(
+    sample_modeling_pd: pd.DataFrame,
+) -> None:
     pipeline = MarsModelingPipeline(
         target="target",
         features=["x1", "x2", "x3"],
@@ -136,6 +138,9 @@ def test_pipeline_runs_selection_to_numeric_lr_modeling(sample_modeling_pd: pd.D
     assert isinstance(result.modeling_result, MarsModelTuningResult)
     assert result.modeling_result.features == ["x1", "x2"]
     assert result.step_results[-1].metadata["model_type"] == "lr"
+    assert result.step_results[-1].metadata["lr_feature_mode"] == "woe"
+    assert result.modeling_result.training_config["lr_feature_mode"] == "woe"
+    assert result.modeling_result.backend_data_mode == "pandas_native_woe"
     assert "pipeline_score" in scored.columns
 
 
@@ -185,6 +190,7 @@ def test_pipeline_runs_external_woe_step_without_internal_lr_woe(
     assert all(feature.endswith("_woe") for feature in result.active_features)
     assert result.feature_map == {"x1": "x1_woe", "x2": "x2_woe"}
     assert result.modeling_result is not None
+    assert result.step_results[-1].metadata["lr_feature_mode"] == "numeric"
     assert result.modeling_result.training_config["lr_feature_mode"] == "numeric"
     assert result.modeling_result.backend_data_mode == "pandas_numeric"
     assert "pipeline_score" in scored.columns
