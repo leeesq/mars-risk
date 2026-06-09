@@ -1,7 +1,6 @@
 """MARS 数据画像与稳定性分析模块。"""
 
 import dataclasses
-import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Union
 
@@ -281,24 +280,15 @@ class MarsDataProfiler(MarsBaseEstimator):
         working_df = self.df
         group_col = profile_by
 
-        # 同时兼容标准粒度别名和 `Nd` 形式的滚动天窗指令。
-        is_date_granularity = profile_by in ["day", "week", "month"] or (
-            isinstance(profile_by, str) and bool(re.match(r"^\d+d$", profile_by.lower()))
-        )
+        # 同时兼容标准粒度别名和 `Nd/Nw/Nm` 形式的时间聚合指令。
+        is_date_granularity = MarsDate.is_time_grain(profile_by)
 
         # 自动日期聚合
         if dt_col and is_date_granularity:
             if dt_col not in self.df.columns:
                 raise ValueError(f"dt_col '{dt_col}' not found in DataFrame.")
 
-            # `day` 与 `Nd` 统一走按日聚合逻辑，避免分支分散。
-            if profile_by == "month":
-                date_expr = MarsDate.dt2month(dt_col)
-            elif profile_by == "week":
-                date_expr = MarsDate.dt2week(dt_col)
-            else:
-                # 命中 'day', '3d', '14d' 等
-                date_expr = MarsDate.dt2day(dt_col, interval=profile_by)
+            date_expr = MarsDate.from_grain(dt_col, profile_by)
 
             # 生成临时分组列名, 避免与现有列冲突
             temp_group_col = f"_mars_auto_{profile_by}"

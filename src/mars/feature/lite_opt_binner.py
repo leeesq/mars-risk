@@ -11,7 +11,8 @@ import polars as pl
 
 from mars.utils.logger import logger
 
-from .binner import MarsBinnerBase, MarsNativeBinner
+from .base import MarsBinnerBase
+from .native_binner import MarsNativeBinner
 
 PrebinningMethod = Literal["quantile", "uniform", "cart"]
 TrendShape = Literal["ascending", "descending", "peak", "valley", "auto"]

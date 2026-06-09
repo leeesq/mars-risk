@@ -381,6 +381,17 @@ def test_logistic_regression_woe_mode_supports_lite_opt_binner(sample_modeling_p
     assert set(result.best_model.binner.fitted_trends_) == {"x1", "x2"}
 
 
+def test_logistic_regression_woe_mode_rejects_opt_alias():
+    with pytest.raises(ValueError, match="optimal"):
+        MarsModelingSession(
+            model_type="logistic",
+            features=["x1", "x2"],
+            target="target",
+            lr_feature_mode="woe",
+            lr_binning_type="opt",
+        )
+
+
 def test_feature_incremental_tuner_resolves_steps_and_feature_order():
     tuner = MarsFeatureIncrementalTuner(
         model_type="xgb",

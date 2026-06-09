@@ -195,7 +195,10 @@ module = [
     "mars.analysis.profiler",
     "mars.analysis.report",
     "mars.core.base",
+    "mars.feature.base",
     "mars.feature.binner",
+    "mars.feature.native_binner",
+    "mars.feature.optimal_binner",
     "mars.feature.selector",
 ]
 disable_error_code = [

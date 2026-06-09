@@ -6,7 +6,17 @@ import polars as pl
 import pytest
 
 from mars.feature import MarsNativeBinner, MarsOptimalBinner
-from mars.feature.binner import MarsBinnerBase
+from mars.feature.base import MarsBinnerBase
+
+
+def test_binner_compat_facade_exports_split_classes():
+    from mars.feature.binner import MarsBinnerBase as FacadeBase
+    from mars.feature.binner import MarsNativeBinner as FacadeNative
+    from mars.feature.binner import MarsOptimalBinner as FacadeOptimal
+
+    assert FacadeBase is MarsBinnerBase
+    assert FacadeNative is MarsNativeBinner
+    assert FacadeOptimal is MarsOptimalBinner
 
 
 def test_native_binner_generates_bin_columns_and_handles_special_values(sample_credit_df):

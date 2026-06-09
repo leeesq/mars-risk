@@ -1,7 +1,6 @@
 """MARS 特征分箱评估模块。"""
 
 import inspect
-import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -12,8 +11,10 @@ import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
 from mars.core.base import MarsBaseEstimator
-from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBinner
+from mars.feature.base import MarsBinnerBase
 from mars.feature.lite_opt_binner import MarsLiteOptBinner
+from mars.feature.native_binner import MarsNativeBinner
+from mars.feature.optimal_binner import MarsOptimalBinner
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -84,7 +85,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
     def __init__(
         self,
         *,
-        binning_type: Literal["native", "opt", "lite_opt"] = "native",
+        binning_type: Literal["native", "optimal", "lite_opt"] = "native",
         binner_params: Dict[str, Any] | None = None,
     ) -> None:
         """
@@ -92,16 +93,28 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        binning_type : Literal['native', 'opt', 'lite_opt']
+        binning_type : Literal['native', 'optimal', 'lite_opt']
             未显式传入分箱器时使用的默认分箱策略。
         binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
+
+        Raises
+        ------
+        ValueError
+            当 `binning_type` 不是 `native`、`optimal` 或 `lite_opt` 时抛出。
         """
         super().__init__()
+        normalized_binning_type = str(binning_type).lower()
+        valid_binning_types = {"native", "optimal", "lite_opt"}
+        if normalized_binning_type not in valid_binning_types:
+            raise ValueError(
+                "binning_type must be one of {'native', 'optimal', 'lite_opt'}, "
+                f"got {binning_type!r}."
+            )
         self.target: str | None = None
         self.binner: MarsBinnerBase | None = None
         self.has_target_: bool = False
-        self.binning_type = binning_type
+        self.binning_type = normalized_binning_type
         self.binner_params = dict(binner_params or {})
 
     @time_it
@@ -238,15 +251,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             binner_factory = {
                 "native": MarsNativeBinner,
-                "opt": MarsOptimalBinner,
+                "optimal": MarsOptimalBinner,
                 "lite_opt": MarsLiteOptBinner,
             }
 
             # 确定分箱器类型
-            binner_cls = binner_factory.get(self.binning_type)
-            if binner_cls is None:
-                logger.warning(f"Unknown binning_type '{self.binning_type}'. Falling back to 'native'.")
-                binner_cls = MarsNativeBinner
+            binner_cls = binner_factory[self.binning_type]
 
             # 获取目标类的构造函数签名
             # inspect.signature 会分析 __init__(self, n_bins, min_bin_size, ...) 到底有哪些参数
@@ -1123,20 +1133,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
             logger.info("`dt_col` was provided without `profile_by`; defaulting trend grouping to 'month'.")
             profile_by = "month"
 
-        # 新逻辑：支持正则匹配 'Nd' (如 '3d', '14d')
-        is_date_granularity = profile_by in ["day", "week", "month"] or (
-            isinstance(profile_by, str) and re.match(r"^\d+d$", profile_by.lower())
-        )
+        # 统一识别日、周、月粒度，避免 1m 被误当成普通分组列。
+        is_date_granularity = MarsDate.is_time_grain(profile_by)
 
         # 处理时间切片
         if dt_col and is_date_granularity:
-            if profile_by == "month":
-                date_expr = MarsDate.dt2month(dt_col).alias(self.MARS_GROUP_COL)
-            elif profile_by == "week":
-                date_expr = MarsDate.dt2week(dt_col).alias(self.MARS_GROUP_COL)
-            else:
-                # 把未命中的 day / 3d / 14d 直接丢给 dt2day 处理
-                date_expr = MarsDate.dt2day(dt_col, interval=profile_by).alias(self.MARS_GROUP_COL)
+            date_expr = MarsDate.from_grain(dt_col, profile_by).alias(self.MARS_GROUP_COL)
             return df.with_columns(date_expr), self.MARS_GROUP_COL
 
         # 常规分组：按现有列
@@ -1227,10 +1229,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
     @staticmethod
     def _is_time_granularity(profile_by: str | None) -> bool:
-        """判断分组配置是否表示内置或 Nd 形式的时间粒度。"""
-        if profile_by in {"day", "week", "month"}:
-            return True
-        return isinstance(profile_by, str) and re.match(r"^\d+d$", profile_by.lower()) is not None
+        """判断分组配置是否表示内置时间粒度。"""
+        return MarsDate.is_time_grain(profile_by)
 
     @staticmethod
     def _detect_feature_start_index(
@@ -1651,7 +1651,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 调用 Binner 中的静态方法进行判断
-        from mars.feature.binner import MarsBinnerBase
+        from mars.feature.base import MarsBinnerBase
 
         trend_shape_df = MarsBinnerBase._build_trend_shape_frame(
             trend_source.group_by("feature").agg(pl.col("woe")).collect(),
@@ -2293,7 +2293,7 @@ def profile_risk(
     time_grain: str | None = None,
     feature_start_aware_baseline: bool = False,
 
-    binning_type: Literal["native", "opt", "lite_opt"] = "native",
+    binning_type: Literal["native", "optimal", "lite_opt"] = "native",
     binner: MarsBinnerBase | None = None,
     binner_params: Dict[str, Any] | None = None,
 
@@ -2338,7 +2338,7 @@ def profile_risk(
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
     feature_start_aware_baseline : bool
         是否按特征首次出现的分组选择 PSI 基准。
-    binning_type : Literal['native', 'opt', 'lite_opt']
+    binning_type : Literal['native', 'optimal', 'lite_opt']
         未显式传入 `binner` 时使用的分箱器类型。
     binner : MarsBinnerBase | None
         显式复用的分箱器；传入后不允许再传 `binner_params`。
@@ -2391,7 +2391,7 @@ def profile_risk(
         target_list: list[str] = []
         primary_target: str | None = None
         is_multi_target = False
-        if binning_type in {"opt", "lite_opt"} or effective_binner_params.get("method") == "cart":
+        if binning_type in {"optimal", "lite_opt"} or effective_binner_params.get("method") == "cart":
             logger.warning("No target provided. Forcing `binning_type='native'` and `method='quantile'`.")
             binning_type = "native"
             effective_binner_params["method"] = "quantile"

@@ -305,8 +305,7 @@ class MarsFeatureIncrementalTuner:
         lr_feature_mode : str
             LR 特征模式。
         lr_binning_type : str
-            LR WOE 模式使用的分箱器类型，支持 ``native``、``opt``、``optimal`` 和
-            ``lite_opt``。
+            LR WOE 模式使用的分箱器类型，支持 ``native``、``optimal`` 和 ``lite_opt``。
         lr_binner_kwargs : Mapping[str, Any] | None
             构造 LR 分箱器时使用的参数。
         lr_binner : Any | None

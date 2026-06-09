@@ -2,14 +2,14 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, NamedTuple, Union
+from typing import Any, Dict, List, Literal, NamedTuple, Union, cast
 
 import pandas as pd
 import polars as pl
 
 from mars.analysis import MarsBinEvaluator
 from mars.core.base import MarsBaseEstimator
-from mars.feature.binner import MarsBinnerBase
+from mars.feature.base import MarsBinnerBase
 
 FrameLike = Union[pl.DataFrame, pd.DataFrame]
 TrendColumnOrder = Literal["asc", "desc"]
@@ -174,7 +174,7 @@ class MarsMonitor(MarsBaseEstimator):
     def __init__(
         self,
         *,
-        binning_type: Literal["native", "opt", "lite_opt"] = "native",
+        binning_type: Literal["native", "optimal", "lite_opt"] = "native",
         binner_params: Dict[str, Any] | None = None,
         bin_stat_metrics: List[str] | None = None,
         psi_include_missing: bool = False,
@@ -185,7 +185,7 @@ class MarsMonitor(MarsBaseEstimator):
 
         Parameters
         ----------
-        binning_type : Literal['native', 'opt', 'lite_opt']
+        binning_type : Literal['native', 'optimal', 'lite_opt']
             未显式传入分箱器时使用的分箱策略。``"lite_opt"`` 需要标签；
             无标签分布监控建议使用 ``"native"``。
         binner_params : Dict[str, Any] | None
@@ -196,9 +196,24 @@ class MarsMonitor(MarsBaseEstimator):
             计算 PSI 时是否包含缺失值箱。
         psi_include_special : bool
             计算 PSI 时是否包含特殊值箱。
+
+        Raises
+        ------
+        ValueError
+            当 `binning_type` 不是 `native`、`optimal` 或 `lite_opt` 时抛出。
         """
         super().__init__()
-        self.binning_type = binning_type
+        normalized_binning_type = str(binning_type).lower()
+        valid_binning_types = {"native", "optimal", "lite_opt"}
+        if normalized_binning_type not in valid_binning_types:
+            raise ValueError(
+                "binning_type must be one of {'native', 'optimal', 'lite_opt'}, "
+                f"got {binning_type!r}."
+            )
+        self.binning_type: Literal["native", "optimal", "lite_opt"] = cast(
+            Literal["native", "optimal", "lite_opt"],
+            normalized_binning_type,
+        )
         self.binner_params = dict(binner_params or {})
         self.bin_stat_metrics = list(bin_stat_metrics or self.DEFAULT_BIN_STAT_METRICS)
         self.psi_include_missing = psi_include_missing

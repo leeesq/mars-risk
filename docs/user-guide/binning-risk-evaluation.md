@@ -45,6 +45,21 @@ risk_profile = evaluator.evaluate(
 
 `MarsBinEvaluator` 不把 target 和 features 放进构造函数。每次 `evaluate` 都可以传入新的数据、目标列和特征范围，避免复用对象时状态串扰。
 
+## 分箱器共享能力
+
+`MarsNativeBinner`、`MarsLiteOptBinner` 和 `MarsOptimalBinner` 都继承 `MarsBinnerBase`。
+子类只负责拟合各自的分箱规则，规则转换、WOE 转换、分箱效果评估、规则裁剪和序列化由基类统一提供。
+
+| 共享方法 | 用途 |
+| --- | --- |
+| `fit_transform` / `transform` | 生成 index、label 或 WOE 形式的分箱结果 |
+| `profile_bin_performance` | 基于已拟合规则计算分箱明细、IV、WOE 和坏账率 |
+| `to_dict` / `from_dict` | 保存和恢复分箱规则 |
+| `prune` | 只保留指定特征的分箱规则 |
+
+用户通常只需要实例化具体子类，例如 `MarsNativeBinner` 或 `MarsLiteOptBinner`；
+这些共享能力会自动继承，无需单独操作 `MarsBinnerBase`。
+
 ## 原生分箱：`MarsNativeBinner`
 
 ```python

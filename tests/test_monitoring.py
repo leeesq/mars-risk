@@ -113,6 +113,34 @@ def test_monitor_supports_lite_opt_binning_with_observed_target_subset() -> None
     assert report.binner.fitted_trends_["score"] == "ascending"
 
 
+def test_monitor_supports_month_grain_alias_without_group_warning(caplog) -> None:
+    dates = pd.date_range("2024-01-01", periods=40, freq="D")
+    score = [idx / 40 for idx in range(40)]
+    df = pl.DataFrame(
+        {
+            "apply_dt": dates.strftime("%Y-%m-%d").to_list(),
+            "score": score,
+            "target": [int(value > 0.5) for value in score],
+        }
+    )
+
+    with caplog.at_level("WARNING", logger="mars"):
+        report = MarsMonitor(
+            binner_params={"method": "quantile", "n_bins": 2},
+        ).monitor(
+            df,
+            features=["score"],
+            target="target",
+            time_col="apply_dt",
+            time_grain="1m",
+    )
+
+    assert report.metadata["trend_column_order"] == "asc"
+    assert _trend_value_columns(report.trend_tables["psi"]) == ["202401", "202402"]
+    assert report.trend_tables["psi"].height == 1
+    assert not caplog.messages
+
+
 def test_monitor_preserves_pandas_output_contract(sample_credit_df: pl.DataFrame) -> None:
     df = sample_credit_df.select(["month", "income", "utilization", "target"]).to_pandas()
 

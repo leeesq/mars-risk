@@ -9,8 +9,10 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBinner
+from mars.feature.base import MarsBinnerBase
 from mars.feature.lite_opt_binner import MarsLiteOptBinner
+from mars.feature.native_binner import MarsNativeBinner
+from mars.feature.optimal_binner import MarsOptimalBinner
 from mars.modeling.backends.base import MarsBaseModelStrategy
 from mars.modeling.backends.common import build_importance_table as _build_importance_table
 from mars.modeling.backends.common import validate_numeric_pandas as _validate_numeric_pandas
@@ -18,7 +20,7 @@ from mars.modeling.metrics import MetricCallable, MetricDirection
 from mars.modeling.utils import require_optional_module
 
 LR_FEATURE_MODE = Literal["numeric", "woe"]
-LR_BINNING_TYPE = Literal["native", "opt", "optimal", "lite_opt"]
+LR_BINNING_TYPE = Literal["native", "optimal", "lite_opt"]
 
 
 @dataclass(slots=True)
@@ -146,8 +148,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     lr_feature_mode : str
         LR 特征预处理模式。
     lr_binning_type : str
-        WOE 模式下使用的分箱器类型，支持 ``native``、``opt``、``optimal`` 和
-        ``lite_opt``。
+        WOE 模式下使用的分箱器类型，支持 ``native``、``optimal`` 和 ``lite_opt``。
     lr_binner_kwargs : dict
         内部分箱器初始化参数。
     lr_binner : MarsBinnerBase or None
@@ -169,7 +170,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     """
 
     SUPPORTED_FEATURE_MODES = {"numeric", "woe"}
-    SUPPORTED_BINNING_TYPES = {"native", "opt", "optimal", "lite_opt"}
+    SUPPORTED_BINNING_TYPES = {"native", "optimal", "lite_opt"}
 
     def __init__(
         self,
@@ -238,8 +239,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         lr_feature_mode : LR_FEATURE_MODE
             LR 特征模式，支持 ``numeric`` 和 ``woe``。
         lr_binning_type : LR_BINNING_TYPE
-            WOE 模式使用的分箱器类型，支持 ``native``、``opt``、``optimal`` 和
-            ``lite_opt``。
+            WOE 模式使用的分箱器类型，支持 ``native``、``optimal`` 和 ``lite_opt``。
         lr_binner_kwargs : Mapping[str, Any] | None
             构造 WOE 分箱器时使用的参数。
         lr_binner : MarsBinnerBase | None
@@ -263,7 +263,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
             )
         if self.lr_binning_type not in self.SUPPORTED_BINNING_TYPES:
             raise ValueError(
-                "lr_binning_type must be one of {'native', 'opt', 'optimal', 'lite_opt'}, "
+                "lr_binning_type must be one of {'native', 'optimal', 'lite_opt'}, "
                 f"got {lr_binning_type!r}."
             )
 
@@ -343,7 +343,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
             return cast(MarsNativeBinner | MarsOptimalBinner | MarsLiteOptBinner, self.lr_binner)
 
         kwargs = dict(self.lr_binner_kwargs)
-        if self.lr_binning_type in {"opt", "optimal"}:
+        if self.lr_binning_type == "optimal":
             return MarsOptimalBinner(**kwargs)
         if self.lr_binning_type == "lite_opt":
             return MarsLiteOptBinner(**kwargs)

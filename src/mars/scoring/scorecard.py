@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 import polars as pl
 
-from mars.feature.binner import MarsBinnerBase
+from mars.feature.base import MarsBinnerBase
 
 
 def _ensure_binner_scorecard_artifacts(

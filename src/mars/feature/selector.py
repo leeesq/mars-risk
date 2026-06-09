@@ -13,7 +13,8 @@ import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
 from mars.core.base import MarsBaseSelector
-from mars.feature.binner import MarsBinnerBase, MarsNativeBinner
+from mars.feature.base import MarsBinnerBase
+from mars.feature.native_binner import MarsNativeBinner
 from mars.modeling.utils import require_optional_module
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -730,7 +731,7 @@ class MarsStatsSelector(MarsBaseSelector):
             "special_values": self.special_values,
         }
         evaluator = MarsBinEvaluator(
-            binning_type="opt",
+            binning_type="optimal",
             binner_params=binner_params,
         )
 
@@ -954,7 +955,7 @@ class MarsStatsSelector(MarsBaseSelector):
             eval_binner = self._stage3_binner
         else:
             logger.warning("Cached binner not found. Re-fitting Binner for the selected features...")
-            binning_type = "native" if self.skip_fine_scan else "opt"
+            binning_type = "native" if self.skip_fine_scan else "optimal"
             binning_params = self.rough_binning_params if self.skip_fine_scan else self.binning_params
             evaluator = MarsBinEvaluator(
                 binning_type=binning_type,

@@ -1,5 +1,6 @@
 """MARS 日期解析与粒度转换工具。"""
 
+import re
 from typing import Union
 
 import polars as pl
@@ -177,9 +178,9 @@ class MarsDate:
         ])
 
     @staticmethod
-    def dt2week(dt: Union[str, pl.Expr]) -> pl.Expr:
+    def dt2week(dt: Union[str, pl.Expr], interval: str = "1w") -> pl.Expr:
         """
-        将日期转换为 'Week' 粒度的字符串区间 (如 '20260126-0201').
+        将日期转换为指定周数粒度的字符串区间 (如 '20260126-0201').
 
         逻辑：向下取整到周一作为起点，加上 6 天作为周末终点，最后拼接字符串。
 
@@ -187,6 +188,8 @@ class MarsDate:
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
+        interval : str
+            周聚合间隔，支持 ``"week"``、``"1w"``、``"2w"`` 等格式。
 
         Returns
         -------
@@ -199,27 +202,35 @@ class MarsDate:
         >>> df.select(MarsDate.dt2week("dt").alias("week")).item()
         '20260126-0201'
         """
-        # 解析并截断到周一 (起点)
-        start_of_week = MarsDate.smart_parse_expr(dt).dt.truncate("1w")
-        # 加上 6 天得到周日 (终点)
-        end_of_week = start_of_week + pl.duration(days=6)
+        unit, n_units = MarsDate._parse_time_grain(interval)
+        if unit != "w":
+            raise ValueError(f"Invalid week interval '{interval}'. Expected 'week' or 'Nw'.")
 
-        # 拼接为 "YYYYMMDD-MMDD" 格式
+        # 先截断到周一，再按全局最早周一做多周区间锚点。
+        start_of_week = MarsDate.smart_parse_expr(dt).dt.truncate("1w")
+        min_week = start_of_week.min()
+        diff_days = (start_of_week - min_week).dt.total_days()
+        bucket_days = (diff_days // (n_units * 7)) * (n_units * 7)
+        start_of_period = min_week + pl.duration(days=bucket_days)
+        end_of_period = start_of_period + pl.duration(days=n_units * 7 - 1)
+
         return pl.concat_str([
-            start_of_week.dt.strftime("%Y%m%d"),
+            start_of_period.dt.strftime("%Y%m%d"),
             pl.lit("-"),
-            end_of_week.dt.strftime("%m%d")
+            end_of_period.dt.strftime("%m%d")
         ])
 
     @staticmethod
-    def dt2month(dt: Union[str, pl.Expr]) -> pl.Expr:
+    def dt2month(dt: Union[str, pl.Expr], interval: str = "1m") -> pl.Expr:
         """
-        将日期转换为 'Month' 粒度的字符串 (如 '202601').
+        将日期转换为指定月数粒度的字符串。
 
         Parameters
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
+        interval : str
+            月聚合间隔，支持 ``"month"``、``"1m"``、``"2m"`` 等格式。
 
         Returns
         -------
@@ -232,8 +243,91 @@ class MarsDate:
         >>> df.select(MarsDate.dt2month("dt").alias("month")).item()
         '202601'
         """
-        # 直接使用 strftime 提取年月即可，无需 truncate
-        return MarsDate.smart_parse_expr(dt).dt.strftime("%Y%m")
+        unit, n_units = MarsDate._parse_time_grain(interval)
+        if unit != "m":
+            raise ValueError(f"Invalid month interval '{interval}'. Expected 'month' or 'Nm'.")
+
+        parsed_dt = MarsDate.smart_parse_expr(dt)
+        if n_units == 1:
+            return parsed_dt.dt.strftime("%Y%m")
+
+        # MARS 语义中 m 明确表示自然月，避免把 1m 交给 Polars 解释成分钟。
+        month_index = parsed_dt.dt.year() * 12 + parsed_dt.dt.month() - 1
+        start_month_index = (month_index // n_units) * n_units
+        end_month_index = start_month_index + n_units - 1
+
+        start_year = (start_month_index // 12).cast(pl.Int32)
+        start_month = (start_month_index % 12 + 1).cast(pl.Int32)
+        end_year = (end_month_index // 12).cast(pl.Int32)
+        end_month = (end_month_index % 12 + 1).cast(pl.Int32)
+
+        start_month_date = pl.date(start_year, start_month, 1)
+        end_month_date = pl.date(end_year, end_month, 1)
+        return pl.concat_str([
+            start_month_date.dt.strftime("%Y%m"),
+            pl.lit("-"),
+            end_month_date.dt.strftime("%Y%m"),
+        ])
+
+    @staticmethod
+    def from_grain(dt: Union[str, pl.Expr], grain: str) -> pl.Expr:
+        """
+        根据统一时间粒度生成日期分组表达式。
+
+        Parameters
+        ----------
+        dt : Union[str, pl.Expr]
+            日期列名或表达式。
+        grain : str
+            时间粒度，支持 ``"day"``、``"week"``、``"month"``、
+            ``"1d"``、``"1w"``、``"2w"``、``"1m"``、``"2m"`` 等格式。
+
+        Returns
+        -------
+        pl.Expr
+            可直接用于 ``with_columns`` 的 Polars 表达式。
+
+        Raises
+        ------
+        ValueError
+            当粒度格式不是 MARS 支持的日期粒度时抛出。
+        """
+        unit, n_units = MarsDate._parse_time_grain(grain)
+        if unit == "d":
+            return MarsDate.dt2day(dt, interval=f"{n_units}d")
+        if unit == "w":
+            return MarsDate.dt2week(dt, interval=f"{n_units}w")
+        return MarsDate.dt2month(dt, interval=f"{n_units}m")
+
+    @staticmethod
+    def is_time_grain(grain: str | None) -> bool:
+        """判断字符串是否为 MARS 支持的日期聚合粒度。"""
+        if not isinstance(grain, str):
+            return False
+        try:
+            MarsDate._parse_time_grain(grain)
+        except ValueError:
+            return False
+        return True
+
+    @staticmethod
+    def _parse_time_grain(grain: str) -> tuple[str, int]:
+        """解析 MARS 日期粒度，返回单位和正整数间隔。"""
+        normalized = grain.strip().lower()
+        aliases = {
+            "day": ("d", 1),
+            "week": ("w", 1),
+            "month": ("m", 1),
+        }
+        if normalized in aliases:
+            return aliases[normalized]
+
+        match = re.fullmatch(r"([1-9]\d*)([dwm])", normalized)
+        if match is None:
+            raise ValueError(
+                f"Invalid time grain '{grain}'. Expected day/week/month or Nd/Nw/Nm."
+            )
+        return match.group(2), int(match.group(1))
 
     @staticmethod
     def format_dt(dt: Union[str, pl.Expr], fmt: str = "%Y-%m-%d") -> pl.Expr:

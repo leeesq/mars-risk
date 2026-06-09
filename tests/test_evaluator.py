@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +55,52 @@ def test_profile_risk_returns_structured_run(sample_credit_df):
     assert isinstance(run.binner, MarsNativeBinner)
     assert run.targets == ["target"]
     assert run.report.summary_table.height == 2
+
+
+def test_binning_type_opt_alias_is_removed(sample_credit_df):
+    with pytest.raises(ValueError, match="optimal"):
+        MarsBinEvaluator(binning_type="opt")  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="optimal"):
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            binning_type="opt",  # type: ignore[arg-type]
+            plot=False,
+        )
+
+
+@pytest.mark.parametrize("time_grain", ["1d", "1w", "2w", "1m", "2m"])
+def test_profile_risk_time_grain_aliases_do_not_warn(time_grain, caplog):
+    dates = pd.date_range("2024-01-01", periods=90, freq="D")
+    x = np.linspace(0.0, 1.0, len(dates))
+    df = pl.DataFrame(
+        {
+            "apply_dt": dates.strftime("%Y-%m-%d").to_list(),
+            "x": x,
+            "target": (x > 0.5).astype(int),
+        }
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with caplog.at_level("WARNING", logger="mars"):
+            run = profile_risk(
+                df,
+                target="target",
+                features=["x"],
+                time_col="apply_dt",
+                time_grain=time_grain,
+                binning_type="native",
+                binner_params={"method": "quantile", "n_bins": 3},
+                plot=False,
+            )
+
+    assert run.report.report_meta["profile_by_input"] == time_grain
+    assert run.report.trend_tables["psi"].height == 1
+    assert not caplog.messages
+    assert caught == []
 
 
 def test_profile_risk_returns_report_and_evaluator_for_pandas_input(sample_credit_pd):
