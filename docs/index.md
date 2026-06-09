@@ -4,7 +4,7 @@
   <img class="mars-home-logo" src="assets/mars-logo.svg" alt="MARS">
   <img class="mars-home-wordmark" src="assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE">
   <img class="mars-home-tagline" src="assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库">
-  <img class="mars-home-pipeline" src="assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report">
+  <img class="mars-home-pipeline" src="assets/mars-pipeline.svg?v=20260610-modeling-pipeline" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report">
 </div>
 
 MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling 建模、Pipeline 编排、特征/模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、流程编排、监控指标计算和报表导出，让日常风控建模流程更容易复用、审计和交付。

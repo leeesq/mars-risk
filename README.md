@@ -8,7 +8,7 @@
 
 <img src="docs/assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库" width="720">
 
-<img src="docs/assets/mars-pipeline.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
+<img src="docs/assets/mars-pipeline.svg?v=20260610-modeling-pipeline" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
 
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
