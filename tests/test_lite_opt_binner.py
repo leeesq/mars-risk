@@ -156,6 +156,36 @@ def test_lite_opt_binner_auto_selects_valid_candidate() -> None:
     )
 
 
+def test_lite_opt_binner_auto_asc_desc_selects_single_monotonic_direction() -> None:
+    ascending_X, ascending_y = _make_shape_frame("ascending")
+    descending_X, descending_y = _make_shape_frame("descending")
+    ascending_binner = MarsLiteOptBinner(
+        n_bins=6,
+        n_prebins=24,
+        min_bin_size=0.04,
+        monotonic_trend="auto_asc_desc",
+    )
+    descending_binner = MarsLiteOptBinner(
+        n_bins=6,
+        n_prebins=24,
+        min_bin_size=0.04,
+        monotonic_trend="auto_asc_desc",
+    )
+
+    ascending_binner.fit(ascending_X.select(["score"]), ascending_y, features=["score"])
+    descending_binner.fit(descending_X.select(["score"]), descending_y, features=["score"])
+
+    ascending_rates = _normal_bad_rates(ascending_binner, ascending_X, ascending_y)
+    descending_rates = _normal_bad_rates(descending_binner, descending_X, descending_y)
+
+    assert ascending_binner.fitted_trends_["score"] == "ascending"
+    assert descending_binner.fitted_trends_["score"] == "descending"
+    assert set(ascending_binner.candidate_scores_["score"]) == {"ascending", "descending"}
+    assert set(descending_binner.candidate_scores_["score"]) == {"ascending", "descending"}
+    assert _is_non_decreasing(ascending_rates)
+    assert _is_non_increasing(descending_rates)
+
+
 def test_lite_opt_binner_supports_cart_prebinning_and_profile_bin_index() -> None:
     X, y = _make_shape_frame("ascending")
     binner = MarsLiteOptBinner(
@@ -262,7 +292,7 @@ def test_lite_opt_binner_rejects_missing_y_and_invalid_config() -> None:
 
     with pytest.raises(ValueError, match="requires y"):
         MarsLiteOptBinner().fit(X.select(["score"]), None)
-    with pytest.raises(ValueError, match="monotonic_trend"):
+    with pytest.raises(ValueError, match="auto_asc_desc"):
         MarsLiteOptBinner(monotonic_trend="flat")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="prebinning_method"):
         MarsLiteOptBinner(prebinning_method="rank")  # type: ignore[arg-type]
@@ -274,13 +304,14 @@ def test_lite_opt_binner_rejects_missing_y_and_invalid_config() -> None:
 
 def test_lite_opt_binner_dict_roundtrip_and_label_transform() -> None:
     X, y = _make_shape_frame("ascending")
-    binner = MarsLiteOptBinner(n_bins=5, n_prebins=20, monotonic_trend="ascending")
+    binner = MarsLiteOptBinner(n_bins=5, n_prebins=20, monotonic_trend="auto_asc_desc")
     binner.fit(X.select(["score"]), y, features=["score"])
 
     restored = MarsLiteOptBinner.from_dict(binner.to_dict())
     labels = restored.transform(X.select(["score"]).head(5), return_type="label")
 
     assert "score_bin" in labels.columns
+    assert restored.monotonic_trend == "auto_asc_desc"
     assert restored.bin_cuts_ == binner.bin_cuts_
     assert restored.fitted_trends_ == binner.fitted_trends_
     assert restored.candidate_scores_ == binner.candidate_scores_
@@ -292,14 +323,14 @@ def test_lite_opt_binner_routes_through_evaluator_and_profile_risk() -> None:
 
     evaluator_run = MarsBinEvaluator(
         binning_type="lite_opt",
-        binner_params={"n_bins": 4, "n_prebins": 12, "monotonic_trend": "ascending"},
+        binner_params={"n_bins": 4, "n_prebins": 12, "monotonic_trend": "auto_asc_desc"},
     ).evaluate(df, target="target", features=["score"])
     profile_run = profile_risk(
         df,
         target="target",
         features=["score"],
         binning_type="lite_opt",
-        binner_params={"n_bins": 4, "n_prebins": 12, "monotonic_trend": "ascending"},
+        binner_params={"n_bins": 4, "n_prebins": 12, "monotonic_trend": "auto_asc_desc"},
         plot=False,
     )
 

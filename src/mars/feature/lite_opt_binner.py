@@ -15,8 +15,16 @@ from .base import MarsBinnerBase
 from .native_binner import MarsNativeBinner
 
 PrebinningMethod = Literal["quantile", "uniform", "cart"]
-TrendShape = Literal["ascending", "descending", "peak", "valley", "auto"]
+TrendShape = Literal["ascending", "descending", "peak", "valley", "auto", "auto_asc_desc"]
 _Direction = Literal["ascending", "descending"]
+VALID_TREND_SHAPES: tuple[TrendShape, ...] = (
+    "ascending",
+    "descending",
+    "peak",
+    "valley",
+    "auto",
+    "auto_asc_desc",
+)
 
 
 @dataclass
@@ -115,7 +123,14 @@ class MarsLiteOptBinner(MarsBinnerBase):
         min_bin_size : float
             最终正常箱的最小全量样本占比。
         monotonic_trend : TrendShape
-            趋势约束。``"auto"`` 会在递增、递减、峰形和谷形中择优。
+            趋势约束，支持以下取值：
+
+            - ``"ascending"``：强制坏账率随分箱序号非递减。
+            - ``"descending"``：强制坏账率随分箱序号非递增。
+            - ``"peak"``：允许先升后降的峰形趋势。
+            - ``"valley"``：允许先降后升的谷形趋势。
+            - ``"auto"``：在递增、递减、峰形和谷形中按惩罚后评分自动择优。
+            - ``"auto_asc_desc"``：只在递增和递减中自动择优，适合只允许单调分箱但方向未知的场景。
         prebinning_method : PrebinningMethod
             预分箱策略，可选 ``"quantile"``、``"uniform"`` 或 ``"cart"``。
         n_prebins : int
@@ -140,10 +155,10 @@ class MarsLiteOptBinner(MarsBinnerBase):
             raise ValueError("n_prebins must be at least 2.")
         if not 0 <= min_bin_size <= 1:
             raise ValueError("min_bin_size must be in [0, 1].")
-        if monotonic_trend not in {"ascending", "descending", "peak", "valley", "auto"}:
+        if monotonic_trend not in VALID_TREND_SHAPES:
             raise ValueError(
                 "monotonic_trend must be one of "
-                "{'ascending', 'descending', 'peak', 'valley', 'auto'}."
+                "{'ascending', 'descending', 'peak', 'valley', 'auto', 'auto_asc_desc'}."
             )
         if prebinning_method not in {"quantile", "uniform", "cart"}:
             raise ValueError("prebinning_method must be one of {'quantile', 'uniform', 'cart'}.")
@@ -478,6 +493,8 @@ class MarsLiteOptBinner(MarsBinnerBase):
         """基于配置趋势或 auto 策略选择最终候选分箱。"""
         if self.monotonic_trend == "auto":
             shapes: list[str] = ["ascending", "descending", "peak", "valley"]
+        elif self.monotonic_trend == "auto_asc_desc":
+            shapes = ["ascending", "descending"]
         else:
             shapes = [self.monotonic_trend]
 
@@ -657,7 +674,23 @@ class MarsLiteOptBinner(MarsBinnerBase):
         shape: str,
         total_count: float,
     ) -> float:
-        """计算候选分箱的惩罚后评分，用于 auto 形态择优。"""
+        """
+        计算候选分箱的惩罚后评分，用于 ``monotonic_trend="auto"`` 形态择优。
+
+        这里不直接比较 IV 绝对值，而是把每种趋势形态视为一个分箱后的二项分布
+        近似模型：每个箱只有一个常数坏账率，``_block_deviance`` 衡量该箱对实际
+        ``0/1`` 标签分布的拟合误差。deviance 越低，说明该分箱方案越能解释当前
+        target 分布。
+
+        仅比较拟合误差会偏向更多、更碎的箱，因此额外加入
+        ``log(total_count) * len(bins)`` 作为复杂度惩罚。这个口径类似 BIC/AIC
+        在风控分箱中的轻量变体：新增一个箱必须带来足够大的拟合误差下降，才值得
+        保留，否则会因为样本噪声制造不稳定的碎片箱。
+
+        ``peak`` 和 ``valley`` 比单调递增/递减多了一个拐点自由度，所以再增加一份
+        ``shape_penalty``。只有当峰形或谷形带来的拟合提升足以抵消额外惩罚时，
+        auto 才会选择带拐点的形态，避免为了微小收益误选 U 型或倒 U 型分箱。
+        """
         deviance = sum(self._block_deviance(block) for block in bins)
         log_n = float(np.log(max(total_count, 2.0)))
         complexity_penalty = log_n * len(bins)

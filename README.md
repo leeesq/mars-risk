@@ -230,7 +230,7 @@ X_woe = binner.transform(X, return_type="woe")
 income_mapping = binner.get_bin_mapping("income")
 ```
 
-`MarsLiteOptBinner` 是纯 Python/Polars 的轻量监督式最优分箱器，通过原生预分箱和趋势约束合并生成切点，适合希望避免数学规划求解器开销、同时保留单调/Peak/Valley 约束的宽表场景。
+`MarsLiteOptBinner` 是纯 Python/Polars 的轻量监督式最优分箱器，通过原生预分箱和趋势约束合并生成切点，适合希望避免数学规划求解器开销、同时保留单调/Peak/Valley 约束的宽表场景。`monotonic_trend="auto_asc_desc"` 可自动判断递增或递减方向，但不会选择 Peak/Valley 形态。
 所有分箱器都继承 `MarsBinnerBase`，因此共享 `fit_transform`、`transform`、`profile_bin_performance`、`to_dict/from_dict`、`prune` 等规则转换、评估和序列化能力。
 
 ### 特征筛选

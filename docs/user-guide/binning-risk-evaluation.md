@@ -101,7 +101,7 @@ lite_binner = MarsLiteOptBinner(
 lite_binner.fit(X, y, cat_features=["segment"])
 ```
 
-`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并，支持 `ascending`、`descending`、`peak`、`valley` 和 `auto`。`fitted_trends_` 会记录每个数值特征最终采用的趋势，`candidate_scores_` 会记录 auto 候选评分。
+`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并，支持 `ascending`、`descending`、`peak`、`valley`、`auto` 和 `auto_asc_desc`。`auto_asc_desc` 用于自动判断单调方向，但禁止峰形/谷形；`fitted_trends_` 会记录每个数值特征最终采用的趋势，`candidate_scores_` 会记录 auto 候选评分。
 
 ## 最优分箱：`MarsOptimalBinner`
 
