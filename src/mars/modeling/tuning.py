@@ -539,6 +539,9 @@ class MarsModelTuner:
             当指标、重要性方法或输入配置不合法时抛出。
         ImportError
             当当前功能依赖的可选组件不可用时抛出。
+        Exception
+            当底层调参、训练或 artifact 写入出现未知异常时，方法会先记录失败
+            元信息，再将该异常包装为 ``RuntimeError`` 抛出。
         RuntimeError
             当底层训练、评估或导出流程失败时抛出。
 

@@ -356,6 +356,8 @@ class MarsModelDataSplitter:
 
         Raises
         ------
+        TypeError
+            当输入不是 Pandas 或 Polars DataFrame 时抛出。
         ValueError
             当输入缺少时间列、主目标或辅助目标列时抛出。
 
