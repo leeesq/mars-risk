@@ -84,7 +84,7 @@ summary = eval_report.summary_table
 ## 分箱器
 
 ```python
-from mars.feature import MarsNativeBinner
+from mars.feature import MarsLiteOptBinner, MarsNativeBinner
 
 X = df.select(["income", "utilization", "segment"])
 y = df.get_column("target")
@@ -92,12 +92,15 @@ y = df.get_column("target")
 binner = MarsNativeBinner(method="quantile", n_bins=4, special_values=[-999])
 binner.fit(X, y, cat_features=["segment"])
 
+lite_binner = MarsLiteOptBinner(n_bins=4, n_prebins=30, monotonic_trend="auto")
+lite_binner.fit(X, y, cat_features=["segment"])
+
 X_bin = binner.transform(X, return_type="index")
 X_woe = binner.transform(X, return_type="woe")
 income_mapping = binner.get_bin_mapping("income")
 ```
 
-底层分箱器采用 `X, y` 风格。`method="cart"` 需要传入 `y`，`method="quantile"` 和 `method="uniform"` 可以无标签运行。
+底层分箱器采用 `X, y` 风格。`method="cart"` 和 `MarsLiteOptBinner` 需要传入 `y`，`method="quantile"` 和 `method="uniform"` 可以无标签运行。
 
 ## 特征筛选
 

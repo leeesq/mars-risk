@@ -1,6 +1,6 @@
 # 分箱与风险评估
 
-分箱评估用于观察单个特征与 target 的关系，包括 IV、KS、AUC、Lift、坏账率、PSI、缺失率和分箱趋势等指标。MARS 支持原生分箱和最优分箱，也支持将分箱规则继续复用到转换、监控和报表链路。
+分箱评估用于观察单个特征与 target 的关系，包括 IV、KS、AUC、Lift、坏账率、PSI、缺失率和分箱趋势等指标。MARS 支持原生分箱、轻量最优分箱和数学规划最优分箱，也支持将分箱规则继续复用到转换、监控和报表链路。
 
 ## 高层入口：`profile_risk`
 
@@ -71,6 +71,23 @@ X_woe = binner.transform(X, return_type="woe")
 
 原生分箱支持处理类别特征，缺失值、`NaN`、自定义 `missing_values` 和业务特殊值 `special_values` 会独立隔离，不挤占正常分箱数量。
 
+## 轻量最优分箱：`MarsLiteOptBinner`
+
+```python
+from mars.feature import MarsLiteOptBinner
+
+lite_binner = MarsLiteOptBinner(
+    n_bins=6,
+    n_prebins=50,
+    monotonic_trend="auto",
+    prebinning_method="quantile",
+)
+
+lite_binner.fit(X, y, cat_features=["segment"])
+```
+
+`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并，支持 `ascending`、`descending`、`peak`、`valley` 和 `auto`。`fitted_trends_` 会记录每个数值特征最终采用的趋势，`candidate_scores_` 会记录 auto 候选评分。
+
 ## 最优分箱：`MarsOptimalBinner`
 
 ```python
@@ -120,4 +137,3 @@ risk_profile = profile_risk(
     psi_include_special=False,
 )
 ```
-

@@ -13,6 +13,7 @@ import polars as pl
 from mars.analysis.report import MarsEvaluationReport
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBinner
+from mars.feature.lite_opt_binner import MarsLiteOptBinner
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -83,7 +84,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
     def __init__(
         self,
         *,
-        binning_type: Literal["native", "opt"] = "native",
+        binning_type: Literal["native", "opt", "lite_opt"] = "native",
         binner_params: Dict[str, Any] | None = None,
     ) -> None:
         """
@@ -91,7 +92,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        binning_type : Literal['native', 'opt']
+        binning_type : Literal['native', 'opt', 'lite_opt']
             未显式传入分箱器时使用的默认分箱策略。
         binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
@@ -237,7 +238,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             binner_factory = {
                 "native": MarsNativeBinner,
-                "opt": MarsOptimalBinner
+                "opt": MarsOptimalBinner,
+                "lite_opt": MarsLiteOptBinner,
             }
 
             # 确定分箱器类型
@@ -268,7 +270,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             # 实例化并拟合分箱器
             if not self.has_target_:
-                if binner_cls is MarsOptimalBinner:
+                if binner_cls in {MarsOptimalBinner, MarsLiteOptBinner}:
                     logger.warning("No target provided. Falling back to native quantile binning.")
                     binner_cls = MarsNativeBinner
                     clean_kwargs["method"] = "quantile"
@@ -285,6 +287,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if self.has_target_:
                 is_supervised_binner = (
                     binner_cls is MarsOptimalBinner
+                    or binner_cls is MarsLiteOptBinner
                     or clean_kwargs.get("method") == "cart"
                 )
                 if is_supervised_binner:
@@ -2071,6 +2074,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if metric == "risk_corr":
                 pivot_src = risk_corr_long
             elif metric == "psi":
+                # 单快照模式下分组侧已经可能是 Total，拼接前先剔除，避免 pivot 出现重复键。
+                psi_group_src = monitor_group_level_metrics.filter(pl.col(group_col) != "Total")
                 psi_total_src = (
                     monitoring_total
                     .group_by(["feature", group_col])
@@ -2078,7 +2083,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 )
                 pivot_src = pl.concat(
                     [
-                        monitor_group_level_metrics.select(["feature", group_col, "psi"]),
+                        psi_group_src.select(["feature", group_col, "psi"]),
                         psi_total_src.select(["feature", group_col, "psi"]),
                     ],
                     how="vertical_relaxed",
@@ -2288,7 +2293,7 @@ def profile_risk(
     time_grain: str | None = None,
     feature_start_aware_baseline: bool = False,
 
-    binning_type: Literal["native", "opt"] = "native",
+    binning_type: Literal["native", "opt", "lite_opt"] = "native",
     binner: MarsBinnerBase | None = None,
     binner_params: Dict[str, Any] | None = None,
 
@@ -2333,7 +2338,7 @@ def profile_risk(
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
     feature_start_aware_baseline : bool
         是否按特征首次出现的分组选择 PSI 基准。
-    binning_type : Literal['native', 'opt']
+    binning_type : Literal['native', 'opt', 'lite_opt']
         未显式传入 `binner` 时使用的分箱器类型。
     binner : MarsBinnerBase | None
         显式复用的分箱器；传入后不允许再传 `binner_params`。
@@ -2386,7 +2391,7 @@ def profile_risk(
         target_list: list[str] = []
         primary_target: str | None = None
         is_multi_target = False
-        if binning_type == "opt" or effective_binner_params.get("method") == "cart":
+        if binning_type in {"opt", "lite_opt"} or effective_binner_params.get("method") == "cart":
             logger.warning("No target provided. Forcing `binning_type='native'` and `method='quantile'`.")
             binning_type = "native"
             effective_binner_params["method"] = "quantile"

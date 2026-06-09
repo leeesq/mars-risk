@@ -6,7 +6,7 @@ toad 是成熟的传统评分卡工具，强在经典评分卡链路、社区沉
 
 ## MARS 和 optbinning 有什么区别？
 
-optbinning 是优秀的最优分箱算法库。MARS 使用 `MarsOptimalBinner` 提供面向宽表风控流程的封装，并把分箱结果接入风险评估、特征筛选、监控和报表链路。
+optbinning 是优秀的最优分箱算法库。MARS 使用 `MarsOptimalBinner` 提供面向宽表风控流程的封装，并把分箱结果接入风险评估、特征筛选、监控和报表链路。对于不希望依赖数学规划求解器的宽表场景，也可以使用 `MarsLiteOptBinner` 做纯 Python/Polars 的轻量监督式最优分箱。
 
 ## `profile_risk()` 返回什么？
 

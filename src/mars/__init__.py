@@ -10,7 +10,7 @@ from .analysis import (
     profile_risk,
     profile_stats,
 )
-from .feature import MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
+from .feature import MarsLiteOptBinner, MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
 from .modeling import MarsModelingSession
 from .monitoring import (
     MarsMonitor,
@@ -56,6 +56,7 @@ __all__ = [
     "MarsProfileConfig",
     "MarsProfileReport",
     "MarsRiskProfile",
+    "MarsLiteOptBinner",
     "MarsNativeBinner",
     "MarsOptimalBinner",
     "MarsBinEvaluator",

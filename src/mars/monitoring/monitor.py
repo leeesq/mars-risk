@@ -134,10 +134,10 @@ class MarsMonitoringReport:
 
 class MarsMonitor(MarsBaseEstimator):
     """
-    特征与模型监控器。
+    特征/模型监控器。
 
-    监控器把模型分、概率列和普通特征都视为待监控字段，复用分箱评估链路
-    生成 PSI、缺失率、分箱占比和已表现样本上的风险指标。
+    监控器复用分箱评估链路，生成 PSI、缺失率、分箱占比和已表现样本上的
+    风险指标。它提供通用指标计算能力，不承担调度、看板和业务处置职责。
 
     Examples
     --------
@@ -174,7 +174,7 @@ class MarsMonitor(MarsBaseEstimator):
     def __init__(
         self,
         *,
-        binning_type: Literal["native", "opt"] = "native",
+        binning_type: Literal["native", "opt", "lite_opt"] = "native",
         binner_params: Dict[str, Any] | None = None,
         bin_stat_metrics: List[str] | None = None,
         psi_include_missing: bool = False,
@@ -185,8 +185,9 @@ class MarsMonitor(MarsBaseEstimator):
 
         Parameters
         ----------
-        binning_type : Literal['native', 'opt']
-            未显式传入分箱器时使用的分箱策略。
+        binning_type : Literal['native', 'opt', 'lite_opt']
+            未显式传入分箱器时使用的分箱策略。``"lite_opt"`` 需要标签；
+            无标签分布监控建议使用 ``"native"``。
         binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
         bin_stat_metrics : List[str] | None

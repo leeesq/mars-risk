@@ -4,7 +4,7 @@ import pytest
 
 import mars
 import mars.monitoring as monitoring_module
-from mars.feature import MarsNativeBinner
+from mars.feature import MarsLiteOptBinner, MarsNativeBinner
 from mars.monitoring import (
     MarsMonitor,
     MarsMonitoringAlertConfig,
@@ -86,6 +86,31 @@ def test_monitor_handles_unobserved_latest_target_values() -> None:
     assert latest_observation.select("target_unobserved_count").item() == 4
     assert latest_observation.select("target_observed_rate").item() == 0
     assert latest_observation.select(pl.col("bad_rate_observed").is_null()).item()
+
+
+def test_monitor_supports_lite_opt_binning_with_observed_target_subset() -> None:
+    df = _make_partial_target_df()
+
+    report = MarsMonitor(
+        binning_type="lite_opt",
+        binner_params={
+            "n_bins": 2,
+            "n_prebins": 6,
+            "monotonic_trend": "ascending",
+        },
+    ).monitor(
+        df,
+        features=["score"],
+        target="target",
+        group_col="month",
+    )
+
+    assert isinstance(report.binner, MarsLiteOptBinner)
+    assert report.target_observation_table is not None
+    assert report.target_observation_table.filter(
+        pl.col(report.metadata["group_col"]) == "2024-03"
+    ).select("target_observed_rate").item() == 0
+    assert report.binner.fitted_trends_["score"] == "ascending"
 
 
 def test_monitor_preserves_pandas_output_contract(sample_credit_df: pl.DataFrame) -> None:

@@ -14,6 +14,7 @@ pytest.importorskip("statsmodels")
 
 import mars
 import mars.modeling as modeling
+from mars.feature import MarsLiteOptBinner
 from mars.modeling import MarsModelingSession
 from mars.modeling import report as report_module
 from mars.modeling import results as results_module
@@ -345,6 +346,39 @@ def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_
     assert loaded.best_model.binner is not None
     assert loaded.best_model.predict_proba(sample_modeling_pd.loc[:, loaded.features]).shape[0] == len(sample_modeling_pd)
     assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
+
+
+def test_logistic_regression_woe_mode_supports_lite_opt_binner(sample_modeling_pd):
+    session = MarsModelingSession(
+        model_type="logistic",
+        features=["x1", "x2", "segment"],
+        target="target",
+        categorical_features=["segment"],
+        optimize_metric="ks",
+        seed=29,
+        lr_feature_mode="woe",
+        lr_binning_type="lite_opt",
+        lr_binner_kwargs={
+            "n_bins": 4,
+            "n_prebins": 12,
+            "monotonic_trend": "auto",
+            "n_jobs": 1,
+        },
+    )
+
+    result = session.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        artifact_dir=None,
+    )
+
+    assert result.backend_data_mode == "pandas_lite_opt_woe"
+    assert isinstance(result.best_model.binner, MarsLiteOptBinner)
+    assert result.training_config["lr_binning_type"] == "lite_opt"
+    assert set(result.best_model.binner.fitted_trends_) == {"x1", "x2"}
 
 
 def test_feature_incremental_tuner_resolves_steps_and_feature_order():

@@ -6,6 +6,8 @@
 
 ::: mars.feature.MarsNativeBinner
 
+::: mars.feature.MarsLiteOptBinner
+
 ::: mars.feature.MarsOptimalBinner
 
 ## Selector
@@ -15,4 +17,3 @@
 ::: mars.feature.MarsLinearSelector
 
 ::: mars.feature.MarsImportanceSelector
-

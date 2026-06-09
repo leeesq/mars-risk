@@ -870,7 +870,8 @@ class MarsBinnerBase(MarsTransformer):
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series,
         update_woe: bool = True,
-        batch_size: int = 100
+        batch_size: int = 100,
+        include_bin_index: bool = False,
     ) -> pl.DataFrame | pd.DataFrame:
         """
         计算分箱表现统计报告。
@@ -885,6 +886,9 @@ class MarsBinnerBase(MarsTransformer):
             是否将本次计算得到的 WOE 同步回写到 ``bin_woes_``。
         batch_size : int
             特征分批处理大小。减小该值可进一步降低内存峰值。
+        include_bin_index : bool
+            是否在返回明细中保留内部 ``bin_index`` 列。默认不保留，保持既有
+            报告展示顺序；轻量最优分箱等内部算法可开启该参数以稳定回溯预分箱顺序。
 
         Returns
         -------
@@ -1061,6 +1065,7 @@ class MarsBinnerBase(MarsTransformer):
             .drop("_is_special")
             .select([
                 pl.col("feature"),
+                *([pl.col("bin_index")] if include_bin_index else []),
                 pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)),
                 pl.all().exclude(["feature", "bin_index", "bin_label"])
             ])
@@ -1082,7 +1087,10 @@ class MarsBinnerBase(MarsTransformer):
             .with_columns(pl.col("trend_shape").fill_null("undefined"))
         )
 
-        base_cols = ["feature", "bin_label", "trend_shape"]
+        base_cols = ["feature"]
+        if include_bin_index:
+            base_cols.append("bin_index")
+        base_cols.extend(["bin_label", "trend_shape"])
         other_cols = [c for c in final_df.columns if c not in base_cols]
 
         out_df = final_df.select(base_cols + other_cols)

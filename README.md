@@ -60,7 +60,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
 | 数据画像 | `MarsDataProfiler` / `profile_stats` | 缺失率、零值、均值/分布、PSI、时间趋势、特征来源分组 | `MarsProfileReport` |
-| 分箱评估 | `MarsNativeBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
+| 分箱评估 | `MarsNativeBinner` / `MarsLiteOptBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
 | Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K / 指定 trial replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
@@ -214,7 +214,7 @@ summary = eval_report.summary_table
 ### 分箱器
 
 ```python
-from mars.feature import MarsNativeBinner
+from mars.feature import MarsLiteOptBinner, MarsNativeBinner
 
 X = df.select(["income", "utilization", "segment"])
 y = df.get_column("target")
@@ -222,10 +222,15 @@ y = df.get_column("target")
 binner = MarsNativeBinner(method="quantile", n_bins=4, special_values=[-999])
 binner.fit(X, y, cat_features=["segment"])
 
+lite_binner = MarsLiteOptBinner(n_bins=4, n_prebins=30, monotonic_trend="auto")
+lite_binner.fit(X, y, cat_features=["segment"])
+
 X_bin = binner.transform(X, return_type="index")
 X_woe = binner.transform(X, return_type="woe")
 income_mapping = binner.get_bin_mapping("income")
 ```
+
+`MarsLiteOptBinner` 是纯 Python/Polars 的轻量监督式最优分箱器，通过原生预分箱和趋势约束合并生成切点，适合希望避免数学规划求解器开销、同时保留单调/Peak/Valley 约束的宽表场景。
 
 ### 特征筛选
 
@@ -281,6 +286,8 @@ alert_text = generate_monitoring_alert(
 ```
 
 监控链路只接受 `0/1/True/False/null` target；`null` 表示样本尚未到表现期。`target=None` 时只输出无标签分布监控；传入 target 时，PSI、缺失率和分箱占比使用全量样本，坏账率、IV、KS、AUC、Lift 等标签指标只使用已表现样本。PSI 默认不包含缺失箱和特殊值箱，缺失率会单独进入趋势监控。`trend_column_order` 控制趋势宽表取值列的展示顺序，默认 `"asc"` 保持从早到晚；需要最新月份靠前时可设为 `"desc"`，报警摘要会按 report 记录的趋势列顺序识别基准期和最新期。`generate_monitoring_alert` 是基于 `MarsMonitoringReport` 的默认摘要工具，不替代业务方自己的报警规则、阈值策略和处置流程。
+
+监控也可以在有 target 时使用 `binning_type="lite_opt"` 复用轻量监督式最优分箱；无标签分布监控建议保持 `binning_type="native"`。
 
 ### Modeling Pipeline
 
@@ -377,7 +384,7 @@ eval_report.write_html("mars_evaluation.html")
 | 导入位置 | 公开对象 |
 | --- | --- |
 | `mars.analysis` | `MarsDataProfiler`、`MarsBinEvaluator`、`MarsRiskProfile`、`profile_stats`、`profile_risk` |
-| `mars.feature` | `MarsNativeBinner`、`MarsOptimalBinner`、`MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` |
+| `mars.feature` | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` |
 | `mars.modeling` | `MarsModelingSession` |
 | `mars.modeling.tuning` | `MarsModelTuner`、`MarsModelReplayRunner` |
 | `mars.modeling.slicing` | `MarsModelDataSplitter` |

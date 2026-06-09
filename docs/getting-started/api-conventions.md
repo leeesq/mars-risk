@@ -40,6 +40,7 @@ X_woe = binner.transform(X, return_type="woe")
 适用对象包括：
 
 - `MarsNativeBinner.fit(X, y=None, ...)`
+- `MarsLiteOptBinner.fit(X, y, ...)`
 - `MarsOptimalBinner.fit(X, y, ...)`
 - `MarsLinearSelector.fit(X, y, ...)`
 - `MarsImportanceSelector.fit(X, y=None, ...)`
@@ -76,4 +77,3 @@ X_woe = binner.transform(X, return_type="woe")
 - `metadata` / `report_meta`：运行上下文、参数和产出元数据。
 
 这些表可以继续用于特征复盘、监控规则定制、内部看板接入，或借助 Agent 做定制化摘要和报告重排。
-

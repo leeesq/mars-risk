@@ -30,7 +30,8 @@ class ModelingSpec:
     lr_feature_mode : str
         逻辑回归后端使用的特征模式。
     lr_binning_type : str
-        逻辑回归 WOE 模式使用的分箱器类型。
+        逻辑回归 WOE 模式使用的分箱器类型，支持 ``native``、``opt``、
+        ``optimal`` 和 ``lite_opt``。
 
     Examples
     --------

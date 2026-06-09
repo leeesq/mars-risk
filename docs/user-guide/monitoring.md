@@ -60,6 +60,8 @@ distribution_report = MarsMonitor().monitor(
 - 坏账率、IV、KS、AUC、Lift 等标签指标只使用已表现样本。
 - 某个时间段 target 全为空时，该时间段仍保留 PSI、缺失率和分箱占比，标签类指标输出空值。
 
+有 target 的监控可以设置 `binning_type="lite_opt"` 使用轻量监督式最优分箱；无标签分布监控建议保持默认 `native`。
+
 ## PSI 与缺失值
 
 监控默认不把缺失箱和特殊值箱纳入 PSI：

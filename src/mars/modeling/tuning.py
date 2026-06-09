@@ -76,7 +76,8 @@ def _build_spec(
     lr_feature_mode : str
         Logistic Regression 特征模式，支持 ``"numeric"`` 和 ``"woe"``。
     lr_binning_type : str
-        LR WOE 模式使用的分箱器类型。
+        LR WOE 模式使用的分箱器类型，支持 ``native``、``opt``、``optimal`` 和
+        ``lite_opt``。
     lr_binner_kwargs : Mapping[str, Any] | None
         构造 LR 分箱器时使用的参数。
     lr_binner : Any | None
@@ -106,8 +107,10 @@ def _build_spec(
         )
     if spec.lr_feature_mode not in {"numeric", "woe"}:
         raise ValueError("lr_feature_mode must be one of {'numeric', 'woe'}.")
-    if spec.lr_binning_type not in {"native", "opt", "optimal"}:
-        raise ValueError("lr_binning_type must be one of {'native', 'opt', 'optimal'}.")
+    if spec.lr_binning_type not in {"native", "opt", "optimal", "lite_opt"}:
+        raise ValueError(
+            "lr_binning_type must be one of {'native', 'opt', 'optimal', 'lite_opt'}."
+        )
     return spec
 
 
@@ -328,7 +331,8 @@ class MarsModelTuner:
         lr_feature_mode : str
             LR 特征模式。
         lr_binning_type : str
-            LR WOE 模式使用的分箱器类型。
+            LR WOE 模式使用的分箱器类型，支持 ``native``、``opt``、``optimal`` 和
+            ``lite_opt``。
         lr_binner_kwargs : Mapping[str, Any] | None
             构造 LR 分箱器时使用的参数。
         lr_binner : Any | None
