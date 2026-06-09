@@ -13,6 +13,7 @@ from mars.feature.binner import MarsBinnerBase, MarsNativeBinner, MarsOptimalBin
 from mars.modeling.backends.base import MarsBaseModelStrategy
 from mars.modeling.backends.common import build_importance_table as _build_importance_table
 from mars.modeling.backends.common import validate_numeric_pandas as _validate_numeric_pandas
+from mars.modeling.metrics import MetricCallable, MetricDirection
 from mars.modeling.utils import require_optional_module
 
 LR_FEATURE_MODE = Literal["numeric", "woe"]
@@ -181,6 +182,12 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         use_oot_penalty: bool = False,
         dataset_flag_col: str = "dataset_flag",
         categorical_features: Sequence[str] | None = None,
+        metric_params: Mapping[str, Any] | None = None,
+        custom_metrics: Mapping[str, MetricCallable] | None = None,
+        metric_directions: Mapping[str, MetricDirection] | None = None,
+        training_metric: str | None = None,
+        backend_metric: Any | None = None,
+        keep_top_n_models: int = 0,
         lr_feature_mode: LR_FEATURE_MODE = "numeric",
         lr_binning_type: LR_BINNING_TYPE = "native",
         lr_binner_kwargs: Mapping[str, Any] | None = None,
@@ -191,6 +198,54 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
 
         除基类调参状态外，该方法还保存 LR 专属分箱配置，并确保
         ``lr_feature_mode`` 与 ``lr_binning_type`` 落在受支持集合中。
+
+        Parameters
+        ----------
+        df : pd.DataFrame | pl.DataFrame
+            已包含特征、目标列和样本切片列的建模样本。
+        features : Sequence[str]
+            参与训练的特征列名。
+        target : str
+            主训练目标列名。
+        optimize_metric : str
+            trial 目标函数使用的优化指标，可以是内置指标或自定义指标名。
+        param_space : Mapping[str, Any] | None
+            LR 后端参数搜索空间覆盖项。
+        max_diff : float
+            train 与 validation 指标允许的最大泛化差异，单位是百分点。
+        seed : int
+            随机种子。
+        use_oot_penalty : bool
+            是否将 OOT 衰减纳入 trial 有效性判断。
+        dataset_flag_col : str
+            建模样本切片列名。
+        categorical_features : Sequence[str] | None
+            类别特征列名；LR numeric 模式要求这些列已完成数值化。
+        metric_params : Mapping[str, Any] | None
+            指标参数，例如 ``f1_threshold``。
+        custom_metrics : Mapping[str, MetricCallable] | None
+            自定义指标函数字典。
+        metric_directions : Mapping[str, MetricDirection] | None
+            指标排序方向，未配置时默认按 maximize 处理。
+        training_metric : str | None
+            模型后端训练期监控指标。
+        backend_metric : Any | None
+            预留给后端原生 metric 的透传入口；LR 后端当前不直接消费。
+        keep_top_n_models : int
+            调参过程中动态保留的最优模型数量。
+        lr_feature_mode : LR_FEATURE_MODE
+            LR 特征模式，支持 ``numeric`` 和 ``woe``。
+        lr_binning_type : LR_BINNING_TYPE
+            WOE 模式使用的分箱器类型。
+        lr_binner_kwargs : Mapping[str, Any] | None
+            构造 WOE 分箱器时使用的参数。
+        lr_binner : MarsBinnerBase | None
+            显式传入的已配置分箱器。
+
+        Raises
+        ------
+        ValueError
+            当 LR 特征模式、分箱类型或基类输入配置不合法时抛出。
         """
         self.lr_feature_mode = str(lr_feature_mode).lower()
         self.lr_binning_type = str(lr_binning_type).lower()
@@ -220,6 +275,12 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
             use_oot_penalty=use_oot_penalty,
             dataset_flag_col=dataset_flag_col,
             categorical_features=categorical_features,
+            metric_params=metric_params,
+            custom_metrics=custom_metrics,
+            metric_directions=metric_directions,
+            training_metric=training_metric,
+            backend_metric=backend_metric,
+            keep_top_n_models=keep_top_n_models,
         )
 
     def _build_backend_data(self) -> None:

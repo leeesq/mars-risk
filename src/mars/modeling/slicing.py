@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Sequence
 
 import numpy as np
 import pandas as pd
@@ -317,6 +317,105 @@ class MarsModelDataSplitter:
         if slicer._engine == "pandas":
             return slicer._split_hybrid_random_val_pandas(split_ratios, train_key, val_key, random_seed)
         return slicer._split_hybrid_random_val_polars(split_ratios, train_key, val_key, random_seed)
+
+    def split_by_target_observation(
+        self,
+        df: FrameLike,
+        *,
+        time_col: str,
+        target: str,
+        split_ratios: Dict[str, float],
+        aux_targets: Sequence[str] | None = None,
+        dataset_flag_col: str = "dataset_flag",
+        aux_dataset_flag_suffix: str = "__dataset_flag",
+    ) -> FrameLike:
+        """
+        按每个 target 的已表现样本生成独立切片列。
+
+        Parameters
+        ----------
+        df : FrameLike
+            原始建模样本。
+        time_col : str
+            原始时间列名。
+        target : str
+            训练使用的主目标列名。
+        split_ratios : Dict[str, float]
+            切分名称到比例的映射，比例合计必须为 1。
+        aux_targets : Sequence[str] | None
+            只参与评估的辅助目标列名。
+        dataset_flag_col : str
+            主目标生成的切片列名。
+        aux_dataset_flag_suffix : str
+            辅助目标切片列后缀，默认生成 ``<target>__dataset_flag``。
+
+        Returns
+        -------
+        pandas.DataFrame or polars.DataFrame
+            与输入类型一致、已追加主目标和辅助目标切片列的数据框。
+
+        Raises
+        ------
+        ValueError
+            当输入缺少时间列、主目标或辅助目标列时抛出。
+
+        Examples
+        --------
+        >>> df = pd.DataFrame({
+        ...     "apply_dt": ["2026-01-01", "2026-01-02", "2026-02-01", "2026-03-01"],
+        ...     "long_y": [0, 1, None, None],
+        ...     "short_y": [0, 1, 0, 1],
+        ... })
+        >>> splitter = MarsModelDataSplitter()
+        >>> out = splitter.split_by_target_observation(
+        ...     df,
+        ...     time_col="apply_dt",
+        ...     target="long_y",
+        ...     aux_targets=["short_y"],
+        ...     split_ratios={"train": 0.5, "val": 0.5},
+        ... )
+        >>> "short_y__dataset_flag" in out.columns
+        True
+        """
+        is_polars_input = isinstance(df, pl.DataFrame)
+        if is_polars_input:
+            working_df = df.to_pandas()
+        elif isinstance(df, pd.DataFrame):
+            working_df = df.copy()
+        else:
+            raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
+
+        required_cols = {time_col, target, *list(aux_targets or [])}
+        missing_cols = required_cols.difference(working_df.columns)
+        if missing_cols:
+            raise ValueError(f"Input data is missing required columns: {sorted(missing_cols)}")
+
+        primary_split = self.split_by_time_strictly(
+            working_df,
+            time_col=time_col,
+            target=target,
+            split_ratios=dict(split_ratios),
+            dataset_flag_col=dataset_flag_col,
+        )
+        assert isinstance(primary_split, pd.DataFrame)
+        result = working_df.copy()
+        result[dataset_flag_col] = primary_split[dataset_flag_col]
+
+        for aux_target in aux_targets or []:
+            aux_flag_col = f"{aux_target}{aux_dataset_flag_suffix}"
+            aux_split = self.split_by_time_strictly(
+                working_df,
+                time_col=time_col,
+                target=aux_target,
+                split_ratios=dict(split_ratios),
+                dataset_flag_col=aux_flag_col,
+            )
+            assert isinstance(aux_split, pd.DataFrame)
+            result[aux_flag_col] = aux_split[aux_flag_col]
+
+        if is_polars_input:
+            return pl.from_pandas(result)
+        return result
 
     def _reset_and_mark_other_pandas(self) -> None:
         """重置 Pandas 切片列，并将无效标签或日期样本标为 other。"""

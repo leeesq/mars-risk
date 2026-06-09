@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
-from mars.modeling.metrics import calculate_auc, calculate_ks
+from mars.modeling.metrics import calculate_auc, calculate_f1, calculate_ks
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import FrameLike, split_name_sort_key, to_pandas_frame
 
@@ -44,6 +44,7 @@ class MarsModelEvaluator:
         "Bad Rate",
         "New AUC",
         "New KS",
+        "New F1",
         "LogLoss",
         "Brier",
         "Score PSI",
@@ -51,8 +52,10 @@ class MarsModelEvaluator:
         "Top 20% Capture",
         "Bench AUC",
         "Bench KS",
+        "Bench F1",
         "AUC Diff",
         "KS Diff",
+        "F1 Diff",
     ]
 
     def __init__(
@@ -68,8 +71,11 @@ class MarsModelEvaluator:
         self.group_col: str = ""
         self.target_col: str = ""
         self.benchmark_col: str | None = None
+        self.benchmark_cols: List[str] = []
         self.time_col: str | None = None
         self.val_target: str | None = None
+        self.aux_targets: List[str] = []
+        self.target_group_cols: Dict[str, str] = {}
         self.feature_cols: List[str] = []
         self.importance_table: pd.DataFrame | None = None
 
@@ -78,10 +84,9 @@ class MarsModelEvaluator:
         required = {self.group_col, pred_col, self.target_col}
         if self.time_col:
             required.add(self.time_col)
-        if self.benchmark_col:
-            required.add(self.benchmark_col)
-        if self.val_target:
-            required.add(self.val_target)
+        required.update(self.benchmark_cols)
+        required.update(self.aux_targets)
+        required.update(self.target_group_cols.values())
 
         missing = required.difference(df.columns)
         if missing:
@@ -129,6 +134,7 @@ class MarsModelEvaluator:
         if total_count > 0 and valid_y.nunique() >= 2:
             block[(section, "New AUC")] = calculate_auc(valid_y.to_numpy(), valid_pred.to_numpy())
             block[(section, "New KS")] = calculate_ks(valid_y.to_numpy(), valid_pred.to_numpy())
+            block[(section, "New F1")] = calculate_f1(valid_y.to_numpy(), valid_pred.to_numpy())
             clipped_pred = np.clip(valid_pred.to_numpy(dtype=float), 1e-15, 1 - 1e-15)
             y_arr = valid_y.to_numpy(dtype=float)
             block[(section, "LogLoss")] = float(
@@ -147,6 +153,7 @@ class MarsModelEvaluator:
         else:
             block[(section, "New AUC")] = np.nan
             block[(section, "New KS")] = np.nan
+            block[(section, "New F1")] = np.nan
             block[(section, "LogLoss")] = np.nan
             block[(section, "Brier")] = np.nan
             block[(section, "Top 10% Capture")] = np.nan
@@ -154,28 +161,44 @@ class MarsModelEvaluator:
 
         block[(section, "Score PSI")] = score_psi if score_psi is not None else np.nan
 
-        if self.benchmark_col:
-            bench_pred = pd.to_numeric(sub_df[self.benchmark_col], errors="coerce")
+        for benchmark_col in self.benchmark_cols:
+            bench_pred = pd.to_numeric(sub_df[benchmark_col], errors="coerce")
             bench_mask = valid_mask & bench_pred.notna()
             bench_y = y_true[bench_mask]
             bench_scores = bench_pred[bench_mask]
             if bench_y.shape[0] > 0 and bench_y.nunique() >= 2:
                 bench_auc = calculate_auc(bench_y.to_numpy(), bench_scores.to_numpy())
                 bench_ks = calculate_ks(bench_y.to_numpy(), bench_scores.to_numpy())
+                bench_f1 = calculate_f1(bench_y.to_numpy(), bench_scores.to_numpy())
             else:
                 bench_auc = np.nan
                 bench_ks = np.nan
+                bench_f1 = np.nan
 
-            block[(section, "Bench AUC")] = bench_auc
-            block[(section, "Bench KS")] = bench_ks
-            block[(section, "AUC Diff")] = (
+            use_short_name = len(self.benchmark_cols) == 1
+            auc_name = "Bench AUC" if use_short_name else f"Bench {benchmark_col} AUC"
+            ks_name = "Bench KS" if use_short_name else f"Bench {benchmark_col} KS"
+            f1_name = "Bench F1" if use_short_name else f"Bench {benchmark_col} F1"
+            auc_diff_name = "AUC Diff" if use_short_name else f"{benchmark_col} AUC Diff"
+            ks_diff_name = "KS Diff" if use_short_name else f"{benchmark_col} KS Diff"
+            f1_diff_name = "F1 Diff" if use_short_name else f"{benchmark_col} F1 Diff"
+
+            block[(section, auc_name)] = bench_auc
+            block[(section, ks_name)] = bench_ks
+            block[(section, f1_name)] = bench_f1
+            block[(section, auc_diff_name)] = (
                 block[(section, "New AUC")] - bench_auc
                 if pd.notna(block[(section, "New AUC")]) and pd.notna(bench_auc)
                 else np.nan
             )
-            block[(section, "KS Diff")] = (
+            block[(section, ks_diff_name)] = (
                 block[(section, "New KS")] - bench_ks
                 if pd.notna(block[(section, "New KS")]) and pd.notna(bench_ks)
+                else np.nan
+            )
+            block[(section, f1_diff_name)] = (
+                block[(section, "New F1")] - bench_f1
+                if pd.notna(block[(section, "New F1")]) and pd.notna(bench_f1)
                 else np.nan
             )
 
@@ -183,7 +206,12 @@ class MarsModelEvaluator:
 
     def _get_ordered_groups(self, df: pd.DataFrame) -> List[str]:
         """按 MARS 稳定顺序返回数据切片名称。"""
-        groups = df[self.group_col].astype(str).unique().tolist()
+        return self._get_ordered_groups_for_col(df, self.group_col)
+
+    @staticmethod
+    def _get_ordered_groups_for_col(df: pd.DataFrame, group_col: str) -> List[str]:
+        """按 MARS 稳定顺序返回指定切片列的名称。"""
+        groups = df[group_col].dropna().astype(str).unique().tolist()
         return sorted(groups, key=split_name_sort_key)
 
     def _get_ordered_columns(self, available_columns: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
@@ -196,8 +224,7 @@ class MarsModelEvaluator:
                     ordered_columns.append(candidate)
 
         sections = [f"Target: {self.target_col}"]
-        if self.val_target:
-            sections.append(f"Val Target: {self.val_target}")
+        sections.extend([f"Aux Target: {target}" for target in self.aux_targets])
 
         for section in sections:
             for column_name in self.COLUMN_ORDER:
@@ -581,8 +608,11 @@ class MarsModelEvaluator:
         group_col: str,
         target: str,
         benchmark_col: str | None = None,
+        benchmark_cols: Sequence[str] | None = None,
         time_col: str | None = None,
         val_target: str | None = None,
+        aux_targets: Sequence[str] | None = None,
+        target_group_cols: Mapping[str, str] | None = None,
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
     ) -> MarsModelingReport:
@@ -601,10 +631,17 @@ class MarsModelEvaluator:
             二分类目标列名。
         benchmark_col : str | None
             benchmark 或 champion 模型分数列名；传入后会计算 AUC/KS 差异。
+        benchmark_cols : Sequence[str] | None
+            多个 benchmark 或 champion 模型分数列名；会分别输出 AUC、KS、F1
+            和差异指标。
         time_col : str | None
             原始时间列名；传入后会在汇总表中展示每个分组的起止时间。
         val_target : str | None
             替代验证目标列名；适合在主目标之外同时观察另一个口径。
+        aux_targets : Sequence[str] | None
+            辅助验证目标列名；不参与训练，只按各自已表现样本生成评估区块。
+        target_group_cols : Mapping[str, str] | None
+            每个目标对应的独立样本切片列名，用于长短 y 表现期不一致的评估。
         feature_cols : Sequence[str] | None
             用于计算特征 PSI 明细的特征列名。
         importance_table : pd.DataFrame | None
@@ -631,18 +668,42 @@ class MarsModelEvaluator:
         self.group_col = group_col
         self.target_col = target
         self.benchmark_col = benchmark_col
+        benchmark_col_list = list(benchmark_cols or [])
+        if benchmark_col is not None and benchmark_col not in benchmark_col_list:
+            benchmark_col_list.insert(0, benchmark_col)
+        self.benchmark_cols = benchmark_col_list
         self.time_col = time_col
         self.val_target = val_target
+        aux_target_list = list(aux_targets or [])
+        if val_target is not None and val_target not in aux_target_list:
+            aux_target_list.insert(0, val_target)
+        self.aux_targets = aux_target_list
+        self.target_group_cols = dict(target_group_cols or {})
         self.feature_cols = list(feature_cols or [])
         self.importance_table = None if importance_table is None else importance_table.copy()
 
         df_pd = self._validate_frame(to_pandas_frame(df), pred_col)
         rows: List[Dict[Any, Any]] = []
-        ordered_groups = self._get_ordered_groups(df_pd)
+        target_group_map = {
+            self.target_col: self.group_col,
+            **{
+                target_name: self.target_group_cols.get(target_name, self.group_col)
+                for target_name in self.aux_targets
+            },
+        }
+        primary_ordered_groups = self._get_ordered_groups(df_pd)
+        ordered_groups = sorted(
+            {
+                group
+                for group_col_name in target_group_map.values()
+                for group in self._get_ordered_groups_for_col(df_pd, group_col_name)
+            },
+            key=split_name_sort_key,
+        )
         score_psi_detail, score_psi_map = self._build_score_psi_detail(
             df_pd,
             pred_col=pred_col,
-            ordered_groups=ordered_groups,
+            ordered_groups=primary_ordered_groups,
         )
 
         for group in ordered_groups:
@@ -661,13 +722,15 @@ class MarsModelEvaluator:
                     score_psi=score_psi_map.get(str(group)),
                 )
             )
-            if self.val_target:
+            for aux_target in self.aux_targets:
+                aux_group_col = target_group_map[aux_target]
+                aux_sub_df = df_pd[df_pd[aux_group_col].astype(str) == str(group)].copy()
                 row.update(
                     self._calc_metric_block(
-                        sub_df,
+                        aux_sub_df,
                         pred_col=pred_col,
-                        target_col=self.val_target,
-                        section_label=f"Val Target: {self.val_target}",
+                        target_col=aux_target,
+                        section_label=f"Aux Target: {aux_target}",
                     )
                 )
             rows.append(row)
@@ -682,35 +745,35 @@ class MarsModelEvaluator:
                 df_pd,
                 pred_col=pred_col,
                 target_col=self.target_col,
-                ordered_groups=ordered_groups,
+                ordered_groups=primary_ordered_groups,
             ),
             "score_psi": score_psi_detail,
             "roc_curve": self._build_roc_curve_detail(
                 df_pd,
                 pred_col=pred_col,
                 target_col=self.target_col,
-                ordered_groups=ordered_groups,
+                ordered_groups=primary_ordered_groups,
             ),
             "ks_curve": self._build_ks_curve_detail(
                 df_pd,
                 pred_col=pred_col,
                 target_col=self.target_col,
-                ordered_groups=ordered_groups,
+                ordered_groups=primary_ordered_groups,
             ),
             "calibration_curve": self._build_calibration_curve_detail(
                 df_pd,
                 pred_col=pred_col,
                 target_col=self.target_col,
-                ordered_groups=ordered_groups,
+                ordered_groups=primary_ordered_groups,
             ),
             "score_distribution": self._build_score_distribution_detail(
                 df_pd,
                 pred_col=pred_col,
                 target_col=self.target_col,
-                ordered_groups=ordered_groups,
+                ordered_groups=primary_ordered_groups,
             ),
         }
-        feature_psi = self._build_feature_psi_detail(df_pd, ordered_groups=ordered_groups)
+        feature_psi = self._build_feature_psi_detail(df_pd, ordered_groups=primary_ordered_groups)
         if not feature_psi.empty:
             detail_tables["feature_psi"] = feature_psi
         metadata: Dict[str, Any] = {
@@ -718,8 +781,11 @@ class MarsModelEvaluator:
             "target_col": self.target_col,
             "pred_col": pred_col,
             "benchmark_col": self.benchmark_col,
+            "benchmark_cols": list(self.benchmark_cols),
             "time_col": self.time_col,
             "val_target": self.val_target,
+            "aux_targets": list(self.aux_targets),
+            "target_group_cols": dict(self.target_group_cols),
             "feature_cols": [col for col in self.feature_cols if col in df_pd.columns],
         }
         if self.importance_table is not None:

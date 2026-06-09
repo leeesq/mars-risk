@@ -74,6 +74,35 @@ def test_model_evaluator_generates_same_report_shape(sample_modeling_pd):
     assert list(report.summary_table.index[:3]) == ["train", "val", "oot1"]
 
 
+def test_model_evaluator_supports_multiple_benchmarks_and_aux_targets(sample_modeling_pd):
+    df = sample_modeling_pd.copy()
+    df["pred_score"] = 1 / (1 + np.exp(-(1.8 * df["x1"] - 1.0 * df["x2"] + 0.6 * df["x3"])))
+    df["rule_score"] = 1 / (1 + np.exp(-(0.7 * df["x1"] - 0.4 * df["x2"])))
+    df["short_target"] = ((df["x1"] - 0.2 * df["x2"]) > 0).astype(int)
+    df["short_target__dataset_flag"] = df["dataset_flag"].where(
+        df["dataset_flag"] != "oot1",
+        "oot_short",
+    )
+
+    report = MarsModelEvaluator().evaluate(
+        df,
+        pred_col="pred_score",
+        group_col="dataset_flag",
+        target="target",
+        benchmark_cols=["benchmark_score", "rule_score"],
+        aux_targets=["short_target"],
+        target_group_cols={"short_target": "short_target__dataset_flag"},
+    )
+
+    assert ("Target: target", "New F1") in report.summary_table.columns
+    assert ("Target: target", "Bench benchmark_score AUC") in report.summary_table.columns
+    assert ("Target: target", "Bench rule_score KS") in report.summary_table.columns
+    assert ("Aux Target: short_target", "New AUC") in report.summary_table.columns
+    assert "oot_short" in report.summary_table.index
+    assert report.metadata["benchmark_cols"] == ["benchmark_score", "rule_score"]
+    assert report.metadata["aux_targets"] == ["short_target"]
+
+
 def test_modeling_report_to_html_writes_single_file(sample_modeling_pd, tmp_path: Path):
     pytest.importorskip("matplotlib")
     df = sample_modeling_pd.copy()

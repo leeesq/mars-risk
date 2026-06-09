@@ -28,6 +28,6 @@ optbinning 是优秀的最优分箱算法库。MARS 使用 `MarsOptimalBinner` �
 
 Modeling Pipeline 仍在快速迭代中，可能不稳定。后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
 
-## `MarsModelTuner.tune(history_path=None)` 会写文件吗？
+## `MarsModelTuner.tune(artifact_dir=None)` 会写文件吗？
 
-不会。`history_path=None` 时调参历史只保存在返回对象中。传入路径时才写 CSV；如果路径已存在且 `overwrite=False`，会抛出 `FileExistsError`。
+不会。`artifact_dir=None` 时调参历史、模型和元信息只保存在返回对象中。默认会在 `modeling_artifacts/` 下为每次调参创建独立运行目录，写入 `history.csv`、`run_config.json`、`metadata.json`、特征重要性和已保留模型，不会覆盖旧运行。

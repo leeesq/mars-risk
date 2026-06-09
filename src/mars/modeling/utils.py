@@ -11,7 +11,7 @@ import polars as pl
 
 FrameLike = Union[pd.DataFrame, pl.DataFrame]
 HISTORY_BASE_COLUMNS = ["trial_num", "trial_state", "is_valid", "val_diff", "max_oot_diff"]
-METRIC_NAMES = ("auc", "ks")
+METRIC_NAMES = ("auc", "ks", "f1")
 
 
 def is_polars_dataframe(df: Any) -> bool:

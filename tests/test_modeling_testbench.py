@@ -43,7 +43,7 @@ def test_public_tooling_can_tune_and_evaluate_all_backends(
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / f"{model_type}_tool_history.csv"),
+        artifact_dir=tmp_path / f"{model_type}_tool_artifacts",
     )
 
     evaluator = MarsModelEvaluator()
@@ -95,7 +95,7 @@ def test_lightgbm_categorical_levels_are_fixed_for_unseen_categories(sample_mode
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "lgb_category_history.csv"),
+        artifact_dir=tmp_path / "lgb_category_artifacts",
     )
 
     assert run.category_levels == {"segment": ["A", "B"]}

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Literal, Mapping, Sequence
 
 import pandas as pd
 
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.feature_growth import MarsFeatureGrowthResult, MarsFeatureIncrementalTuner
+from mars.modeling.metrics import MetricCallable, MetricDirection
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelReplayResult, MarsModelTuningResult
 from mars.modeling.slicing import MarsModelDataSplitter
@@ -25,7 +27,7 @@ class MarsModelingSession:
     tuner : MarsModelTuner
         单次调参入口。
     replay_runner : MarsModelReplayRunner
-        Top-K replay 入口。
+        Top-K 或指定 trial replay 入口。
     feature_growth_tuner : MarsFeatureIncrementalTuner
         逐步增加特征调参入口。
     last_feature_growth_run : MarsFeatureGrowthResult or None
@@ -302,7 +304,30 @@ class MarsModelingSession:
             )
         raise ValueError(f"Unsupported slice mode: {mode!r}. Expected 'strict' or 'hybrid'.")
 
-    def tune(self, df: FrameLike, **kwargs: Any) -> MarsModelTuningResult:
+    def tune(
+        self,
+        df: FrameLike,
+        *,
+        param_space: Mapping[str, Any] | None = None,
+        max_diff: float = 3.0,
+        use_oot_penalty: bool = False,
+        n_trials: int = 50,
+        startup_trials: int = 20,
+        warmup_steps: int = 100,
+        num_boost_round: int = 500,
+        early_stopping_rounds: int = 50,
+        metric_params: Mapping[str, Any] | None = None,
+        custom_metrics: Mapping[str, MetricCallable] | None = None,
+        metric_directions: Mapping[str, MetricDirection] | None = None,
+        training_metric: str | None = None,
+        backend_metric: Any | None = None,
+        keep_top_n_models: int = 5,
+        artifact_dir: str | Path | None = "modeling_artifacts",
+        importance_methods: Sequence[Literal["native", "shap"]] = ("native",),
+        shap_sample_size: int = 5000,
+        shap_background_size: int = 1000,
+        overwrite: bool = False,
+    ) -> MarsModelTuningResult:
         """
         调用调参工具训练并返回结构化调参结果。
 
@@ -310,8 +335,44 @@ class MarsModelingSession:
         ----------
         df : FrameLike
             已带 train/val/OOT 标识的建模样本。
-        **kwargs : Any
-            透传给 ``MarsModelTuner.tune`` 的调参参数。
+        param_space : Mapping[str, Any] | None
+            后端搜索空间覆盖或扩展。
+        max_diff : float
+            泛化衰减阈值。
+        use_oot_penalty : bool
+            是否将 OOT 衰减纳入 trial 有效性约束。
+        n_trials : int
+            Optuna trial 数量。
+        startup_trials : int
+            剪枝开始前的预热 trial 数量。
+        warmup_steps : int
+            剪枝器预热步数。
+        num_boost_round : int
+            最大 boosting 轮数。
+        early_stopping_rounds : int
+            early stopping 轮数。
+        metric_params : Mapping[str, Any] | None
+            指标参数，例如 ``f1_threshold``。
+        custom_metrics : Mapping[str, MetricCallable] | None
+            用户自定义指标函数字典。
+        metric_directions : Mapping[str, MetricDirection] | None
+            指标排序方向。
+        training_metric : str | None
+            后端训练期监控指标。
+        backend_metric : Any | None
+            透传给模型后端的原生自定义 metric。
+        keep_top_n_models : int
+            调参阶段动态保留的最优模型数量。
+        artifact_dir : str | Path | None
+            调参产物根目录；``None`` 表示不落盘。
+        importance_methods : Sequence[Literal["native", "shap"]]
+            特征重要性计算方式。
+        shap_sample_size : int
+            计算 SHAP values 的最大样本量。
+        shap_background_size : int
+            SHAP 背景样本量。
+        overwrite : bool
+            保留参数，当前独立运行目录不会覆盖旧产物。
 
         Returns
         -------
@@ -324,7 +385,28 @@ class MarsModelingSession:
         >>> callable(session.tune)
         True
         """
-        return self.tuner.tune(df, **kwargs)
+        return self.tuner.tune(
+            df,
+            param_space=param_space,
+            max_diff=max_diff,
+            use_oot_penalty=use_oot_penalty,
+            n_trials=n_trials,
+            startup_trials=startup_trials,
+            warmup_steps=warmup_steps,
+            num_boost_round=num_boost_round,
+            early_stopping_rounds=early_stopping_rounds,
+            metric_params=metric_params,
+            custom_metrics=custom_metrics,
+            metric_directions=metric_directions,
+            training_metric=training_metric,
+            backend_metric=backend_metric,
+            keep_top_n_models=keep_top_n_models,
+            artifact_dir=artifact_dir,
+            importance_methods=importance_methods,
+            shap_sample_size=shap_sample_size,
+            shap_background_size=shap_background_size,
+            overwrite=overwrite,
+        )
 
     def incremental_tune(
         self,
@@ -400,8 +482,11 @@ class MarsModelingSession:
         *,
         pred_col: str,
         benchmark_col: str | None = None,
+        benchmark_cols: Sequence[str] | None = None,
         time_col: str | None = None,
         val_target: str | None = None,
+        aux_targets: Sequence[str] | None = None,
+        target_group_cols: Mapping[str, str] | None = None,
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
     ) -> MarsModelingReport:
@@ -416,10 +501,16 @@ class MarsModelingSession:
             预测分数列名。
         benchmark_col : str | None
             覆盖会话默认基准分数列。
+        benchmark_cols : Sequence[str] | None
+            多个 benchmark 分数列。
         time_col : str | None
             覆盖会话默认时间列。
         val_target : str | None
             可选校验标签列。
+        aux_targets : Sequence[str] | None
+            多个辅助验证标签列。
+        target_group_cols : Mapping[str, str] | None
+            target 到独立切片列名的映射。
         feature_cols : Sequence[str] | None
             用于计算特征 PSI 的特征列。
         importance_table : pd.DataFrame | None
@@ -448,8 +539,11 @@ class MarsModelingSession:
             group_col=self.tuner.spec.dataset_flag_col,
             target=self.tuner.spec.target,
             benchmark_col=benchmark_col,
+            benchmark_cols=benchmark_cols,
             time_col=time_col,
             val_target=val_target,
+            aux_targets=aux_targets,
+            target_group_cols=target_group_cols,
             feature_cols=resolved_feature_cols,
             importance_table=resolved_importance,
         )
@@ -483,10 +577,29 @@ class MarsModelingSession:
         self,
         tuning_result: MarsModelTuningResult,
         df: FrameLike,
-        **kwargs: Any,
+        *,
+        top_k: int = 5,
+        sort_metric: str = "ks",
+        include_val: bool = True,
+        trial_nums: Sequence[int] | None = None,
+        retrain: bool = True,
+        num_boost_round: int = 500,
+        early_stopping_rounds: int = 50,
+        optimize_metric: str | None = None,
+        metric_params: Mapping[str, Any] | None = None,
+        custom_metrics: Mapping[str, MetricCallable] | None = None,
+        metric_directions: Mapping[str, MetricDirection] | None = None,
+        training_metric: str | None = None,
+        backend_metric: Any | None = None,
+        benchmark_col: str | None = None,
+        benchmark_cols: Sequence[str] | None = None,
+        time_col: str | None = None,
+        val_target: str | None = None,
+        aux_targets: Sequence[str] | None = None,
+        target_group_cols: Mapping[str, str] | None = None,
     ) -> MarsModelReplayResult:
         """
-        复用调参结果执行 Top-K replay、重训和重评分。
+        复用调参结果执行 Top-K 或指定 trial replay、重训和重评分。
 
         Parameters
         ----------
@@ -494,13 +607,49 @@ class MarsModelingSession:
             调参阶段产出的结果对象。
         df : FrameLike
             需要重训和评分的数据。
-        **kwargs : Any
-            透传给 ``MarsModelReplayRunner.run`` 的 replay 参数。
+        top_k : int
+            未指定 ``trial_nums`` 时回放的 Top-K 数量。
+        sort_metric : str
+            选择 Top-K 的排序指标。
+        include_val : bool
+            排序时是否纳入 validation 指标。
+        trial_nums : Sequence[int] | None
+            显式指定要回放的 trial 编号。
+        retrain : bool
+            是否按 trial 参数重新训练；``False`` 时只使用已保留模型。
+        num_boost_round : int
+            重训使用的最大 boosting 轮数。
+        early_stopping_rounds : int
+            重训使用的 early stopping 轮数。
+        optimize_metric : str | None
+            覆盖 replay 后端优化指标。
+        metric_params : Mapping[str, Any] | None
+            指标参数。
+        custom_metrics : Mapping[str, MetricCallable] | None
+            用户自定义指标函数字典。
+        metric_directions : Mapping[str, MetricDirection] | None
+            指标排序方向。
+        training_metric : str | None
+            后端训练期监控指标。
+        backend_metric : Any | None
+            透传给模型后端的原生自定义 metric。
+        benchmark_col : str | None
+            单个 benchmark 分数列。
+        benchmark_cols : Sequence[str] | None
+            多个 benchmark 分数列。
+        time_col : str | None
+            原始时间列。
+        val_target : str | None
+            单个辅助验证目标。
+        aux_targets : Sequence[str] | None
+            多个辅助验证目标。
+        target_group_cols : Mapping[str, str] | None
+            target 到独立切片列名的映射。
 
         Returns
         -------
         MarsModelReplayResult
-            replay 排名、leaderboard、模型、评分数据和报告。
+            replay 排名表、模型、评分数据和报告。
 
         Examples
         --------
@@ -508,4 +657,26 @@ class MarsModelingSession:
         >>> callable(session.replay)
         True
         """
-        return self.replay_runner.run(tuning_result, df, **kwargs)
+        return self.replay_runner.run(
+            tuning_result,
+            df,
+            top_k=top_k,
+            sort_metric=sort_metric,
+            include_val=include_val,
+            trial_nums=trial_nums,
+            retrain=retrain,
+            num_boost_round=num_boost_round,
+            early_stopping_rounds=early_stopping_rounds,
+            optimize_metric=optimize_metric,
+            metric_params=metric_params,
+            custom_metrics=custom_metrics,
+            metric_directions=metric_directions,
+            training_metric=training_metric,
+            backend_metric=backend_metric,
+            benchmark_col=benchmark_col,
+            benchmark_cols=benchmark_cols,
+            time_col=time_col,
+            val_target=val_target,
+            aux_targets=aux_targets,
+            target_group_cols=target_group_cols,
+        )

@@ -121,7 +121,11 @@ class MarsCatBoostStrategy(MarsBaseModelStrategy):
 
         # CatBoost 的训练监控指标同样走 training_metric；
         # 外层若优化 KS，会提前把这里的训练指标切到 AUC。
-        eval_metric = CatBoostKSMetric() if training_metric == "ks" else training_metric.upper()
+        eval_metric = (
+            self.backend_metric
+            if self.backend_metric is not None
+            else CatBoostKSMetric() if training_metric == "ks" else training_metric.upper()
+        )
         train_params = {
             "loss_function": "Logloss",
             "eval_metric": eval_metric,

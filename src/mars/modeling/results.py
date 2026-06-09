@@ -65,6 +65,22 @@ class MarsModelTuningResult:
         trial 级训练历史。
     importance_table : pandas.DataFrame
         特征重要性表。
+    retained_models : dict
+        调参过程中动态保留的 trial 模型。
+    retained_model_table : pandas.DataFrame
+        已保留模型的 trial 编号、分数和排名。
+    artifact_path : str or None
+        本次调参产物目录；不落盘时为 ``None``。
+    run_id : str or None
+        本次调参运行编号。
+    metric_names : list of str
+        本次调参计算的内置和自定义指标名。
+    metric_directions : dict
+        各指标的排序方向。
+    importance_tables : dict of str to pandas.DataFrame
+        native、SHAP 等多来源重要性表。
+    metadata : dict
+        调参过程元信息和 artifact 元数据。
     training_config : dict
         可复现训练配置。
     backend_data_mode : str
@@ -116,6 +132,14 @@ class MarsModelTuningResult:
     feature_schema: Dict[str, Any] = field(default_factory=dict)
     backend_data_mode: str = "unknown"
     category_levels: Dict[str, List[Any]] = field(default_factory=dict)
+    retained_models: Dict[int, Any] = field(default_factory=dict)
+    retained_model_table: pd.DataFrame = field(default_factory=pd.DataFrame)
+    artifact_path: str | None = None
+    run_id: str | None = None
+    metric_names: List[str] = field(default_factory=lambda: ["auc", "ks", "f1"])
+    metric_directions: Dict[str, str] = field(default_factory=dict)
+    importance_tables: Dict[str, pd.DataFrame] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def write_artifact(self, path: str) -> Path:
         """
@@ -160,16 +184,47 @@ class MarsModelTuningResult:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         models_dir = artifact_dir / "models"
         models_dir.mkdir(exist_ok=True)
+        retained_models_dir = artifact_dir / "retained_models"
+        retained_models_dir.mkdir(exist_ok=True)
+        importance_tables_dir = artifact_dir / "importance_tables"
+        importance_tables_dir.mkdir(exist_ok=True)
         diagnostics_dir = artifact_dir / "diagnostics"
         diagnostics_dir.mkdir(exist_ok=True)
 
         history_path = artifact_dir / "history.csv"
         importance_path = artifact_dir / "importance.csv"
+        retained_model_table_path = artifact_dir / "retained_models.csv"
         model_path = models_dir / "best_model.joblib"
 
         self.history_table.to_csv(history_path, index=False, float_format=CSV_FLOAT_FORMAT)
         self.importance_table.to_csv(importance_path, index=False, float_format=CSV_FLOAT_FORMAT)
+        self.retained_model_table.to_csv(
+            retained_model_table_path,
+            index=False,
+            float_format=CSV_FLOAT_FORMAT,
+        )
         joblib.dump(self.best_model, model_path)
+
+        retained_model_files: Dict[str, str] = {}
+        for trial_num, model in self.retained_models.items():
+            file_name = f"trial_{int(trial_num)}.joblib"
+            joblib.dump(model, retained_models_dir / file_name)
+            retained_model_files[str(int(trial_num))] = file_name
+
+        importance_table_files: Dict[str, str] = {}
+        importance_table_schemas: Dict[str, Dict[str, str]] = {}
+        active_importance_tables = dict(self.importance_tables)
+        if not active_importance_tables:
+            active_importance_tables["primary"] = self.importance_table
+        for table_name, table in active_importance_tables.items():
+            file_name = f"{table_name}.csv"
+            table.to_csv(
+                importance_tables_dir / file_name,
+                index=False,
+                float_format=CSV_FLOAT_FORMAT,
+            )
+            importance_table_files[table_name] = file_name
+            importance_table_schemas[table_name] = _dataframe_schema(table)
 
         diagnostic_files: Dict[str, str] = {}
         diagnostic_schemas: Dict[str, Dict[str, str]] = {}
@@ -197,15 +252,25 @@ class MarsModelTuningResult:
             "feature_schema": self.feature_schema,
             "backend_data_mode": self.backend_data_mode,
             "category_levels": self.category_levels,
+            "artifact_path": self.artifact_path,
+            "run_id": self.run_id,
+            "metric_names": self.metric_names,
+            "metric_directions": self.metric_directions,
+            "metadata": self.metadata,
             "table_schemas": {
                 "history": _dataframe_schema(self.history_table),
                 "importance": _dataframe_schema(self.importance_table),
+                "retained_models": _dataframe_schema(self.retained_model_table),
+                "importance_tables": importance_table_schemas,
                 "diagnostics": diagnostic_schemas,
             },
             "files": {
                 "history": history_path.name,
                 "importance": importance_path.name,
+                "retained_model_table": retained_model_table_path.name,
                 "best_model": str(Path("models") / model_path.name),
+                "retained_models": retained_model_files,
+                "importance_tables": importance_table_files,
                 "diagnostics": diagnostic_files,
             },
         }
@@ -267,6 +332,7 @@ class MarsModelTuningResult:
         files = metadata.get("files", {})
         history_path = artifact_dir / files.get("history", "history.csv")
         importance_path = artifact_dir / files.get("importance", "importance.csv")
+        retained_model_table_path = artifact_dir / files.get("retained_model_table", "retained_models.csv")
         model_path = artifact_dir / files.get("best_model", str(Path("models") / "best_model.joblib"))
 
         if not history_path.exists():
@@ -286,6 +352,31 @@ class MarsModelTuningResult:
             diagnostic_tables[table_name] = _read_artifact_csv(
                 table_path,
                 dict(diagnostic_schemas.get(table_name, {})),
+            )
+
+        retained_model_table = pd.DataFrame()
+        if retained_model_table_path.exists():
+            retained_model_table = _read_artifact_csv(
+                retained_model_table_path,
+                dict(table_schemas.get("retained_models", {})),
+            )
+
+        retained_models: Dict[int, Any] = {}
+        for trial_num, file_name in dict(files.get("retained_models", {})).items():
+            retained_model_path = artifact_dir / "retained_models" / file_name
+            if not retained_model_path.exists():
+                raise FileNotFoundError(f"Artifact retained model file is missing: {retained_model_path}")
+            retained_models[int(trial_num)] = joblib.load(retained_model_path)
+
+        importance_tables: Dict[str, pd.DataFrame] = {}
+        importance_table_schemas = dict(table_schemas.get("importance_tables", {}))
+        for table_name, file_name in dict(files.get("importance_tables", {})).items():
+            table_path = artifact_dir / "importance_tables" / file_name
+            if not table_path.exists():
+                raise FileNotFoundError(f"Artifact importance table is missing: {table_path}")
+            importance_tables[table_name] = _read_artifact_csv(
+                table_path,
+                dict(importance_table_schemas.get(table_name, {})),
             )
 
         return cls(
@@ -316,18 +407,26 @@ class MarsModelTuningResult:
             feature_schema=dict(metadata.get("feature_schema", {})),
             backend_data_mode=str(metadata.get("backend_data_mode", "unknown")),
             category_levels=dict(metadata.get("category_levels", {})),
+            retained_models=retained_models,
+            retained_model_table=retained_model_table,
+            artifact_path=metadata.get("artifact_path"),
+            run_id=metadata.get("run_id"),
+            metric_names=list(metadata.get("metric_names", ["auc", "ks", "f1"])),
+            metric_directions=dict(metadata.get("metric_directions", {})),
+            importance_tables=importance_tables,
+            metadata=dict(metadata.get("metadata", {})),
         )
 
 
 @dataclass(slots=True)
 class MarsModelReplayResult:
     """
-    Top-K replay 流程的结构化结果对象。
+    调参 replay 流程的结构化结果对象。
 
     Attributes
     ----------
     ranking_table : pandas.DataFrame
-        用于选取 Top-K trial 的排名表。
+        用于选取 Top-K 或指定 trial 的排名表。
     leaderboard_table : pandas.DataFrame
         replay 后的模型排行榜。
     models : dict

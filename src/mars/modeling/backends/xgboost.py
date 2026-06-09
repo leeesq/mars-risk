@@ -171,7 +171,9 @@ class MarsXGBStrategy(MarsBaseModelStrategy):
         train_params.update(params)
 
         train_kwargs: Dict[str, Any] = {}
-        if training_metric == "ks":
+        if self.backend_metric is not None:
+            train_kwargs["custom_metric"] = self.backend_metric
+        elif training_metric == "ks":
             train_kwargs["custom_metric"] = _xgb_ks_metric
 
         model = xgb.train(
@@ -179,7 +181,7 @@ class MarsXGBStrategy(MarsBaseModelStrategy):
             self.dmatrix_dict["train"],
             num_boost_round=self.num_boost_round,
             evals=[(self.dmatrix_dict["train"], "train"), (self.dmatrix_dict["val"], "val")],
-            maximize=True,
+            maximize=self._metric_direction(training_metric) == "maximize",
             early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=False,
             callbacks=callbacks,

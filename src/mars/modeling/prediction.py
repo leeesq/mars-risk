@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -189,6 +189,9 @@ class ModelPredictor:
         time_col: str | None = None,
         val_target: str | None = None,
         benchmark_col: str | None = None,
+        benchmark_cols: Sequence[str] | None = None,
+        aux_targets: Sequence[str] | None = None,
+        target_group_cols: Mapping[str, str] | None = None,
         pred_col: str = "pred_score",
     ) -> MarsModelingReport:
         """
@@ -208,6 +211,12 @@ class ModelPredictor:
             替代验证目标列名。
         benchmark_col : str | None
             benchmark 或 champion 模型分数列名。
+        benchmark_cols : Sequence[str] | None
+            多个 benchmark 分数列。
+        aux_targets : Sequence[str] | None
+            多个辅助验证目标列名。
+        target_group_cols : Mapping[str, str] | None
+            target 到独立切片列名的映射。
         pred_col : str
             追加并用于评估的预测分列名。
 
@@ -224,5 +233,8 @@ class ModelPredictor:
             target=target,
             time_col=time_col,
             benchmark_col=benchmark_col,
+            benchmark_cols=benchmark_cols,
             val_target=val_target,
+            aux_targets=aux_targets,
+            target_group_cols=target_group_cols,
         )

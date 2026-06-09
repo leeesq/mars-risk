@@ -63,7 +63,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 | 分箱评估 | `MarsNativeBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
-| Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
+| Modeling Pipeline | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K / 指定 trial replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
 | 特征/模型监控 | `MarsMonitor` / `generate_monitoring_alert` | 支持**前端监控**、**后端监控**的通用指标计算、PSI、缺失趋势、分箱占比趋势、分箱统计量趋势、target 表现覆盖率、默认报警摘要 | `MarsMonitoringReport`、监控报警摘要 |
 | Excel/HTML 报表导出 | `write_excel` / `write_html` / `build_scorecard` | 画像报表、风险评估报表、建模评估报表、评分卡映射、部署 SQL | Excel、HTML、`MarsScorecard` |
 
@@ -308,7 +308,7 @@ modeling_df = session.slice(
 tuning_result = session.tune(
     modeling_df,
     n_trials=20,
-    history_path=None,
+    artifact_dir=None,
 )
 
 replay_result = MarsModelReplayRunner().run(
@@ -329,13 +329,17 @@ replay_result = MarsModelReplayRunner().run(
 | 方法入参 | 放数据、列名、特征范围、分组、时间、输出路径 |
 | 分组命名 | `group_col` 是已有分组列，`time_col` 是原始日期列，`time_grain` 是聚合粒度 |
 | 建模切片 | `dataset_flag_col` 只表示 train/val/oot 等建模样本切片 |
-| 文件输出 | 路径参数支持 `str | Path`；`history_path=None` 表示不写调参历史文件 |
+| 文件输出 | 路径参数支持 `str | Path`；`artifact_dir=None` 表示不写建模调参产物 |
 
 ## Modeling Pipeline
 
 Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。
 
 当前支持 XGBoost（`xgb`）、LightGBM（`lgb`）、CatBoost（`cbt` / `cat` / `catboost`）和 Logistic Regression（`lr` / `logistic`）。逻辑回归支持 numeric 与 WOE 两种特征模式。
+
+调参指标支持 `auc`、`ks`、`f1` 和自定义 metric；自定义 metric 使用 `custom_metrics={"name": func}` 注册，并可通过 `metric_directions` 指定 maximize/minimize。`MarsModelTuner.tune()` 默认会在 `modeling_artifacts/` 下为每次运行生成独立目录，保留 `history.csv`、`run_config.json`、`metadata.json`、最优模型、动态保留的 Top-N 模型和特征重要性；如果只想内存运行，传 `artifact_dir=None`。显式请求 `importance_methods=("native", "shap")` 时会计算 SHAP importance。
+
+`MarsModelReplayRunner` 既支持按 Top-K 自动回放，也支持 `trial_nums=[...]` 按用户指定 trial 编号回放；`retrain=False` 时会直接使用调参阶段已保留的模型。评估阶段支持多个 `benchmark_cols` 和多个 `aux_targets`，长 y / 短 y 表现期不一致时可配合 `target_group_cols` 使用各自独立的样本切片。
 
 | API | 职责 | 返回值 |
 | --- | --- | --- |
@@ -346,7 +350,7 @@ Modeling Pipeline 仍在快速迭代中，可能不稳定；后续接口约定�
 | `MarsModelEvaluator` | 对已打分样本构建建模评估报告 | `MarsModelingReport` |
 | `MarsFeatureIncrementalTuner` | 按特征数量逐步扩展调参 | `MarsFeatureGrowthResult` |
 
-`MarsModelTuningResult` 会保存最佳模型、调参历史、特征重要性、训练配置和 artifact 元数据。`MarsModelReplayResult` 会保存 replay leaderboard、模型字典、打分数据、评估报告和重要性表。
+`MarsModelTuningResult` 会保存最佳模型、调参历史、特征重要性、训练配置和 artifact 元数据。`MarsModelReplayResult` 会保存 replay 排行表、模型字典、打分数据、评估报告和重要性表。
 
 当前 `MarsModelEvaluator` 是建模评估器，已输出 `Score PSI` 和 `score_psi` 明细，用于建模评估阶段观察模型输出在 train/val/oot 或业务切片之间的分布漂移。需要按自定义时间或业务切片做模型监控时，可以使用 `MarsMonitor` 得到 PSI、缺失率、分箱占比、分箱统计量和已表现样本风险指标等结构化结果。
 
@@ -412,9 +416,9 @@ MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 
 高层 API 面向完整业务表，目标变量是某个列名，所以使用 `df, target`。底层算法对象面向特征矩阵和标签向量，所以使用 `X, y`。这样可以避免同一个方法里同时出现列名和标签向量两种语义。
 
-### `MarsModelTuner.tune(history_path=None)` 会写文件吗？
+### `MarsModelTuner.tune(artifact_dir=None)` 会写文件吗？
 
-不会。`history_path=None` 时调参历史只保存在返回对象中。传入路径时才写 CSV；如果路径已存在且 `overwrite=False`，会抛出 `FileExistsError`。
+不会。`artifact_dir=None` 时调参历史、模型和元信息只保存在返回对象中。默认会在 `modeling_artifacts/` 下为每次调参创建独立运行目录，写入 `history.csv`、`run_config.json`、`metadata.json`、特征重要性和已保留模型，不会覆盖旧运行。
 
 ### Pandas 和 Polars 都能用吗？
 

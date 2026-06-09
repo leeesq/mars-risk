@@ -88,6 +88,38 @@ def test_model_data_slicer_hybrid_split_preserves_polars_output_type():
     assert "unassigned" not in set(out["dataset_flag"].to_list())
 
 
+def test_model_data_splitter_creates_independent_flags_by_target_observation():
+    df = pd.DataFrame(
+        {
+            "biz_dt": [
+                "2024-01-01",
+                "2024-01-02",
+                "2024-02-01",
+                "2024-02-02",
+                "2024-03-01",
+                "2024-03-02",
+            ],
+            "long_y": [0, 1, 0, 1, None, None],
+            "short_y": [0, 1, 0, 1, 0, 1],
+            "x1": [1, 2, 3, 4, 5, 6],
+        }
+    )
+
+    out = MarsModelDataSplitter().split_by_target_observation(
+        df,
+        time_col="biz_dt",
+        target="long_y",
+        aux_targets=["short_y"],
+        split_ratios={"train": 0.5, "val": 0.5},
+    )
+
+    assert isinstance(out, pd.DataFrame)
+    assert "dataset_flag" in out.columns
+    assert "short_y__dataset_flag" in out.columns
+    assert out.loc[out["long_y"].isna(), "dataset_flag"].eq("other").all()
+    assert not out.loc[out["biz_dt"].str.startswith("2024-03"), "short_y__dataset_flag"].eq("other").all()
+
+
 def test_model_data_slicer_rejects_negative_ratios():
     df = pd.DataFrame(
         {

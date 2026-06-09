@@ -24,6 +24,14 @@ from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner
 
 
+def head_tail_lift(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """计算头部 20% 与尾部 20% 坏样本率差异，作为自定义排序指标。"""
+    order = np.argsort(-np.asarray(y_pred, dtype=float))
+    sorted_y = np.asarray(y_true, dtype=float)[order]
+    bucket_size = max(1, int(np.ceil(sorted_y.shape[0] * 0.2)))
+    return float((sorted_y[:bucket_size].mean() - sorted_y[-bucket_size:].mean()) * 100.0)
+
+
 @pytest.mark.parametrize("model_type", ["xgb", "lgb", "cbt"])
 def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_path: Path, model_type: str):
     session = MarsModelingSession(
@@ -33,7 +41,7 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
         optimize_metric="ks",
         seed=11,
     )
-    history_path = tmp_path / f"{model_type}_history.csv"
+    artifact_root = tmp_path / f"{model_type}_artifacts"
     result = session.tune(
         sample_modeling_pd,
         max_diff=20.0,
@@ -42,11 +50,13 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
         warmup_steps=5,
         num_boost_round=30,
         early_stopping_rounds=8,
-        history_path=str(history_path),
+        artifact_dir=artifact_root,
     )
 
     assert isinstance(result, MarsModelTuningResult)
-    assert history_path.exists()
+    assert result.artifact_path is not None
+    assert Path(result.artifact_path).exists()
+    assert Path(result.history_path).exists()
     assert session.last_run is result
     assert session.last_run.best_model is not None
     assert session.best_model is result.best_model
@@ -57,13 +67,63 @@ def test_modeling_session_tune_runs_for_all_backends(sample_modeling_pd, tmp_pat
     assert set(result.importance_table.columns) == {"feature", "importance", "importance_type", "model_type", "rank"}
     assert not result.importance_table.empty
     assert "val_ks" in result.history_table.columns
-    assert result.history_path.endswith(f"{model_type}_history.csv")
+    assert result.history_path.endswith("history.csv")
+    assert result.run_id
+    assert not result.retained_model_table.empty
     assert result.replay_candidates
     assert result.training_config["training_metric"] == "ks"
     assert result.feature_schema
     assert result.library_versions
     if model_type in {"xgb", "lgb"}:
         assert result.backend_data_mode == "pandas_numeric"
+
+
+@pytest.mark.parametrize("model_type", ["xgb", "lgb", "cbt", "lr"])
+def test_modeling_session_tune_supports_custom_metric_for_all_backends(
+    sample_modeling_pd,
+    model_type: str,
+):
+    session = MarsModelingSession(
+        model_type=model_type,
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="head_tail_lift",
+        seed=101,
+        lr_feature_mode="numeric",
+    )
+
+    result = session.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=2,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        artifact_dir=None,
+        training_metric="auc",
+        custom_metrics={"head_tail_lift": head_tail_lift},
+    )
+
+    assert "train_head_tail_lift" in result.history_table.columns
+    assert "val_head_tail_lift" in result.history_table.columns
+    assert "oot1_head_tail_lift" in result.history_table.columns
+    assert result.metric_names == ["auc", "ks", "f1", "head_tail_lift"]
+    assert result.best_score == pytest.approx(
+        pd.to_numeric(result.history_table["val_head_tail_lift"], errors="coerce").max()
+    )
+
+    replay = session.replay(
+        result,
+        sample_modeling_pd,
+        top_k=1,
+        sort_metric="head_tail_lift",
+        custom_metrics={"head_tail_lift": head_tail_lift},
+        training_metric="auc",
+        num_boost_round=20,
+        early_stopping_rounds=5,
+    )
+    assert not replay.leaderboard_table.empty
 
 
 def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tmp_path: Path):
@@ -82,7 +142,7 @@ def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tm
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "tool_history.csv"),
+        artifact_dir=tmp_path / "tool_artifacts",
     )
 
     assert isinstance(result, MarsModelTuningResult)
@@ -92,7 +152,76 @@ def test_model_tuner_tune_matches_session_result_contract(sample_modeling_pd, tm
     assert tuner.history_table.equals(result.history_table)
 
 
-def test_model_tuner_history_path_none_does_not_write_file(sample_modeling_pd, tmp_path: Path):
+def test_model_tuner_supports_f1_metric(sample_modeling_pd):
+    tuner = MarsModelTuner(
+        model_type="lr",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="f1",
+        seed=25,
+        lr_feature_mode="numeric",
+    )
+
+    result = tuner.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=2,
+        startup_trials=1,
+        warmup_steps=3,
+        artifact_dir=None,
+        metric_params={"f1_threshold": 0.45},
+    )
+
+    assert "train_f1" in result.history_table.columns
+    assert "val_f1" in result.history_table.columns
+    assert result.best_score == pytest.approx(
+        pd.to_numeric(result.history_table["val_f1"], errors="coerce").max()
+    )
+
+
+def test_model_replay_supports_retained_models_and_trial_nums(sample_modeling_pd):
+    session = MarsModelingSession(
+        model_type="lr",
+        features=["x1", "x2", "x3"],
+        target="target",
+        optimize_metric="auc",
+        seed=26,
+        lr_feature_mode="numeric",
+    )
+    result = session.tune(
+        sample_modeling_pd,
+        max_diff=100.0,
+        n_trials=3,
+        startup_trials=1,
+        warmup_steps=3,
+        artifact_dir=None,
+        keep_top_n_models=1,
+    )
+
+    retained_trial = next(iter(result.retained_models))
+    replay = session.replay(
+        result,
+        sample_modeling_pd,
+        trial_nums=[retained_trial],
+        retrain=False,
+        sort_metric="auc",
+    )
+    assert replay.leaderboard_table["trial_num"].tolist() == [retained_trial]
+
+    all_trials = set(result.history_table["trial_num"].astype(int).tolist())
+    non_retained_trials = sorted(all_trials.difference(result.retained_models))
+    if non_retained_trials:
+        with pytest.raises(ValueError, match="not retained"):
+            session.replay(
+                result,
+                sample_modeling_pd,
+                trial_nums=[non_retained_trials[0]],
+                retrain=False,
+                sort_metric="auc",
+            )
+
+
+def test_model_tuner_artifact_dir_none_does_not_write_file(sample_modeling_pd, tmp_path: Path):
     tuner = MarsModelTuner(
         model_type="xgb",
         features=["x1", "x2", "x3"],
@@ -108,16 +237,16 @@ def test_model_tuner_history_path_none_does_not_write_file(sample_modeling_pd, t
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=None,
+        artifact_dir=None,
     )
 
     assert result.history_path is None
-    assert not any(tmp_path.glob("*history*.csv"))
+    assert result.artifact_path is None
+    assert not any(tmp_path.iterdir())
 
 
-def test_model_tuner_rejects_existing_history_without_overwrite(sample_modeling_pd, tmp_path: Path):
-    history_path = tmp_path / "existing_history.csv"
-    history_path.write_text("trial_num\n", encoding="utf-8")
+def test_model_tuner_creates_unique_artifact_runs(sample_modeling_pd, tmp_path: Path):
+    artifact_root = tmp_path / "modeling_artifacts"
     tuner = MarsModelTuner(
         model_type="xgb",
         features=["x1", "x2", "x3"],
@@ -126,17 +255,27 @@ def test_model_tuner_rejects_existing_history_without_overwrite(sample_modeling_
         seed=24,
     )
 
-    with pytest.raises(FileExistsError, match="history_path"):
-        tuner.tune(
-            sample_modeling_pd,
-            max_diff=20.0,
-            n_trials=1,
-            startup_trials=1,
-            warmup_steps=3,
-            num_boost_round=20,
-            early_stopping_rounds=5,
-            history_path=history_path,
-        )
+    first = tuner.tune(
+        sample_modeling_pd,
+        max_diff=20.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        artifact_dir=artifact_root,
+    )
+    second = tuner.tune(
+        sample_modeling_pd,
+        max_diff=20.0,
+        n_trials=1,
+        startup_trials=1,
+        warmup_steps=3,
+        num_boost_round=20,
+        early_stopping_rounds=5,
+        artifact_dir=artifact_root,
+    )
+    assert first.artifact_path != second.artifact_path
 
 
 def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeling_pd, tmp_path: Path):
@@ -154,7 +293,7 @@ def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeli
         n_trials=2,
         startup_trials=1,
         warmup_steps=3,
-        history_path=str(tmp_path / "lr_numeric_history.csv"),
+        artifact_dir=tmp_path / "lr_numeric_artifacts",
     )
 
     assert result.model_type == "lr"
@@ -191,7 +330,7 @@ def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_
         n_trials=1,
         startup_trials=1,
         warmup_steps=3,
-        history_path=str(tmp_path / "lr_woe_history.csv"),
+        artifact_dir=tmp_path / "lr_woe_artifacts",
     )
 
     assert result.model_type == "logistic"
@@ -261,7 +400,7 @@ def test_modeling_session_incremental_tune_runs_for_all_backends(sample_modeling
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / f"{model_type}_feature_growth.csv"),
+        artifact_dir=tmp_path / f"{model_type}_feature_growth",
     )
 
     assert isinstance(result, MarsFeatureGrowthResult)
@@ -274,7 +413,7 @@ def test_modeling_session_incremental_tune_runs_for_all_backends(sample_modeling
     assert result.summary_table["feature_count"].tolist() == [1, 3]
     assert "val_ks" in result.summary_table.columns
     assert result.summary_table["is_best"].sum() == 1
-    assert all(Path(path).exists() for path in result.summary_table["history_path"].dropna())
+    assert all(Path(path).exists() for path in result.summary_table["artifact_path"].dropna())
 
 
 def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
@@ -294,7 +433,7 @@ def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Pat
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "artifact_feature_growth.csv"),
+        artifact_dir=tmp_path / "artifact_feature_growth",
     )
 
     artifact_dir = result.write_artifact(str(tmp_path / "feature_growth_artifact"))
@@ -323,7 +462,7 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "artifact_history.csv"),
+        artifact_dir=tmp_path / "artifact_history",
     )
 
     artifact_dir = result.write_artifact(str(tmp_path / "run_artifact"))
@@ -393,7 +532,7 @@ def test_modeling_session_tune_records_oot_penalty_columns(sample_modeling_pd, t
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "oot_history.csv"),
+        artifact_dir=tmp_path / "oot_artifact",
     )
 
     assert "max_oot_diff" in result.history_table.columns
@@ -408,17 +547,17 @@ def test_modeling_session_tune_raises_when_validation_split_missing(sample_model
             model_type="xgb",
             features=["x1", "x2", "x3"],
             target="target",
-        ).tune(bad_df)
+        ).tune(bad_df, artifact_dir=None)
 
 
-def test_modeling_session_tune_raises_for_invalid_optimize_metric():
+def test_modeling_session_tune_raises_for_unknown_metric_without_custom_metric(sample_modeling_pd):
     with pytest.raises(ValueError, match="optimize_metric"):
         MarsModelingSession(
             model_type="xgb",
             features=["x1", "x2", "x3"],
             target="target",
-            optimize_metric="f1",
-        )
+            optimize_metric="unknown_metric",
+        ).tune(sample_modeling_pd, n_trials=1, artifact_dir=None)
 
 
 def test_modeling_session_tune_uses_lowercase_contains_dataset_flags(sample_modeling_pd, tmp_path: Path):
@@ -445,7 +584,7 @@ def test_modeling_session_tune_uses_lowercase_contains_dataset_flags(sample_mode
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "contains_history.csv"),
+        artifact_dir=tmp_path / "contains_artifact",
     )
 
     assert "OOT_202403_ks" in result.history_table.columns
@@ -460,7 +599,7 @@ def test_modeling_session_tune_rejects_ambiguous_dataset_flags(sample_modeling_p
             model_type="xgb",
             features=["x1", "x2", "x3"],
             target="target",
-        ).tune(df, n_trials=1)
+        ).tune(df, n_trials=1, artifact_dir=None)
 
 
 def test_catboost_ks_metric_handles_flattened_inputs_and_shape_errors():

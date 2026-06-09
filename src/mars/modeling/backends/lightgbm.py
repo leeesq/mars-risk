@@ -175,7 +175,9 @@ class MarsLGBStrategy(MarsBaseModelStrategy):
         train_params.update(params)
 
         train_kwargs: Dict[str, Any] = {}
-        if training_metric == "ks":
+        if self.backend_metric is not None:
+            train_kwargs["feval"] = self.backend_metric
+        elif training_metric == "ks":
             train_kwargs["feval"] = _lgb_ks_metric
 
         return lgb.train(

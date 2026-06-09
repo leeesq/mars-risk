@@ -399,7 +399,17 @@ class MarsFeatureIncrementalTuner:
         return str(path.with_name(f"{path.stem}_features_{feature_count}{suffix}"))
 
     @staticmethod
-    def _select_history_row(history: pd.DataFrame, metric: str) -> pd.Series | None:
+    def _step_artifact_dir(base_dir: str | Path, feature_count: int) -> str:
+        """为每个 step 生成独立的 artifact 根目录。"""
+        return str(Path(base_dir) / f"features_{feature_count}")
+
+    @staticmethod
+    def _select_history_row(
+        history: pd.DataFrame,
+        metric: str,
+        *,
+        direction: str = "maximize",
+    ) -> pd.Series | None:
         """选择某个 step 中用于汇总展示的最佳有效 trial。"""
         if history.empty:
             return None
@@ -415,6 +425,8 @@ class MarsFeatureIncrementalTuner:
         valid = valid.loc[scores.notna()].copy()
         if valid.empty:
             return None
+        if direction == "minimize":
+            return valid.loc[scores.loc[valid.index].idxmin()]
         return valid.loc[scores.loc[valid.index].idxmax()]
 
     @staticmethod
@@ -428,22 +440,29 @@ class MarsFeatureIncrementalTuner:
             "best_iteration": run.best_iteration,
             "backend_data_mode": run.backend_data_mode,
             "history_path": run.history_path,
+            "artifact_path": run.artifact_path,
             "model_type": run.model_type,
             "optimize_metric": run.optimize_metric,
             "error": None,
         }
-        history_row = MarsFeatureIncrementalTuner._select_history_row(run.history_table, selection_metric)
+        direction = dict(getattr(run, "metric_directions", {}) or {}).get(selection_metric, "maximize")
+        history_row = MarsFeatureIncrementalTuner._select_history_row(
+            run.history_table,
+            selection_metric,
+            direction=direction,
+        )
         if history_row is None:
             row["selection_score"] = float(run.best_score)
             return row
 
         score_col = f"val_{selection_metric}"
         row["selection_score"] = pd.to_numeric(pd.Series([history_row.get(score_col)]), errors="coerce").iloc[0]
+        metric_suffixes = tuple(f"_{metric_name}" for metric_name in run.metric_names)
         for col in run.history_table.columns:
             col_name = str(col)
             if col_name in {"trial_num", "is_valid", "val_diff", "max_oot_diff"}:
                 row[col_name] = history_row.get(col)
-            elif col_name.endswith("_ks") or col_name.endswith("_auc"):
+            elif col_name.endswith(metric_suffixes):
                 row[col_name] = history_row.get(col)
         return row
 
@@ -459,6 +478,7 @@ class MarsFeatureIncrementalTuner:
             "best_iteration": None,
             "backend_data_mode": None,
             "history_path": None,
+            "artifact_path": None,
             "model_type": None,
             "optimize_metric": None,
             "error": str(exc)[:300],
@@ -479,7 +499,15 @@ class MarsFeatureIncrementalTuner:
         complete = complete.loc[scores.notna()].copy()
         if complete.empty:
             return None, None
-        best_idx = scores.loc[complete.index].idxmax()
+        sample_run = next(iter(runs.values()), None)
+        direction = "maximize"
+        if sample_run is not None:
+            direction = dict(getattr(sample_run, "metric_directions", {}) or {}).get(metric, "maximize")
+        best_idx = (
+            scores.loc[complete.index].idxmin()
+            if direction == "minimize"
+            else scores.loc[complete.index].idxmax()
+        )
         best_step = int(summary_table.loc[best_idx, "feature_count"])
         return best_step, runs.get(best_step)
 
@@ -542,9 +570,6 @@ class MarsFeatureIncrementalTuner:
         if mode.lower() != "prefix":
             raise ValueError("MarsFeatureIncrementalTuner currently supports only mode='prefix'.")
         metric = (selection_metric or self.spec.optimize_metric).lower()
-        if metric not in {"auc", "ks"}:
-            raise ValueError("selection_metric must be one of {'auc', 'ks'}.")
-
         ordered_features = self._resolve_feature_order(
             feature_order=feature_order,
             importance_table=importance_table,
@@ -558,8 +583,10 @@ class MarsFeatureIncrementalTuner:
         )
 
         base_history_path = tune_kwargs.get("history_path")
+        base_artifact_dir = tune_kwargs.get("artifact_dir")
         common_tune_kwargs = dict(tune_kwargs)
         common_tune_kwargs.pop("history_path", None)
+        common_tune_kwargs.pop("artifact_dir", None)
 
         rows: List[Dict[str, Any]] = []
         runs: Dict[int, MarsModelTuningResult] = {}
@@ -580,10 +607,14 @@ class MarsFeatureIncrementalTuner:
                 lr_binner=self.spec.lr_binner,
             )
             step_kwargs = dict(common_tune_kwargs)
-            if base_history_path is not None:
-                step_kwargs["history_path"] = self._step_history_path(
-                    base_history_path,
+            if base_artifact_dir is not None:
+                step_kwargs["artifact_dir"] = self._step_artifact_dir(
+                    base_artifact_dir,
                     feature_count,
+                )
+            if base_history_path is not None:
+                step_kwargs["artifact_dir"] = str(
+                    Path(self._step_history_path(base_history_path, feature_count)).with_suffix("")
                 )
             try:
                 # 每个 step 复用成熟的单次 tuner，避免增量实验绕开后端训练和 artifact 逻辑。

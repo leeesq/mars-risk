@@ -179,7 +179,7 @@ modeling_df = session.slice(
 tuning_result = session.tune(
     modeling_df,
     n_trials=20,
-    history_path=None,
+    artifact_dir=None,
 )
 
 replay_result = MarsModelReplayRunner().run(

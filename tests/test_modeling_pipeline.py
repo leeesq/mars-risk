@@ -28,7 +28,7 @@ def test_modeling_session_replay_retrains_and_scores(sample_modeling_df, tmp_pat
         warmup_steps=5,
         num_boost_round=25,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "pipeline_history.csv"),
+        artifact_dir=tmp_path / "pipeline_artifacts",
     )
 
     result = session.replay(
@@ -70,7 +70,7 @@ def test_model_replay_reuses_tuning_result(sample_modeling_df, tmp_path: Path):
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "replay_history.csv"),
+        artifact_dir=tmp_path / "replay_artifacts",
     )
     replay = MarsModelReplayRunner()
 
@@ -107,7 +107,7 @@ def test_model_replay_builds_leaderboard_without_oot(sample_modeling_df, tmp_pat
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "no_oot_history.csv"),
+        artifact_dir=tmp_path / "no_oot_artifacts",
     )
 
     result = session.replay(
@@ -140,7 +140,7 @@ def test_model_replay_artifact_roundtrip(sample_modeling_df, tmp_path: Path):
         warmup_steps=3,
         num_boost_round=20,
         early_stopping_rounds=5,
-        history_path=str(tmp_path / "artifact_replay_history.csv"),
+        artifact_dir=tmp_path / "artifact_replay",
     )
     replay_result = session.replay(
         tuning_result,

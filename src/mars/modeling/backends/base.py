@@ -11,7 +11,13 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.modeling.metrics import calculate_auc, calculate_ks
+from mars.modeling.metrics import (
+    MetricCallable,
+    MetricDirection,
+    evaluate_metrics,
+    normalize_metric_directions,
+    resolve_metric_names,
+)
 from mars.modeling.utils import (
     HISTORY_BASE_COLUMNS,
     METRIC_NAMES,
@@ -50,7 +56,8 @@ class MarsBaseModelStrategy(ABC):
     True
     """
 
-    SUPPORTED_OPTIMIZE_METRICS = {"auc", "ks"}
+    SUPPORTED_OPTIMIZE_METRICS = {"auc", "ks", "f1"}
+    NATIVE_TRAINING_METRICS = {"auc", "ks"}
 
     def __init__(
         self,
@@ -65,12 +72,60 @@ class MarsBaseModelStrategy(ABC):
         use_oot_penalty: bool = False,
         dataset_flag_col: str = "dataset_flag",
         categorical_features: Sequence[str] | None = None,
+        metric_params: Mapping[str, Any] | None = None,
+        custom_metrics: Mapping[str, MetricCallable] | None = None,
+        metric_directions: Mapping[str, MetricDirection] | None = None,
+        training_metric: str | None = None,
+        backend_metric: Any | None = None,
+        keep_top_n_models: int = 0,
     ) -> None:
         """
         初始化调参后端共享状态并校验建模输入。
 
         该方法负责保留原始数据引擎、检查必需列、标准化特征与切片配置，并
         初始化 Trial 历史、模型缓存和最佳模型状态。
+
+        Parameters
+        ----------
+        df : FrameLike
+            已包含特征、目标列和样本切片列的建模样本。
+        features : Sequence[str]
+            参与训练的特征列名。
+        target : str
+            主训练目标列名。
+        optimize_metric : str
+            trial 目标函数使用的优化指标，可以是内置指标或自定义指标名。
+        param_space : Mapping[str, Any] | None
+            后端参数搜索空间覆盖项。
+        max_diff : float
+            train 与 validation 指标允许的最大泛化差异，单位是百分点。
+        seed : int
+            随机种子。
+        use_oot_penalty : bool
+            是否将 OOT 衰减纳入 trial 有效性判断。
+        dataset_flag_col : str
+            建模样本切片列名。
+        categorical_features : Sequence[str] | None
+            类别特征列名。
+        metric_params : Mapping[str, Any] | None
+            指标参数，例如 ``f1_threshold``。
+        custom_metrics : Mapping[str, MetricCallable] | None
+            自定义指标函数字典。
+        metric_directions : Mapping[str, MetricDirection] | None
+            指标排序方向，未配置时默认按 maximize 处理。
+        training_metric : str | None
+            模型后端训练期监控指标。
+        backend_metric : Any | None
+            透传给模型后端原生训练接口的自定义 metric。
+        keep_top_n_models : int
+            调参过程中动态保留的最优模型数量。
+
+        Raises
+        ------
+        TypeError
+            当输入数据不是 Pandas 或 Polars DataFrame 时抛出。
+        ValueError
+            当必需列、类别特征或优化指标配置不合法时抛出。
         """
         self._input_is_polars: bool = is_polars_dataframe(df)
         if isinstance(df, pl.DataFrame):
@@ -94,11 +149,24 @@ class MarsBaseModelStrategy(ABC):
         self.use_oot_penalty: bool = use_oot_penalty
         self.dataset_flag_col: str = dataset_flag_col
         self.categorical_features: List[str] = list(categorical_features or [])
+        self.metric_params: Dict[str, Any] = dict(metric_params or {})
+        self.custom_metrics: Dict[str, MetricCallable] = {
+            str(name).lower(): metric
+            for name, metric in dict(custom_metrics or {}).items()
+        }
+        self.metric_names: List[str] = resolve_metric_names(self.custom_metrics)
+        self.metric_directions: Dict[str, MetricDirection] = normalize_metric_directions(
+            self.metric_names,
+            metric_directions,
+        )
+        self.training_metric: str = self._resolve_training_metric(training_metric)
+        self.backend_metric: Any | None = backend_metric
+        self.keep_top_n_models: int = max(0, int(keep_top_n_models))
 
-        if self.optimize_metric not in self.SUPPORTED_OPTIMIZE_METRICS:
+        if self.optimize_metric not in self.metric_names:
             raise ValueError(
                 f"Unsupported optimize_metric: {optimize_metric!r}. "
-                f"Expected one of {sorted(self.SUPPORTED_OPTIMIZE_METRICS)}."
+                f"Expected one of {sorted(self.metric_names)}."
             )
 
         required_cols = set(self.features + [self.target, self.dataset_flag_col])
@@ -114,12 +182,13 @@ class MarsBaseModelStrategy(ABC):
 
         self.history: List[Dict[str, Any]] = []
         self.all_models: Dict[int, Any] = {}
+        self.retained_models: Dict[int, Any] = {}
+        self.retained_model_rows: List[Dict[str, Any]] = []
         self.best_model: Any = None
-        self.best_score: float = -np.inf
+        self.best_score: float = self._initial_best_score()
 
         self.num_boost_round: int = 500
         self.early_stopping_rounds: int = 50
-        self.training_metric: str = "auc"
         self.backend_data_mode: str = "unset"
         self.category_levels: Dict[str, List[Any]] = {}
         if self._input_is_polars:
@@ -138,6 +207,80 @@ class MarsBaseModelStrategy(ABC):
         self._prepare_data()
         self._initialize_category_levels()
         self._build_backend_data()
+
+    def _resolve_training_metric(self, training_metric: str | None) -> str:
+        """确定后端训练期监控指标，无法原生训练的指标回退到 AUC。"""
+        candidate = (training_metric or self.optimize_metric).lower()
+        if candidate in self.NATIVE_TRAINING_METRICS:
+            return candidate
+        return "auc"
+
+    def _metric_direction(self, metric_name: str | None = None) -> MetricDirection:
+        """返回指定指标的优化方向。"""
+        return self.metric_directions.get((metric_name or self.optimize_metric).lower(), "maximize")
+
+    def _initial_best_score(self) -> float:
+        """按优化方向生成初始 best score。"""
+        if self._metric_direction() == "minimize":
+            return np.inf
+        return -np.inf
+
+    def _is_better_score(self, score: float, baseline: float) -> bool:
+        """按当前优化方向判断新分数是否优于基准分数。"""
+        if self._metric_direction() == "minimize":
+            return score < baseline
+        return score > baseline
+
+    def _invalid_trial_score(self, penalty_diff: float) -> float:
+        """生成违反泛化约束时的 Optuna 惩罚分。"""
+        if self._metric_direction() == "minimize":
+            return float(1_000_000.0 + max(0.0, penalty_diff))
+        return float(-100.0 - max(0.0, penalty_diff))
+
+    def _generalization_diff(self, train_score: float, compare_score: float) -> float:
+        """按优化方向计算训练集到验证/OOT 的泛化衰减。"""
+        if self._metric_direction() == "minimize":
+            return round(compare_score - train_score, 6)
+        return round(train_score - compare_score, 6)
+
+    def _retain_candidate_model(
+        self,
+        *,
+        trial_num: int,
+        model: Any,
+        score: float,
+        record: Mapping[str, Any],
+    ) -> None:
+        """动态保留当前最优的 Top-N Trial 模型。"""
+        if self.keep_top_n_models <= 0:
+            return
+
+        self.retained_models[trial_num] = model
+        retained_row = {
+            "trial_num": trial_num,
+            "score": float(score),
+            **dict(record),
+        }
+        self.retained_model_rows = [
+            row
+            for row in self.retained_model_rows
+            if int(row.get("trial_num", -1)) != trial_num
+        ]
+        self.retained_model_rows.append(retained_row)
+
+        ascending = self._metric_direction() == "minimize"
+        self.retained_model_rows = sorted(
+            self.retained_model_rows,
+            key=lambda row: float(row.get("score", np.inf if ascending else -np.inf)),
+            reverse=not ascending,
+        )[: self.keep_top_n_models]
+        retained_trial_nums = {int(row["trial_num"]) for row in self.retained_model_rows}
+        self.retained_models = {
+            retained_trial_num: retained_model
+            for retained_trial_num, retained_model in self.retained_models.items()
+            if retained_trial_num in retained_trial_nums
+        }
+        self.all_models = dict(self.retained_models)
 
     @property
     def split_names(self) -> List[str]:
@@ -379,12 +522,15 @@ class MarsBaseModelStrategy(ABC):
         Returns
         -------
         dict of str to float
-            包含 ``auc`` 与 ``ks`` 的百分制指标字典。
+            包含内置指标和本次自定义指标的指标字典。
         """
-        return {
-            "auc": calculate_auc(y_true, y_pred),
-            "ks": calculate_ks(y_true, y_pred),
-        }
+        return evaluate_metrics(
+            y_true,
+            y_pred,
+            self.metric_names,
+            metric_params=self.metric_params,
+            custom_metrics=self.custom_metrics,
+        )
 
     def evaluate_split(self, model: Any, split_name: str) -> Dict[str, float]:
         """
@@ -544,15 +690,16 @@ class MarsBaseModelStrategy(ABC):
         history_table = pd.DataFrame(self.history)
         if history_table.empty:
             desired_columns = list(HISTORY_BASE_COLUMNS) + list(self.replay_param_keys)
+            metric_names = getattr(self, "metric_names", list(METRIC_NAMES))
             for split_name in self.split_names:
-                for metric_name in METRIC_NAMES:
+                for metric_name in metric_names:
                     desired_columns.append(f"{split_name}_{metric_name}")
             return pd.DataFrame(columns=desired_columns)
 
         param_columns = [col for col in self.replay_param_keys if col in history_table.columns]
         metric_columns: List[str] = []
         for split_name in self.split_names:
-            for metric_name in METRIC_NAMES:
+            for metric_name in self.metric_names:
                 column_name = f"{split_name}_{metric_name}"
                 if column_name in history_table.columns:
                     metric_columns.append(column_name)
@@ -572,22 +719,21 @@ class MarsBaseModelStrategy(ABC):
         history_path: str | Path | None,
     ) -> float:
         """
-        Execute one Optuna trial lifecycle.
+        执行一次 Optuna trial 生命周期。
 
         Parameters
         ----------
         trial : Any
-            Current Optuna trial object.
+            当前 Optuna trial 对象。
         startup_trials : int
-            Warmup trial count before pruning.
+            剪枝器开始工作前的预热 trial 数量。
         history_path : str | Path | None
-            CSV path for trial history. ``None`` disables disk writes.
+            trial history CSV 路径；``None`` 表示不落盘。
 
         Returns
         -------
         float
-            Trial objective score, or a penalty score when generalization
-            constraints fail.
+            trial objective 分数；泛化约束失败时返回惩罚分。
 
         Raises
         ------
@@ -601,6 +747,7 @@ class MarsBaseModelStrategy(ABC):
         }
 
         try:
+            trial_num = int(getattr(trial, "number", -1))
             params = self.parse_param_space(trial, self.get_default_space())
             record.update(params)
 
@@ -612,7 +759,6 @@ class MarsBaseModelStrategy(ABC):
                 startup_trials=startup_trials,
                 training_metric=self.training_metric,
             )
-            self.all_models[getattr(trial, "number", len(self.all_models))] = model
 
             # 所有切片统一评估后，再决定是否触发验证集 / OOT 泛化惩罚。
             metrics_by_split: Dict[str, Dict[str, float]] = {
@@ -628,13 +774,17 @@ class MarsBaseModelStrategy(ABC):
                 if "oot" in split_name.lower()
             ]
 
-            val_diff = round(train_score - val_score, 6)
+            val_diff = self._generalization_diff(train_score, val_score)
             is_valid = val_diff <= self.max_diff
             max_penalty_diff = val_diff
 
             max_oot_diff: float | None = None
             if oot_scores:
-                max_oot_diff = round(train_score - min(oot_scores), 6)
+                oot_diffs = [
+                    self._generalization_diff(train_score, oot_score)
+                    for oot_score in oot_scores
+                ]
+                max_oot_diff = max(oot_diffs)
                 if self.use_oot_penalty:
                     # 开启 OOT 惩罚后，以最差的时序外样本衰减作为额外约束，
                     # 逼迫搜索过程偏向更稳健的参数组合。
@@ -657,11 +807,18 @@ class MarsBaseModelStrategy(ABC):
             )
 
             # 仅当 Trial 通过泛化校验时，才允许刷新全局 best model。
-            if is_valid and val_score > self.best_score:
-                self.best_score = val_score
-                self.best_model = model
+            if is_valid:
+                if self._is_better_score(val_score, self.best_score):
+                    self.best_score = val_score
+                    self.best_model = model
+                self._retain_candidate_model(
+                    trial_num=trial_num,
+                    model=model,
+                    score=val_score,
+                    record=record,
+                )
 
-            return float(val_score if is_valid else -100.0 - max_penalty_diff)
+            return float(val_score if is_valid else self._invalid_trial_score(max_penalty_diff))
 
         except Exception as exc:
             optuna_module = None
@@ -813,3 +970,24 @@ class MarsBaseModelStrategy(ABC):
         >>> tuner.predict_scores(object(), "val").tolist()
         [0.1, 0.9]
         """
+
+    def extract_importance(self, model: Any) -> pd.DataFrame:
+        """
+        返回当前后端标准化后的特征重要性表。
+
+        Parameters
+        ----------
+        model : Any
+            已训练模型。
+
+        Returns
+        -------
+        pandas.DataFrame
+            MARS 统一格式的特征重要性表。
+
+        Raises
+        ------
+        NotImplementedError
+            子类未实现特征重要性提取时抛出。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not implement extract_importance.")
