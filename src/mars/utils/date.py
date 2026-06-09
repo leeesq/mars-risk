@@ -196,6 +196,11 @@ class MarsDate:
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
 
+        Raises
+        ------
+        ValueError
+            当 `interval` 不是 ``"week"`` 或 ``"Nw"`` 格式时抛出。
+
         Examples
         --------
         >>> df = pl.DataFrame({"dt": ["2026-01-28"]})
@@ -236,6 +241,11 @@ class MarsDate:
         -------
         pl.Expr
             类型为 ``pl.Utf8`` (String) 的表达式。
+
+        Raises
+        ------
+        ValueError
+            当 `interval` 不是 ``"month"`` 或 ``"Nm"`` 格式时抛出。
 
         Examples
         --------
@@ -292,7 +302,10 @@ class MarsDate:
         ValueError
             当粒度格式不是 MARS 支持的日期粒度时抛出。
         """
-        unit, n_units = MarsDate._parse_time_grain(grain)
+        try:
+            unit, n_units = MarsDate._parse_time_grain(grain)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         if unit == "d":
             return MarsDate.dt2day(dt, interval=f"{n_units}d")
         if unit == "w":
