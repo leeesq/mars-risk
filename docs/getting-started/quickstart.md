@@ -35,6 +35,8 @@ from mars.analysis import MarsDataProfiler, profile_stats
 profile_report = MarsDataProfiler(missing_values=[-999]).generate_profile(
     df,
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     config_overrides={
         "enable_sparkline": False,
         "dq_metrics": ["missing", "zeros"],
@@ -71,6 +73,8 @@ risk_profile = profile_risk(
     group_col="month",
     binning_type="native",
     binner_params={"method": "quantile", "n_bins": 4},
+    psi_include_missing=False,
+    psi_include_special=False,
     plot=False,
 )
 
@@ -111,6 +115,8 @@ selector = MarsStatsSelector(
     missing_thr=0.9,
     iv_thr=0.01,
     psi_thr=0.25,
+    psi_include_missing=False,
+    psi_include_special=False,
     skip_fine_scan=True,
 )
 
@@ -144,6 +150,8 @@ monitor_report = MarsMonitor(
     features=["model_score", "income", "utilization"],
     target="target",
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     trend_column_order="desc",
 )
 
@@ -155,6 +163,8 @@ alert_text = generate_monitoring_alert(
 ```
 
 `MarsMonitor` 是特征/模型监控的通用指标计算层。`trend_column_order="desc"` 可以让最新时间列展示在趋势宽表最前面，报警摘要会按 report 记录的顺序识别基准期和最新期。
+
+分箱评估、画像、筛选和监控都支持控制 PSI 是否包含缺失箱和特殊值箱。建模评估复用分箱评估器计算 `Score PSI` 和 `feature_psi`，只暴露 `psi_include_missing`，因为建模评估本身没有业务特殊值上下文。
 
 ## Modeling / Pipeline
 

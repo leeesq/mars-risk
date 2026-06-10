@@ -234,6 +234,8 @@ class MarsMonitor(MarsBaseEstimator):
         weights_col: str | None = None,
         batch_size: int = 100,
         trend_column_order: TrendColumnOrder = "asc",
+        psi_include_missing: bool | None = None,
+        psi_include_special: bool | None = None,
     ) -> MarsMonitoringReport:
         """
         执行一次特征或模型分监控。
@@ -266,6 +268,10 @@ class MarsMonitor(MarsBaseEstimator):
         trend_column_order : TrendColumnOrder
             趋势宽表中时间或分组取值列的展示顺序；``"asc"`` 保持从早到晚，
             ``"desc"`` 则从晚到早。``Total`` 列如存在会固定在最后。
+        psi_include_missing : bool | None
+            本次监控计算 PSI 时是否纳入缺失值箱；``None`` 表示沿用实例默认值。
+        psi_include_special : bool | None
+            本次监控计算 PSI 时是否纳入特殊值箱；``None`` 表示沿用实例默认值。
 
         Returns
         -------
@@ -278,6 +284,12 @@ class MarsMonitor(MarsBaseEstimator):
             当特征列、target 列或 target 取值不满足监控要求时抛出。
         """
         self._validate_trend_column_order(trend_column_order)
+        effective_psi_include_missing = (
+            self.psi_include_missing if psi_include_missing is None else psi_include_missing
+        )
+        effective_psi_include_special = (
+            self.psi_include_special if psi_include_special is None else psi_include_special
+        )
         working_df = self._ensure_polars_dataframe(df)
         if isinstance(working_df, pl.LazyFrame):
             working_df = working_df.collect()
@@ -302,8 +314,8 @@ class MarsMonitor(MarsBaseEstimator):
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
-            psi_include_missing=self.psi_include_missing,
-            psi_include_special=self.psi_include_special,
+            psi_include_missing=effective_psi_include_missing,
+            psi_include_special=effective_psi_include_special,
             benchmark_df=benchmark_df,
             weights_col=weights_col,
             batch_size=batch_size,
@@ -358,8 +370,8 @@ class MarsMonitor(MarsBaseEstimator):
             {
                 "monitoring_feature_count": len(features),
                 "target": target,
-                "psi_include_missing": self.psi_include_missing,
-                "psi_include_special": self.psi_include_special,
+                "psi_include_missing": effective_psi_include_missing,
+                "psi_include_special": effective_psi_include_special,
                 "trend_column_order": trend_column_order,
             }
         )

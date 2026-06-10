@@ -199,6 +199,8 @@ def test_stats_selector_trims_filtered_feature_data_source_for_eval_report(sampl
         psi_thr=None,
         corr_thr=None,
         skip_fine_scan=True,
+        psi_include_missing=True,
+        psi_include_special=True,
         rough_binning_params={
             "method": "quantile",
             "n_bins": 3,
@@ -240,6 +242,8 @@ def test_stats_selector_trims_filtered_feature_data_source_for_eval_report(sampl
     assert summary_source_map["utilization"] == "UNMAPPED"
     assert detail_source_map["income"] == "APP"
     assert detail_source_map["utilization"] == "UNMAPPED"
+    assert report.report_meta["psi_include_missing"] is True
+    assert report.report_meta["psi_include_special"] is True
 
 
 def test_stats_selector_preserves_selected_feature_order(sample_credit_df):

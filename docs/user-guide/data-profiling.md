@@ -20,6 +20,8 @@ report = profiler.generate_profile(
     df,
     features=["income", "utilization", "segment"],
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     config_overrides={
         "dq_metrics": ["missing", "zeros"],
         "stat_metrics": ["mean", "psi"],
@@ -29,6 +31,8 @@ report = profiler.generate_profile(
 ```
 
 `generate_profile` 接收本次数据、特征范围、分组和配置覆盖项。`MarsDataProfiler` 构造函数只保留稳定策略，例如缺失值、特殊值和默认配置。
+
+画像里的 PSI 可通过 `psi_include_missing` 和 `psi_include_special` 控制是否纳入缺失箱和特殊值箱；显式方法参数会覆盖 `config_overrides` 中的同名配置。
 
 ## 常见输出
 
@@ -91,4 +95,3 @@ risk_profile = profile_risk(
 - 画像阶段先关注缺失率、特殊值比例、稳定性和数据源分组。
 - 对宽表建议先用 `features` 缩小范围，确认指标口径后再扩展到全量字段。
 - 对上线监控或周期复盘，优先把 `dq_tables` 和 `stats_tables` 接入内部看板，而不是只看一次性 Excel。
-

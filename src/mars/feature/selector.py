@@ -54,6 +54,8 @@ class MarsStatsSelector(MarsBaseSelector):
         psi_thr: float | None = 0.25,
         rc_thr: float | None = 0.5,
         corr_thr: float | None = 0.95,
+        psi_include_missing: bool = False,
+        psi_include_special: bool = False,
 
         skip_rough_scan: bool = False,
         skip_fine_scan: bool = False,
@@ -93,6 +95,10 @@ class MarsStatsSelector(MarsBaseSelector):
             排名变化率筛选阈值。
         corr_thr : float | None
             WOE 相关性筛选阈值。
+        psi_include_missing : bool
+            稳定性筛选和评估报告计算 PSI 时是否纳入缺失值箱。
+        psi_include_special : bool
+            稳定性筛选和评估报告计算 PSI 时是否纳入特殊值箱。
         skip_rough_scan : bool
             是否跳过粗筛分箱阶段。
         skip_fine_scan : bool
@@ -157,6 +163,8 @@ class MarsStatsSelector(MarsBaseSelector):
         self.psi_thr = psi_thr
         self.rc_thr = rc_thr
         self.corr_thr = corr_thr
+        self.psi_include_missing = psi_include_missing
+        self.psi_include_special = psi_include_special
 
         self.max_samples: int | None = None
         self.batch_size = batch_size
@@ -745,6 +753,8 @@ class MarsStatsSelector(MarsBaseSelector):
             time_grain=self.profile_by if self.time_col else None,
             batch_size=self.batch_size,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
+            psi_include_missing=self.psi_include_missing,
+            psi_include_special=self.psi_include_special,
         )
         report = run.report
 
@@ -808,6 +818,8 @@ class MarsStatsSelector(MarsBaseSelector):
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
+            psi_include_missing=self.psi_include_missing,
+            psi_include_special=self.psi_include_special,
         )
         report = run.report
         psi_map = {r["feature"]: r["psi_max"] for r in report.summary_table.select(["feature", "psi_max"]).to_dicts()}
@@ -840,6 +852,8 @@ class MarsStatsSelector(MarsBaseSelector):
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
+            psi_include_missing=self.psi_include_missing,
+            psi_include_special=self.psi_include_special,
         )
         report = run.report
 
@@ -982,6 +996,8 @@ class MarsStatsSelector(MarsBaseSelector):
             time_grain=self.profile_by if self.time_col else None,
             feature_start_aware_baseline=self.feature_start_aware_baseline,
             feature_data_source=self._feature_data_source_for(self.selected_features_),
+            psi_include_missing=self.psi_include_missing,
+            psi_include_special=self.psi_include_special,
         )
         report: MarsEvaluationReport = run.report
 

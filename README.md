@@ -8,7 +8,7 @@
 
 <img src="docs/assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库" width="720">
 
-<img src="docs/assets/mars-pipeline.svg?v=20260610-modeling-pipeline" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
+<img src="docs/assets/mars-workflow.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
 
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
@@ -174,6 +174,8 @@ profiler = MarsDataProfiler(missing_values=[-999])
 profile_report = profiler.generate_profile(
     df,
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     config_overrides={
         "enable_sparkline": False,
         "dq_metrics": ["missing", "zeros"],
@@ -202,6 +204,8 @@ risk_profile = profile_risk(
     group_col="month",
     binning_type="native",
     binner_params={"method": "quantile", "n_bins": 4},
+    psi_include_missing=False,
+    psi_include_special=False,
     plot=False,
 )
 
@@ -243,6 +247,8 @@ selector = MarsStatsSelector(
     missing_thr=0.9,
     iv_thr=0.01,
     psi_thr=0.25,
+    psi_include_missing=False,
+    psi_include_special=False,
     skip_fine_scan=True,
 )
 
@@ -273,6 +279,8 @@ monitor_report = MarsMonitor(
     features=["model_score", "income", "utilization"],
     target="target",
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     trend_column_order="desc",
 )
 
@@ -290,6 +298,8 @@ alert_text = generate_monitoring_alert(
 监控链路只接受 `0/1/True/False/null` target；`null` 表示样本尚未到表现期。`target=None` 时只输出无标签分布监控；传入 target 时，PSI、缺失率和分箱占比使用全量样本，坏账率、IV、KS、AUC、Lift 等标签指标只使用已表现样本。PSI 默认不包含缺失箱和特殊值箱，缺失率会单独进入趋势监控。`trend_column_order` 控制趋势宽表取值列的展示顺序，默认 `"asc"` 保持从早到晚；需要最新月份靠前时可设为 `"desc"`，报警摘要会按 report 记录的趋势列顺序识别基准期和最新期。`generate_monitoring_alert` 是基于 `MarsMonitoringReport` 的默认摘要工具，不替代业务方自己的报警规则、阈值策略和处置流程。
 
 监控也可以在有 target 时使用 `binning_type="lite_opt"` 复用轻量监督式最优分箱；无标签分布监控建议保持 `binning_type="native"`。
+
+建模评估中的 `Score PSI` 和 `feature_psi` 复用分箱评估器计算分箱明细和 PSI。该链路只暴露 `psi_include_missing`，用于控制缺失箱是否纳入 PSI；建模评估没有业务特殊值上下文，特殊值口径应放在分箱评估或监控入口中处理。
 
 ### Modeling / Pipeline
 

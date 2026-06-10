@@ -483,6 +483,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "targets": [original_target] if self.has_target_ and original_target else [],
             "event_rate_by_target": {},
             "feature_start_aware_baseline": bool(feature_start_reference),
+            "psi_include_missing": psi_include_missing,
+            "psi_include_special": psi_include_special,
             "feature_start_baseline_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
             "feature_start_baseline_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
         }
@@ -2292,6 +2294,8 @@ def profile_risk(
     time_col: str | None = None,
     time_grain: str | None = None,
     feature_start_aware_baseline: bool = False,
+    psi_include_missing: bool = False,
+    psi_include_special: bool = False,
 
     binning_type: Literal["native", "optimal", "lite_opt"] = "native",
     binner: MarsBinnerBase | None = None,
@@ -2338,6 +2342,10 @@ def profile_risk(
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
     feature_start_aware_baseline : bool
         是否按特征首次出现的分组选择 PSI 基准。
+    psi_include_missing : bool
+        计算 PSI 时是否纳入缺失值箱；默认不纳入，缺失率通常单独监控。
+    psi_include_special : bool
+        计算 PSI 时是否纳入特殊值箱；默认不纳入，由业务口径显式决定。
     binning_type : Literal['native', 'optimal', 'lite_opt']
         未显式传入 `binner` 时使用的分箱器类型。
     binner : MarsBinnerBase | None
@@ -2414,6 +2422,8 @@ def profile_risk(
         time_col=time_col,
         time_grain=time_grain,
         feature_start_aware_baseline=feature_start_aware_baseline,
+        psi_include_missing=psi_include_missing,
+        psi_include_special=psi_include_special,
         benchmark_df=benchmark_df,
         weights_col=weights_col,
         batch_size=batch_size,
@@ -2446,6 +2456,8 @@ def profile_risk(
                 time_col=time_col,
                 time_grain=time_grain,
                 feature_start_aware_baseline=feature_start_aware_baseline,
+                psi_include_missing=psi_include_missing,
+                psi_include_special=psi_include_special,
                 benchmark_df=benchmark_df,
                 weights_col=weights_col,
                 batch_size=batch_size,

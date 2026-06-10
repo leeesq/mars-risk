@@ -29,6 +29,8 @@ def profile_stats(
     include_dtypes: Union[type, pl.DataType, List[Union[type, pl.DataType]], None] = None,
     sample_frac: float | None = None,
     enable_sparkline: bool = False,
+    psi_include_missing: bool | None = None,
+    psi_include_special: bool | None = None,
     config_overrides: Dict[str, Any] | None = None,
 ) -> MarsProfileReport:
     """
@@ -61,6 +63,10 @@ def profile_stats(
         本次画像的抽样比例。
     enable_sparkline : bool
         是否生成 overview 中的迷你趋势图。
+    psi_include_missing : bool | None
+        计算 PSI 时是否纳入缺失值箱；``None`` 表示沿用 `config_overrides` 或默认配置。
+    psi_include_special : bool | None
+        计算 PSI 时是否纳入特殊值箱；``None`` 表示沿用 `config_overrides` 或默认配置。
     config_overrides : Dict[str, Any] | None
         对 `MarsProfileConfig` 的本次运行覆盖配置。
 
@@ -122,6 +128,8 @@ def profile_stats(
         time_col=time_col,
         time_grain=time_grain,
         sample_frac=sample_frac,
+        psi_include_missing=psi_include_missing,
+        psi_include_special=psi_include_special,
         config_overrides=merged_overrides,
     )
 
@@ -209,6 +217,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         time_col: str | None = None,
         time_grain: str | None = None,
         sample_frac: float | None = None,
+        psi_include_missing: bool | None = None,
+        psi_include_special: bool | None = None,
         config_overrides: Dict[str, Any] | None = None
     ) -> MarsProfileReport:
         """
@@ -237,6 +247,10 @@ class MarsDataProfiler(MarsBaseEstimator):
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
         sample_frac : float | None
             本次运行的抽样比例，必须位于 `(0, 1)`。
+        psi_include_missing : bool | None
+            计算 PSI 时是否纳入缺失值箱；``None`` 表示沿用实例配置或 `config_overrides`。
+        psi_include_special : bool | None
+            计算 PSI 时是否纳入特殊值箱；``None`` 表示沿用实例配置或 `config_overrides`。
         config_overrides : Dict[str, Any] | None
             覆盖 `MarsProfileConfig` 的部分字段，例如 `dq_metrics`、`stat_metrics`
             或 `enable_sparkline`。
@@ -267,8 +281,13 @@ class MarsDataProfiler(MarsBaseEstimator):
         self._dtype_map = prepared_df.schema
 
         run_config: MarsProfileConfig = self.config
-        if config_overrides:
-            run_config = dataclasses.replace(self.config, **config_overrides)
+        effective_overrides = dict(config_overrides or {})
+        if psi_include_missing is not None:
+            effective_overrides["psi_include_missing"] = psi_include_missing
+        if psi_include_special is not None:
+            effective_overrides["psi_include_special"] = psi_include_special
+        if effective_overrides:
+            run_config = dataclasses.replace(self.config, **effective_overrides)
 
         # 构建分析上下文, 决定本次运行使用的数据集 (working_df) 和 分组列 (group_col)
         profile_by = self._resolve_profile_by(
@@ -328,7 +347,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         if group_col and ("psi" in run_config.stat_metrics):
             try:
                 # 传入 working_df 以支持临时时间列
-                psi_df = self._get_psi_trend(group_col, context_df=working_df)
+                psi_df = self._get_psi_trend(group_col, context_df=working_df, config=run_config)
                 if not psi_df.is_empty():
                     stat_tables["psi"] = psi_df
             except Exception as e:
@@ -825,7 +844,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         self,
         group_col: str,
         features: List[str] | None = None,
-        context_df: pl.DataFrame | None = None
+        context_df: pl.DataFrame | None = None,
+        config: MarsProfileConfig | None = None,
     ) -> pl.DataFrame:
         """
         [Internal] 计算特征在分组维度上的 PSI (群体稳定性指标) 趋势及稳定性统计。
@@ -842,6 +862,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         context_df : pl.DataFrame | None
             上下文数据集。通常传入包含临时生成的自动聚合时间列的 DataFrame。
             如果为 None，则使用实例内部的 `self.df`。
+        config : MarsProfileConfig | None
+            本次画像运行的配置；为 None 时使用实例默认配置。
 
         Returns
         -------
@@ -902,8 +924,9 @@ class MarsDataProfiler(MarsBaseEstimator):
         common_schema_order = [group_col, "feature", "total", "psi"]
 
         # 获取配置中的开关
-        inc_missing = self.config.psi_include_missing
-        inc_special = self.config.psi_include_special
+        active_config = config or self.config
+        inc_missing = active_config.psi_include_missing
+        inc_special = active_config.psi_include_special
 
         BATCH_SIZE = self.psi_batch_size
 
@@ -915,14 +938,13 @@ class MarsDataProfiler(MarsBaseEstimator):
 
                 from mars import MarsNativeBinner
                 binner = MarsNativeBinner(
-                    features=num_cols,
                     method=self.psi_bin_method,
                     n_bins=self.psi_n_bins,
                     special_values=numeric_special,
                     missing_values=numeric_missing,
                     remove_empty_bins=False
                 )
-                binner.fit(target_df)
+                binner.fit(target_df, features=num_cols)
 
                 # 预构建骨架所需的 Bin IDs
                 possible_bins = list(range(self.psi_n_bins)) + [-1]

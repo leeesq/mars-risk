@@ -193,6 +193,7 @@ class ModelPredictor:
         aux_targets: Sequence[str] | None = None,
         target_group_cols: Mapping[str, str] | None = None,
         pred_col: str = "pred_score",
+        psi_include_missing: bool = False,
     ) -> MarsModelingReport:
         """
         对样本打分并立即构建模型评估报告。
@@ -219,6 +220,8 @@ class ModelPredictor:
             target 到独立切片列名的映射。
         pred_col : str
             追加并用于评估的预测分列名。
+        psi_include_missing : bool
+            计算 `score_psi` 和 `feature_psi` 时是否纳入缺失值箱。
 
         Returns
         -------
@@ -237,4 +240,5 @@ class ModelPredictor:
             val_target=val_target,
             aux_targets=aux_targets,
             target_group_cols=target_group_cols,
+            psi_include_missing=psi_include_missing,
         )

@@ -853,6 +853,7 @@ class MarsModelReplayRunner:
         val_target: str | None = None,
         aux_targets: Sequence[str] | None = None,
         target_group_cols: Mapping[str, str] | None = None,
+        psi_include_missing: bool = False,
     ) -> MarsModelReplayResult:
         """
         回放 Top-K 或指定 trial，并生成模型、打分数据和评估报告。
@@ -901,6 +902,8 @@ class MarsModelReplayRunner:
             辅助验证目标列名；不参与训练，只进入 replay 评估报告。
         target_group_cols : Mapping[str, str] | None
             每个目标对应的独立样本切片列名，用于长短 y 表现期不一致的评估。
+        psi_include_missing : bool
+            replay 评估报告计算 `score_psi` 和 `feature_psi` 时是否纳入缺失值箱。
 
         Returns
         -------
@@ -1067,6 +1070,7 @@ class MarsModelReplayRunner:
                 target_group_cols=target_group_cols,
                 feature_cols=spec.features,
                 importance_table=importance_tables[model_name],
+                psi_include_missing=psi_include_missing,
             )
 
             leaderboard_row = {

@@ -229,6 +229,7 @@ report = session.evaluate(
     pred_col="score",
     benchmark_cols=["old_score", "rule_score"],
     aux_targets=["short_y_1", "short_y_2"],
+    psi_include_missing=False,
     target_group_cols={
         "short_y_1": "short_y_1__dataset_flag",
         "short_y_2": "short_y_2__dataset_flag",
@@ -242,4 +243,6 @@ report = session.evaluate(
 
 `MarsModelEvaluator` 是建模评估器，不是完整模型监控平台。它用于对已打分样本构建 train/val/oot 或业务切片上的评估报告。
 
-模型输出稳定性可以通过 `Score PSI` 和 `score_psi` 观察。如果需要按自定义时间或业务切片进行特征/模型监控，可以使用 `MarsMonitor` 输出结构化监控指标。
+模型输出稳定性可以通过 `Score PSI` 和 `score_psi` 观察，特征漂移可以通过 `feature_psi` 观察。建模评估复用分箱评估器计算 PSI 明细，因此 `score_psi` / `feature_psi` 会保留分箱标签、分箱 PSI 和趋势明细；该链路只提供 `psi_include_missing` 控制缺失箱是否纳入 PSI。业务特殊值需要在分箱评估或监控模块中显式配置，建模评估不会额外猜测特殊值。
+
+如果需要按自定义时间或业务切片进行特征/模型监控，可以使用 `MarsMonitor` 输出结构化监控指标。

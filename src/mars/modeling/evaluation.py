@@ -78,6 +78,7 @@ class MarsModelEvaluator:
         self.target_group_cols: Dict[str, str] = {}
         self.feature_cols: List[str] = []
         self.importance_table: pd.DataFrame | None = None
+        self.psi_include_missing: bool = False
 
     def _validate_frame(self, df: pd.DataFrame, pred_col: str) -> pd.DataFrame:
         """校验必需列，并在配置时间列时统一转换为 datetime。"""
@@ -235,18 +236,54 @@ class MarsModelEvaluator:
         remaining_columns = [col for col in available_columns if col not in ordered_columns]
         return ordered_columns + remaining_columns
 
-    def _build_score_bins(self, baseline_scores: pd.Series) -> np.ndarray | None:
-        """基于首个可用切片构建稳定的十分位切点。"""
-        clean_scores = pd.to_numeric(baseline_scores, errors="coerce").dropna()
-        if clean_scores.nunique() < 2:
-            return None
-        quantiles = np.linspace(0.0, 1.0, 11)
-        bins = np.unique(np.quantile(clean_scores.to_numpy(dtype=float), quantiles))
-        if bins.size < 2:
-            return None
-        bins[0] = -np.inf
-        bins[-1] = np.inf
-        return bins
+    @staticmethod
+    def _as_pandas_table(table: Any) -> pd.DataFrame:
+        """将 Polars/Pandas 报表统一转成 Pandas，便于建模报告拼装。"""
+        if table is None:
+            return pd.DataFrame()
+        if isinstance(table, pd.DataFrame):
+            return table.copy()
+        if hasattr(table, "to_pandas"):
+            return table.to_pandas()
+        return pd.DataFrame(table)
+
+    def _evaluate_psi_with_binner(
+        self,
+        df: pd.DataFrame,
+        *,
+        feature: str,
+        target_col: str,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """复用分箱评估器计算单个字段的 PSI 明细、汇总和趋势表。"""
+        from mars.analysis.evaluator import MarsBinEvaluator
+
+        evaluator = MarsBinEvaluator(
+            binning_type="native",
+            binner_params={
+                "method": "quantile",
+                "n_bins": 10,
+            },
+        )
+        run = evaluator.evaluate(
+            df,
+            target=target_col,
+            features=[feature],
+            group_col=self.group_col,
+            psi_include_missing=self.psi_include_missing,
+        )
+        return (
+            self._as_pandas_table(run.report.detail_table),
+            self._as_pandas_table(run.report.summary_table),
+            self._as_pandas_table(run.report.trend_tables.get("psi")),
+        )
+
+    def _psi_detail_group_col(self, detail: pd.DataFrame) -> str:
+        """识别分箱评估器明细表中的实际分组列。"""
+        if self.group_col in detail.columns:
+            return self.group_col
+        if "mars_group" in detail.columns:
+            return "mars_group"
+        return self.group_col
 
     def _build_score_psi_detail(
         self,
@@ -255,54 +292,38 @@ class MarsModelEvaluator:
         pred_col: str,
         ordered_groups: Sequence[str],
     ) -> Tuple[pd.DataFrame, Dict[str, float]]:
-        """以首个切片为基准计算各切片的分数分布 PSI。"""
+        """复用风险分箱评估器生成模型分 PSI 明细。"""
         if not ordered_groups:
             return pd.DataFrame(), {}
-        baseline_group = ordered_groups[0]
-        baseline_scores = df.loc[df[self.group_col].astype(str) == str(baseline_group), pred_col]
-        bins = self._build_score_bins(baseline_scores)
-        if bins is None:
-            return pd.DataFrame(), {str(group): np.nan for group in ordered_groups}
-
-        rows: List[Dict[str, Any]] = []
-        expected_counts = pd.cut(
-            pd.to_numeric(baseline_scores, errors="coerce"),
-            bins=bins,
-            include_lowest=True,
-            duplicates="drop",
-        ).value_counts(sort=False)
-        expected_dist = expected_counts / max(float(expected_counts.sum()), 1.0)
+        detail, _, trend = self._evaluate_psi_with_binner(
+            df,
+            feature=pred_col,
+            target_col=self.target_col,
+        )
         psi_map: Dict[str, float] = {}
-
-        for group in ordered_groups:
-            group_scores = pd.to_numeric(
-                df.loc[df[self.group_col].astype(str) == str(group), pred_col],
-                errors="coerce",
-            )
-            actual_counts = pd.cut(
-                group_scores,
-                bins=bins,
-                include_lowest=True,
-                duplicates="drop",
-            ).value_counts(sort=False)
-            actual_dist = actual_counts / max(float(actual_counts.sum()), 1.0)
-            psi_values = (actual_dist - expected_dist) * np.log(
-                (actual_dist + 1e-6) / (expected_dist + 1e-6)
-            )
-            psi_map[str(group)] = float(psi_values.sum())
-            for idx, interval in enumerate(expected_dist.index):
-                rows.append(
-                    {
-                        self.group_col: group,
-                        "bin": idx + 1,
-                        "score_range": str(interval),
-                        "expected_pct": float(expected_dist.iloc[idx]),
-                        "actual_pct": float(actual_dist.iloc[idx]),
-                        "psi": float(psi_values.iloc[idx]),
-                    }
-                )
-
-        return pd.DataFrame(rows), psi_map
+        if not trend.empty:
+            score_rows = trend.loc[trend["feature"] == pred_col]
+            if not score_rows.empty:
+                score_row = score_rows.iloc[0]
+                for group in ordered_groups:
+                    if str(group) in score_row.index:
+                        psi_map[str(group)] = float(score_row[str(group)])
+        if detail.empty:
+            return pd.DataFrame(), psi_map
+        detail_group_col = self._psi_detail_group_col(detail)
+        score_detail = detail.loc[
+            (detail["feature"] == pred_col)
+            & (detail[detail_group_col].astype(str).isin([str(group) for group in ordered_groups]))
+        ].copy()
+        if detail_group_col != self.group_col:
+            score_detail = score_detail.rename(columns={detail_group_col: self.group_col})
+        if "psi_bin" in score_detail.columns:
+            score_detail["psi"] = score_detail["psi_bin"]
+        if "bin_label" in score_detail.columns:
+            score_detail["score_range"] = score_detail["bin_label"]
+        if "bin_index" in score_detail.columns:
+            score_detail["bin"] = score_detail["bin_index"]
+        return score_detail, psi_map
 
     def _build_decile_lift_detail(
         self,
@@ -531,74 +552,47 @@ class MarsModelEvaluator:
                     )
         return pd.DataFrame(rows)
 
-    @staticmethod
-    def _feature_distribution(series: pd.Series, baseline: pd.Series) -> Tuple[pd.Series, str]:
-        """返回用于 PSI 的对齐特征分布，数值列使用分箱，类别列使用取值。"""
-        baseline_clean = baseline.copy()
-        series_clean = series.copy()
-        if pd.api.types.is_numeric_dtype(baseline_clean):
-            clean = pd.to_numeric(baseline_clean, errors="coerce").dropna()
-            if clean.nunique() >= 2:
-                bins = np.unique(np.quantile(clean.to_numpy(dtype=float), np.linspace(0, 1, 11)))
-                if bins.size >= 2:
-                    bins[0] = -np.inf
-                    bins[-1] = np.inf
-                    dist = pd.cut(pd.to_numeric(series_clean, errors="coerce"), bins=bins, include_lowest=True)
-                    dist = dist.astype("object").where(pd.notna(dist), "__MISSING__").astype(str)
-                    return dist, "numeric"
-        base_str = baseline_clean.astype("object").where(baseline_clean.notna(), "__MISSING__").astype(str)
-        top_levels = base_str.value_counts().head(20).index.tolist()
-        if "__OTHER__" not in top_levels:
-            top_levels.append("__OTHER__")
-        values = series_clean.astype("object").where(series_clean.notna(), "__MISSING__").astype(str)
-        values = values.where(values.isin(top_levels), "__OTHER__")
-        return values, "categorical"
-
     def _build_feature_psi_detail(
         self,
         df: pd.DataFrame,
         *,
         ordered_groups: Sequence[str],
     ) -> pd.DataFrame:
-        """以首个切片为基准构建特征级 PSI 明细行。"""
+        """复用风险分箱评估器构建特征级 PSI 明细行。"""
         feature_cols = [col for col in self.feature_cols if col in df.columns]
         if not ordered_groups or not feature_cols:
             return pd.DataFrame()
-        baseline_group = ordered_groups[0]
-        baseline_df = df[df[self.group_col].astype(str) == str(baseline_group)]
-        rows: List[Dict[str, Any]] = []
+        detail_frames: list[pd.DataFrame] = []
         for feature in feature_cols:
-            baseline_bins, bin_type = self._feature_distribution(baseline_df[feature], baseline_df[feature])
-            expected_counts = baseline_bins.value_counts(sort=False)
-            expected_dist = expected_counts / max(float(expected_counts.sum()), 1.0)
-            for group in ordered_groups:
-                group_df = df[df[self.group_col].astype(str) == str(group)]
-                actual_bins, _ = self._feature_distribution(group_df[feature], baseline_df[feature])
-                actual_counts = actual_bins.value_counts(sort=False)
-                aligned = pd.concat(
-                    [expected_dist.rename("expected_pct"), (actual_counts / max(float(actual_counts.sum()), 1.0)).rename("actual_pct")],
-                    axis=1,
-                ).fillna(0.0)
-                psi_values = (aligned["actual_pct"] - aligned["expected_pct"]) * np.log(
-                    (aligned["actual_pct"] + 1e-6) / (aligned["expected_pct"] + 1e-6)
-                )
-                feature_psi = float(psi_values.sum())
-                for bin_label, psi_value in psi_values.items():
-                    rows.append(
-                        {
-                            "feature": feature,
-                            self.group_col: group,
-                            "bin": str(bin_label),
-                            "bin_type": bin_type,
-                            "expected_pct": float(aligned.loc[bin_label, "expected_pct"]),
-                            "actual_pct": float(aligned.loc[bin_label, "actual_pct"]),
-                            "psi": float(psi_value),
-                            "feature_psi": feature_psi,
-                        }
-                    )
-        if not rows:
+            detail, _, _ = self._evaluate_psi_with_binner(
+                df,
+                feature=feature,
+                target_col=self.target_col,
+            )
+            if detail.empty:
+                continue
+            detail_group_col = self._psi_detail_group_col(detail)
+            feature_detail = detail.loc[
+                (detail["feature"] == feature)
+                & (detail[detail_group_col].astype(str).isin([str(group) for group in ordered_groups]))
+            ].copy()
+            if feature_detail.empty:
+                continue
+            if detail_group_col != self.group_col:
+                feature_detail = feature_detail.rename(columns={detail_group_col: self.group_col})
+            if "psi_bin" in feature_detail.columns:
+                feature_detail["psi"] = feature_detail["psi_bin"]
+                feature_detail["feature_psi"] = feature_detail.groupby(
+                    ["feature", self.group_col]
+                )["psi_bin"].transform("sum")
+            detail_frames.append(feature_detail)
+        if not detail_frames:
             return pd.DataFrame()
-        return pd.DataFrame(rows).sort_values(["feature_psi", "feature", self.group_col], ascending=[False, True, True])
+        feature_psi = pd.concat(detail_frames, ignore_index=True)
+        return feature_psi.sort_values(
+            ["feature_psi", "feature", self.group_col],
+            ascending=[False, True, True],
+        )
 
     def evaluate(
         self,
@@ -615,6 +609,7 @@ class MarsModelEvaluator:
         target_group_cols: Mapping[str, str] | None = None,
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
+        psi_include_missing: bool = False,
     ) -> MarsModelingReport:
         """
         对一次已打分样本构建模型评估报告。
@@ -646,6 +641,8 @@ class MarsModelEvaluator:
             用于计算特征 PSI 明细的特征列名。
         importance_table : pd.DataFrame | None
             特征重要性表；会复制进报告元数据，便于导出和追踪。
+        psi_include_missing : bool
+            计算 `score_psi` 和 `feature_psi` 时是否纳入缺失值箱。
 
         Returns
         -------
@@ -681,6 +678,7 @@ class MarsModelEvaluator:
         self.target_group_cols = dict(target_group_cols or {})
         self.feature_cols = list(feature_cols or [])
         self.importance_table = None if importance_table is None else importance_table.copy()
+        self.psi_include_missing = psi_include_missing
 
         df_pd = self._validate_frame(to_pandas_frame(df), pred_col)
         rows: List[Dict[Any, Any]] = []
@@ -787,6 +785,7 @@ class MarsModelEvaluator:
             "aux_targets": list(self.aux_targets),
             "target_group_cols": dict(self.target_group_cols),
             "feature_cols": [col for col in self.feature_cols if col in df_pd.columns],
+            "psi_include_missing": self.psi_include_missing,
         }
         if self.importance_table is not None:
             metadata["importance_table"] = self.importance_table.copy()

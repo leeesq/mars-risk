@@ -23,6 +23,8 @@ report = MarsMonitor(
     features=["model_score", "income", "utilization"],
     target="target",
     group_col="month",
+    psi_include_missing=False,
+    psi_include_special=False,
     trend_column_order="desc",
 )
 
@@ -73,7 +75,7 @@ monitor = MarsMonitor(
 )
 ```
 
-缺失率会单独进入趋势监控，因此默认不混入 PSI。需要复现某些历史口径时，可以显式打开这两个参数。
+缺失率会单独进入趋势监控，因此默认不混入 PSI。需要复现某些历史口径时，可以在 `MarsMonitor(...)` 构造函数中设置默认值，也可以在单次 `monitor(...)` 调用中显式覆盖这两个参数。
 
 ## 趋势列顺序
 

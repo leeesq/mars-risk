@@ -109,6 +109,83 @@ def test_profile_stats_preserves_pandas_output_contract(sample_credit_pd):
     assert isinstance(report.stats_tables["mean"], pd.DataFrame)
 
 
+def test_profiler_psi_scope_direct_params_override_config_overrides() -> None:
+    df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 8 + ["2024-02"] * 8,
+            "score": [
+                -999.0,
+                0.10,
+                0.20,
+                0.30,
+                0.70,
+                0.80,
+                0.90,
+                1.00,
+                -999.0,
+                -999.0,
+                -999.0,
+                None,
+                0.70,
+                0.80,
+                0.90,
+                1.00,
+            ],
+        }
+    )
+    profiler = MarsDataProfiler(
+        missing_values=[-999],
+        special_values=[-999],
+    )
+
+    base_report = profiler.generate_profile(
+        df,
+        features=["score"],
+        group_col="month",
+        config_overrides={
+            "enable_sparkline": False,
+            "stat_metrics": ["psi"],
+            "psi_include_missing": False,
+            "psi_include_special": False,
+        },
+    )
+    scoped_report = profiler.generate_profile(
+        df,
+        features=["score"],
+        group_col="month",
+        config_overrides={
+            "enable_sparkline": False,
+            "stat_metrics": ["psi"],
+            "psi_include_missing": False,
+            "psi_include_special": False,
+        },
+        psi_include_missing=True,
+        psi_include_special=True,
+    )
+
+    base_psi = base_report.stats_tables["psi"].filter(pl.col("feature") == "score")["2024-02"][0]
+    scoped_psi = scoped_report.stats_tables["psi"].filter(pl.col("feature") == "score")["2024-02"][0]
+    assert scoped_psi != pytest.approx(base_psi)
+
+    quick_report = profile_stats(
+        df,
+        metrics=["psi"],
+        features=["score"],
+        group_col="month",
+        missing_values=[-999],
+        special_values=[-999],
+        config_overrides={
+            "enable_sparkline": False,
+            "psi_include_missing": False,
+            "psi_include_special": False,
+        },
+        psi_include_missing=True,
+        psi_include_special=True,
+    )
+    quick_psi = quick_report.stats_tables["psi"].filter(pl.col("feature") == "score")["2024-02"][0]
+    assert quick_psi == pytest.approx(scoped_psi)
+
+
 def test_profiler_can_reuse_instance_across_dataframes_without_sample_state(sample_credit_pd):
     profiler = MarsDataProfiler(missing_values=[-999])
     first = profiler.generate_profile(

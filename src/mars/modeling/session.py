@@ -489,6 +489,7 @@ class MarsModelingSession:
         target_group_cols: Mapping[str, str] | None = None,
         feature_cols: Sequence[str] | None = None,
         importance_table: pd.DataFrame | None = None,
+        psi_include_missing: bool = False,
     ) -> MarsModelingReport:
         """
         基于预测分数生成模型评估报告。
@@ -515,6 +516,8 @@ class MarsModelingSession:
             用于计算特征 PSI 的特征列。
         importance_table : pd.DataFrame | None
             特征重要性表。
+        psi_include_missing : bool
+            计算 `score_psi` 和 `feature_psi` 时是否纳入缺失值箱。
 
         Returns
         -------
@@ -546,6 +549,7 @@ class MarsModelingSession:
             target_group_cols=target_group_cols,
             feature_cols=resolved_feature_cols,
             importance_table=resolved_importance,
+            psi_include_missing=psi_include_missing,
         )
         if run is not None:
             report.metadata.update(
@@ -597,6 +601,7 @@ class MarsModelingSession:
         val_target: str | None = None,
         aux_targets: Sequence[str] | None = None,
         target_group_cols: Mapping[str, str] | None = None,
+        psi_include_missing: bool = False,
     ) -> MarsModelReplayResult:
         """
         复用调参结果执行 Top-K 或指定 trial replay、重训和重评分。
@@ -645,6 +650,8 @@ class MarsModelingSession:
             多个辅助验证目标。
         target_group_cols : Mapping[str, str] | None
             target 到独立切片列名的映射。
+        psi_include_missing : bool
+            replay 评估报告计算 `score_psi` 和 `feature_psi` 时是否纳入缺失值箱。
 
         Returns
         -------
@@ -679,4 +686,5 @@ class MarsModelingSession:
             val_target=val_target,
             aux_targets=aux_targets,
             target_group_cols=target_group_cols,
+            psi_include_missing=psi_include_missing,
         )

@@ -876,6 +876,73 @@ def test_feature_start_aware_baseline_exact_monthly_cutover_keeps_feb_psi_zero(i
     assert psi_row["Total"] == pytest.approx(0.0, abs=1e-9)
 
 
+def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
+    df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 8 + ["2024-02"] * 8,
+            "score": [
+                -999.0,
+                0.10,
+                0.20,
+                0.30,
+                0.70,
+                0.80,
+                0.90,
+                1.00,
+                -999.0,
+                -999.0,
+                -999.0,
+                None,
+                0.70,
+                0.80,
+                0.90,
+                1.00,
+            ],
+            "target": [0, 0, 0, 0, 1, 1, 1, 1] * 2,
+        }
+    )
+
+    base_run = profile_risk(
+        df,
+        target="target",
+        features=["score"],
+        group_col="month",
+        binning_type="native",
+        binner_params={
+            "method": "quantile",
+            "n_bins": 2,
+            "missing_values": [-999],
+            "special_values": [-999],
+        },
+        psi_include_missing=False,
+        psi_include_special=False,
+        plot=False,
+    )
+    scoped_run = profile_risk(
+        df,
+        target="target",
+        features=["score"],
+        group_col="month",
+        binning_type="native",
+        binner_params={
+            "method": "quantile",
+            "n_bins": 2,
+            "missing_values": [-999],
+            "special_values": [-999],
+        },
+        psi_include_missing=True,
+        psi_include_special=True,
+        plot=False,
+    )
+
+    base_psi = _as_pandas(base_run.report.trend_tables["psi"]).loc[0, "2024-02"]
+    scoped_psi = _as_pandas(scoped_run.report.trend_tables["psi"]).loc[0, "2024-02"]
+
+    assert scoped_psi != pytest.approx(base_psi)
+    assert scoped_run.report.report_meta["psi_include_missing"] is True
+    assert scoped_run.report.report_meta["psi_include_special"] is True
+
+
 def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(feature_start_aware_df):
     report, _ = _profile_risk_report(
         feature_start_aware_df,

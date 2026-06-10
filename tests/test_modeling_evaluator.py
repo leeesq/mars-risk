@@ -24,6 +24,7 @@ def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeli
         pred_col="pred_score",
         benchmark_col="benchmark_score",
         time_col="biz_dt",
+        psi_include_missing=True,
     )
 
     assert isinstance(report, MarsModelingReport)
@@ -41,6 +42,7 @@ def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeli
     assert "Gini" not in {col[-1] if isinstance(col, tuple) else col for col in report.summary_table.columns}
     assert ("Time Period", "Start Time") in report.summary_table.columns
     assert report.metadata["feature_cols"] == ["x1", "x2", "x3"]
+    assert report.metadata["psi_include_missing"] is True
     assert report.to_pandas().equals(report.summary_table)
     assert list(report.summary_table.index[:3]) == ["train", "val", "oot1"]
 
@@ -72,6 +74,40 @@ def test_model_evaluator_generates_same_report_shape(sample_modeling_pd):
     assert not report.detail_tables["decile_lift"].empty
     assert "feature_psi" not in report.detail_tables
     assert list(report.summary_table.index[:3]) == ["train", "val", "oot1"]
+
+
+def test_model_evaluator_reuses_binning_report_for_psi_missing_scope(sample_modeling_pd):
+    df = sample_modeling_pd.copy()
+    df["pred_score"] = 1 / (1 + np.exp(-(1.8 * df["x1"] - 1.0 * df["x2"] + 0.6 * df["x3"])))
+    df.loc[(df["dataset_flag"] == "val") & (df.index % 3 == 0), "pred_score"] = np.nan
+    df.loc[(df["dataset_flag"] == "oot1") & (df.index % 2 == 0), "pred_score"] = np.nan
+
+    base_report = MarsModelEvaluator().evaluate(
+        df,
+        pred_col="pred_score",
+        group_col="dataset_flag",
+        target="target",
+        feature_cols=["x1"],
+        psi_include_missing=False,
+    )
+    missing_report = MarsModelEvaluator().evaluate(
+        df,
+        pred_col="pred_score",
+        group_col="dataset_flag",
+        target="target",
+        feature_cols=["x1"],
+        psi_include_missing=True,
+    )
+
+    base_val_psi = base_report.summary_table.loc["val", ("Target: target", "Score PSI")]
+    missing_val_psi = missing_report.summary_table.loc["val", ("Target: target", "Score PSI")]
+    score_psi_detail = missing_report.detail_tables["score_psi"]
+    feature_psi_detail = missing_report.detail_tables["feature_psi"]
+
+    assert missing_val_psi != pytest.approx(base_val_psi)
+    assert {"bin_label", "psi_bin", "score_range", "psi"}.issubset(score_psi_detail.columns)
+    assert {"bin_label", "psi_bin", "feature_psi"}.issubset(feature_psi_detail.columns)
+    assert missing_report.metadata["psi_include_missing"] is True
 
 
 def test_model_evaluator_supports_multiple_benchmarks_and_aux_targets(sample_modeling_pd):

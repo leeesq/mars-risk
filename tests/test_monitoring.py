@@ -249,6 +249,32 @@ def test_monitor_psi_include_missing_changes_psi_scope() -> None:
     assert missing_psi != pytest.approx(base_psi)
 
 
+def test_monitor_method_level_psi_scope_overrides_instance_default() -> None:
+    df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 6 + ["2024-02"] * 6,
+            "score": [None, 0.1, 0.2, 0.8, 0.9, 1.0, None, None, None, 0.8, 0.9, 1.0],
+            "target": [0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1],
+        }
+    )
+
+    report = MarsMonitor(
+        binner_params={"method": "quantile", "n_bins": 2},
+        psi_include_missing=False,
+        psi_include_special=False,
+    ).monitor(
+        df,
+        features=["score"],
+        target="target",
+        group_col="month",
+        psi_include_missing=True,
+        psi_include_special=True,
+    )
+
+    assert report.metadata["psi_include_missing"] is True
+    assert report.metadata["psi_include_special"] is True
+
+
 def test_monitor_trend_column_order_defaults_to_ascending() -> None:
     df = _make_partial_target_df()
 
