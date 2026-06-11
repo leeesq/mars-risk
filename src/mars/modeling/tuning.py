@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Literal, Mapping, Sequence, cast
 from uuid import uuid4
@@ -11,7 +9,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-from mars.modeling.artifacts import write_json
+from mars.modeling.artifacts import create_artifact_path, write_json
 from mars.modeling.backends import (
     MarsCatBoostStrategy,
     MarsLGBStrategy,
@@ -159,40 +157,6 @@ def _build_backend_from_spec(
             }
         )
     return backend_cls(**backend_kwargs)
-
-
-def _safe_artifact_part(value: Any) -> str:
-    """将模型类型、target 或指标名转换为稳定的目录片段。"""
-    text = str(value).strip().lower()
-    text = re.sub(r"[^0-9a-zA-Z_\-]+", "_", text)
-    return text.strip("_") or "unknown"
-
-
-def _create_artifact_path(
-    artifact_dir: str | Path | None,
-    *,
-    model_type: str,
-    target: str,
-    optimize_metric: str,
-    run_id: str,
-) -> Path | None:
-    """根据运行上下文创建独立 artifact 目录。"""
-    if artifact_dir is None:
-        return None
-    base_dir = Path(artifact_dir)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = "_".join(
-        [
-            timestamp,
-            _safe_artifact_part(model_type),
-            _safe_artifact_part(target),
-            _safe_artifact_part(optimize_metric),
-            _safe_artifact_part(run_id),
-        ]
-    )
-    run_path = base_dir / run_name
-    run_path.mkdir(parents=True, exist_ok=False)
-    return run_path
 
 
 def _compute_shap_importance(
@@ -565,7 +529,7 @@ class MarsModelTuner:
             )
 
         run_id = uuid4().hex[:8]
-        artifact_path = _create_artifact_path(
+        artifact_path = create_artifact_path(
             artifact_dir,
             model_type=self.spec.model_type,
             target=self.spec.target,

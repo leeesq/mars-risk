@@ -2,16 +2,15 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, NamedTuple, Union, cast
+from typing import Any, Dict, List, Literal, NamedTuple, cast
 
-import pandas as pd
 import polars as pl
 
 from mars.analysis import MarsBinEvaluator
 from mars.core.base import MarsBaseEstimator
 from mars.feature.base import MarsBinnerBase
+from mars.utils.frame import FrameLike
 
-FrameLike = Union[pl.DataFrame, pd.DataFrame]
 TrendColumnOrder = Literal["asc", "desc"]
 
 
@@ -221,12 +220,12 @@ class MarsMonitor(MarsBaseEstimator):
 
     def monitor(
         self,
-        df: Union[pl.DataFrame, pd.DataFrame],
+        df: FrameLike,
         *,
         features: List[str],
         target: str | None,
         binner: MarsBinnerBase | None = None,
-        benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
+        benchmark_df: FrameLike | None = None,
         feature_data_source: Dict[str, List[str]] | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
@@ -242,7 +241,7 @@ class MarsMonitor(MarsBaseEstimator):
 
         Parameters
         ----------
-        df : Union[pl.DataFrame, pd.DataFrame]
+        df : FrameLike
             待监控样本表。
         features : List[str]
             本次监控的特征、模型分或概率列。
@@ -251,7 +250,7 @@ class MarsMonitor(MarsBaseEstimator):
             空值表示尚未到表现期。为 ``None`` 时只输出无标签分布监控。
         binner : MarsBinnerBase | None
             显式复用的分箱器。
-        benchmark_df : Union[pl.DataFrame, pd.DataFrame, None]
+        benchmark_df : FrameLike | None
             外部 benchmark 样本。
         feature_data_source : Dict[str, List[str]] | None
             特征来源映射。

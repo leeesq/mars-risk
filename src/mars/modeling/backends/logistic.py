@@ -18,6 +18,7 @@ from mars.modeling.backends.common import build_importance_table as _build_impor
 from mars.modeling.backends.common import validate_numeric_pandas as _validate_numeric_pandas
 from mars.modeling.metrics import MetricCallable, MetricDirection
 from mars.modeling.utils import require_optional_module
+from mars.utils.frame import to_pandas_frame
 
 LR_FEATURE_MODE = Literal["numeric", "woe"]
 LR_BINNING_TYPE = Literal["native", "optimal", "lite_opt"]
@@ -54,13 +55,6 @@ class MarsLogisticModel:
     lr_feature_mode: str = "numeric"
     binner: MarsBinnerBase | None = None
 
-    def _to_pandas(self, X: pd.DataFrame | pl.DataFrame) -> pd.DataFrame:
-        """将 Pandas 或 Polars 输入复制为 Pandas DataFrame。"""
-        if isinstance(X, pd.DataFrame):
-            return X.copy()
-        if isinstance(X, pl.DataFrame):
-            return X.to_pandas()
-        raise TypeError(f"Expected pandas or polars DataFrame, got {type(X)!r}.")
 
     def transform_features(self, X: pd.DataFrame | pl.DataFrame) -> pd.DataFrame:
         """
@@ -87,7 +81,7 @@ class MarsLogisticModel:
         >>> model.transform_features(pd.DataFrame({"age": [20, 30]})).shape
         (2, 1)
         """
-        frame = self._to_pandas(X)
+        frame = to_pandas_frame(X)
         missing = sorted(set(self.features).difference(frame.columns))
         if missing:
             raise ValueError(f"Input data is missing required LR features: {missing}")
@@ -99,8 +93,7 @@ class MarsLogisticModel:
         if self.binner is None:
             raise ValueError("LR WOE mode requires a fitted binner attached to the model.")
         woe_frame = self.binner.transform(frame.loc[:, self.features], return_type="woe")
-        if isinstance(woe_frame, pl.DataFrame):
-            woe_frame = woe_frame.to_pandas()
+        woe_frame = to_pandas_frame(woe_frame)
         missing_woe = sorted(set(self.model_features).difference(woe_frame.columns))
         if missing_woe:
             raise ValueError(f"WOE transform did not produce required columns: {missing_woe}")
@@ -324,8 +317,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
 
         for split_name, raw_frame in self.raw_feature_frame_dict.items():
             woe_frame = binner.transform(raw_frame, return_type="woe")
-            if isinstance(woe_frame, pl.DataFrame):
-                woe_frame = woe_frame.to_pandas()
+            woe_frame = to_pandas_frame(woe_frame)
             missing = sorted(set(self.model_features).difference(woe_frame.columns))
             if missing:
                 raise ValueError(f"WOE transform did not produce required columns: {missing}")

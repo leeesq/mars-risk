@@ -10,6 +10,7 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
+from mars.analysis.stability import with_psi_from_counts
 from mars.core.base import MarsBaseEstimator
 from mars.feature.base import MarsBinnerBase
 from mars.feature.lite_opt_binner import MarsLiteOptBinner
@@ -968,18 +969,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         epsilon = 1e-6
 
-        # 构建 PSI 专用计算域
-        # 定义哪些箱子参与 PSI 计算
-        # 约定: Missing=-1, Special <= -3, Normal >= 0, Other=-2
-        psi_valid_cond = pl.lit(True)
-
-        if not include_missing:
-            psi_valid_cond &= (pl.col("bin_index") != -1)
-
-        if not include_special:
-            psi_valid_cond &= (pl.col("bin_index") > -3)
-
-        # 计算双套分布：count 负责全量分布，observed_count 负责监督指标。
+        # count 负责全量分布，observed_count 负责风险指标。
         base_df = base_df.with_columns([
             pl.col("count").sum().over([group_col, "feature"]).alias("total_count"),
             pl.col("observed_count").sum().over([group_col, "feature"]).alias("total_observed"),
@@ -987,24 +977,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
             pl.col("good").sum().over([group_col, "feature"]).alias("total_good"),
         ])
 
-        # PSI 专用分布
-        base_df = base_df.with_columns([
-            # 动态计算 Actual 的有效总数
-            pl.col("count")
-              .filter(psi_valid_cond)
-              .sum()
-              .over([group_col, "feature"])
-              .alias("total_count_psi"),
+        base_df = with_psi_from_counts(
+            base_df,
+            group_col=group_col,
+            include_missing=include_missing,
+            include_special=include_special,
+            epsilon=epsilon,
+        )
 
-            # 动态计算 Expected 的有效总占比 (因为 expected_dist 是比例，sum 可能等于 0.8)
-            pl.col("expected_dist")
-              .filter(psi_valid_cond)
-              .sum()
-              .over([group_col, "feature"])
-              .alias("total_expected_dist_psi")
-        ])
-
-        # 指标计算
         base_df = base_df.with_columns([
             ((pl.col("count") + epsilon) / (pl.col("total_count") + epsilon)).alias("actual_dist"),
             (pl.col("bad") / (pl.col("total_bad") + epsilon)).alias("bad_dist"),
@@ -1013,28 +993,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .then(pl.col("bad") / pl.col("observed_count"))
             .otherwise(None)
             .alias("bad_rate"),
-
-            # PSI 概率基准
-            # 计算归一化后的 Actual% (只针对有效箱)
-            (pl.col("count") / (pl.col("total_count_psi") + epsilon)).alias("act_prob_clean"),
-            # 计算归一化后的 Expected% (只针对有效箱)
-            #    例如：如果剔除缺失值后，剩余 expected_dist 之和为 0.8，则每一项除以 0.8 放大
-            (pl.col("expected_dist") / (pl.col("total_expected_dist_psi") + epsilon)).alias("exp_prob_clean")
         ])
 
-        # 计算 PSI 分箱贡献
         base_df = base_df.with_columns([
-            # 仅在有效箱上计算 PSI，无效箱置为 None
-            pl.when(psi_valid_cond)
-            .then(
-                (pl.col("act_prob_clean") - pl.col("exp_prob_clean"))
-                *
-                (pl.col("act_prob_clean") / (pl.col("exp_prob_clean") + epsilon)).log()
-            )
-            .otherwise(None)
-            .alias("psi_bin"),
-
-            # 计算 Lift
             pl.when(pl.col("total_observed") > 0)
             .then(
                 pl.col("bad_rate")
@@ -1043,8 +1004,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
             .otherwise(None)
             .alias("lift"),
-
-            # IV
             pl.when(pl.col("total_observed") > 0)
             .then(
                 (
@@ -1054,10 +1013,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ).cast(pl.Float32)
             )
             .otherwise(None)
-            .alias("iv_bin")
+            .alias("iv_bin"),
         ])
 
-        # 计算有序指标 (AUC, KS, IV)：必须按 WOE 风险程度排序
+        # 计算有序指标 (AUC, KS, IV)：必须按 WOE 风险程度排序。
         sorted_df = base_df.sort([group_col, "feature", "woe"])
 
         # 累积分布用于计算 KS 和 AUC
@@ -2544,8 +2503,8 @@ def _plot_report_helper(
     """
     辅助绘图函数，处理多 Target 循环与 Top-N 筛选逻辑。
 
-    参数
-    ----
+    Parameters
+    ----------
     evaluator : MarsBinEvaluator
         用于调用底层 plot_feature_binning_risk_trends 方法的实例。
     report : MarsEvaluationReport

@@ -7,9 +7,17 @@ from typing import Any, Dict, List, Mapping, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from mars.modeling.evaluation_tables import (
+    build_calibration_curve_detail,
+    build_decile_lift_detail,
+    build_ks_curve_detail,
+    build_roc_curve_detail,
+    build_score_distribution_detail,
+)
 from mars.modeling.metrics import calculate_auc, calculate_f1, calculate_ks
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import FrameLike, split_name_sort_key, to_pandas_frame
+from mars.utils.frame import to_pandas_table
 
 
 class MarsModelEvaluator:
@@ -238,14 +246,8 @@ class MarsModelEvaluator:
 
     @staticmethod
     def _as_pandas_table(table: Any) -> pd.DataFrame:
-        """将 Polars/Pandas 报表统一转成 Pandas，便于建模报告拼装。"""
-        if table is None:
-            return pd.DataFrame()
-        if isinstance(table, pd.DataFrame):
-            return table.copy()
-        if hasattr(table, "to_pandas"):
-            return table.to_pandas()
-        return pd.DataFrame(table)
+        """将报表表对象统一转成 Pandas，便于建模报告拼装。"""
+        return to_pandas_table(table)
 
     def _evaluate_psi_with_binner(
         self,
@@ -325,232 +327,6 @@ class MarsModelEvaluator:
             score_detail["bin"] = score_detail["bin_index"]
         return score_detail, psi_map
 
-    def _build_decile_lift_detail(
-        self,
-        df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-        ordered_groups: Sequence[str],
-    ) -> pd.DataFrame:
-        """按模型分数降序构建分组十分位 Lift 明细。"""
-        rows: List[Dict[str, Any]] = []
-        for group in ordered_groups:
-            sub_df = df[df[self.group_col].astype(str) == str(group)].copy()
-            y_true = pd.to_numeric(sub_df[target_col], errors="coerce")
-            y_pred = pd.to_numeric(sub_df[pred_col], errors="coerce")
-            valid = sub_df.loc[y_true.notna() & y_pred.notna() & (y_true >= 0)].copy()
-            if valid.empty:
-                continue
-            valid["_target"] = pd.to_numeric(valid[target_col], errors="coerce")
-            valid["_score"] = pd.to_numeric(valid[pred_col], errors="coerce")
-            valid = valid.sort_values("_score", ascending=False).reset_index(drop=True)
-            decile_count = min(10, max(int(valid.shape[0]), 1))
-            valid["_decile"] = np.floor(np.arange(valid.shape[0]) * decile_count / valid.shape[0]).astype(int) + 1
-            base_bad_rate = float(valid["_target"].mean()) if valid.shape[0] else np.nan
-            total_bad = float(valid["_target"].sum())
-            for decile, part in valid.groupby("_decile", sort=True):
-                bad = float(part["_target"].sum())
-                count = int(part.shape[0])
-                bad_rate = float(bad / count) if count else np.nan
-                rows.append(
-                    {
-                        self.group_col: group,
-                        "decile": int(decile),
-                        "count": count,
-                        "bad": bad,
-                        "bad_rate": bad_rate,
-                        "lift": bad_rate / base_bad_rate if base_bad_rate and pd.notna(base_bad_rate) else np.nan,
-                        "capture_rate": bad / total_bad if total_bad > 0 else np.nan,
-                        "min_score": float(part["_score"].min()),
-                        "max_score": float(part["_score"].max()),
-                    }
-                )
-        return pd.DataFrame(rows)
-
-    def _valid_score_arrays(
-        self,
-        sub_df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """返回图表明细使用的干净二分类标签和分数数组。"""
-        y_true = pd.to_numeric(sub_df[target_col], errors="coerce")
-        y_pred = pd.to_numeric(sub_df[pred_col], errors="coerce")
-        mask = y_true.notna() & y_pred.notna() & (y_true >= 0)
-        return y_true[mask].to_numpy(dtype=float), y_pred[mask].to_numpy(dtype=float)
-
-    @staticmethod
-    def _thin_arrays(max_points: int, **arrays: np.ndarray) -> Dict[str, np.ndarray]:
-        """对齐下采样数组，控制报告明细表体积。"""
-        if not arrays:
-            return {}
-        size = len(next(iter(arrays.values())))
-        if size <= max_points:
-            return arrays
-        idx = np.unique(np.linspace(0, size - 1, max_points).astype(int))
-        return {name: values[idx] for name, values in arrays.items()}
-
-    def _build_roc_curve_detail(
-        self,
-        df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-        ordered_groups: Sequence[str],
-    ) -> pd.DataFrame:
-        """为每个切片构建 ROC 曲线明细行。"""
-        rows: List[Dict[str, Any]] = []
-        for group in ordered_groups:
-            sub_df = df[df[self.group_col].astype(str) == str(group)]
-            y, score = self._valid_score_arrays(sub_df, pred_col=pred_col, target_col=target_col)
-            pos = float(y.sum())
-            neg = float(len(y) - pos)
-            if len(y) == 0 or pos <= 0 or neg <= 0:
-                continue
-            order = np.argsort(-score)
-            y_sorted = y[order]
-            score_sorted = score[order]
-            tpr = np.r_[0.0, np.cumsum(y_sorted) / pos, 1.0]
-            fpr = np.r_[0.0, np.cumsum(1.0 - y_sorted) / neg, 1.0]
-            threshold = np.r_[np.inf, score_sorted, -np.inf]
-            thinned = self._thin_arrays(500, fpr=fpr, tpr=tpr, threshold=threshold)
-            for fpr_val, tpr_val, threshold_val in zip(
-                thinned["fpr"],
-                thinned["tpr"],
-                thinned["threshold"],
-                strict=False,
-            ):
-                rows.append(
-                    {
-                        self.group_col: group,
-                        "fpr": float(fpr_val),
-                        "tpr": float(tpr_val),
-                        "threshold": float(threshold_val) if np.isfinite(threshold_val) else threshold_val,
-                    }
-                )
-        return pd.DataFrame(rows)
-
-    def _build_ks_curve_detail(
-        self,
-        df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-        ordered_groups: Sequence[str],
-    ) -> pd.DataFrame:
-        """为每个切片构建 KS 曲线明细行。"""
-        rows: List[Dict[str, Any]] = []
-        for group in ordered_groups:
-            sub_df = df[df[self.group_col].astype(str) == str(group)]
-            y, score = self._valid_score_arrays(sub_df, pred_col=pred_col, target_col=target_col)
-            pos = float(y.sum())
-            neg = float(len(y) - pos)
-            if len(y) == 0 or pos <= 0 or neg <= 0:
-                continue
-            order = np.argsort(-score)
-            y_sorted = y[order]
-            bad_cum = np.cumsum(y_sorted) / pos
-            good_cum = np.cumsum(1.0 - y_sorted) / neg
-            sample_pct = np.arange(1, len(y_sorted) + 1, dtype=float) / len(y_sorted)
-            ks = np.abs(bad_cum - good_cum)
-            thinned = self._thin_arrays(
-                500,
-                sample_pct=sample_pct,
-                bad_cum_rate=bad_cum,
-                good_cum_rate=good_cum,
-                ks=ks,
-            )
-            for idx in range(len(thinned["sample_pct"])):
-                rows.append(
-                    {
-                        self.group_col: group,
-                        "sample_pct": float(thinned["sample_pct"][idx]),
-                        "bad_cum_rate": float(thinned["bad_cum_rate"][idx]),
-                        "good_cum_rate": float(thinned["good_cum_rate"][idx]),
-                        "ks": float(thinned["ks"][idx]),
-                    }
-                )
-        return pd.DataFrame(rows)
-
-    def _build_calibration_curve_detail(
-        self,
-        df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-        ordered_groups: Sequence[str],
-    ) -> pd.DataFrame:
-        """按分位箱构建校准曲线明细行。"""
-        rows: List[Dict[str, Any]] = []
-        for group in ordered_groups:
-            sub_df = df[df[self.group_col].astype(str) == str(group)]
-            y, score = self._valid_score_arrays(sub_df, pred_col=pred_col, target_col=target_col)
-            if len(y) == 0:
-                continue
-            valid = pd.DataFrame({"target": y, "score": score})
-            bin_count = min(10, max(int(valid["score"].nunique()), 1))
-            if bin_count <= 1:
-                valid["_bin"] = 1
-            else:
-                try:
-                    valid["_bin"] = pd.qcut(valid["score"], q=bin_count, duplicates="drop", labels=False) + 1
-                except ValueError:
-                    valid["_bin"] = pd.cut(valid["score"], bins=bin_count, duplicates="drop", labels=False) + 1
-            for bin_idx, part in valid.groupby("_bin", sort=True):
-                rows.append(
-                    {
-                        self.group_col: group,
-                        "bin": int(bin_idx) if pd.notna(bin_idx) else np.nan,
-                        "count": int(part.shape[0]),
-                        "pred_mean": float(part["score"].mean()),
-                        "bad_rate": float(part["target"].mean()),
-                    }
-                )
-        return pd.DataFrame(rows)
-
-    def _build_score_distribution_detail(
-        self,
-        df: pd.DataFrame,
-        *,
-        pred_col: str,
-        target_col: str,
-        ordered_groups: Sequence[str],
-    ) -> pd.DataFrame:
-        """按目标取值构建分箱后的分数分布明细行。"""
-        scores = pd.to_numeric(df[pred_col], errors="coerce").dropna()
-        if scores.empty:
-            return pd.DataFrame()
-        min_score = float(scores.min())
-        max_score = float(scores.max())
-        if min_score == max_score:
-            min_score -= 1e-6
-            max_score += 1e-6
-        bins = np.linspace(min_score, max_score, 31)
-        rows: List[Dict[str, Any]] = []
-        for group in ordered_groups:
-            sub_df = df[df[self.group_col].astype(str) == str(group)].copy()
-            sub_df["_score"] = pd.to_numeric(sub_df[pred_col], errors="coerce")
-            sub_df["_target"] = pd.to_numeric(sub_df[target_col], errors="coerce")
-            sub_df = sub_df[sub_df["_score"].notna() & sub_df["_target"].notna() & (sub_df["_target"] >= 0)]
-            for target_value, target_part in sub_df.groupby("_target", sort=True):
-                counts = pd.cut(target_part["_score"], bins=bins, include_lowest=True).value_counts(sort=False)
-                denom = max(float(counts.sum()), 1.0)
-                for idx, interval in enumerate(counts.index):
-                    rows.append(
-                        {
-                            self.group_col: group,
-                            "target_value": int(target_value),
-                            "bin": idx + 1,
-                            "score_min": float(interval.left),
-                            "score_max": float(interval.right),
-                            "bin_center": float((interval.left + interval.right) / 2.0),
-                            "count": int(counts.iloc[idx]),
-                            "pct": float(counts.iloc[idx] / denom),
-                        }
-                    )
-        return pd.DataFrame(rows)
 
     def _build_feature_psi_detail(
         self,
@@ -739,33 +515,38 @@ class MarsModelEvaluator:
         summary = summary.reindex(columns=ordered_tuple_cols)
         summary.columns = pd.MultiIndex.from_tuples(ordered_tuple_cols)
         detail_tables = {
-            "decile_lift": self._build_decile_lift_detail(
+            "decile_lift": build_decile_lift_detail(
                 df_pd,
+                group_col=self.group_col,
                 pred_col=pred_col,
                 target_col=self.target_col,
                 ordered_groups=primary_ordered_groups,
             ),
             "score_psi": score_psi_detail,
-            "roc_curve": self._build_roc_curve_detail(
+            "roc_curve": build_roc_curve_detail(
                 df_pd,
+                group_col=self.group_col,
                 pred_col=pred_col,
                 target_col=self.target_col,
                 ordered_groups=primary_ordered_groups,
             ),
-            "ks_curve": self._build_ks_curve_detail(
+            "ks_curve": build_ks_curve_detail(
                 df_pd,
+                group_col=self.group_col,
                 pred_col=pred_col,
                 target_col=self.target_col,
                 ordered_groups=primary_ordered_groups,
             ),
-            "calibration_curve": self._build_calibration_curve_detail(
+            "calibration_curve": build_calibration_curve_detail(
                 df_pd,
+                group_col=self.group_col,
                 pred_col=pred_col,
                 target_col=self.target_col,
                 ordered_groups=primary_ordered_groups,
             ),
-            "score_distribution": self._build_score_distribution_detail(
+            "score_distribution": build_score_distribution_detail(
                 df_pd,
+                group_col=self.group_col,
                 pred_col=pred_col,
                 target_col=self.target_col,
                 ordered_groups=primary_ordered_groups,

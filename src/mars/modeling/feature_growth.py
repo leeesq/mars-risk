@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Mapping, Sequence
 
 import pandas as pd
 
-from mars.modeling.artifacts import read_json, write_json
+from mars.modeling.artifacts import read_json, step_artifact_dir, write_json
 from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner, _build_spec
 from mars.modeling.utils import FrameLike
@@ -398,10 +398,6 @@ class MarsFeatureIncrementalTuner:
         suffix = path.suffix or ".csv"
         return str(path.with_name(f"{path.stem}_features_{feature_count}{suffix}"))
 
-    @staticmethod
-    def _step_artifact_dir(base_dir: str | Path, feature_count: int) -> str:
-        """为每个 step 生成独立的 artifact 根目录。"""
-        return str(Path(base_dir) / f"features_{feature_count}")
 
     @staticmethod
     def _select_history_row(
@@ -608,7 +604,7 @@ class MarsFeatureIncrementalTuner:
             )
             step_kwargs = dict(common_tune_kwargs)
             if base_artifact_dir is not None:
-                step_kwargs["artifact_dir"] = self._step_artifact_dir(
+                step_kwargs["artifact_dir"] = step_artifact_dir(
                     base_artifact_dir,
                     feature_count,
                 )

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Mapping, MutableMapping, Sequence, cast
 
-import pandas as pd
 import polars as pl
 
 from mars.core.base import MarsBaseSelector
@@ -12,6 +11,7 @@ from mars.feature import MarsBinnerBase, MarsStatsSelector
 from mars.modeling import MarsModelingSession
 from mars.modeling.utils import FrameLike
 from mars.pipeline.base import MarsPipelineStep, MarsStepResult
+from mars.utils.frame import to_polars_frame
 from mars.utils.logger import logger
 
 
@@ -219,7 +219,7 @@ class MarsWOEBinningStep(MarsPipelineStep):
             return_type="woe",
             woe_batch_size=self.woe_batch_size,
         )
-        binned_pl = _to_polars(binned)
+        binned_pl = to_polars_frame(binned)
         output_features = [f"{feature}_woe" for feature in input_features]
         _validate_woe_columns(self.name, binned_pl, output_features)
 
@@ -272,7 +272,7 @@ class MarsWOEBinningStep(MarsPipelineStep):
             return_type="woe",
             woe_batch_size=self.woe_batch_size,
         )
-        transformed_pl = _to_polars(transformed)
+        transformed_pl = to_polars_frame(transformed)
         output_features = [f"{feature}_woe" for feature in input_features]
         _validate_woe_columns(self.name, transformed_pl, output_features)
         pipeline_state["has_woe_step"] = True
@@ -406,7 +406,7 @@ class MarsModelingStep(MarsPipelineStep):
                 split_ratios=self.split_ratios,
                 **self.slice_params,
             )
-            working_df = _to_polars(modeling_df)
+            working_df = to_polars_frame(modeling_df)
         elif self.dataset_flag_col not in working_df.columns:
             raise ValueError(
                 "MarsModelingStep requires either split_ratios with time_col or an existing "
@@ -460,14 +460,6 @@ class MarsModelingStep(MarsPipelineStep):
         del pipeline_state
         return df, list(active_features)
 
-
-def _to_polars(df: Any) -> pl.DataFrame:
-    """将 Pandas 或 Polars 输入表转换为 Polars 副本。"""
-    if isinstance(df, pl.DataFrame):
-        return df.clone()
-    if isinstance(df, pd.DataFrame):
-        return pl.from_pandas(df)
-    raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
 
 def _append_or_replace_columns(base_df: pl.DataFrame, new_columns: pl.DataFrame) -> pl.DataFrame:

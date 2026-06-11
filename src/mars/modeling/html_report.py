@@ -8,12 +8,17 @@ import json
 from io import BytesIO
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import pandas as pd
-import polars as pl
 
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.utils import optional_import as _optional_import
+from mars.utils.frame import to_pandas_table
+from mars.utils.html import (
+    escape_html_value,
+    flatten_columns,
+    format_html_value,
+    is_missing_html_value,
+)
 
 
 class _ModelReportHtmlRenderer:
@@ -75,26 +80,18 @@ class _ModelReportHtmlRenderer:
         """将可选表对象安全转换为 Pandas DataFrame 副本。"""
         if value is None:
             return None
-        if isinstance(value, pd.DataFrame):
-            return value.copy()
-        if isinstance(value, pl.DataFrame):
-            return value.to_pandas()
-        return None
+        table = to_pandas_table(value)
+        return None if table.empty else table
 
     @staticmethod
     def _escape(value: Any) -> str:
         """按 HTML 属性和文本上下文转义任意值。"""
-        return html.escape("" if value is None else str(value), quote=True)
+        return escape_html_value(value)
 
     @staticmethod
     def _is_missing(value: Any) -> bool:
         """判断报告单元格值是否应按缺失展示。"""
-        if value is None:
-            return True
-        try:
-            return bool(pd.isna(value))
-        except Exception:
-            return False
+        return is_missing_html_value(value)
 
     @classmethod
     def _format_value(
@@ -103,35 +100,19 @@ class _ModelReportHtmlRenderer:
         *,
         percent: bool = False,
     ) -> str:
-        """按日期、整数、浮点和百分比语义格式化展示值。"""
-        if cls._is_missing(value):
-            return "-"
-        if isinstance(value, (pd.Timestamp, np.datetime64)):
-            return pd.to_datetime(value).strftime("%Y-%m-%d")
-        if isinstance(value, (int, np.integer)):
-            return f"{int(value):,}"
-        if isinstance(value, (float, np.floating)):
-            val = float(value)
-            if not np.isfinite(val):
-                return "-"
-            if percent:
-                return f"{val:.2%}"
-            if abs(val) >= 1000:
-                return f"{val:,.2f}"
-            return f"{val:.4f}"
-        return str(value)
+        """按建模报告展示口径格式化单元格文本。"""
+        return format_html_value(
+            value,
+            as_percent=percent,
+            precision=2,
+            missing_text="-",
+            compact_float=True,
+        )
 
     @staticmethod
     def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
         """将 MultiIndex 列名压平成前端表格可展示的字符串列名。"""
-        flat = df.copy()
-        flat.columns = [
-            " | ".join(str(part) for part in col if str(part) not in {"", "nan"})
-            if isinstance(col, tuple)
-            else str(col)
-            for col in flat.columns
-        ]
-        return flat
+        return flatten_columns(df)
 
     @classmethod
     def _table_html(

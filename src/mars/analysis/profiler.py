@@ -9,6 +9,7 @@ import polars as pl
 
 from mars.analysis.config import MarsProfileConfig
 from mars.analysis.report import MarsProfileReport
+from mars.analysis.stability import psi_contribution_expr, psi_valid_condition
 from mars.core.base import MarsBaseEstimator
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
@@ -1166,36 +1167,15 @@ class MarsDataProfiler(MarsBaseEstimator):
         epsilon = 1e-6
         div_safe = 1e-9  # 防止分母为 0 的保险系数
 
-        # 在计算占比之前，先剔除不需要参与 PSI 计算的箱。
-        # 这样 sum().over() 的分母会自动变成 "剔除后的总样本量"。
-        filter_cond = pl.lit(True)
-        if is_numeric_bin_id:
-            # --- 数值型逻辑 (基于 Int 索引) ---
-            # 约定: Missing=-1, Special <= -3, Normal >= 0, Other=-2
+        # 在计算占比之前，先复用统一 PSI 口径剔除不参与计算的箱。
+        filter_cond = psi_valid_condition(
+            pl.col("bin_id"),
+            include_missing=include_missing,
+            include_special=include_special,
+            is_numeric_bin=is_numeric_bin_id,
+            special_values=self.special_values,
+        )
 
-            if not include_missing:
-                # 剔除 -1 (IDX_MISSING)
-                filter_cond &= (pl.col("bin_id") != -1)
-
-            if not include_special:
-                # 剔除 <= -3 (IDX_SPECIAL_START)
-                filter_cond &= (pl.col("bin_id") > -2)
-
-        else:
-            # --- 类别型逻辑 (基于 String 值) ---
-            # 约定: Missing="Missing" (在 _get_psi_trend 中定义的 fill_null)
-            # Special = 在 self.special_values 列表中的值
-
-            if not include_missing:
-                # 兼容 "Missing" 字符串和可能的 null
-                filter_cond &= (pl.col("bin_id") != "Missing") & (pl.col("bin_id").is_not_null())
-
-            if not include_special and self.special_values:
-                # 确保类型匹配，转为字符串列表进行比较
-                special_str_list = [str(v) for v in self.special_values]
-                filter_cond &= (~pl.col("bin_id").is_in(special_str_list))
-
-        # 注意: 这里的 filtered_stats 仅包含被选中的箱子
         filtered_stats = stats_df.filter(filter_cond)
 
         # 同时也需要过滤骨架，否则 Left Join 时会把剔除的箱子又加回来(变成空箱)
@@ -1248,7 +1228,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                 pl.col("E").fill_null(epsilon)
             ])
             .with_columns(
-                ((pl.col("A") - pl.col("E")) * (pl.col("A") / pl.col("E")).log()).alias("psi_contrib")
+                psi_contribution_expr(pl.col("A"), pl.col("E"), epsilon=epsilon).alias("psi_contrib")
             )
             .group_by([group_col, feat_col])
             .agg(pl.col("psi_contrib").sum().alias("psi"))
@@ -1264,7 +1244,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                 pl.col("E").fill_null(epsilon)
             ])
             .with_columns(
-                ((pl.col("A_global") - pl.col("E")) * (pl.col("A_global") / pl.col("E")).log()).alias("psi_contrib_total")
+                psi_contribution_expr(pl.col("A_global"), pl.col("E"), epsilon=epsilon).alias("psi_contrib_total")
             )
             .group_by(feat_col)
             .agg(pl.col("psi_contrib_total").sum().alias("total"))

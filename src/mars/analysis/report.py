@@ -13,6 +13,8 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis._html_assets import build_html_runtime_script, build_html_styles
+from mars.utils.frame import to_pandas_frame
+from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
 
 
@@ -30,9 +32,7 @@ def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
     pd.DataFrame
         转换后的 Pandas DataFrame。若输入本身已为 Pandas，则直接返回原对象。
     """
-    if isinstance(df, pl.DataFrame):
-        return df.to_pandas()
-    return df
+    return to_pandas_frame(df)
 
 class ProfileData(NamedTuple):
     """
@@ -956,12 +956,7 @@ class MarsEvaluationReport:
     @staticmethod
     def _is_missing_html_value(value: Any) -> bool:
         """判断单元格值在 HTML 表格中是否应按空值展示。"""
-        if value is None:
-            return True
-        try:
-            return bool(pd.isna(value))
-        except TypeError:
-            return False
+        return is_missing_html_value(value)
 
     @classmethod
     def _format_html_value(
@@ -972,18 +967,12 @@ class MarsEvaluationReport:
         precision: int = 2,
     ) -> str:
         """按数值、百分比和缺失值语义格式化 HTML 单元格文本。"""
-        if cls._is_missing_html_value(value):
-            return ""
-
-        if isinstance(value, (np.integer, int, np.floating, float)) and not isinstance(value, bool):
-            num = float(value)
-            if not np.isfinite(num):
-                return ""
-            if as_percent:
-                return f"{num * 100:.{precision}f}%"
-            return f"{num:.{precision}f}"
-
-        return str(value)
+        return format_html_value(
+            value,
+            as_percent=as_percent,
+            precision=precision,
+            missing_text="",
+        )
 
     @staticmethod
     def _normalize_search_text(*parts: Any) -> str:

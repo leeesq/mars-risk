@@ -11,6 +11,7 @@ from mars.modeling.prediction import ModelPredictor
 from mars.modeling.utils import FrameLike, is_polars_dataframe, restore_frame_type
 from mars.pipeline.base import MarsPipelineResult, MarsPipelineStep, MarsStepResult
 from mars.pipeline.steps import MarsModelingStep, MarsSelectionStep, MarsWOEBinningStep
+from mars.utils.frame import to_polars_frame
 from mars.utils.logger import logger
 
 
@@ -80,7 +81,7 @@ class MarsModelingPipeline:
             Pipeline 执行结果，包含最终特征、每步报告和建模调参结果。
         """
         self._prefer_polars = is_polars_dataframe(df)
-        working_df = self._to_polars(df)
+        working_df = to_polars_frame(df)
         self._validate_input_columns(working_df, self.features + [self.target])
 
         logger.info(
@@ -146,7 +147,7 @@ class MarsModelingPipeline:
             保留原始上下文列，并追加已拟合 WOE 特征后的样本。返回类型尽量与输入一致。
         """
         self._check_is_fitted()
-        working_df = self._to_polars(df)
+        working_df = to_polars_frame(df)
         active_features = list(self.features)
         self._validate_input_columns(working_df, active_features)
         pipeline_state: MutableMapping[str, Any] = {
@@ -241,14 +242,6 @@ class MarsModelingPipeline:
         """校验 Pipeline 已经完成拟合。"""
         if self.result_ is None:
             raise RuntimeError("MarsModelingPipeline is not fitted. Call fit(df) first.")
-
-    def _to_polars(self, df: FrameLike) -> pl.DataFrame:
-        """将输入表转换为 Polars 副本。"""
-        if isinstance(df, pl.DataFrame):
-            return df.clone()
-        if isinstance(df, pd.DataFrame):
-            return pl.from_pandas(df)
-        raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
 
 
 __all__ = [

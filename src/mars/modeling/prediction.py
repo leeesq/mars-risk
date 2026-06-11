@@ -126,7 +126,7 @@ class ModelPredictor:
     def _safe_predict_logic_polars(self, df: pl.DataFrame) -> np.ndarray:
         """数值特征场景优先使用 Polars/Arrow 预测通道。"""
         if self.categorical_features:
-            return self._safe_predict_logic(df.to_pandas())
+            return self._safe_predict_logic(to_pandas_frame(df))
 
         missing = sorted(set(self.features).difference(df.columns))
         if missing:
@@ -147,7 +147,7 @@ class ModelPredictor:
             best_iteration = getattr(self.model, "best_iteration", None)
             return np.asarray(self.model.predict(X_arrow, num_iteration=best_iteration or None))
 
-        return self._safe_predict_logic(df.to_pandas())
+        return self._safe_predict_logic(to_pandas_frame(df))
 
     def predict(
         self,
