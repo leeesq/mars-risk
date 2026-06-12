@@ -8,6 +8,7 @@ import pandas as pd
 import polars as pl
 
 from mars.core.base import MarsBaseEstimator
+from mars.core.constants import DIVISION_EPSILON
 from mars.monitoring.monitor import MarsMonitoringReport
 
 AlertSeverity = Literal["严重", "警告", "关注"]
@@ -607,7 +608,7 @@ class MarsMonitoringAlerter(MarsBaseEstimator):
 
         first_value = mean_by_group[baseline_group]
         latest_value = mean_by_group[latest_group]
-        denominator = max(abs(first_value), 1e-9)
+        denominator = max(abs(first_value), DIVISION_EPSILON)
         relative_delta = abs(latest_value - first_value) / denominator
         self._add_high_value_alert(
             alerts,

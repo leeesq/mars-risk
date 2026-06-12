@@ -10,7 +10,7 @@ import joblib
 import pandas as pd
 
 from mars.modeling.artifacts import load_report_tables, read_json, save_report_tables, write_json
-from mars.modeling.utils import FrameLike
+from mars.utils.frame import FrameLike
 
 if TYPE_CHECKING:
     from mars.modeling.report import MarsModelingReport

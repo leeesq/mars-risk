@@ -6,6 +6,8 @@ from typing import Any, Sequence
 
 import polars as pl
 
+from mars.core.constants import METRIC_EPSILON
+
 
 def psi_valid_condition(
     bin_expr: pl.Expr,
@@ -56,7 +58,7 @@ def psi_contribution_expr(
     actual_expr: pl.Expr,
     expected_expr: pl.Expr,
     *,
-    epsilon: float = 1e-6,
+    epsilon: float = METRIC_EPSILON,
 ) -> pl.Expr:
     """
     构建单箱 PSI 贡献表达式。
@@ -89,7 +91,7 @@ def with_psi_from_counts(
     output_col: str = "psi_bin",
     include_missing: bool = True,
     include_special: bool = True,
-    epsilon: float = 1e-6,
+    epsilon: float = METRIC_EPSILON,
 ) -> pl.DataFrame:
     """
     基于聚合 count 和 expected distribution 计算单箱 PSI。

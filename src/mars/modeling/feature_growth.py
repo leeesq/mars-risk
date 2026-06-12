@@ -12,7 +12,7 @@ import pandas as pd
 from mars.modeling.artifacts import read_json, step_artifact_dir, write_json
 from mars.modeling.results import MarsModelTuningResult
 from mars.modeling.tuning import MarsModelTuner, _build_spec
-from mars.modeling.utils import FrameLike
+from mars.utils.frame import FrameLike
 
 
 def _dedupe_preserve_order(values: Sequence[str]) -> List[str]:

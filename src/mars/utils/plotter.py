@@ -13,6 +13,7 @@ import polars as pl
 from IPython.display import HTML, display
 from matplotlib.ticker import FuncFormatter
 
+from mars.core.constants import DIVISION_EPSILON
 from mars.utils.logger import logger
 
 
@@ -314,7 +315,7 @@ class MarsPlotter:
                 if len(df_trend_calc) > 1:
                     x_arr = df_trend_calc["bin_index"].values
                     y_arr = df_trend_calc["bad_rate"].values
-                    if np.std(y_arr) > 1e-9:
+                    if np.std(y_arr) > DIVISION_EPSILON:
                         corr = np.corrcoef(x_arr, y_arr)[0, 1]
                         if corr >= 0.5:
                             trend_str = f"asc({corr:.2f})"
@@ -407,7 +408,11 @@ class MarsPlotter:
             if base_vec is not None:
                 curr_df_g = plot_df[plot_df[group_col] == group].sort_values("bin_index")
                 curr_vec = curr_df_g[curr_df_g["bin_index"] >= 0]["bad_rate"].values
-                if len(curr_vec) == len(base_vec) and np.std(curr_vec) > 1e-9 and np.std(base_vec) > 1e-9:
+                if (
+                    len(curr_vec) == len(base_vec)
+                    and np.std(curr_vec) > DIVISION_EPSILON
+                    and np.std(base_vec) > DIVISION_EPSILON
+                ):
                     rc_val = np.corrcoef(curr_vec, base_vec)[0, 1]
 
             for spine in ax.spines.values():

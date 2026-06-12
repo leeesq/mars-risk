@@ -12,6 +12,7 @@ import polars as pl
 from mars.analysis.report import MarsEvaluationReport
 from mars.analysis.stability import with_psi_from_counts
 from mars.core.base import MarsBaseEstimator
+from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE, METRIC_EPSILON
 from mars.feature.base import MarsBinnerBase
 from mars.feature.lite_opt_binner import MarsLiteOptBinner
 from mars.feature.native_binner import MarsNativeBinner
@@ -777,7 +778,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 过滤出需要计算的特征
         target_stats = group_stats_raw.filter(pl.col("feature").is_in(missing_woe_feats))
 
-        epsilon = 1e-6 # 平滑因子，防止除零或对0取对数
+        epsilon = METRIC_EPSILON # 平滑因子，防止除零或对0取对数
 
         # 计算 WOE
         woe_df = (
@@ -962,12 +963,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .join(woe_df, on=["feature", "bin_index"], how="left")
             .with_columns([
                 (pl.col("observed_count") - pl.col("bad")).alias("good"),
-                pl.col("expected_dist").fill_null(1e-9),
+                pl.col("expected_dist").fill_null(DIVISION_EPSILON),
                 pl.col("woe").fill_null(0)
             ])
         )
 
-        epsilon = 1e-6
+        epsilon = METRIC_EPSILON
 
         # count 负责全量分布，observed_count 负责风险指标。
         base_df = base_df.with_columns([
@@ -1045,7 +1046,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ])
 
         sorted_df = sorted_df.with_columns([
-            pl.when(pl.col("psi_bin").abs() < 1e-12)
+            pl.when(pl.col("psi_bin").abs() < FLOAT_TOLERANCE)
               .then(0.0)
               .otherwise(pl.col("psi_bin"))
               .alias("psi_bin")
@@ -1409,7 +1410,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 .group_by("bin_index")
                 .agg(expected_count_expr)
                 .with_columns(
-                    (pl.col("expected_count") / (pl.col("expected_count").sum() + 1e-9)).alias("expected_dist")
+                    (
+                        pl.col("expected_count")
+                        / (pl.col("expected_count").sum() + DIVISION_EPSILON)
+                    ).alias("expected_dist")
                 )
                 .select([
                     pl.lit(feature).alias("feature"),
@@ -1660,7 +1664,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             # 计算箱占比 pct = count / total_count
             # total_count 已经在 _calc_metrics_from_stats 中计算并包含在 stats_long 中
-            (pl.col("count") / (pl.col("total_count") + 1e-9)).alias("pct"),
+            (pl.col("count") / (pl.col("total_count") + DIVISION_EPSILON)).alias("pct"),
 
             pl.col("bin_index").max().over(["feature", group_col]).alias("bin_index_max")
         ]).with_columns([
@@ -1890,7 +1894,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     .otherwise(0)
                     .sum()
                     /
-                    (pl.col("count").sum() + 1e-9)
+                    (pl.col("count").sum() + DIVISION_EPSILON)
                 ).alias("missing"),
                 pl.when(pl.col("observed_count").sum() > 0)
                 .then(pl.col("lift").max())
@@ -1923,7 +1927,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     .otherwise(0)
                     .sum()
                     /
-                    (pl.col("count").sum() + 1e-9)
+                    (pl.col("count").sum() + DIVISION_EPSILON)
                 ).alias("missing")
             )
         )
@@ -2063,7 +2067,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                         .otherwise(0)
                         .sum()
                         /
-                        (pl.col("count").sum() + 1e-9)
+                        (pl.col("count").sum() + DIVISION_EPSILON)
                     )
                 elif metric == "lift":
                     agg_func = (
@@ -2243,331 +2247,5 @@ class MarsBinEvaluator(MarsBaseEstimator):
             dpi=dpi
         )
 
-def profile_risk(
-    df: Union[pl.DataFrame, pd.DataFrame],
-    *,
-    target: Union[str, List[str]] | None = None,  # 放宽约束，支持无标签画像和多目标画像。
-    features: List[str] | None = None,
-    feature_data_source: Dict[str, List[str]] | None = None,
-    group_col: str | None = None,
-    time_col: str | None = None,
-    time_grain: str | None = None,
-    feature_start_aware_baseline: bool = False,
-    psi_include_missing: bool = False,
-    psi_include_special: bool = False,
 
-    binning_type: Literal["native", "optimal", "lite_opt"] = "native",
-    binner: MarsBinnerBase | None = None,
-    binner_params: Dict[str, Any] | None = None,
-
-    benchmark_df: Union[pl.DataFrame, pd.DataFrame] | None = None,
-    weights_col: str | None = None,
-
-    plot: bool = True,
-    plot_target: Union[str, List[str], None] = None,
-    max_plots: int = 10,
-    sort_by: str = "iv",
-    ascending: bool = False,
-    dpi: int = 300,
-
-    batch_size: int = 100
-) -> MarsRiskProfile:
-    """
-    运行高层风险画像工作流。
-
-    `profile_risk` 是面向风控分析场景的轻量入口：调用方传入 `df`、`target`、
-    特征范围和分组上下文，函数内部负责构造评估器、拟合或复用分箱器，并返回
-    `MarsRiskProfile`。底层分箱器仍然遵循 `X, y` 风格，高层入口只暴露
-    `df, target`，避免同一个 public method 同时出现两套目标变量语义。
-
-    多目标画像时，主目标先拟合分箱器，其他目标显式复用同一个分箱器进行评估，
-    最终在返回结果的 `targets` 中记录完整目标列表。
-
-    Parameters
-    ----------
-    df : Union[pl.DataFrame, pd.DataFrame]
-        待画像样本表。
-    target : Union[str, List[str]] | None
-        二分类目标列名或目标列列表；`None` 表示无标签画像。
-    features : List[str] | None
-        本次参与画像的特征列。
-    feature_data_source : Dict[str, List[str]] | None
-        特征来源映射，只保留方法级入口，因为它依赖本次 active features。
-    group_col : str | None
-        已存在的分组列名。
-    time_col : str | None
-        原始日期列名。
-    time_grain : str | None
-        时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-    feature_start_aware_baseline : bool
-        是否按特征首次出现的分组选择 PSI 基准。
-    psi_include_missing : bool
-        计算 PSI 时是否纳入缺失值箱；默认不纳入，缺失率通常单独监控。
-    psi_include_special : bool
-        计算 PSI 时是否纳入特殊值箱；默认不纳入，由业务口径显式决定。
-    binning_type : Literal['native', 'optimal', 'lite_opt']
-        未显式传入 `binner` 时使用的分箱器类型。
-    binner : MarsBinnerBase | None
-        显式复用的分箱器；传入后不允许再传 `binner_params`。
-    binner_params : Dict[str, Any] | None
-        构造默认分箱器时使用的参数。
-    benchmark_df : Union[pl.DataFrame, pd.DataFrame] | None
-        外部 benchmark 样本。
-    weights_col : str | None
-        样本权重列名。
-    plot : bool
-        是否生成图表明细。
-    plot_target : Union[str, List[str], None]
-        指定需要绘图的目标列。
-    max_plots : int
-        最多绘制的特征数量。
-    sort_by : str
-        绘图特征排序指标。
-    ascending : bool
-        是否按 `sort_by` 升序排序。
-    dpi : int
-        图表分辨率。
-    batch_size : int
-        批量评估时的特征批大小。
-
-    Returns
-    -------
-    MarsRiskProfile
-        单次风险画像结果，包含报告、分箱器、目标列表和运行元数据。
-
-    Raises
-    ------
-    ValueError
-        当 `binner` 与 `binner_params` 同时传入或输入列配置不合法时抛出。
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from mars.analysis.evaluator import profile_risk
-    >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-    >>> profile = profile_risk(df, target="y", features=["age"], plot=False)
-    >>> profile.report.summary_table is not None and profile.targets == ["y"]
-    True
-    """
-    input_is_pandas = isinstance(df, pd.DataFrame)
-    if binner is not None and binner_params:
-        raise ValueError("`binner` and `binner_params` cannot be provided together.")
-
-    effective_binner_params = dict(binner_params or {})
-    if target is None or target == []:
-        target_list: list[str] = []
-        primary_target: str | None = None
-        is_multi_target = False
-        if binning_type in {"optimal", "lite_opt"} or effective_binner_params.get("method") == "cart":
-            logger.warning("No target provided. Forcing `binning_type='native'` and `method='quantile'`.")
-            binning_type = "native"
-            effective_binner_params["method"] = "quantile"
-    else:
-        target_list = [target] if isinstance(target, str) else list(target)
-        primary_target = target_list[0]
-        is_multi_target = len(target_list) > 1
-
-    primary_evaluator = MarsBinEvaluator(
-        binning_type=binning_type,
-        binner_params=effective_binner_params,
-    )
-    primary_run = primary_evaluator.evaluate(
-        df=df,
-        target=primary_target,
-        features=features,
-        binner=binner,
-        feature_data_source=feature_data_source,
-        group_col=group_col,
-        time_col=time_col,
-        time_grain=time_grain,
-        feature_start_aware_baseline=feature_start_aware_baseline,
-        psi_include_missing=psi_include_missing,
-        psi_include_special=psi_include_special,
-        benchmark_df=benchmark_df,
-        weights_col=weights_col,
-        batch_size=batch_size,
-    )
-    primary_report = primary_run.report
-    trained_binner = primary_run.binner
-
-    if not is_multi_target:
-        final_report = primary_report
-        final_targets = primary_run.targets
-    else:
-
-        def to_pl(d: Union[pl.DataFrame, pd.DataFrame]) -> pl.DataFrame:
-            """将报告中间表统一转换为 Polars DataFrame。"""
-            return pl.from_pandas(d) if isinstance(d, pd.DataFrame) else d
-
-        p_summary = to_pl(primary_report.summary_table).with_columns(pl.lit(primary_target).alias("target"))
-        p_detail = to_pl(primary_report.detail_table)
-        all_details: List[pl.DataFrame] = [p_detail]
-        all_summaries: List[pl.DataFrame] = [p_summary]
-
-        for sec_target in target_list[1:]:
-            sec_run = MarsBinEvaluator(binning_type=binning_type).evaluate(
-                df=df,
-                target=sec_target,
-                features=features,
-                binner=trained_binner,
-                feature_data_source=feature_data_source,
-                group_col=group_col,
-                time_col=time_col,
-                time_grain=time_grain,
-                feature_start_aware_baseline=feature_start_aware_baseline,
-                psi_include_missing=psi_include_missing,
-                psi_include_special=psi_include_special,
-                benchmark_df=benchmark_df,
-                weights_col=weights_col,
-                batch_size=batch_size,
-            )
-            all_details.append(to_pl(sec_run.report.detail_table))
-            all_summaries.append(
-                to_pl(sec_run.report.summary_table).with_columns(pl.lit(sec_target).alias("target"))
-            )
-
-        final_detail = pl.concat(all_details, how="vertical_relaxed")
-        final_summary = pl.concat(all_summaries, how="vertical_relaxed")
-        if input_is_pandas:
-            final_detail = final_detail.to_pandas()
-            final_summary = final_summary.to_pandas()
-
-        logger.info("`trend_tables` in the merged report contains primary-target data only.")
-        merged_meta = dict(primary_report.report_meta or {})
-        meta_df = primary_evaluator._ensure_polars_dataframe(df)
-        merged_meta["targets"] = [str(t) for t in target_list]
-        event_rate_map = {}
-        for target_name in target_list:
-            if target_name in meta_df.columns:
-                try:
-                    event_rate_map[str(target_name)] = float(
-                        meta_df.select(pl.col(target_name).cast(pl.Float64).mean()).item()
-                    )
-                except Exception:
-                    event_rate_map[str(target_name)] = None
-        merged_meta["event_rate_by_target"] = event_rate_map
-
-        final_report = MarsEvaluationReport(
-            summary_table=final_summary,
-            trend_tables=primary_report.trend_tables,
-            detail_table=final_detail,
-            group_col=primary_report.group_col,
-            feature_data_source=primary_report.feature_data_source,
-            dt_col=primary_report.dt_col,
-            missing_by_day_table=primary_report.missing_by_day_table,
-            report_meta=merged_meta,
-        )
-        final_targets = [str(t) for t in target_list]
-
-    if plot and final_targets:
-        targets_to_plot = []
-        if plot_target is None or plot_target == "all":
-            targets_to_plot = final_targets
-        elif plot_target == "primary" and final_targets:
-            targets_to_plot = [final_targets[0]]
-        elif isinstance(plot_target, str):
-            targets_to_plot = [plot_target]
-        elif isinstance(plot_target, list):
-            targets_to_plot = plot_target
-
-        targets_to_plot = [t for t in targets_to_plot if t in final_targets]
-        if not targets_to_plot:
-            logger.warning("No valid targets specified for plotting.")
-        else:
-            _plot_report_helper(
-                evaluator=primary_evaluator,
-                report=final_report,
-                target_list=targets_to_plot,
-                sort_by=sort_by,
-                ascending=ascending,
-                max_plots=max_plots,
-                dpi=dpi,
-            )
-
-    return MarsRiskProfile(
-        report=final_report,
-        binner=trained_binner,
-        targets=final_targets,
-        metadata=dict(final_report.report_meta or {}),
-    )
-
-def _plot_report_helper(
-    evaluator: MarsBinEvaluator,
-    report: MarsEvaluationReport,
-    target_list: List[str],
-    sort_by: str,
-    ascending: bool,
-    max_plots: int,
-    dpi: int
-) -> None:
-    """
-    辅助绘图函数，处理多 Target 循环与 Top-N 筛选逻辑。
-
-    Parameters
-    ----------
-    evaluator : MarsBinEvaluator
-        用于调用底层 plot_feature_binning_risk_trends 方法的实例。
-    report : MarsEvaluationReport
-        包含汇总数据的报告对象。
-    target_list : List[str]
-        需要绘制的目标变量列表。
-    """
-    # 准备 Summary 表用于排序
-    summary_all = evaluator._ensure_polars_dataframe(report.summary_table)
-
-    # 准备 Detail 表用于绘图数据源
-    detail_all = evaluator._ensure_polars_dataframe(report.detail_table)
-
-    # 映射排序简码到真实列名
-    sort_map = {
-        "iv": "iv", "psi": "psi_max", "ks": "ks",
-        "auc": "auc", "rc": "rc_min", "mono": "mono"
-    }
-    sort_key = sort_map.get(sort_by.lower(), "iv")
-
-    for current_target in target_list:
-        logger.info(f"Plotting target '{current_target}'.")
-
-        # 筛选当前 Target 的 Summary 数据（用于排序）
-        # 注意：不同 Target 下特征的 IV/AUC 是不一样的，所以 Top 特征可能不同
-        # 单目标模式下 summary 可能没有 target 列，需要兼容
-        if "target" in summary_all.columns:
-            curr_summary = summary_all.filter(pl.col("target") == current_target)
-        else:
-            curr_summary = summary_all
-
-        plot_features = None
-        if sort_key in curr_summary.columns:
-            sorted_feats = curr_summary.sort(sort_key, descending=not ascending)["feature"].to_list()
-
-            if len(sorted_feats) > max_plots:
-                logger.info(f"Selecting top {max_plots} features by '{sort_key}' for plotting.")
-                plot_features = sorted_feats[:max_plots]
-            else:
-                plot_features = sorted_feats
-
-        # 筛选当前 Target 的 Detail 数据（用于绘图）
-        # 利用 Evaluator 的 plot 方法支持传入 df_detail 的特性
-        # 注意这里的 filter("y") ，在 Evaluator._format_report 里加了这一列
-        curr_detail = detail_all.filter(pl.col("y") == current_target)
-
-        if curr_detail.is_empty():
-            logger.warning(f"No detail data found for target '{current_target}'. Skipping plotting.")
-            continue
-
-        # 调用底层绘图
-        # 注意：这里我们手动传入 df_detail，从而绕过 report.detail_table，那是全量的
-        evaluator.plot_feature_binning_risk_trends(
-            report=None, # 不传 report，使用 df_detail
-            df_detail=curr_detail, # 传筛选后的 detail
-            features=plot_features,
-            group_col=report.group_col,
-            target_name=current_target, # 标题显示当前 Target 名
-            sort_by=sort_by,
-            ascending=ascending,
-            dpi=dpi
-        )
-
-        # 分隔线，方便区分不同 Target 的图
-        if len(target_list) > 1:
-            logger.info(f"{'-'*40}")
+from mars.analysis._risk_profile import profile_risk as profile_risk  # noqa: E402

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.modeling.utils import require_optional_module
+from mars.utils.imports import require_optional_module
 
 
 def load_backend_module(module_name: str) -> Any:

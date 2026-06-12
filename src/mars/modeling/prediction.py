@@ -10,15 +10,13 @@ import polars as pl
 
 from mars.modeling.evaluation import MarsModelEvaluator
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.utils import (
+from mars.utils.frame import (
     FrameLike,
     is_polars_dataframe,
     restore_frame_type,
     to_pandas_frame,
 )
-from mars.modeling.utils import (
-    optional_import as _optional_import,
-)
+from mars.utils.imports import optional_import as _optional_import
 
 
 class ModelPredictor:

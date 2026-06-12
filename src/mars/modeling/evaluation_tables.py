@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_curve
 
+from mars.core.constants import METRIC_EPSILON
+
 
 def build_decile_lift_detail(
     df: pd.DataFrame,
@@ -289,8 +291,8 @@ def build_score_distribution_detail(
     min_score = float(scores.min())
     max_score = float(scores.max())
     if min_score == max_score:
-        min_score -= 1e-6
-        max_score += 1e-6
+        min_score -= METRIC_EPSILON
+        max_score += METRIC_EPSILON
     bins = np.linspace(min_score, max_score, 31)
     rows: list[dict[str, Any]] = []
     for group in ordered_groups:

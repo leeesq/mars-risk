@@ -11,6 +11,7 @@ from mars.analysis.config import MarsProfileConfig
 from mars.analysis.report import MarsProfileReport
 from mars.analysis.stability import psi_contribution_expr, psi_valid_condition
 from mars.core.base import MarsBaseEstimator
+from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -825,7 +826,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         if not calc_cols:
             return df
 
-        epsilon = 1e-9  # 防止除以0
+        epsilon = DIVISION_EPSILON  # 防止除以0
 
         return (
             df
@@ -1085,7 +1086,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_data_cols = sorted(raw_group_cols)
 
         if psi_data_cols:
-            epsilon_stat = 1e-9
+            epsilon_stat = DIVISION_EPSILON
             result = (
                 result
                 .with_columns(pl.concat_list(psi_data_cols).alias("_tmp_psi_list"))
@@ -1164,8 +1165,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         4. **Sum**: 对所有箱求和得到最终 PSI。
         """
         feat_col = "feat_idx" if "feat_idx" in stats_df.collect_schema().names() else "feature"
-        epsilon = 1e-6
-        div_safe = 1e-9  # 防止分母为 0 的保险系数
+        epsilon = METRIC_EPSILON
+        div_safe = DIVISION_EPSILON  # 防止分母为 0 的保险系数
 
         # 在计算占比之前，先复用统一 PSI 口径剔除不参与计算的箱。
         filter_cond = psi_valid_condition(

@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.modeling.utils import FrameLike, is_polars_dataframe
+from mars.utils.frame import FrameLike, is_polars_dataframe
 
 
 class MarsModelDataSplitter:

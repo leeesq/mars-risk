@@ -9,6 +9,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from optbinning import OptimalBinning
 
+from mars.core.constants import MIN_VARIANCE
 from mars.feature.base import MarsBinnerBase
 from mars.feature.native_binner import MarsNativeBinner
 from mars.utils.logger import logger
@@ -338,7 +339,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 if len(col_data) < self.min_n_bins * min_bin_size_abs:
                      return fallback_res
 
-                if len(col_data) < 10 or np.var(col_data) < 1e-6:
+                if len(col_data) < 10 or np.var(col_data) < MIN_VARIANCE:
                     return col, pre_cuts, "Low variance or insufficient samples"
 
                 # 将绝对值转换回当前数据的相对比例
@@ -359,7 +360,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 if len(raw_splits) > 1:
                     diffs = np.diff(raw_splits)
                     # 剔除过于接近的切点, 防止求解器报错
-                    mask = np.concatenate(([True], diffs > 1e-6))
+                    mask = np.concatenate(([True], diffs > MIN_VARIANCE))
                     user_splits = raw_splits[mask]
                 else:
                     user_splits = raw_splits

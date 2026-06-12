@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.utils import optional_import as _optional_import
 from mars.utils.frame import to_pandas_table
 from mars.utils.html import (
     escape_html_value,
@@ -19,6 +18,7 @@ from mars.utils.html import (
     format_html_value,
     is_missing_html_value,
 )
+from mars.utils.imports import optional_import as _optional_import
 
 
 class _ModelReportHtmlRenderer:

@@ -21,12 +21,11 @@ from mars.modeling.metrics import (
 from mars.modeling.utils import (
     HISTORY_BASE_COLUMNS,
     METRIC_NAMES,
-    FrameLike,
-    is_polars_dataframe,
     normalize_dataset_flags,
     split_name_sort_key,
     validate_dataset_flag_roles,
 )
+from mars.utils.frame import FrameLike, is_polars_dataframe
 
 
 class MarsBaseModelStrategy(ABC):

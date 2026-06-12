@@ -13,26 +13,11 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis._html_assets import build_html_runtime_script, build_html_styles
-from mars.utils.frame import to_pandas_frame
+from mars.analysis._report_utils import _as_pandas_frame
+from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE
 from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
 
-
-def _as_pandas_frame(df: Union[pl.DataFrame, pd.DataFrame]) -> pd.DataFrame:
-    """
-    将展示层输入统一转换为 Pandas DataFrame。
-
-    Parameters
-    ----------
-    df : Union[pl.DataFrame, pd.DataFrame]
-        需要用于样式渲染或 Excel 导出的数据表。
-
-    Returns
-    -------
-    pd.DataFrame
-        转换后的 Pandas DataFrame。若输入本身已为 Pandas，则直接返回原对象。
-    """
-    return to_pandas_frame(df)
 
 class ProfileData(NamedTuple):
     """
@@ -1704,14 +1689,22 @@ __RUNTIME_SCRIPT__
                 start_anchor = anchors[idx]
                 end_anchor = anchors[idx + 1]
                 if value <= end_anchor:
-                    ratio = 0.5 if abs(end_anchor - start_anchor) < 1e-12 else (value - start_anchor) / (end_anchor - start_anchor)
+                    ratio = (
+                        0.5
+                        if abs(end_anchor - start_anchor) < FLOAT_TOLERANCE
+                        else (value - start_anchor) / (end_anchor - start_anchor)
+                    )
                     red, green, blue = cls._interpolate_rgb(colors[idx], colors[idx + 1], ratio)
                     segment_found = True
                     break
             if not segment_found and purple_above is not None:
                 high = anchors[-1]
                 upper = float(purple_above)
-                ratio = 1.0 if abs(upper - high) < 1e-12 else min(max((value - high) / (upper - high), 0.0), 1.0)
+                ratio = (
+                    1.0
+                    if abs(upper - high) < FLOAT_TOLERANCE
+                    else min(max((value - high) / (upper - high), 0.0), 1.0)
+                )
                 red, green, blue = cls._interpolate_rgb(colors[-1], purple_rgb, ratio)
 
         alpha = 0.84 if purple_above is not None and value >= float(purple_above) else 0.72
@@ -1752,7 +1745,7 @@ __RUNTIME_SCRIPT__
 
         if vmin is not None and vmax is not None and np.isfinite(vmin) and np.isfinite(vmax):
             span = vmax - vmin
-            ratio = 0.5 if abs(span) < 1e-12 else (num - vmin) / span
+            ratio = 0.5 if abs(span) < FLOAT_TOLERANCE else (num - vmin) / span
             ratio = max(0.0, min(1.0, ratio))
             if style_rule is None:
                 if semantic == "risk_high":
@@ -1762,7 +1755,7 @@ __RUNTIME_SCRIPT__
                     red, green, blue = cls._three_color_rgb(ratio, reverse=False)
                     styles.append(f"background-color: rgba({red}, {green}, {blue}, 0.72);")
                 elif semantic == "diverging":
-                    max_abs = max(abs(vmin), abs(vmax), 1e-12)
+                    max_abs = max(abs(vmin), abs(vmax), FLOAT_TOLERANCE)
                     diverging_ratio = min(abs(num) / max_abs, 1.0)
                     if num >= 0:
                         red, green, blue = cls._interpolate_rgb((255, 235, 132), (99, 190, 123), diverging_ratio)
@@ -1771,7 +1764,11 @@ __RUNTIME_SCRIPT__
                     styles.append(f"background-color: rgba({red}, {green}, {blue}, 0.72);")
 
             if data_bar and style_rule is None:
-                bar_ratio = ratio if semantic != "diverging" else min(abs(num) / max(abs(vmin), abs(vmax), 1e-12), 1.0)
+                bar_ratio = (
+                    ratio
+                    if semantic != "diverging"
+                    else min(abs(num) / max(abs(vmin), abs(vmax), FLOAT_TOLERANCE), 1.0)
+                )
                 bar_color = "#8bbf9d" if semantic not in {"risk_high", "diverging"} else "#ea8f8f"
                 if semantic == "good_high":
                     bar_color = "#7fc68d"
@@ -2042,7 +2039,7 @@ __RUNTIME_SCRIPT__
             )["total_count"].transform("sum")
             grouped["pct"] = grouped["total_count"] / group_denominator.replace(0, np.nan)
             grouped["pct"] = grouped["pct"].fillna(0.0)
-            grouped["risk"] = grouped["bad_count"] / (grouped["total_count"] + 1e-9)
+            grouped["risk"] = grouped["bad_count"] / (grouped["total_count"] + DIVISION_EPSILON)
 
             totals = (
                 grouped.groupby(["feature", "bin_label", "bin_index", "pivot_bin_type"], dropna=False)
@@ -2057,7 +2054,7 @@ __RUNTIME_SCRIPT__
             feature_denominator = totals.groupby(["feature"], dropna=False)["total_count"].transform("sum")
             totals["pct"] = totals["total_count"] / feature_denominator.replace(0, np.nan)
             totals["pct"] = totals["pct"].fillna(0.0)
-            totals["risk"] = totals["bad_count"] / (totals["total_count"] + 1e-9)
+            totals["risk"] = totals["bad_count"] / (totals["total_count"] + DIVISION_EPSILON)
             totals[group_col] = "Total"
             feature_rank = (
                 totals.groupby(["feature"], dropna=False)["iv"]

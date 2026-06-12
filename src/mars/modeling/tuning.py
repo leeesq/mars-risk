@@ -23,7 +23,8 @@ from mars.modeling.prediction import ModelPredictor
 from mars.modeling.report import MarsModelingReport
 from mars.modeling.results import MarsModelReplayResult, MarsModelTuningResult
 from mars.modeling.spec import ModelingSpec, ReplaySpec
-from mars.modeling.utils import FrameLike, collect_library_versions
+from mars.modeling.utils import collect_library_versions
+from mars.utils.frame import FrameLike
 
 BACKEND_MAP: dict[str, type[MarsBaseModelStrategy]] = {
     "xgb": MarsXGBStrategy,

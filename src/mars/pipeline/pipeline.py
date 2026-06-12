@@ -8,10 +8,9 @@ import pandas as pd
 import polars as pl
 
 from mars.modeling.prediction import ModelPredictor
-from mars.modeling.utils import FrameLike, is_polars_dataframe, restore_frame_type
 from mars.pipeline.base import MarsPipelineResult, MarsPipelineStep, MarsStepResult
 from mars.pipeline.steps import MarsModelingStep, MarsSelectionStep, MarsWOEBinningStep
-from mars.utils.frame import to_polars_frame
+from mars.utils.frame import FrameLike, is_polars_dataframe, restore_frame_type, to_polars_frame
 from mars.utils.logger import logger
 
 

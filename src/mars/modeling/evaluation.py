@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Mapping, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from mars.core.constants import PROBABILITY_EPSILON
 from mars.modeling.evaluation_tables import (
     build_calibration_curve_detail,
     build_decile_lift_detail,
@@ -16,8 +17,8 @@ from mars.modeling.evaluation_tables import (
 )
 from mars.modeling.metrics import calculate_auc, calculate_f1, calculate_ks
 from mars.modeling.report import MarsModelingReport
-from mars.modeling.utils import FrameLike, split_name_sort_key, to_pandas_frame
-from mars.utils.frame import to_pandas_table
+from mars.modeling.utils import split_name_sort_key
+from mars.utils.frame import FrameLike, to_pandas_frame, to_pandas_table
 
 
 class MarsModelEvaluator:
@@ -144,7 +145,11 @@ class MarsModelEvaluator:
             block[(section, "New AUC")] = calculate_auc(valid_y.to_numpy(), valid_pred.to_numpy())
             block[(section, "New KS")] = calculate_ks(valid_y.to_numpy(), valid_pred.to_numpy())
             block[(section, "New F1")] = calculate_f1(valid_y.to_numpy(), valid_pred.to_numpy())
-            clipped_pred = np.clip(valid_pred.to_numpy(dtype=float), 1e-15, 1 - 1e-15)
+            clipped_pred = np.clip(
+                valid_pred.to_numpy(dtype=float),
+                PROBABILITY_EPSILON,
+                1 - PROBABILITY_EPSILON,
+            )
             y_arr = valid_y.to_numpy(dtype=float)
             block[(section, "LogLoss")] = float(
                 -np.mean(y_arr * np.log(clipped_pred) + (1.0 - y_arr) * np.log(1.0 - clipped_pred))

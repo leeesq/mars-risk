@@ -13,10 +13,11 @@ import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
 from mars.core.base import MarsBaseSelector
+from mars.core.constants import DIVISION_EPSILON
 from mars.feature.base import MarsBinnerBase
 from mars.feature.native_binner import MarsNativeBinner
-from mars.modeling.utils import require_optional_module
 from mars.utils.decorators import time_it
+from mars.utils.imports import require_optional_module
 from mars.utils.logger import logger
 
 
@@ -1524,7 +1525,7 @@ class MarsLinearSelector(MarsBaseSelector):
             if not candidates:
                 return False
             best_score, best_feature, best_result = min(candidates, key=lambda item: item[0])
-            if best_score + 1e-9 >= current_score:
+            if best_score + DIVISION_EPSILON >= current_score:
                 return False
             selected.append(best_feature)
             current_score = best_score
@@ -1546,7 +1547,7 @@ class MarsLinearSelector(MarsBaseSelector):
                 candidates,
                 key=lambda item: item[0],
             )
-            if best_score + 1e-9 >= current_score:
+            if best_score + DIVISION_EPSILON >= current_score:
                 return False
             selected = list(best_features)
             current_score = best_score

@@ -6,5 +6,7 @@ from .frame import restore_frame_type as restore_frame_type
 from .frame import to_pandas_frame as to_pandas_frame
 from .frame import to_pandas_table as to_pandas_table
 from .frame import to_polars_frame as to_polars_frame
+from .imports import optional_import as optional_import
+from .imports import require_optional_module as require_optional_module
 from .logger import logger as logger
 from .logger import set_log_level as set_log_level

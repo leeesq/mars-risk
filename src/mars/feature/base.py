@@ -9,6 +9,7 @@ import pandas as pd
 import polars as pl
 
 from mars.core.base import MarsTransformer
+from mars.core.constants import METRIC_EPSILON
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -484,7 +485,7 @@ class MarsBinnerBase(MarsTransformer):
 
         y_name = "_y_tmp"
         y_series = pl.Series(name=y_name, values=self._cache_y)
-        epsilon: float = 1e-6
+        epsilon: float = METRIC_EPSILON
         total_bads: float = float(y_series.sum() or 0.0)
         total_goods: float = float(len(y_series)) - total_bads
 
@@ -924,7 +925,7 @@ class MarsBinnerBase(MarsTransformer):
             pl.col(y_name).sum().alias("total_bads")
         ]).collect()
 
-        epsilon: float = 1e-6
+        epsilon: float = METRIC_EPSILON
         total_counts: float = float(meta[0, "total_counts"] or 0.0)
         total_bads: float = float(meta[0, "total_bads"] or 0.0)
         total_goods: float = total_counts - total_bads
@@ -1016,7 +1017,7 @@ class MarsBinnerBase(MarsTransformer):
                 pl.col("bin_iv").sum().over("feature").alias("IV"),
                 pl.col("bin_ks").max().over("feature").alias("KS"),
                 pl.col("bin_auc_contrib").sum().over("feature").alias("AUC"),
-                (pl.col("bad_rate") / (global_bad_rate + 1e-6)).alias("Lift")
+                (pl.col("bad_rate") / (global_bad_rate + METRIC_EPSILON)).alias("Lift")
             ])
             .with_columns([
                 pl.when(pl.col("AUC") < 0.5).then(1 - pl.col("AUC")).otherwise(pl.col("AUC")).alias("AUC")

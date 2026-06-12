@@ -17,8 +17,8 @@ from mars.modeling.backends.base import MarsBaseModelStrategy
 from mars.modeling.backends.common import build_importance_table as _build_importance_table
 from mars.modeling.backends.common import validate_numeric_pandas as _validate_numeric_pandas
 from mars.modeling.metrics import MetricCallable, MetricDirection
-from mars.modeling.utils import require_optional_module
 from mars.utils.frame import to_pandas_frame
+from mars.utils.imports import require_optional_module
 
 LR_FEATURE_MODE = Literal["numeric", "woe"]
 LR_BINNING_TYPE = Literal["native", "optimal", "lite_opt"]

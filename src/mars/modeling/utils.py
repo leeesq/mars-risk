@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 import re
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 
 import pandas as pd
 import polars as pl
@@ -24,6 +24,8 @@ from mars.utils.frame import (
 from mars.utils.frame import (
     to_polars_frame as to_polars_frame,
 )
+from mars.utils.imports import optional_import as optional_import
+from mars.utils.imports import require_optional_module as require_optional_module
 
 HISTORY_BASE_COLUMNS = ["trial_num", "trial_state", "is_valid", "val_diff", "max_oot_diff"]
 METRIC_NAMES = ("auc", "ks", "f1")
@@ -127,64 +129,6 @@ def validate_dataset_flag_roles(flags: pd.Series | pl.Series) -> None:
             "Ambiguous dataset_flag values matched multiple split roles: "
             f"{conflicts}. Please rename them so each value contains only one of train/val/oot."
         )
-
-
-def optional_import(module_name: str) -> Any:
-    """
-    尝试导入可选依赖，导入失败时返回 ``None``。
-
-    Parameters
-    ----------
-    module_name : str
-        模块名。
-
-    Returns
-    -------
-    Any
-        模块对象或 ``None``。
-
-    Examples
-    --------
-    >>> optional_import("json").__name__
-    'json'
-    """
-    try:
-        return importlib.import_module(module_name)
-    except ImportError:
-        return None
-
-
-def require_optional_module(module_name: str) -> Any:
-    """
-    导入建模后端必需的可选依赖。
-
-    Parameters
-    ----------
-    module_name : str
-        模块名。
-
-    Returns
-    -------
-    Any
-        模块对象。
-
-    Raises
-    ------
-    ImportError
-        依赖未安装时给出 mars-risk extras 安装提示。
-
-    Examples
-    --------
-    >>> require_optional_module("json").__name__
-    'json'
-    """
-    try:
-        return importlib.import_module(module_name)
-    except ImportError as exc:
-        raise ImportError(
-            f"{module_name!r} is required for mars.modeling. "
-            f"Install the optional extras, for example `pip install \"mars-risk[ml,tuning]\"`."
-        ) from exc
 
 
 def collect_library_versions(*module_names: str) -> Dict[str, str | None]:

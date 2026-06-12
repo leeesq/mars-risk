@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from mars.core.constants import FLOAT_TOLERANCE
 from mars.utils.logger import logger
 
 from .base import MarsBinnerBase
@@ -584,7 +585,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
         signs: list[_Direction],
     ) -> int | None:
         """查找第一个违反相邻方向约束的位置。"""
-        tolerance = 1e-12
+        tolerance = FLOAT_TOLERANCE
         for idx, sign in enumerate(signs):
             left_rate = bins[idx].bad_rate
             right_rate = bins[idx + 1].bad_rate
@@ -701,7 +702,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
         """计算单个箱在二项分布口径下的负对数似然偏差。"""
         if block.count <= 0:
             return 0.0
-        eps = 1e-12
+        eps = FLOAT_TOLERANCE
         p = float(np.clip(block.bad_rate, eps, 1.0 - eps))
         return float(-2.0 * (block.bad * np.log(p) + block.good * np.log(1.0 - p)))
 

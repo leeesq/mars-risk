@@ -15,7 +15,7 @@ from mars.modeling.results import MarsModelReplayResult, MarsModelTuningResult
 from mars.modeling.slicing import MarsModelDataSplitter
 from mars.modeling.spec import SplitSpec
 from mars.modeling.tuning import MarsModelReplayRunner, MarsModelTuner
-from mars.modeling.utils import FrameLike
+from mars.utils.frame import FrameLike
 
 
 class MarsModelingSession:
