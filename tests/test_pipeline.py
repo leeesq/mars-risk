@@ -8,7 +8,7 @@ import pytest
 
 from mars.core.base import MarsBaseSelector
 from mars.feature import MarsImportanceSelector, MarsLinearSelector, MarsLiteOptBinner
-from mars.modeling.results import MarsModelTuningResult
+from mars.modeling import MarsModelTuningResult
 from mars.pipeline import (
     MarsModelingPipeline,
     MarsModelingStep,

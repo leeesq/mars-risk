@@ -2,8 +2,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mars.modeling import MarsModelingSession
-from mars.modeling.slicing import MarsModelDataSplitter
+from mars.modeling import MarsModelDataSplitter, MarsModelingSession
 
 
 def test_model_data_slicer_strict_split_keeps_day_boundaries_and_other_group():

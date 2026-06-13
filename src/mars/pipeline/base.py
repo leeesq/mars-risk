@@ -8,7 +8,7 @@ from typing import Any, Mapping, MutableMapping, Sequence
 
 import polars as pl
 
-from mars.modeling.results import MarsModelTuningResult
+from mars.modeling.contracts.tuning_result import MarsModelTuningResult
 
 
 @dataclass(slots=True)

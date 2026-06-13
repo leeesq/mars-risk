@@ -10,7 +10,7 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsEvaluationReport
-from mars.analysis.stability import with_psi_from_counts
+from mars.compute import build_missing_by_period_stats, with_psi_from_counts
 from mars.core.base import MarsBaseEstimator
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE, METRIC_EPSILON
 from mars.feature.base import MarsBinnerBase
@@ -1158,26 +1158,16 @@ class MarsBinEvaluator(MarsBaseEstimator):
             return None
 
         try:
-            from mars.analysis.profiler import profile_stats
-
             missing_values = getattr(self.binner, "missing_values", None)
             if missing_values is None:
                 missing_values = self.binner_params.get("missing_values")
-            special_values = getattr(self.binner, "special_values", None)
-            if special_values is None:
-                special_values = self.binner_params.get("special_values")
-
-            report = profile_stats(
-                df,
-                metrics=["missing"],
+            working_df = df.with_columns(MarsDate.from_grain(dt_col, "day").alias("__mars_missing_day"))
+            missing_table = build_missing_by_period_stats(
+                working_df,
                 features=features,
-                time_col=dt_col,
-                time_grain="day",
+                period_col="__mars_missing_day",
                 missing_values=missing_values,
-                special_values=special_values,
-                enable_sparkline=False,
             )
-            missing_table = report.dq_tables.get("missing")
             if missing_table is None:
                 return None
             if output_kind == "pandas" and isinstance(missing_table, pl.DataFrame):
@@ -2234,7 +2224,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 优先使用传入的 target_name (多目标循环时传入)，否则使用实例绑定的 target
         final_target_name = target_name if target_name else self.target
 
-        from mars.utils.plotter import MarsPlotter
+        from mars.reporting.plotter import MarsPlotter
 
         # 调用 MarsPlotter 绘图组件进行渲染
         MarsPlotter.plot_feature_binning_risk_trend_batch(

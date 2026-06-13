@@ -6,11 +6,11 @@ from typing import Any, Mapping, MutableMapping, Sequence, cast
 
 import polars as pl
 
+from mars.compute import FrameLike, to_polars_frame
 from mars.core.base import MarsBaseSelector
 from mars.feature import MarsBinnerBase, MarsStatsSelector
 from mars.modeling import MarsModelingSession
 from mars.pipeline.base import MarsPipelineStep, MarsStepResult
-from mars.utils.frame import FrameLike, to_polars_frame
 from mars.utils.logger import logger
 
 

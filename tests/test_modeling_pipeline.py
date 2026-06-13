@@ -7,9 +7,7 @@ pytest.importorskip("xgboost")
 pytest.importorskip("optuna")
 pytest.importorskip("optuna_integration")
 
-from mars.modeling import MarsModelingSession
-from mars.modeling.results import MarsModelReplayResult
-from mars.modeling.tuning import MarsModelReplayRunner
+from mars.modeling import MarsModelingSession, MarsModelReplayResult, MarsModelReplayRunner
 
 
 def test_modeling_session_replay_retrains_and_scores(sample_modeling_df, tmp_path: Path):
@@ -74,7 +72,7 @@ def test_model_replay_reuses_tuning_result(sample_modeling_df, tmp_path: Path):
     )
     replay = MarsModelReplayRunner()
 
-    result = replay.run(
+    result = replay.replay(
         tuning_result,
         sample_modeling_df,
         time_col="biz_dt",
@@ -153,8 +151,8 @@ def test_model_replay_artifact_roundtrip(sample_modeling_df, tmp_path: Path):
         early_stopping_rounds=5,
     )
 
-    artifact_dir = replay_result.write_artifact(str(tmp_path / "replay_artifact"))
-    loaded = MarsModelReplayResult.load_artifact(str(artifact_dir))
+    artifact_dir = replay_result.export_artifact(str(tmp_path / "replay_artifact"))
+    loaded = MarsModelReplayResult.from_artifact(str(artifact_dir))
 
     assert loaded.scored_df is None
     pd.testing.assert_frame_equal(loaded.ranking_table, replay_result.ranking_table, check_dtype=False)

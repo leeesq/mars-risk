@@ -13,7 +13,7 @@
 | 指标体系 | `optimize_metric` / `custom_metrics` | 内置 `auc`、`ks`、`f1`，支持自定义 metric 和 maximize/minimize |
 | 调参产物 | `artifact_dir` | 每次调参生成独立目录；`artifact_dir=None` 表示完全不落盘 |
 | 模型保留 | `keep_top_n_models` | 调参过程中动态保留当前最优 N 个有效 trial 模型 |
-| Replay | `MarsModelReplayRunner.run` | 支持 Top-K replay，也支持 `trial_nums=[...]` 指定编号 replay |
+| Replay | `MarsModelReplayRunner.replay` | 支持 Top-K replay，也支持 `trial_nums=[...]` 指定编号 replay |
 | 特征重要性 | `importance_methods` | 默认 native importance，显式请求可计算 SHAP importance |
 | 多口径评估 | `benchmark_cols` / `aux_targets` / `target_group_cols` | 多 benchmark、多辅助 target 和长短 y 独立评估 |
 | PSI 口径 | `psi_include_missing` | 建模评估复用分箱评估器计算 Score/Feature PSI，只控制缺失箱是否纳入 |
@@ -40,26 +40,26 @@
 
 ## Data Splitter
 
-::: mars.modeling.slicing.MarsModelDataSplitter
+::: mars.modeling.MarsModelDataSplitter
 
 ## Tuning
 
-::: mars.modeling.tuning.MarsModelTuner
+::: mars.modeling.MarsModelTuner
 
-::: mars.modeling.tuning.MarsModelReplayRunner
+::: mars.modeling.MarsModelReplayRunner
 
 ## Evaluation 与 Prediction
 
-::: mars.modeling.evaluation.MarsModelEvaluator
+::: mars.modeling.MarsModelEvaluator
 
-::: mars.modeling.prediction.ModelPredictor
+::: mars.modeling.ModelPredictor
 
 ## Result Objects
 
-::: mars.modeling.results.MarsModelTuningResult
+::: mars.modeling.MarsModelTuningResult
 
-::: mars.modeling.results.MarsModelReplayResult
+::: mars.modeling.MarsModelReplayResult
 
-::: mars.modeling.feature_growth.MarsFeatureGrowthResult
+::: mars.modeling.MarsFeatureGrowthResult
 
-::: mars.modeling.report.MarsModelingReport
+::: mars.modeling.MarsModelingReport

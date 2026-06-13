@@ -23,9 +23,11 @@ from mars.modeling.backends.common import (
 from mars.modeling.backends.common import (
     validate_numeric_polars as _validate_numeric_polars,
 )
-from mars.modeling.metrics import lgb_ks_metric as _lgb_ks_metric
+from mars.modeling.backends.registry import register_backend
+from mars.modeling.evaluation.metrics import lgb_ks_metric as _lgb_ks_metric
 
 
+@register_backend("lgb")
 class MarsLGBStrategy(MarsBaseModelStrategy):
     """
     基于 LightGBM 原生接口的调参策略。

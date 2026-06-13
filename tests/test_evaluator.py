@@ -6,8 +6,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mars.analysis import MarsBinEvaluator, MarsRiskProfile, profile_risk
-from mars.analysis.report import MarsEvaluationReport
+from mars.analysis import MarsBinEvaluator, MarsEvaluationReport, MarsRiskProfile, profile_risk
 from mars.feature import MarsNativeBinner
 
 

@@ -200,8 +200,7 @@ pipeline_result = pipeline.fit(df)
 LR / 评分卡链路可以在中间显式加入 `MarsWOEBinningStep`，让后续步骤消费 `*_woe` 特征。也可以直接使用 `mars.modeling` 做单次建模会话：
 
 ```python
-from mars.modeling import MarsModelingSession
-from mars.modeling.tuning import MarsModelReplayRunner
+from mars.modeling import MarsModelReplayRunner, MarsModelingSession
 
 session = MarsModelingSession(
     model_type="lgb",
@@ -224,7 +223,7 @@ tuning_result = session.tune(
     artifact_dir=None,
 )
 
-replay_result = MarsModelReplayRunner().run(
+replay_result = MarsModelReplayRunner().replay(
     tuning_result,
     modeling_df,
     top_k=3,

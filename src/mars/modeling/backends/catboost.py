@@ -14,9 +14,11 @@ from mars.modeling.backends.common import (
 from mars.modeling.backends.common import (
     load_backend_module as _load_module,
 )
-from mars.modeling.metrics import CatBoostKSMetric
+from mars.modeling.backends.registry import register_backend
+from mars.modeling.evaluation.metrics import CatBoostKSMetric
 
 
+@register_backend("cbt", "cat", "catboost")
 class MarsCatBoostStrategy(MarsBaseModelStrategy):
     """
     基于 CatBoost 原生接口的调参策略。

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MARS Risk Engineering"
+  short_description: "Internal engineering workflow for the MARS risk library"
+  default_prompt: "Use $mars-risk-engineering to review and improve the internal mars-risk project safely."

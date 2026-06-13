@@ -8,8 +8,8 @@ import polars as pl
 import pytest
 
 from mars.analysis import profile_risk
-from mars.modeling.evaluation import MarsModelEvaluator
-from mars.utils.frame import to_pandas_frame, to_pandas_table, to_polars_frame
+from mars.compute import to_pandas_frame, to_pandas_table, to_polars_frame
+from mars.modeling import MarsModelEvaluator
 
 
 def test_frame_helpers_preserve_pandas_and_polars_inputs() -> None:
@@ -28,7 +28,7 @@ def test_frame_helpers_preserve_pandas_and_polars_inputs() -> None:
 def test_pipeline_and_logistic_do_not_keep_local_frame_conversion_wheels() -> None:
     import mars.pipeline.steps as pipeline_steps
     from mars.modeling.backends.logistic import MarsLogisticModel
-    from mars.pipeline.pipeline import MarsModelingPipeline
+    from mars.pipeline import MarsModelingPipeline
 
     assert not hasattr(MarsModelingPipeline, "_to_polars")
     assert not hasattr(MarsLogisticModel, "_to_pandas")
@@ -70,13 +70,12 @@ def test_model_evaluator_reuses_binning_psi_without_special_value_parameter(
 
 
 def test_modeling_artifact_path_helpers_are_centralized() -> None:
-    import mars.modeling.feature_growth as feature_growth
-    import mars.modeling.tuning as tuning
+    import mars.modeling as modeling
     from mars.modeling.artifacts import create_artifact_path, safe_artifact_part, step_artifact_dir
 
     assert safe_artifact_part("Long Target@AUC") == "long_target_auc"
     assert create_artifact_path(None, model_type="lgb", target="y", optimize_metric="ks", run_id="x") is None
     assert step_artifact_dir("root", 12).endswith("features_12")
-    assert "_create_artifact_path" not in vars(tuning)
-    assert "_safe_artifact_part" not in vars(tuning)
-    assert not hasattr(feature_growth.MarsFeatureIncrementalTuner, "_step_artifact_dir")
+    assert "_create_artifact_path" not in vars(modeling)
+    assert "_safe_artifact_part" not in vars(modeling)
+    assert not hasattr(modeling.MarsFeatureIncrementalTuner, "_step_artifact_dir")

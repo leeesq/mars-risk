@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Literal, NamedTuple, cast
 import polars as pl
 
 from mars.analysis import MarsBinEvaluator
+from mars.compute import FrameLike
 from mars.core.base import MarsBaseEstimator
 from mars.feature.base import MarsBinnerBase
-from mars.utils.frame import FrameLike
 
 TrendColumnOrder = Literal["asc", "desc"]
 

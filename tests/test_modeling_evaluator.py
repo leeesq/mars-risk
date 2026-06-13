@@ -4,10 +4,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mars.modeling import MarsModelingSession
-from mars.modeling.evaluation import MarsModelEvaluator
-from mars.modeling.report import MarsModelingReport
-from mars.modeling.results import MarsModelTuningResult
+from mars.modeling import (
+    MarsModelEvaluator,
+    MarsModelingReport,
+    MarsModelingSession,
+    MarsModelTuningResult,
+)
 
 
 def test_modeling_session_evaluate_generates_report_and_can_export(sample_modeling_pd, tmp_path: Path):

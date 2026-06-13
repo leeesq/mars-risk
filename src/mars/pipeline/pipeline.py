@@ -7,10 +7,10 @@ from typing import Any, MutableMapping, Sequence
 import pandas as pd
 import polars as pl
 
-from mars.modeling.prediction import ModelPredictor
+from mars.compute import FrameLike, is_polars_dataframe, restore_frame_type, to_polars_frame
+from mars.modeling.inference.predictor import ModelPredictor
 from mars.pipeline.base import MarsPipelineResult, MarsPipelineStep, MarsStepResult
 from mars.pipeline.steps import MarsModelingStep, MarsSelectionStep, MarsWOEBinningStep
-from mars.utils.frame import FrameLike, is_polars_dataframe, restore_frame_type, to_polars_frame
 from mars.utils.logger import logger
 
 
@@ -211,6 +211,7 @@ class MarsModelingPipeline:
             feature_list=run.features,
             categorical_features=run.categorical_features,
             category_levels=category_levels,
+            model_type=run.model_type,
         )
         return predictor.predict(transformed_input, pred_col=pred_col, inplace=inplace)
 

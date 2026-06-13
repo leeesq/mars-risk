@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.analysis._html_assets import build_html_runtime_script, build_html_styles
 from mars.analysis._report_utils import _as_pandas_frame
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE
+from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
 from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
 
@@ -1599,7 +1599,7 @@ __RUNTIME_SCRIPT__
 
         chart_views: List[str] = []
         try:
-            from mars.utils.plotter import MarsPlotter
+            from mars.reporting.plotter import MarsPlotter
 
             for y_val in chart_y_values:
                 if "y" in detail_pd.columns:

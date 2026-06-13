@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from mars.utils.plotter import MarsPlotter
+from mars.reporting.plotter import MarsPlotter
 
 
 def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch):

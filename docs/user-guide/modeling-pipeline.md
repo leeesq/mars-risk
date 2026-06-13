@@ -123,7 +123,7 @@ modeling_df = session.slice(
 如果主目标和辅助目标的表现期不一致，可以使用 `MarsModelDataSplitter.split_by_target_observation(...)` 为每个 target 生成独立切片列：
 
 ```python
-from mars.modeling.slicing import MarsModelDataSplitter
+from mars.modeling import MarsModelDataSplitter
 
 modeling_df = MarsModelDataSplitter().split_by_target_observation(
     df,
@@ -194,9 +194,9 @@ SHAP 是可选依赖；未安装 `shap` 但显式请求时会抛出清晰的 `Im
 ## Replay
 
 ```python
-from mars.modeling.tuning import MarsModelReplayRunner
+from mars.modeling import MarsModelReplayRunner
 
-replay_result = MarsModelReplayRunner().run(
+replay_result = MarsModelReplayRunner().replay(
     tuning_result,
     modeling_df,
     top_k=3,
@@ -209,7 +209,7 @@ replay_result = MarsModelReplayRunner().run(
 如果用户复盘 `history.csv` 后想指定 trial 编号，可以传 `trial_nums`：
 
 ```python
-replay_result = MarsModelReplayRunner().run(
+replay_result = MarsModelReplayRunner().replay(
     tuning_result,
     modeling_df,
     trial_nums=[7, 2],

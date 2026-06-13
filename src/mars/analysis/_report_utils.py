@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import polars as pl
 
-from mars.utils.frame import to_pandas_frame
+from mars.compute import to_pandas_frame
 
 
 def _as_pandas_frame(df: pl.DataFrame | pd.DataFrame) -> pd.DataFrame:

@@ -9,7 +9,14 @@ import polars as pl
 
 from mars.analysis.config import MarsProfileConfig
 from mars.analysis.report import MarsProfileReport
-from mars.analysis.stability import psi_contribution_expr, psi_valid_condition
+from mars.compute import (
+    filter_compatible_values,
+    is_numeric_dtype,
+    missing_rate_expr,
+    psi_contribution_expr,
+    psi_valid_condition,
+    values_to_exclude,
+)
 from mars.core.base import MarsBaseEstimator
 from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
 from mars.utils.date import MarsDate
@@ -935,8 +942,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         # 数值特征 PSI
         if num_cols:
             try:
-                numeric_missing = [v for v in self.missing_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
-                numeric_special = [v for v in self.special_values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+                numeric_missing = filter_compatible_values(pl.Float64, self.missing_values)
+                numeric_special = filter_compatible_values(pl.Float64, self.special_values)
 
                 from mars import MarsNativeBinner
                 binner = MarsNativeBinner(
@@ -1287,15 +1294,13 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         if "missing" in dq_targets:
             # 构建 联合缺失条件: 原生 Null | (如果是数值则包含 NaN) | 自定义缺失值
-            missing_cond = pl.col(col).is_null()
-            if is_num:
-                missing_cond |= pl.col(col).is_nan()
-
-            valid_missing = self._get_valid_missing(col)
-            if valid_missing:
-                missing_cond |= pl.col(col).is_in(valid_missing)
-
-            exprs.append((missing_cond.sum() / total_len).alias("missing_rate"))
+            exprs.append(
+                missing_rate_expr(
+                    col,
+                    dtype=self._dtype_map.get(col),
+                    missing_values=self.missing_values,
+                ).alias("missing_rate")
+            )
 
         if "zeros" in dq_targets:
             zeros_c = (pl.col(col) == 0).sum() if is_num else pl.lit(0, dtype=pl.UInt32)
@@ -1385,8 +1390,6 @@ class MarsDataProfiler(MarsBaseEstimator):
         pl.Expr
             Polars 表达式对象。
         """
-        valid_missing = self._get_valid_missing(col)
-
         # 定义基础列对象 (Raw Data)
         raw_col = pl.col(col)
         is_num = self._is_numeric(col)
@@ -1396,14 +1399,11 @@ class MarsDataProfiler(MarsBaseEstimator):
         if metric_type == "missing":
             # 缺失率 = (原生 Null + NaN + 自定义特殊值) / 总行数
             # 增加对 NaN 的判定，因为 np.nan 在 Polars 中被识别为 NaN
-            missing_cond = raw_col.is_null()
-            if is_num and col_dtype in [pl.Float32, pl.Float64]:
-                missing_cond |= raw_col.is_nan()
-
-            if valid_missing:
-                missing_cond |= raw_col.is_in(valid_missing)
-
-            return missing_cond.sum() / pl.len()
+            return missing_rate_expr(
+                raw_col,
+                dtype=col_dtype,
+                missing_values=self.missing_values,
+            )
 
         elif metric_type == "zeros":
             # 零值率 (物理意义上的 0)
@@ -1464,23 +1464,11 @@ class MarsDataProfiler(MarsBaseEstimator):
 
     def _is_numeric(self, col: str) -> bool:
         """判断指定列是否属于数值类型。"""
-        dtype = self._dtype_map.get(col)
-        return dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                        pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                        pl.Float32, pl.Float64]
+        return is_numeric_dtype(self._dtype_map.get(col))
 
     def _get_valid_missing(self, col: str) -> List[Any]:
         """返回与当前列物理类型兼容的自定义缺失值列表。"""
-        if not self.missing_values:
-            return []
-        is_num = self._is_numeric(col)
-        is_str = self.df[col].dtype == pl.String
-        return [
-            v
-            for v in self.missing_values
-            if (is_num and isinstance(v, (int, float)) and not isinstance(v, bool))
-            or (is_str and isinstance(v, str))
-        ]
+        return filter_compatible_values(self._dtype_map.get(col), self.missing_values)
 
     def _get_values_to_exclude(self, col: str) -> List[Any]:
         """
@@ -1504,23 +1492,13 @@ class MarsDataProfiler(MarsBaseEstimator):
             列表中的元素类型保证与 `col` 的数据类型兼容 (例如数值列只返回数值，字符串列只返回字符串)。
         """
         # 如果 self.special_values 还没定义，就用空列表代替
-        special_vals = getattr(self, "special_values", [])
-        candidates = self.missing_values + special_vals
+        return values_to_exclude(
+            self._dtype_map.get(col),
+            missing_values=self.missing_values,
+            special_values=getattr(self, "special_values", []),
+        )
 
-        if not candidates:
-            return []
-
-        is_num = self._is_numeric(col)
-        is_str = self.df[col].dtype == pl.String
 
         # 类型安全过滤
-        valid_values = []
-        for v in candidates:
             # 只有当 值类型 与 列类型 匹配时，才加入列表
-            if is_num and isinstance(v, (int, float)) and not isinstance(v, bool):
-                valid_values.append(v)
-            elif is_str and isinstance(v, str):
-                valid_values.append(v)
-
-        return valid_values
 

@@ -15,14 +15,18 @@ pytest.importorskip("statsmodels")
 import mars
 import mars.modeling as modeling
 from mars.feature import MarsLiteOptBinner
-from mars.modeling import MarsModelingSession
-from mars.modeling import report as report_module
-from mars.modeling import results as results_module
-from mars.modeling import tuning as tuning_module
-from mars.modeling.feature_growth import MarsFeatureGrowthResult, MarsFeatureIncrementalTuner
-from mars.modeling.metrics import CatBoostKSMetric, as_probability
-from mars.modeling.results import MarsModelTuningResult
-from mars.modeling.tuning import MarsModelTuner
+from mars.modeling import (
+    CatBoostKSMetric,
+    MarsFeatureGrowthResult,
+    MarsFeatureIncrementalTuner,
+    MarsModelDataSplitter,
+    MarsModelEvaluator,
+    MarsModelingReport,
+    MarsModelingSession,
+    MarsModelTuner,
+    MarsModelTuningResult,
+    as_probability,
+)
 
 
 def head_tail_lift(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -303,13 +307,13 @@ def test_logistic_regression_numeric_mode_tune_replay_and_artifact(sample_modeli
     assert {"coefficients", "model_summary"} == set(result.diagnostic_tables)
     assert result.diagnostic_tables["coefficients"]["feature"].tolist() == ["x1", "x2", "x3"]
 
-    replay = session.replay_runner.run(result, sample_modeling_pd, top_k=1, sort_metric="auc")
+    replay = session.replay_runner.replay(result, sample_modeling_pd, top_k=1, sort_metric="auc")
     model_name = next(iter(replay.models))
     assert model_name.startswith("top1_trial")
     assert set(replay.diagnostic_tables[model_name]) == {"coefficients", "model_summary"}
 
-    artifact_dir = result.write_artifact(str(tmp_path / "lr_numeric_artifact"))
-    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
+    artifact_dir = result.export_artifact(str(tmp_path / "lr_numeric_artifact"))
+    loaded = MarsModelTuningResult.from_artifact(str(artifact_dir))
     assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
     assert loaded.importance_table.equals(result.importance_table)
 
@@ -341,8 +345,8 @@ def test_logistic_regression_woe_mode_reuses_binner_in_artifact(sample_modeling_
     assert result.training_config["lr_feature_mode"] == "woe"
     assert set(result.importance_table["feature"]) == {"x1", "x2", "segment"}
 
-    artifact_dir = result.write_artifact(str(tmp_path / "lr_woe_artifact"))
-    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
+    artifact_dir = result.export_artifact(str(tmp_path / "lr_woe_artifact"))
+    loaded = MarsModelTuningResult.from_artifact(str(artifact_dir))
     assert loaded.best_model.binner is not None
     assert loaded.best_model.predict_proba(sample_modeling_pd.loc[:, loaded.features]).shape[0] == len(sample_modeling_pd)
     assert set(loaded.diagnostic_tables) == {"coefficients", "model_summary"}
@@ -436,7 +440,7 @@ def test_modeling_session_incremental_tune_runs_for_all_backends(sample_modeling
         seed=41,
     )
 
-    result = session.incremental_tune(
+    result = session.tune_incrementally(
         sample_modeling_pd,
         steps=[1, 3],
         max_diff=100.0,
@@ -469,7 +473,7 @@ def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Pat
         optimize_metric="ks",
         seed=42,
     )
-    result = session.incremental_tune(
+    result = session.tune_incrementally(
         sample_modeling_pd,
         steps=[2, 3],
         max_diff=100.0,
@@ -481,8 +485,8 @@ def test_feature_growth_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Pat
         artifact_dir=tmp_path / "artifact_feature_growth",
     )
 
-    artifact_dir = result.write_artifact(str(tmp_path / "feature_growth_artifact"))
-    loaded = MarsFeatureGrowthResult.load_artifact(str(artifact_dir))
+    artifact_dir = result.export_artifact(str(tmp_path / "feature_growth_artifact"))
+    loaded = MarsFeatureGrowthResult.from_artifact(str(artifact_dir))
 
     assert loaded.best_step == result.best_step
     assert loaded.steps == result.steps
@@ -510,8 +514,8 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
         artifact_dir=tmp_path / "artifact_history",
     )
 
-    artifact_dir = result.write_artifact(str(tmp_path / "run_artifact"))
-    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
+    artifact_dir = result.export_artifact(str(tmp_path / "run_artifact"))
+    loaded = MarsModelTuningResult.from_artifact(str(artifact_dir))
 
     assert loaded.study is None
     assert loaded.best_model is not None
@@ -526,21 +530,31 @@ def test_modeling_run_artifact_roundtrip(sample_modeling_pd, tmp_path: Path):
 
 def test_modeling_run_load_artifact_requires_metadata(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="metadata"):
-        MarsModelTuningResult.load_artifact(str(tmp_path / "missing_artifact"))
+        MarsModelTuningResult.from_artifact(str(tmp_path / "missing_artifact"))
 
 
 def test_modeling_public_exports_only_include_formal_api():
-    assert modeling.__all__ == ["MarsModelingSession"]
-    assert hasattr(tuning_module, "MarsModelTuner")
-    assert importlib.import_module("mars.modeling.feature_growth").MarsFeatureIncrementalTuner is MarsFeatureIncrementalTuner
-    assert not hasattr(tuning_module, "MarsAutoModelTuner")
-    assert not hasattr(report_module, "MarsModelEvaluationReport")
-    assert not hasattr(results_module, "MarsTuningResult")
-    assert not hasattr(results_module, "MarsPostTuningResult")
+    assert modeling.__all__ == [
+        "MarsFeatureGrowthResult",
+        "MarsFeatureIncrementalTuner",
+        "MarsModelDataSplitter",
+        "MarsModelEvaluator",
+        "MarsModelReplayResult",
+        "MarsModelReplayRunner",
+        "MarsModelTuner",
+        "MarsModelTuningResult",
+        "MarsModelingReport",
+        "MarsModelingSession",
+        "ModelPredictor",
+    ]
     assert "MarsModelingSession" in mars.__all__
     assert "MarsModelTuner" not in mars.__all__
     assert "MarsModelEvaluator" not in mars.__all__
     assert "MarsModelReplayRunner" not in mars.__all__
+    assert hasattr(modeling, "MarsModelTuner")
+    assert hasattr(modeling, "MarsModelEvaluator")
+    assert hasattr(modeling, "MarsModelingReport")
+    assert hasattr(modeling, "MarsModelDataSplitter")
 
 
 def test_modeling_old_module_paths_are_removed():
@@ -553,10 +567,10 @@ def test_modeling_old_module_paths_are_removed():
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module(module_name)
 
-    assert not hasattr(modeling, "MarsModelTuner")
-    assert not hasattr(modeling, "MarsModelEvaluator")
-    assert not hasattr(modeling, "MarsModelingReport")
-    assert not hasattr(modeling, "MarsModelDataSplitter")
+    assert modeling.MarsModelTuner is MarsModelTuner
+    assert modeling.MarsModelEvaluator is MarsModelEvaluator
+    assert modeling.MarsModelingReport is MarsModelingReport
+    assert modeling.MarsModelDataSplitter is MarsModelDataSplitter
 
 
 def test_modeling_session_tune_records_oot_penalty_columns(sample_modeling_pd, tmp_path: Path):

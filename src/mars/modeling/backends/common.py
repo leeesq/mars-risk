@@ -1,8 +1,9 @@
-"""树模型后端共享工具。"""
+"""建模后端共享工具。"""
 
 from __future__ import annotations
 
-from typing import Any, Dict
+import re
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,10 +11,13 @@ import polars as pl
 
 from mars.utils.imports import require_optional_module
 
+HISTORY_BASE_COLUMNS = ["trial_num", "trial_state", "is_valid", "val_diff", "max_oot_diff"]
+METRIC_NAMES = ("auc", "ks", "f1")
+
 
 def load_backend_module(module_name: str) -> Any:
     """
-    加载树模型后端依赖。
+    加载建模后端依赖。
 
     Parameters
     ----------
@@ -24,24 +28,18 @@ def load_backend_module(module_name: str) -> Any:
     -------
     Any
         已导入模块。
-
-    Examples
-    --------
-    >>> json_module = load_backend_module("json")
-    >>> json_module.__name__
-    'json'
     """
     return require_optional_module(module_name)
 
 
 def load_optuna_callback(module_name: str, class_name: str) -> Any:
     """
-    加载 optuna-integration 中的剪枝回调类。
+    加载 ``optuna_integration`` 中的剪枝回调。
 
     Parameters
     ----------
     module_name : str
-        optuna-integration 子模块名。
+        ``optuna_integration`` 子模块名。
     class_name : str
         回调类名。
 
@@ -54,12 +52,6 @@ def load_optuna_callback(module_name: str, class_name: str) -> Any:
     ------
     ImportError
         找不到兼容回调类时抛出。
-
-    Examples
-    --------
-    >>> callback_cls = load_optuna_callback("lightgbm", "LightGBMPruningCallback")
-    >>> callback_cls.__name__
-    'LightGBMPruningCallback'
     """
     root_module = require_optional_module("optuna_integration")
     callback = getattr(root_module, class_name, None)
@@ -81,7 +73,7 @@ def build_importance_table(
     model_type: str,
     importance_type: str,
     features: list[str],
-    importance_map: Dict[str, float],
+    importance_map: dict[str, float],
 ) -> pd.DataFrame:
     """
     将各后端的重要性输出标准化为统一表结构。
@@ -89,29 +81,18 @@ def build_importance_table(
     Parameters
     ----------
     model_type : str
-        模型后端名称。
+        模型后端名。
     importance_type : str
         重要性类型，例如 ``gain``。
     features : list[str]
         原始特征顺序。
-    importance_map : Dict[str, float]
+    importance_map : dict[str, float]
         后端返回的特征重要性映射。
 
     Returns
     -------
     pandas.DataFrame
-        包含 feature、importance、importance_type、model_type、rank 的表。
-
-    Examples
-    --------
-    >>> table = build_importance_table(
-    ...     model_type="xgb",
-    ...     importance_type="gain",
-    ...     features=["age", "income"],
-    ...     importance_map={"age": 2.0},
-    ... )
-    >>> table.loc[0, "feature"]
-    'age'
+        统一的重要性表。
     """
     rows = [
         {
@@ -138,24 +119,14 @@ def validate_numeric_polars(X: pl.DataFrame, backend_name: str) -> None:
     Parameters
     ----------
     X : pl.DataFrame
-        特征数据框。
+        特征数据表。
     backend_name : str
-        后端名称，用于错误提示。
-
-    Returns
-    -------
-    None
-        校验通过时不返回值。
+        后端名，用于错误提示。
 
     Raises
     ------
     ValueError
         存在非数值且非布尔特征时抛出。
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> validate_numeric_polars(pl.DataFrame({"age": [1, 2]}), "MarsXGBStrategy")
     """
     unsupported = [
         name
@@ -176,24 +147,14 @@ def validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
     Parameters
     ----------
     X : pd.DataFrame
-        特征数据框。
+        特征数据表。
     backend_name : str
-        后端名称，用于错误提示。
-
-    Returns
-    -------
-    None
-        校验通过时不返回值。
+        后端名，用于错误提示。
 
     Raises
     ------
     ValueError
         存在非数值且非布尔特征时抛出。
-
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> validate_numeric_pandas(pd.DataFrame({"age": [1, 2]}), "MarsLGBStrategy")
     """
     unsupported = [
         col
@@ -204,4 +165,83 @@ def validate_numeric_pandas(X: pd.DataFrame, backend_name: str) -> None:
         raise ValueError(
             f"{backend_name} pandas numeric path requires numeric or boolean features only. "
             f"Found unsupported columns: {unsupported}. Pass them as categorical_features when supported."
+        )
+
+
+def split_name_sort_key(split_name: str) -> tuple[int, int, str]:
+    """
+    生成 train/val/oot 友好的稳定排序键。
+
+    Parameters
+    ----------
+    split_name : str
+        数据切片名。
+
+    Returns
+    -------
+    tuple[int, int, str]
+        排序键，顺序为 train、val、oot*、其他。
+    """
+    normalized = str(split_name).strip().lower()
+    if "train" in normalized:
+        return (0, 0, normalized)
+    if "val" in normalized:
+        return (1, 0, normalized)
+    if "oot" in normalized:
+        match = re.search(r"(\d+)", normalized)
+        return (2, int(match.group(1)) if match else 10**9, normalized)
+    return (3, 0, normalized)
+
+
+def normalize_dataset_flags(flags: pd.Series | pl.Series) -> pd.Series:
+    """
+    标准化数据集标识列。
+
+    Parameters
+    ----------
+    flags : pd.Series | pl.Series
+        原始数据集标识列。
+
+    Returns
+    -------
+    pandas.Series
+        去空格并转小写后的序列。
+    """
+    flags_pd = flags.to_pandas() if isinstance(flags, pl.Series) else flags
+    return flags_pd.astype(str).str.strip().str.lower()
+
+
+def validate_dataset_flag_roles(flags: pd.Series | pl.Series) -> None:
+    """
+    校验单个 dataset flag 不会同时命中多个保留角色。
+
+    Parameters
+    ----------
+    flags : pd.Series | pl.Series
+        原始或标准化后的数据集标识列。
+
+    Raises
+    ------
+    ValueError
+        任一唯一值同时包含多个角色关键字时抛出。
+    """
+    normalized = normalize_dataset_flags(flags)
+    unique_flags = sorted(set(normalized.dropna().tolist()))
+    conflicts: list[str] = []
+    for flag in unique_flags:
+        roles = [
+            role
+            for role, matched in {
+                "train": "train" in flag,
+                "val": "val" in flag,
+                "oot": "oot" in flag,
+            }.items()
+            if matched
+        ]
+        if len(roles) > 1:
+            conflicts.append(flag)
+    if conflicts:
+        raise ValueError(
+            "Ambiguous dataset_flag values matched multiple split roles: "
+            f"{conflicts}. Please rename them so each value contains only one of train/val/oot."
         )

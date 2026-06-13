@@ -306,8 +306,7 @@ alert_text = generate_monitoring_alert(
 建模调参需要安装 `ml` 和 `tuning` 可选依赖。
 
 ```python
-from mars.modeling import MarsModelingSession
-from mars.modeling.tuning import MarsModelReplayRunner
+from mars.modeling import MarsModelReplayRunner, MarsModelingSession
 
 session = MarsModelingSession(
     model_type="xgb",
@@ -330,7 +329,7 @@ tuning_result = session.tune(
     artifact_dir=None,
 )
 
-replay_result = MarsModelReplayRunner().run(
+replay_result = MarsModelReplayRunner().replay(
     tuning_result,
     modeling_df,
     top_k=3,
@@ -434,12 +433,8 @@ eval_report.write_html("mars_evaluation.html")
 | --- | --- |
 | `mars.analysis` | `MarsDataProfiler`、`MarsBinEvaluator`、`MarsRiskProfile`、`profile_stats`、`profile_risk` |
 | `mars.feature` | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` |
-| `mars.modeling` | `MarsModelingSession` |
+| `mars.modeling` | `MarsModelingSession`、`MarsModelDataSplitter`、`MarsModelTuner`、`MarsModelReplayRunner`、`MarsModelEvaluator`、`ModelPredictor`、`MarsModelTuningResult`、`MarsModelReplayResult`、`MarsFeatureGrowthResult`、`MarsFeatureIncrementalTuner`、`MarsModelingReport` |
 | `mars.pipeline` | `MarsModelingPipeline`、`MarsPipelineStep`、`MarsSelectionStep`、`MarsWOEBinningStep`、`MarsModelingStep`、`MarsPipelineResult` |
-| `mars.modeling.tuning` | `MarsModelTuner`、`MarsModelReplayRunner` |
-| `mars.modeling.slicing` | `MarsModelDataSplitter` |
-| `mars.modeling.results` | `MarsModelTuningResult`、`MarsModelReplayResult` |
-| `mars.modeling.feature_growth` | `MarsFeatureGrowthResult`、`MarsFeatureIncrementalTuner` |
 | `mars.monitoring` | `MarsMonitor`、`MarsMonitoringReport`、`MarsMonitoringData`、`MarsMonitoringAlerter`、`MarsMonitoringAlertConfig`、`generate_monitoring_alert` |
 | `mars.scoring` | `MarsScorecard`、`build_scorecard` |
 

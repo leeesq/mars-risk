@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import pandas as pd
 import polars as pl
 
-from mars.analysis._plotting import _plot_report_helper
 from mars.analysis.report import MarsEvaluationReport
 from mars.feature.base import MarsBinnerBase
+from mars.reporting.plotting import _plot_report_helper
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:

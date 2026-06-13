@@ -6,10 +6,7 @@ pytest.importorskip("catboost")
 pytest.importorskip("optuna")
 pytest.importorskip("optuna_integration")
 
-from mars.modeling.evaluation import MarsModelEvaluator
-from mars.modeling.prediction import ModelPredictor
-from mars.modeling.results import MarsModelTuningResult
-from mars.modeling.tuning import MarsModelTuner
+from mars.modeling import MarsModelEvaluator, MarsModelTuner, MarsModelTuningResult, ModelPredictor
 
 
 @pytest.mark.parametrize(
@@ -104,10 +101,11 @@ def test_lightgbm_categorical_levels_are_fixed_for_unseen_categories(sample_mode
         feature_list=run.features,
         categorical_features=run.categorical_features,
         category_levels=run.category_levels,
+        model_type=run.model_type,
     )
     scored = predictor.predict(df, pred_col="score_with_unseen")
 
     assert "score_with_unseen" in scored.columns
-    artifact_dir = run.write_artifact(str(tmp_path / "lgb_category_artifact"))
-    loaded = MarsModelTuningResult.load_artifact(str(artifact_dir))
+    artifact_dir = run.export_artifact(str(tmp_path / "lgb_category_artifact"))
+    loaded = MarsModelTuningResult.from_artifact(str(artifact_dir))
     assert loaded.category_levels == run.category_levels

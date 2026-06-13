@@ -2,58 +2,32 @@
 
 from __future__ import annotations
 
-import numbers
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.modeling.metrics import (
+from mars.compute import FrameLike, is_polars_dataframe
+from mars.modeling.backends._dataset_mixin import BackendDatasetMixin
+from mars.modeling.backends._history_mixin import BackendHistoryMixin
+from mars.modeling.backends._objective_mixin import BackendObjectiveMixin
+from mars.modeling.evaluation.metrics import (
     MetricCallable,
     MetricDirection,
-    evaluate_metrics,
     normalize_metric_directions,
     resolve_metric_names,
 )
-from mars.modeling.utils import (
-    HISTORY_BASE_COLUMNS,
-    METRIC_NAMES,
-    normalize_dataset_flags,
-    split_name_sort_key,
-    validate_dataset_flag_roles,
-)
-from mars.utils.frame import FrameLike, is_polars_dataframe
 
 
-class MarsBaseModelStrategy(ABC):
-    """
-    MARS 二分类模型调参基类。
-
-    Attributes
-    ----------
-    data_dict : dict of str to pandas.DataFrame
-        按 ``train``、``val`` 和 ``oot*`` 组织好的数据切片。
-    history : list of dict
-        调参历史记录，每个元素对应一次 Trial 的落盘信息。
-    all_models : dict of int to Any
-        训练完成的 Trial 模型缓存，键为 Trial 编号。
-    best_model : Any
-        当前验证集最佳模型。
-    best_score : float
-        当前验证集最佳分数。
-
-    Notes
-    -----
-    该基类只定义调参与评估骨架。具体训练、后端缓存构建与预测逻辑由子类实现。
-
-    Examples
-    --------
-    >>> issubclass(MarsBaseModelStrategy, ABC)
-    True
-    """
+class MarsBaseModelStrategy(
+    BackendDatasetMixin,
+    BackendHistoryMixin,
+    BackendObjectiveMixin,
+    ABC,
+):
+    """MARS 二分类建模后端共享基类。"""
 
     SUPPORTED_OPTIMIZE_METRICS = {"auc", "ks", "f1"}
     NATIVE_TRAINING_METRICS = {"auc", "ks"}
@@ -78,55 +52,8 @@ class MarsBaseModelStrategy(ABC):
         backend_metric: Any | None = None,
         keep_top_n_models: int = 0,
     ) -> None:
-        """
-        初始化调参后端共享状态并校验建模输入。
-
-        该方法负责保留原始数据引擎、检查必需列、标准化特征与切片配置，并
-        初始化 Trial 历史、模型缓存和最佳模型状态。
-
-        Parameters
-        ----------
-        df : FrameLike
-            已包含特征、目标列和样本切片列的建模样本。
-        features : Sequence[str]
-            参与训练的特征列名。
-        target : str
-            主训练目标列名。
-        optimize_metric : str
-            trial 目标函数使用的优化指标，可以是内置指标或自定义指标名。
-        param_space : Mapping[str, Any] | None
-            后端参数搜索空间覆盖项。
-        max_diff : float
-            train 与 validation 指标允许的最大泛化差异，单位是百分点。
-        seed : int
-            随机种子。
-        use_oot_penalty : bool
-            是否将 OOT 衰减纳入 trial 有效性判断。
-        dataset_flag_col : str
-            建模样本切片列名。
-        categorical_features : Sequence[str] | None
-            类别特征列名。
-        metric_params : Mapping[str, Any] | None
-            指标参数，例如 ``f1_threshold``。
-        custom_metrics : Mapping[str, MetricCallable] | None
-            自定义指标函数字典。
-        metric_directions : Mapping[str, MetricDirection] | None
-            指标排序方向，未配置时默认按 maximize 处理。
-        training_metric : str | None
-            模型后端训练期监控指标。
-        backend_metric : Any | None
-            透传给模型后端原生训练接口的自定义 metric。
-        keep_top_n_models : int
-            调参过程中动态保留的最优模型数量。
-
-        Raises
-        ------
-        TypeError
-            当输入数据不是 Pandas 或 Polars DataFrame 时抛出。
-        ValueError
-            当必需列、类别特征或优化指标配置不合法时抛出。
-        """
-        self._input_is_polars: bool = is_polars_dataframe(df)
+        """初始化后端共享状态并校验输入。"""
+        self._input_is_polars = is_polars_dataframe(df)
         if isinstance(df, pl.DataFrame):
             self.df_pl: pl.DataFrame | None = df.clone()
             self.df_pd: pd.DataFrame | None = None
@@ -139,28 +66,29 @@ class MarsBaseModelStrategy(ABC):
             native_columns = list(self.df_pd.columns)
         else:
             raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-        self.features: List[str] = list(features)
-        self.target: str = target
-        self.optimize_metric: str = optimize_metric.lower()
-        self.param_space: Dict[str, Any] = dict(param_space or {})
-        self.max_diff: float = float(max_diff)
-        self.seed: int = int(seed)
-        self.use_oot_penalty: bool = use_oot_penalty
-        self.dataset_flag_col: str = dataset_flag_col
-        self.categorical_features: List[str] = list(categorical_features or [])
-        self.metric_params: Dict[str, Any] = dict(metric_params or {})
-        self.custom_metrics: Dict[str, MetricCallable] = {
+
+        self.features = list(features)
+        self.target = target
+        self.optimize_metric = optimize_metric.lower()
+        self.param_space = dict(param_space or {})
+        self.max_diff = float(max_diff)
+        self.seed = int(seed)
+        self.use_oot_penalty = use_oot_penalty
+        self.dataset_flag_col = dataset_flag_col
+        self.categorical_features = list(categorical_features or [])
+        self.metric_params = dict(metric_params or {})
+        self.custom_metrics = {
             str(name).lower(): metric
             for name, metric in dict(custom_metrics or {}).items()
         }
-        self.metric_names: List[str] = resolve_metric_names(self.custom_metrics)
-        self.metric_directions: Dict[str, MetricDirection] = normalize_metric_directions(
+        self.metric_names = resolve_metric_names(self.custom_metrics)
+        self.metric_directions = normalize_metric_directions(
             self.metric_names,
             metric_directions,
         )
-        self.training_metric: str = self._resolve_training_metric(training_metric)
-        self.backend_metric: Any | None = backend_metric
-        self.keep_top_n_models: int = max(0, int(keep_top_n_models))
+        self.training_metric = self._resolve_training_metric(training_metric)
+        self.backend_metric = backend_metric
+        self.keep_top_n_models = max(0, int(keep_top_n_models))
 
         if self.optimize_metric not in self.metric_names:
             raise ValueError(
@@ -176,20 +104,21 @@ class MarsBaseModelStrategy(ABC):
         cat_missing = set(self.categorical_features).difference(self.features)
         if cat_missing:
             raise ValueError(
-                f"Categorical features must be included in features. Missing from features: {sorted(cat_missing)}"
+                "Categorical features must be included in features. "
+                f"Missing from features: {sorted(cat_missing)}"
             )
 
-        self.history: List[Dict[str, Any]] = []
-        self.all_models: Dict[int, Any] = {}
-        self.retained_models: Dict[int, Any] = {}
-        self.retained_model_rows: List[Dict[str, Any]] = []
+        self.history: list[dict[str, Any]] = []
+        self.all_models: dict[int, Any] = {}
+        self.retained_models: dict[int, Any] = {}
+        self.retained_model_rows: list[dict[str, Any]] = []
         self.best_model: Any = None
-        self.best_score: float = self._initial_best_score()
+        self.best_score = self._initial_best_score()
 
-        self.num_boost_round: int = 500
-        self.early_stopping_rounds: int = 50
-        self.backend_data_mode: str = "unset"
-        self.category_levels: Dict[str, List[Any]] = {}
+        self.num_boost_round = 500
+        self.early_stopping_rounds = 50
+        self.backend_data_mode = "unset"
+        self.category_levels: dict[str, list[Any]] = {}
         if self._input_is_polars:
             assert self.df_pl is not None
             self.feature_schema = {
@@ -207,786 +136,28 @@ class MarsBaseModelStrategy(ABC):
         self._initialize_category_levels()
         self._build_backend_data()
 
-    def _resolve_training_metric(self, training_metric: str | None) -> str:
-        """确定后端训练期监控指标，无法原生训练的指标回退到 AUC。"""
-        candidate = (training_metric or self.optimize_metric).lower()
-        if candidate in self.NATIVE_TRAINING_METRICS:
-            return candidate
-        return "auc"
-
-    def _metric_direction(self, metric_name: str | None = None) -> MetricDirection:
-        """返回指定指标的优化方向。"""
-        return self.metric_directions.get((metric_name or self.optimize_metric).lower(), "maximize")
-
-    def _initial_best_score(self) -> float:
-        """按优化方向生成初始 best score。"""
-        if self._metric_direction() == "minimize":
-            return np.inf
-        return -np.inf
-
-    def _is_better_score(self, score: float, baseline: float) -> bool:
-        """按当前优化方向判断新分数是否优于基准分数。"""
-        if self._metric_direction() == "minimize":
-            return score < baseline
-        return score > baseline
-
-    def _invalid_trial_score(self, penalty_diff: float) -> float:
-        """生成违反泛化约束时的 Optuna 惩罚分。"""
-        if self._metric_direction() == "minimize":
-            return float(1_000_000.0 + max(0.0, penalty_diff))
-        return float(-100.0 - max(0.0, penalty_diff))
-
-    def _generalization_diff(self, train_score: float, compare_score: float) -> float:
-        """按优化方向计算训练集到验证/OOT 的泛化衰减。"""
-        if self._metric_direction() == "minimize":
-            return round(compare_score - train_score, 6)
-        return round(train_score - compare_score, 6)
-
-    def _retain_candidate_model(
-        self,
-        *,
-        trial_num: int,
-        model: Any,
-        score: float,
-        record: Mapping[str, Any],
-    ) -> None:
-        """动态保留当前最优的 Top-N Trial 模型。"""
-        if self.keep_top_n_models <= 0:
-            return
-
-        self.retained_models[trial_num] = model
-        retained_row = {
-            "trial_num": trial_num,
-            "score": float(score),
-            **dict(record),
-        }
-        self.retained_model_rows = [
-            row
-            for row in self.retained_model_rows
-            if int(row.get("trial_num", -1)) != trial_num
-        ]
-        self.retained_model_rows.append(retained_row)
-
-        ascending = self._metric_direction() == "minimize"
-        self.retained_model_rows = sorted(
-            self.retained_model_rows,
-            key=lambda row: float(row.get("score", np.inf if ascending else -np.inf)),
-            reverse=not ascending,
-        )[: self.keep_top_n_models]
-        retained_trial_nums = {int(row["trial_num"]) for row in self.retained_model_rows}
-        self.retained_models = {
-            retained_trial_num: retained_model
-            for retained_trial_num, retained_model in self.retained_models.items()
-            if retained_trial_num in retained_trial_nums
-        }
-        self.all_models = dict(self.retained_models)
-
-    @property
-    def split_names(self) -> List[str]:
-        """
-        返回当前可用的数据切片名称列表。
-
-        Returns
-        -------
-        list of str
-            训练顺序下的切片名称，至少包含 ``train`` 与 ``val``。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.data_dict = {"train": None, "val": None}
-        >>> tuner.split_names
-        ['train', 'val']
-        """
-        return list(self.data_dict.keys())
-
-    @property
-    def replay_param_keys(self) -> List[str]:
-        """
-        返回可用于重训回放的参数键名列表。
-
-        Returns
-        -------
-        list of str
-            按定义顺序去重后的参数键名列表。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {"depth": 3}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.param_space = {"learning_rate": 0.1}
-        >>> tuner.replay_param_keys
-        ['depth', 'learning_rate']
-        """
-        keys = list(self.get_default_space().keys())
-        for key in self.param_space.keys():
-            if key not in keys:
-                keys.append(key)
-        return keys
-
-    def _prepare_data(self) -> None:
-        """
-        从 `dataset_flag_col` 中解析训练、验证与 OOT 数据集。
-
-        Raises
-        ------
-        ValueError
-            当缺少训练集或验证集切片时抛出。
-        """
-        if self._input_is_polars:
-            assert self.df_pl is not None
-            flags_pd = normalize_dataset_flags(self.df_pl.get_column(self.dataset_flag_col))
-            validate_dataset_flag_roles(flags_pd)
-            train_mask_pd = flags_pd.str.contains("train", na=False)
-            val_mask_pd = flags_pd.str.contains("val", na=False)
-
-            train_mask = pl.Series("__mask__", train_mask_pd.to_numpy())
-            val_mask = pl.Series("__mask__", val_mask_pd.to_numpy())
-
-            train_df = self.df_pl.filter(train_mask)
-            val_df = self.df_pl.filter(val_mask)
-
-            if train_df.is_empty():
-                raise ValueError("No training rows were found from dataset_flag contains 'train'.")
-            if val_df.is_empty():
-                raise ValueError("No validation rows were found from dataset_flag contains 'val'.")
-
-            self.data_dict: Dict[str, FrameLike] = {
-                "train": train_df,
-                "val": val_df,
-            }
-
-            original_flags = self.df_pl.get_column(self.dataset_flag_col).cast(pl.Utf8).to_list()
-            oot_flags = sorted(
-                {
-                    original_flag
-                    for original_flag in original_flags
-                    if "oot" in str(original_flag).lower()
-                },
-                key=split_name_sort_key,
-            )
-            for flag in oot_flags:
-                self.data_dict[str(flag)] = self.df_pl.filter(
-                    pl.col(self.dataset_flag_col).cast(pl.Utf8) == str(flag)
-                )
-            return
-
-        assert self.df_pd is not None
-        flags_pd = normalize_dataset_flags(self.df_pd[self.dataset_flag_col])
-        validate_dataset_flag_roles(flags_pd)
-        train_mask = flags_pd.str.contains("train", na=False)
-        val_mask = flags_pd.str.contains("val", na=False)
-
-        train_df = self.df_pd.loc[train_mask].copy()
-        val_df = self.df_pd.loc[val_mask].copy()
-
-        if train_df.empty:
-            raise ValueError("No training rows were found from dataset_flag contains 'train'.")
-        if val_df.empty:
-            raise ValueError("No validation rows were found from dataset_flag contains 'val'.")
-
-        self.data_dict = {
-            "train": train_df,
-            "val": val_df,
-        }
-
-        original_flags = self.df_pd[self.dataset_flag_col].astype(str).tolist()
-        oot_flags = sorted(
-            {
-                original_flag
-                for original_flag in original_flags
-                if "oot" in str(original_flag).lower()
-            },
-            key=split_name_sort_key,
-        )
-        for flag in oot_flags:
-            self.data_dict[str(flag)] = self.df_pd.loc[
-                self.df_pd[self.dataset_flag_col].astype(str) == str(flag)
-            ].copy()
-
-    def _initialize_category_levels(self) -> None:
-        """收集训练切片中的稳定类别取值，供类别后端复用。"""
-        if not self.categorical_features or not hasattr(self, "data_dict") or "train" not in self.data_dict:
-            self.category_levels = {}
-            return
-
-        train_df = self.data_dict["train"]
-        levels: Dict[str, List[Any]] = {}
-        for feature in self.categorical_features:
-            if isinstance(train_df, pd.DataFrame):
-                if feature not in train_df.columns:
-                    continue
-                values = pd.Series(train_df[feature]).dropna()
-                levels[feature] = list(pd.unique(values))
-            elif isinstance(train_df, pl.DataFrame):
-                if feature not in train_df.columns:
-                    continue
-                levels[feature] = train_df.get_column(feature).drop_nulls().unique(maintain_order=True).to_list()
-        self.category_levels = levels
-
-    def _apply_category_levels(self, X: pd.DataFrame) -> pd.DataFrame:
-        """将稳定的 Pandas CategoricalDtype 类别级别应用到声明的类别特征。"""
-        for feature in self.categorical_features:
-            if feature not in X.columns:
-                continue
-            categories = self.category_levels.get(feature)
-            if categories is not None:
-                X[feature] = X[feature].astype(pd.CategoricalDtype(categories=categories))
-            else:
-                X[feature] = X[feature].astype("category")
-        return X
-
-    def _get_feature_frame(self, df: FrameLike, *, for_categorical_backend: bool) -> pd.DataFrame:
-        """
-        生成后端可直接消费的特征数据框。
-
-        Parameters
-        ----------
-        df : FrameLike
-            单个切片的数据集。
-        for_categorical_backend : bool
-            是否需要为支持原生类别特征的后端转换类别 dtype。
-
-        Returns
-        -------
-        pandas.DataFrame
-            后端可直接使用的特征数据框。
-        """
-        if isinstance(df, pd.DataFrame):
-            X = df.loc[:, self.features].copy()
-        elif isinstance(df, pl.DataFrame):
-            X = df.select(self.features).to_pandas()
-        else:
-            raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-        if for_categorical_backend:
-            X = self._apply_category_levels(X)
-        return X
-
-    def _get_feature_polars(self, df: FrameLike) -> pl.DataFrame:
-        """以 Polars DataFrame 形式返回选中特征。"""
-        if isinstance(df, pl.DataFrame):
-            return df.select(self.features)
-        if isinstance(df, pd.DataFrame):
-            return pl.from_pandas(df.loc[:, self.features])
-        raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-
-    def _get_feature_arrow(self, df: FrameLike) -> Any:
-        """以 PyArrow table 形式返回选中特征，供低复制后端使用。"""
-        return self._get_feature_polars(df).to_arrow()
-
-    def _has_categorical_backend_features(self) -> bool:
-        """判断当前后端是否需要启用原生类别特征路径。"""
-        return bool(self.categorical_features)
-
-    def _get_target_array(self, df: FrameLike) -> np.ndarray:
-        """
-        取出单个切片的目标数组。
-
-        Parameters
-        ----------
-        df : FrameLike
-            单个切片的数据集。
-
-        Returns
-        -------
-        numpy.ndarray
-            目标变量数组。
-        """
-        if isinstance(df, pd.DataFrame):
-            return df[self.target].to_numpy()
-        if isinstance(df, pl.DataFrame):
-            return df.get_column(self.target).to_numpy()
-        raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")
-
-    def _evaluate_predictions(self, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-        """
-        计算建模模块统一使用的二分类评估指标。
-
-        Parameters
-        ----------
-        y_true : np.ndarray
-            真实标签。
-        y_pred : np.ndarray
-            预测分数。
-
-        Returns
-        -------
-        dict of str to float
-            包含内置指标和本次自定义指标的指标字典。
-        """
-        return evaluate_metrics(
-            y_true,
-            y_pred,
-            self.metric_names,
-            metric_params=self.metric_params,
-            custom_metrics=self.custom_metrics,
-        )
-
-    def evaluate_split(self, model: Any, split_name: str) -> Dict[str, float]:
-        """
-        评估指定切片上的模型表现。
-
-        Parameters
-        ----------
-        model : Any
-            已训练模型。
-        split_name : str
-            切片名称，例如 ``train``、``val`` 或某个 ``oot*``。
-
-        Returns
-        -------
-        dict of str to float
-            指定切片上的 ``auc`` 与 ``ks`` 百分制指标。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.target = "y"
-        >>> tuner.data_dict = {"val": pd.DataFrame({"y": [0, 1]})}
-        >>> sorted(tuner.evaluate_split(object(), "val"))
-        ['auc', 'ks']
-        """
-        preds = self.predict_scores(model, split_name)
-        y_true = self._get_target_array(self.data_dict[split_name])
-        return self._evaluate_predictions(y_true, preds)
-
-    def parse_param_space(self, trial: Any, default_space: Mapping[str, Any]) -> Dict[str, Any]:
-        """
-        将活动搜索空间解析为具体参数值。
-
-        Parameters
-        ----------
-        trial : Any
-            当前 Optuna Trial 对象。
-        default_space : Mapping[str, Any]
-            当前后端的默认搜索空间。
-
-        Returns
-        -------
-        dict of str to Any
-            可直接传给模型训练接口的确定性参数字典。
-
-        Raises
-        ------
-        ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
-
-        Notes
-        -----
-        支持的元组约定包括：
-
-        - ``("int", low, high[, step])``
-        - ``("float", low, high[, step])``
-        - ``("categorical", values)``
-
-        Examples
-        --------
-        >>> class Trial:
-        ...     def suggest_int(self, name, low, high, step=1): return low
-        ...     def suggest_float(self, name, low, high, step=None): return low
-        ...     def suggest_categorical(self, name, values): return values[0]
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.param_space = {"depth": ("int", 2, 5)}
-        >>> tuner.parse_param_space(Trial(), {"eta": 0.1})
-        {'eta': 0.1, 'depth': 2}
-        """
-        active_space = dict(default_space)
-        active_space.update(self.param_space)
-
-        params: Dict[str, Any] = {}
-        for name, config in active_space.items():
-            if not isinstance(config, (tuple, list)):
-                params[name] = config
-                continue
-
-            if len(config) == 0:
-                raise ValueError(f"Empty config for parameter {name!r}.")
-
-            ptype = config[0]
-            if ptype == "int":
-                low, high = int(config[1]), int(config[2])
-                step = int(config[3]) if len(config) > 3 else 1
-                params[name] = trial.suggest_int(name, low, high, step=step)
-            elif ptype == "float":
-                low, high = float(config[1]), float(config[2])
-                step = float(config[3]) if len(config) > 3 else None
-                if step is None:
-                    params[name] = trial.suggest_float(name, low, high)
-                else:
-                    params[name] = trial.suggest_float(name, low, high, step=step)
-            elif ptype == "categorical":
-                values = list(config[1])
-                params[name] = trial.suggest_categorical(name, values)
-            else:
-                params[name] = config
-
-        return params
-
-    def _sync_to_disk(self, record: Mapping[str, Any], path: str | Path | None) -> None:
-        """
-        将单次 Trial 记录追加写入 CSV。
-
-        Parameters
-        ----------
-        record : Mapping[str, Any]
-            单次 Trial 的记录内容。
-        path : str | Path | None
-            CSV 输出路径。
-        """
-        if path is None:
-            return
-        path_obj = Path(path)
-        path_obj.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame([dict(record)]).to_csv(
-            path_obj,
-            mode="a",
-            header=not path_obj.exists(),
-            index=False,
-        )
-
-    def build_history_table(self) -> pd.DataFrame:
-        """
-        构建结构化 Trial 历史表。
-
-        Returns
-        -------
-        pandas.DataFrame
-            列顺序稳定、便于分析与回放的历史表。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {"depth": 3}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.history = []
-        >>> tuner.param_space = {}
-        >>> tuner.data_dict = {"train": None, "val": None}
-        >>> "train_auc" in tuner.build_history_table().columns
-        True
-        """
-        history_table = pd.DataFrame(self.history)
-        if history_table.empty:
-            desired_columns = list(HISTORY_BASE_COLUMNS) + list(self.replay_param_keys)
-            metric_names = getattr(self, "metric_names", list(METRIC_NAMES))
-            for split_name in self.split_names:
-                for metric_name in metric_names:
-                    desired_columns.append(f"{split_name}_{metric_name}")
-            return pd.DataFrame(columns=desired_columns)
-
-        param_columns = [col for col in self.replay_param_keys if col in history_table.columns]
-        metric_columns: List[str] = []
-        for split_name in self.split_names:
-            for metric_name in self.metric_names:
-                column_name = f"{split_name}_{metric_name}"
-                if column_name in history_table.columns:
-                    metric_columns.append(column_name)
-
-        ordered_columns = [
-            *HISTORY_BASE_COLUMNS,
-            *param_columns,
-            *metric_columns,
-        ]
-        extra_columns = [col for col in history_table.columns if col not in ordered_columns]
-        return history_table.reindex(columns=ordered_columns + sorted(extra_columns))
-
-    def objective(
-        self,
-        trial: Any,
-        startup_trials: int,
-        history_path: str | Path | None,
-    ) -> float:
-        """
-        执行一次 Optuna trial 生命周期。
-
-        Parameters
-        ----------
-        trial : Any
-            当前 Optuna trial 对象。
-        startup_trials : int
-            剪枝器开始工作前的预热 trial 数量。
-        history_path : str | Path | None
-            trial history CSV 路径；``None`` 表示不落盘。
-
-        Returns
-        -------
-        float
-            trial objective 分数；泛化约束失败时返回惩罚分。
-
-        Raises
-        ------
-        Exception
-            当底层调参流程抛出未细分异常时向上透传。
-
-        """
-        record: Dict[str, Any] = {
-            "trial_num": getattr(trial, "number", -1),
-            "trial_state": "INIT_FAIL",
-        }
-
-        try:
-            trial_num = int(getattr(trial, "number", -1))
-            params = self.parse_param_space(trial, self.get_default_space())
-            record.update(params)
-
-            # 训练期可以使用 AUC 作为 early stopping / pruning 代理指标，
-            # 但最终 Trial 得分仍由 optimize_metric 决定。
-            model = self.train_model(
-                trial=trial,
-                params=params,
-                startup_trials=startup_trials,
-                training_metric=self.training_metric,
-            )
-
-            # 所有切片统一评估后，再决定是否触发验证集 / OOT 泛化惩罚。
-            metrics_by_split: Dict[str, Dict[str, float]] = {
-                split_name: self.evaluate_split(model, split_name)
-                for split_name in self.split_names
-            }
-
-            train_score = metrics_by_split["train"][self.optimize_metric]
-            val_score = metrics_by_split["val"][self.optimize_metric]
-            oot_scores: List[float] = [
-                split_metrics[self.optimize_metric]
-                for split_name, split_metrics in metrics_by_split.items()
-                if "oot" in split_name.lower()
-            ]
-
-            val_diff = self._generalization_diff(train_score, val_score)
-            is_valid = val_diff <= self.max_diff
-            max_penalty_diff = val_diff
-
-            max_oot_diff: float | None = None
-            if oot_scores:
-                oot_diffs = [
-                    self._generalization_diff(train_score, oot_score)
-                    for oot_score in oot_scores
-                ]
-                max_oot_diff = max(oot_diffs)
-                if self.use_oot_penalty:
-                    # 开启 OOT 惩罚后，以最差的时序外样本衰减作为额外约束，
-                    # 逼迫搜索过程偏向更稳健的参数组合。
-                    max_penalty_diff = max(max_penalty_diff, max_oot_diff)
-                    if max_oot_diff > self.max_diff:
-                        is_valid = False
-
-            record.update(
-                {
-                    "trial_state": "COMPLETE",
-                    "is_valid": is_valid,
-                    "val_diff": round(val_diff, 4),
-                    "max_oot_diff": round(max_oot_diff, 4) if max_oot_diff is not None else None,
-                    **{
-                        f"{split_name}_{metric_name}": metric_value
-                        for split_name, metrics in metrics_by_split.items()
-                        for metric_name, metric_value in metrics.items()
-                    },
-                }
-            )
-
-            # 仅当 Trial 通过泛化校验时，才允许刷新全局 best model。
-            if is_valid:
-                if self._is_better_score(val_score, self.best_score):
-                    self.best_score = val_score
-                    self.best_model = model
-                self._retain_candidate_model(
-                    trial_num=trial_num,
-                    model=model,
-                    score=val_score,
-                    record=record,
-                )
-
-            return float(val_score if is_valid else self._invalid_trial_score(max_penalty_diff))
-
-        except Exception as exc:
-            optuna_module = None
-            try:
-                import optuna as optuna_module  # type: ignore
-            except Exception:
-                optuna_module = None
-
-            if optuna_module is not None and isinstance(exc, optuna_module.exceptions.TrialPruned):
-                record["trial_state"] = "PRUNED"
-                raise
-
-            record["trial_state"] = f"ERROR: {str(exc)[:120]}"
-            raise
-        finally:
-            # 无论 Trial 成功、剪枝还是异常，都要保留 history 并立即落盘。
-            self.history.append(record)
-            self._sync_to_disk(record, history_path)
-
-    def get_best_iteration(self, model: Any) -> int | None:
-        """
-        返回模型的最佳迭代轮次。
-
-        Parameters
-        ----------
-        model : Any
-            已训练模型。
-
-        Returns
-        -------
-        int or None
-            若模型暴露 `best_iteration`，则返回其整数值；否则返回 ``None``。
-
-        Examples
-        --------
-        >>> class Model:
-        ...     best_iteration = 12
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.get_best_iteration(Model())
-        12
-        """
-        best_iteration = getattr(model, "best_iteration", None)
-        if isinstance(best_iteration, numbers.Integral):
-            return int(best_iteration)
-        get_best_iteration = getattr(model, "get_best_iteration", None)
-        if callable(get_best_iteration):
-            try:
-                best_iteration = get_best_iteration()
-                if isinstance(best_iteration, numbers.Integral):
-                    return int(best_iteration)
-            except Exception:
-                return None
-        return None
-
     @abstractmethod
     def _build_backend_data(self) -> None:
-        """构建后端专用的缓存数据结构。"""
+        """构建后端专用缓存。"""
 
     @abstractmethod
-    def get_default_space(self) -> Dict[str, Any]:
-        """
-        返回当前后端的默认搜索空间。
-
-        Returns
-        -------
-        dict of str to Any
-            后端参数名到固定值或搜索空间描述的映射。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {"depth": 3}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> DummyTuner.get_default_space(object.__new__(DummyTuner))
-        {'depth': 3}
-        """
+    def get_default_space(self) -> dict[str, Any]:
+        """返回当前后端的默认搜索空间。"""
 
     @abstractmethod
     def train_model(
         self,
         trial: Any,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         startup_trials: int,
         training_metric: str,
     ) -> Any:
-        """
-        训练单次 Trial 模型。
-
-        Parameters
-        ----------
-        trial : Any
-            当前 Trial 对象。
-        params : Dict[str, Any]
-            当前 Trial 的确定性超参数。
-        startup_trials : int
-            启用剪枝前的预热 Trial 数量。
-        training_metric : str
-            训练期监控指标。
-
-        Returns
-        -------
-        Any
-            训练完成的模型对象。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return {"params": params}
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.train_model(None, {"depth": 3}, 0, "auc")["params"]["depth"]
-        3
-        """
+        """训练单次 trial 模型。"""
 
     @abstractmethod
     def predict_scores(self, model: Any, split_name: str) -> np.ndarray:
-        """
-        对已缓存切片执行分数预测。
-
-        Parameters
-        ----------
-        model : Any
-            已训练模型。
-        split_name : str
-            切片名称。
-
-        Returns
-        -------
-        numpy.ndarray
-            预测分数数组。
-
-        Examples
-        --------
-        >>> class DummyTuner(MarsBaseModelStrategy):
-        ...     def _build_backend_data(self): pass
-        ...     def get_default_space(self): return {}
-        ...     def train_model(self, trial, params, startup_trials, training_metric): return object()
-        ...     def predict_scores(self, model, split_name): return np.array([0.1, 0.9])
-        >>> tuner = object.__new__(DummyTuner)
-        >>> tuner.predict_scores(object(), "val").tolist()
-        [0.1, 0.9]
-        """
+        """对指定切片执行分数预测。"""
 
     def extract_importance(self, model: Any) -> pd.DataFrame:
-        """
-        返回当前后端标准化后的特征重要性表。
-
-        Parameters
-        ----------
-        model : Any
-            已训练模型。
-
-        Returns
-        -------
-        pandas.DataFrame
-            MARS 统一格式的特征重要性表。
-
-        Raises
-        ------
-        NotImplementedError
-            子类未实现特征重要性提取时抛出。
-        """
+        """返回统一格式的特征重要性表。"""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement extract_importance.")
