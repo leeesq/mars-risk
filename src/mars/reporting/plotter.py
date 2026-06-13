@@ -13,6 +13,7 @@ import polars as pl
 from IPython.display import HTML, display
 from matplotlib.ticker import FuncFormatter
 
+from mars.compute import RiskCorrBaseline
 from mars.core.constants import DIVISION_EPSILON
 from mars.utils.logger import logger
 
@@ -164,6 +165,40 @@ class MarsPlotter:
         return iv_value, ks_value, auc_value
 
     @staticmethod
+    def _calculate_panel_risk_corr(
+        panel_df: pd.DataFrame,
+        reference_df: pd.DataFrame | None,
+    ) -> float:
+        """按参考坏率表计算单个面板的 RC。"""
+        if reference_df is None or reference_df.empty:
+            return 1.0
+
+        current_df = panel_df[panel_df["bin_index"] >= 0].copy()
+        if current_df.empty:
+            return 1.0
+
+        merged_df = current_df.merge(
+            reference_df[["feature", "bin_index", "base_br"]],
+            on=["feature", "bin_index"],
+            how="left",
+        )
+        merged_df = merged_df.dropna(subset=["bad_rate", "base_br"])
+        if merged_df.empty:
+            return 1.0
+
+        current_values = merged_df["bad_rate"].to_numpy(dtype=float)
+        baseline_values = merged_df["base_br"].to_numpy(dtype=float)
+        if len(current_values) <= 1:
+            return 1.0
+        if np.std(current_values) <= DIVISION_EPSILON or np.std(baseline_values) <= DIVISION_EPSILON:
+            return 1.0
+
+        corr_value = merged_df["bad_rate"].corr(merged_df["base_br"], method="spearman")
+        if np.isnan(corr_value):
+            return 1.0
+        return corr_value
+
+    @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
         """将 Matplotlib 图表序列化为 Base64 PNG 字符串。"""
         buf = BytesIO()
@@ -227,6 +262,7 @@ class MarsPlotter:
         feature: str,
         group_col: str = "month",
         target_name: str = "Target",
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         dpi: int | None = 150,
     ) -> str:
         """
@@ -276,6 +312,7 @@ class MarsPlotter:
             feature=feature,
             group_col=group_col,
             target_name=target_name,
+            risk_corr_reference_df=risk_corr_reference_df,
         )
         if fig is None:
             return ""
@@ -289,9 +326,15 @@ class MarsPlotter:
         feature: str,
         group_col: str = "month",
         target_name: str = "Target",
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
     ) -> plt.Figure | None:
         """构建风险趋势图对象但不直接展示。"""
         df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
+        reference_pd = (
+            MarsPlotter._as_pandas_detail_frame(risk_corr_reference_df)
+            if risk_corr_reference_df is not None
+            else None
+        )
 
         df_feat: pd.DataFrame = df_detail[df_detail["feature"] == feature].copy()
         if df_feat.empty:
@@ -373,15 +416,11 @@ class MarsPlotter:
         groups = sorted(groups)
         time_range = f"[{groups[0]} ~ {groups[-1]}]" if groups else ""
 
-        if groups and has_target_global:
-            first_group = groups[0]
-            base_vec = (
-                plot_df[plot_df[group_col] == first_group]
-                .sort_values("bin_index")
-                .query("bin_index >= 0")["bad_rate"].values
-            )
-        else:
-            base_vec = None
+        feature_reference_pd: pd.DataFrame | None = None
+        if reference_pd is not None and not reference_pd.empty:
+            feature_reference_pd = reference_pd[
+                reference_pd["feature"].astype(str) == feature
+            ].copy()
 
         all_groups = groups + (["Total"] if has_total_panel else [])
 
@@ -439,23 +478,17 @@ class MarsPlotter:
         for i, group in enumerate(all_groups):
             ax = plt.subplot(gs[i])
 
-            rc_val = 1.0
-            if base_vec is not None:
-                curr_df_g = plot_df[plot_df[group_col] == group].sort_values("bin_index")
-                curr_vec = curr_df_g[curr_df_g["bin_index"] >= 0]["bad_rate"].values
-                if (
-                    len(curr_vec) == len(base_vec)
-                    and np.std(curr_vec) > DIVISION_EPSILON
-                    and np.std(base_vec) > DIVISION_EPSILON
-                ):
-                    rc_val = np.corrcoef(curr_vec, base_vec)[0, 1]
-
             for spine in ax.spines.values():
                 spine.set_linewidth(0.2)
 
             df_g = plot_df[plot_df[group_col] == group].sort_values("bin_index")
             if df_g.empty:
                 continue
+
+            rc_val = MarsPlotter._calculate_panel_risk_corr(
+                df_g,
+                feature_reference_pd,
+            )
 
             has_target = "bad_rate" in df_g.columns and df_g["bad_rate"].notna().any()
             x = range(len(df_g))
@@ -568,6 +601,7 @@ class MarsPlotter:
         feature: str,
         group_col: str = "month",
         target_name: str = "Target",
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         dpi: int | None = 150,
     ) -> None:
         """
@@ -615,6 +649,7 @@ class MarsPlotter:
             feature=feature,
             group_col=group_col,
             target_name=target_name,
+            risk_corr_reference_df=risk_corr_reference_df,
         )
         if fig is None:
             return
@@ -627,9 +662,12 @@ class MarsPlotter:
         features: list[str],
         group_col: str = "month",
         target_name: str = "Target",
+        target_key: str | None = None,
         dpi: int = 150,
         sort_by: str = "iv",
-        ascending: bool = False
+        ascending: bool = False,
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        risk_corr_baseline: RiskCorrBaseline = "total",
     ) -> None:
         """
         批量绘制多个特征的分箱风险趋势图。
@@ -732,6 +770,7 @@ class MarsPlotter:
                 feature=feat,
                 group_col=group_col,
                 target_name=target_name,
+                risk_corr_reference_df=risk_corr_reference_df,
                 dpi=dpi
             )
         logger.info("Batch plotting completed.")

@@ -8,10 +8,18 @@ def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch)
     fig = plt.figure()
     captured = {}
 
-    def fake_build_feature_binning_risk_figure(*, df_detail, feature, group_col, target_name):
+    def fake_build_feature_binning_risk_figure(
+        *,
+        df_detail,
+        feature,
+        group_col,
+        target_name,
+        risk_corr_reference_df=None,
+    ):
         captured["feature"] = feature
         captured["group_col"] = group_col
         captured["target_name"] = target_name
+        captured["risk_corr_reference_df"] = risk_corr_reference_df
         return fig
 
     def fake_show_scrollable(passed_fig, dpi=150):
@@ -40,6 +48,7 @@ def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch)
     assert captured["feature"] == "income"
     assert captured["group_col"] == "month"
     assert captured["target_name"] == "target"
+    assert captured["risk_corr_reference_df"] is None
     assert captured["fig"] is fig
     assert captured["dpi"] == 180
 

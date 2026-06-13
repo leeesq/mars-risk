@@ -12,6 +12,7 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsBinningReport
+from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.core.base import MarsBaseSelector
 from mars.core.constants import DIVISION_EPSILON
 from mars.feature.base import MarsBinnerBase
@@ -55,6 +56,8 @@ class MarsStatsSelector(MarsBaseSelector):
         psi_thr: float | None = 0.25,
         rc_thr: float | None = 0.5,
         corr_thr: float | None = 0.95,
+        feature_start_aware_reference: bool = False,
+        risk_corr_baseline: RiskCorrBaseline = "total",
         psi_include_missing: bool = False,
         psi_include_special: bool = False,
 
@@ -131,7 +134,8 @@ class MarsStatsSelector(MarsBaseSelector):
         self.feature_data_source: dict[str, list[str]] = {}
         self.time_col: str | None = None
         self.profile_by: str | None = None
-        self.feature_start_aware_baseline = False
+        self.feature_start_aware_reference = bool(feature_start_aware_reference)
+        self.risk_corr_baseline = normalize_risk_corr_baseline(risk_corr_baseline)
         self.white_list: list[str] = []
         self.black_list: list[str] = []
 
@@ -201,7 +205,8 @@ class MarsStatsSelector(MarsBaseSelector):
         white_list: List[str] | None = None,
         black_list: List[str] | None = None,
         max_samples: int | None = None,
-        feature_start_aware_baseline: bool = False,
+        feature_start_aware_reference: bool | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
     ) -> MarsStatsSelector:
         """
         在一次样本上下文中执行统计特征筛选。
@@ -228,7 +233,7 @@ class MarsStatsSelector(MarsBaseSelector):
             黑名单特征，会被强制剔除。
         max_samples : int | None
             本次筛选允许使用的最大样本量。
-        feature_start_aware_baseline : bool
+        feature_start_aware_reference : bool
             是否按特征首次出现分组选择 PSI 基准。
 
         Returns
@@ -254,7 +259,14 @@ class MarsStatsSelector(MarsBaseSelector):
         self.white_list = white_list if white_list else []
         self.black_list = black_list if black_list else []
         self.max_samples = max_samples
-        self.feature_start_aware_baseline = feature_start_aware_baseline
+        self.feature_start_aware_reference = (
+            self.feature_start_aware_reference
+            if feature_start_aware_reference is None
+            else bool(feature_start_aware_reference)
+        )
+        self.risk_corr_baseline = normalize_risk_corr_baseline(
+            risk_corr_baseline or self.risk_corr_baseline,
+        )
 
         X = self._ensure_polars_dataframe(df)
         self._funnel_stats = []
@@ -751,6 +763,8 @@ class MarsStatsSelector(MarsBaseSelector):
         evaluator = MarsBinEvaluator(
             binning_type="optimal",
             binner_params=binner_params,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
         )
 
         run = evaluator.evaluate(
@@ -762,7 +776,8 @@ class MarsStatsSelector(MarsBaseSelector):
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
             batch_size=self.batch_size,
-            feature_start_aware_baseline=self.feature_start_aware_baseline,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
         )
@@ -820,7 +835,10 @@ class MarsStatsSelector(MarsBaseSelector):
     def _filter_psi(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：跨维度投射特征区间计算群体偏移极值。"""
         from mars.analysis.evaluator import MarsBinEvaluator
-        run = MarsBinEvaluator().evaluate(
+        run = MarsBinEvaluator(
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
+        ).evaluate(
             df=df,
             target=self.target,
             features=features,
@@ -829,7 +847,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_baseline=self.feature_start_aware_baseline,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
         )
@@ -854,7 +873,10 @@ class MarsStatsSelector(MarsBaseSelector):
     def _filter_rc(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """内部方法：追踪特征序列区间逻辑相关性的变异下限。"""
         from mars.analysis.evaluator import MarsBinEvaluator
-        run = MarsBinEvaluator().evaluate(
+        run = MarsBinEvaluator(
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
+        ).evaluate(
             df=df,
             target=self.target,
             features=features,
@@ -863,7 +885,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_baseline=self.feature_start_aware_baseline,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
         )
@@ -977,7 +1000,10 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.evaluator import MarsBinEvaluator
 
         if self._stage3_binner is not None:
-            evaluator = MarsBinEvaluator()
+            evaluator = MarsBinEvaluator(
+                feature_start_aware_reference=self.feature_start_aware_reference,
+                risk_corr_baseline=self.risk_corr_baseline,
+            )
             eval_binner = self._stage3_binner
         else:
             logger.warning("Cached binner not found. Re-fitting Binner for the selected features...")
@@ -990,6 +1016,8 @@ class MarsStatsSelector(MarsBaseSelector):
                     "missing_values": self.missing_values,
                     "special_values": self.special_values,
                 },
+                feature_start_aware_reference=self.feature_start_aware_reference,
+                risk_corr_baseline=self.risk_corr_baseline,
             )
             eval_binner = None
 
@@ -1006,7 +1034,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_baseline=self.feature_start_aware_baseline,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
             feature_data_source=self._feature_data_source_for(self.selected_features_),
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,

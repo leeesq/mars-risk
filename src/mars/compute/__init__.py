@@ -1,5 +1,15 @@
 """共享计算底座的公共导出入口。"""
 
+from .binning import (
+    bad_rate_expr,
+    binary_bad_expr,
+    binary_count_expr,
+    binary_distribution_exprs,
+    binary_metric_exprs,
+    binary_observed_count_expr,
+    binary_stats_agg_exprs,
+    ordered_binary_metric_exprs,
+)
 from .materialization import (
     FrameLike,
     is_polars_dataframe,
@@ -16,22 +26,40 @@ from .missing import (
     missing_rate_expr,
     values_to_exclude,
 )
-from .stability import psi_contribution_expr, psi_valid_condition, with_psi_from_counts
+from .stability import (
+    RiskCorrBaseline,
+    normalize_risk_corr_baseline,
+    psi_contribution_expr,
+    psi_exprs,
+    psi_valid_condition,
+    risk_corr_expr,
+)
 
 __all__ = [
     "FrameLike",
+    "RiskCorrBaseline",
+    "bad_rate_expr",
+    "binary_bad_expr",
+    "binary_count_expr",
+    "binary_distribution_exprs",
+    "binary_metric_exprs",
+    "binary_observed_count_expr",
+    "binary_stats_agg_exprs",
     "build_missing_by_period_stats",
     "filter_compatible_values",
     "is_numeric_dtype",
     "is_polars_dataframe",
     "missing_condition_expr",
     "missing_rate_expr",
+    "normalize_risk_corr_baseline",
+    "ordered_binary_metric_exprs",
     "psi_contribution_expr",
+    "psi_exprs",
     "psi_valid_condition",
     "restore_frame_type",
+    "risk_corr_expr",
     "to_pandas_frame",
     "to_pandas_table",
     "to_polars_frame",
     "values_to_exclude",
-    "with_psi_from_counts",
 ]

@@ -10,7 +10,18 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsBinningReport
-from mars.compute import build_missing_by_period_stats, with_psi_from_counts
+from mars.compute import (
+    RiskCorrBaseline,
+    bad_rate_expr,
+    binary_distribution_exprs,
+    binary_metric_exprs,
+    binary_stats_agg_exprs,
+    build_missing_by_period_stats,
+    normalize_risk_corr_baseline,
+    ordered_binary_metric_exprs,
+    psi_exprs,
+    risk_corr_expr,
+)
 from mars.core.base import MarsBaseEstimator
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE, METRIC_EPSILON
 from mars.feature.base import MarsBinnerBase
@@ -20,6 +31,13 @@ from mars.feature.optimal_binner import MarsOptimalBinner
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
+
+
+def with_psi_from_counts(*args: Any, **kwargs: Any) -> pl.DataFrame:
+    """旧版 DataFrame PSI helper 占位桩。"""
+    raise RuntimeError(
+        "`with_psi_from_counts` is deprecated. Use the pure Expr compute helpers instead.",
+    )
 
 
 @dataclass
@@ -89,6 +107,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         *,
         binning_type: Literal["native", "optimal", "lite_opt"] = "native",
         binner_params: Dict[str, Any] | None = None,
+        feature_start_aware_reference: bool = False,
+        risk_corr_baseline: RiskCorrBaseline = "total",
     ) -> None:
         """
         初始化分箱评估器。
@@ -118,6 +138,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self.has_target_: bool = False
         self.binning_type = normalized_binning_type
         self.binner_params = dict(binner_params or {})
+        self.feature_start_aware_reference = bool(feature_start_aware_reference)
+        self.risk_corr_baseline = normalize_risk_corr_baseline(risk_corr_baseline)
 
     @time_it
     def evaluate(
@@ -131,7 +153,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
-        feature_start_aware_baseline: bool = False,
+        feature_start_aware_reference: bool | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
         psi_include_missing: bool = False,
         psi_include_special: bool = False,
         benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
@@ -162,7 +185,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
             仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
-        feature_start_aware_baseline : bool
+        feature_start_aware_reference : bool
             是否按特征首次出现的分组选择 PSI 基准，适合特征上线时间不一致的场景。
         psi_include_missing : bool
             计算 PSI 时是否单独保留缺失值分布。
@@ -201,6 +224,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
         dt_col = time_col
         self.target = target
+        effective_feature_start_reference = (
+            self.feature_start_aware_reference
+            if feature_start_aware_reference is None
+            else bool(feature_start_aware_reference)
+        )
+        effective_risk_corr_baseline = normalize_risk_corr_baseline(
+            risk_corr_baseline or self.risk_corr_baseline,
+        )
 
         # 允许 target 为空，或数据集中本就不存在目标列。
         self.has_target_ = self.target is not None and self.target in working_df.columns
@@ -335,17 +366,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
             group_stats_raw, benchmark_df, group_col, target_features, weights_col
         )
         feature_start_reference = None
-        if feature_start_aware_baseline:
+        if effective_feature_start_reference:
             if benchmark_df is not None:
                 logger.warning(
-                    "`feature_start_aware_baseline=True` was ignored because `benchmark_df` was provided."
+                    "`feature_start_aware_reference=True` was ignored because `benchmark_df` was provided."
                 )
             elif not dt_col or dt_col not in working_df.columns:
                 logger.warning(
-                    "`feature_start_aware_baseline=True` requires a valid `dt_col`; falling back to the default baseline logic."
+                    "`feature_start_aware_reference=True` requires a valid `dt_col`; "
+                    "falling back to the default reference logic."
                 )
             else:
-                feature_start_reference = self._build_feature_start_baseline_reference(
+                feature_start_reference = self._build_feature_start_reference(
                     df_binned=df_binned,
                     missing_by_day_table=missing_by_day_table,
                     features=target_features,
@@ -380,7 +412,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # 计算 Trend 数据
         metrics_groups = (
-            self._calc_metrics_from_stats(
+            self._calc_metrics_from_stats_v2(
                 group_stats_raw, expected_dist, group_col,
                 # 传参
                 include_missing=psi_include_missing,
@@ -390,7 +422,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 计算 total 数据
-        metrics_total = self._calc_metrics_from_stats(
+        metrics_total = self._calc_metrics_from_stats_v2(
             total_stats_raw, expected_dist, group_col,
             # 传参
             include_missing=psi_include_missing,
@@ -412,7 +444,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     .with_columns(pl.lit("Total").alias(group_col))
                 )
                 monitor_metrics_groups = (
-                    self._calc_metrics_from_stats(
+                    self._calc_metrics_from_stats_v2(
                         monitor_group_stats_raw,
                         expected_dist,
                         group_col,
@@ -421,7 +453,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     )
                     .with_columns(pl.col(group_col).cast(pl.String))
                 )
-                monitor_metrics_total = self._calc_metrics_from_stats(
+                monitor_metrics_total = self._calc_metrics_from_stats_v2(
                     monitor_total_stats_raw,
                     expected_dist,
                     group_col,
@@ -430,6 +462,19 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ).select(monitor_metrics_groups.columns)
 
         metrics_total = metrics_total.select(metrics_groups.columns)
+        risk_corr_reference_table, risk_corr_reference_source = (
+            self._build_risk_corr_reference_table(
+                target_name=self.target,
+                metrics_groups=metrics_groups,
+                metrics_total=metrics_total,
+                group_col=group_col,
+                risk_corr_baseline=effective_risk_corr_baseline,
+                benchmark_df=benchmark_df,
+                benchmark_features=target_features,
+                benchmark_weights_col=weights_col,
+                feature_start_reference=feature_start_reference,
+            )
+        )
 
         # 单点评估时避免重复拼接一份语义相同的 Total 结果。
         is_single_snapshot = (
@@ -466,7 +511,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             display_group_col=profile_by or ("month" if dt_col else None),
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
-            risk_corr_baseline_df=feature_start_reference["baseline_bad_rate"] if feature_start_reference else None,
+            risk_corr_reference_table=risk_corr_reference_table,
             feature_valid_groups_df=feature_start_reference["valid_groups"] if feature_start_reference else None,
             monitor_metrics_groups=monitor_metrics_groups,
             monitor_metrics_total=monitor_metrics_total,
@@ -485,11 +530,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "end_dt": None,
             "targets": [original_target] if self.has_target_ and original_target else [],
             "event_rate_by_target": {},
-            "feature_start_aware_baseline": bool(feature_start_reference),
+            "feature_start_aware_reference": bool(feature_start_reference),
             "psi_include_missing": psi_include_missing,
             "psi_include_special": psi_include_special,
-            "feature_start_baseline_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
-            "feature_start_baseline_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
+            "risk_corr_baseline": effective_risk_corr_baseline,
+            "risk_corr_reference_source": risk_corr_reference_source,
+            "feature_start_reference_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
+            "feature_start_reference_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
         }
         if dt_col and dt_col in working_df.columns:
             try:
@@ -688,27 +735,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             index_cols.append(weights_col)
 
         # 预定义聚合表达式，count 保留全量分布，observed_count 只记录已表现样本。
-        expr_count = pl.col(weights_col).sum() if weights_col else pl.len()
-        if weights_col:
-            expr_observed_count = (
-                pl.when(pl.col(y_col).is_not_null())
-                .then(pl.col(weights_col))
-                .otherwise(0)
-                .sum()
-            )
-            expr_bad = (
-                (pl.col(y_col).fill_null(0).cast(pl.Float64) * pl.col(weights_col).cast(pl.Float64))
-                .sum()
-            )
-        else:
-            expr_observed_count = pl.col(y_col).is_not_null().sum()
-            expr_bad = pl.col(y_col).fill_null(0).cast(pl.Float64).sum()
-
-        agg_exprs = [
-            expr_count.alias("count"),
-            expr_observed_count.alias("observed_count"),
-            expr_bad.alias("bad"),
-        ]
+        agg_exprs = binary_stats_agg_exprs(
+            y_col,
+            weight_col=weights_col,
+        )
 
         result_frames: List[pl.DataFrame] = []
 
@@ -1054,6 +1084,257 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ])
 
         return sorted_df
+
+    @staticmethod
+    def _build_woe_table_from_mapping(
+        woe_mapping: Dict[str, Dict[int, float]],
+    ) -> pl.DataFrame:
+        """把分箱器缓存的 WOE 映射转换为长表。"""
+        rows: List[Dict[str, Any]] = []
+        for feature, mapping in woe_mapping.items():
+            for bin_index, woe in mapping.items():
+                rows.append(
+                    {
+                        "feature": str(feature),
+                        "bin_index": int(bin_index),
+                        "woe": float(woe),
+                    }
+                )
+        schema = {"feature": pl.String, "bin_index": pl.Int16, "woe": pl.Float32}
+        if not rows:
+            return pl.DataFrame([], schema=schema)
+        return pl.DataFrame(rows, schema=schema)
+
+    def _calc_metrics_from_stats_v2(
+        self,
+        stats_df: pl.DataFrame,
+        expected_dist: pl.DataFrame,
+        group_col: str,
+        include_missing: bool = True,
+        include_special: bool = True,
+    ) -> pl.DataFrame:
+        """使用纯表达式 bundle 计算分箱指标。"""
+        woe_df = self._build_woe_table_from_mapping(self.binner.bin_woes_)
+        working_df = stats_df
+        if "observed_count" not in working_df.columns:
+            working_df = working_df.with_columns(pl.col("count").alias("observed_count"))
+
+        base_df = (
+            working_df
+            .join(expected_dist, on=["feature", "bin_index"], how="left")
+            .join(woe_df, on=["feature", "bin_index"], how="left")
+            .with_columns(
+                [
+                    pl.col("expected_dist").fill_null(METRIC_EPSILON),
+                    pl.col("woe").fill_null(0.0),
+                ]
+            )
+            .with_columns(binary_distribution_exprs([group_col, "feature"]))
+            .with_columns(
+                psi_exprs(
+                    [group_col, "feature"],
+                    include_missing=include_missing,
+                    include_special=include_special,
+                )
+            )
+            .with_columns(binary_metric_exprs())
+        )
+
+        sorted_df = (
+            base_df
+            .sort([group_col, "feature", "woe"])
+            .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
+            .with_columns(
+                pl.when(pl.col("psi_bin").abs() < FLOAT_TOLERANCE)
+                .then(0.0)
+                .otherwise(pl.col("psi_bin"))
+                .alias("psi_bin")
+            )
+        )
+        return sorted_df
+
+    def _build_feature_start_reference(self, **kwargs: Any) -> dict[str, Any] | None:
+        """复用既有 feature-start 参考构造逻辑，并对外统一新命名。"""
+        return self._build_feature_start_baseline_reference(**kwargs)
+
+    @staticmethod
+    def _empty_risk_corr_reference_table(target_name: str | None) -> pl.DataFrame:
+        """构造空的 RC 参考表。"""
+        _ = target_name
+        return pl.DataFrame(
+            schema={
+                "y": pl.String,
+                "feature": pl.String,
+                "bin_index": pl.Int16,
+                "base_br": pl.Float64,
+                "source": pl.String,
+            }
+        )
+
+    def _attach_risk_corr_reference_context(
+        self,
+        reference_df: pl.DataFrame,
+        *,
+        target_name: str | None,
+        source: str,
+    ) -> pl.DataFrame:
+        """把参考坏率表补齐为统一 schema。"""
+        if reference_df.is_empty():
+            return self._empty_risk_corr_reference_table(target_name)
+        return (
+            reference_df
+            .filter(pl.col("bin_index") >= 0)
+            .select(
+                [
+                    pl.lit(str(target_name or "dummy_target")).alias("y"),
+                    pl.col("feature").cast(pl.String).alias("feature"),
+                    pl.col("bin_index").cast(pl.Int16).alias("bin_index"),
+                    pl.col("base_br").cast(pl.Float64).alias("base_br"),
+                    pl.lit(source).alias("source"),
+                ]
+            )
+        )
+
+    def _build_benchmark_risk_corr_reference(
+        self,
+        benchmark_df: pl.DataFrame,
+        *,
+        features: List[str],
+        weights_col: str | None,
+        target_name: str | None,
+    ) -> pl.DataFrame:
+        """基于 benchmark 样本构造 RC 参考表。"""
+        if not self.has_target_ or target_name is None:
+            return self._empty_risk_corr_reference_table(target_name)
+
+        benchmark_prepared = self._normalize_binary_target_column(
+            benchmark_df,
+            target_name,
+        )
+        benchmark_binned = self.binner.transform(benchmark_prepared, return_type="index")
+        benchmark_binned = benchmark_binned.with_columns(pl.lit("Benchmark").alias(self.MARS_GROUP_COL))
+        benchmark_stats = self._agg_basic_stats(
+            benchmark_binned,
+            self.MARS_GROUP_COL,
+            features,
+            target_name,
+            weights_col,
+        )
+        reference_df = (
+            benchmark_stats
+            .group_by(["feature", "bin_index"])
+            .agg(
+                [
+                    pl.col("count").sum().alias("count"),
+                    pl.col("observed_count").sum().alias("observed_count"),
+                    pl.col("bad").sum().alias("bad"),
+                ]
+            )
+            .with_columns(bad_rate_expr(output_col="base_br"))
+        )
+        return self._attach_risk_corr_reference_context(
+            reference_df,
+            target_name=target_name,
+            source="benchmark_df",
+        )
+
+    def _build_risk_corr_reference_table(
+        self,
+        *,
+        target_name: str | None,
+        metrics_groups: pl.DataFrame,
+        metrics_total: pl.DataFrame,
+        group_col: str,
+        risk_corr_baseline: RiskCorrBaseline,
+        benchmark_df: pl.DataFrame | None,
+        benchmark_features: List[str],
+        benchmark_weights_col: str | None,
+        feature_start_reference: dict[str, Any] | None,
+    ) -> tuple[pl.DataFrame, str]:
+        """按统一语义选择 RC 参考表。"""
+        if not self.has_target_:
+            return self._empty_risk_corr_reference_table(target_name), "total"
+
+        if risk_corr_baseline == "total":
+            reference_df = metrics_total.select(
+                [
+                    "feature",
+                    "bin_index",
+                    pl.col("bad_rate").alias("base_br"),
+                ]
+            )
+            return (
+                self._attach_risk_corr_reference_context(
+                    reference_df,
+                    target_name=target_name,
+                    source="total",
+                ),
+                "total",
+            )
+
+        if risk_corr_baseline == "first_group":
+            first_group = metrics_groups.select(pl.col(group_col).min()).item()
+            reference_df = (
+                metrics_groups
+                .filter(pl.col(group_col) == first_group)
+                .select(
+                    [
+                        "feature",
+                        "bin_index",
+                        pl.col("bad_rate").alias("base_br"),
+                    ]
+                )
+            )
+            return (
+                self._attach_risk_corr_reference_context(
+                    reference_df,
+                    target_name=target_name,
+                    source="first_group",
+                ),
+                "first_group",
+            )
+
+        if benchmark_df is not None:
+            reference_df = self._build_benchmark_risk_corr_reference(
+                benchmark_df,
+                features=benchmark_features,
+                weights_col=benchmark_weights_col,
+                target_name=target_name,
+            )
+            return reference_df, "benchmark_df"
+
+        if feature_start_reference is not None:
+            baseline_df = feature_start_reference.get("baseline_bad_rate")
+            if baseline_df is not None and not baseline_df.is_empty():
+                return (
+                    self._attach_risk_corr_reference_context(
+                        baseline_df,
+                        target_name=target_name,
+                        source="feature_start_reference",
+                    ),
+                    "feature_start_reference",
+                )
+
+        raise ValueError(
+            "`risk_corr_baseline='benchmark'` requires `benchmark_df` or "
+            "`feature_start_aware_reference=True` with a valid feature-start reference.",
+        )
+
+    def _build_risk_corr_long(
+        self,
+        metrics_df: pl.DataFrame,
+        baseline_df: pl.DataFrame,
+        *,
+        group_col: str,
+    ) -> pl.DataFrame:
+        """基于参考坏率表计算分组级 RC 长表。"""
+        return (
+            metrics_df
+            .filter(pl.col("bin_index") >= 0)
+            .join(baseline_df, on=["feature", "bin_index"], how="left")
+            .group_by(["feature", group_col])
+            .agg(risk_corr_expr())
+        )
 
     @staticmethod
     def _resolve_profile_by(
@@ -1544,7 +1825,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         display_group_col: str | None = None,
         dt_col: str | None = None,
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
-        risk_corr_baseline_df: pl.DataFrame | None = None,
+        risk_corr_reference_table: pl.DataFrame | None = None,
         feature_valid_groups_df: pl.DataFrame | None = None,
         monitor_metrics_groups: pl.DataFrame | None = None,
         monitor_metrics_total: pl.DataFrame | None = None,
@@ -1577,7 +1858,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             原始日期列名，用于生成按日缺失率附表。
         missing_by_day_table : Union[pl.DataFrame, pd.DataFrame] | None
             已计算好的按日缺失率附表。
-        risk_corr_baseline_df : pl.DataFrame | None
+        risk_corr_reference_table : pl.DataFrame | None
             RiskCorr 基准分布表。
         feature_valid_groups_df : pl.DataFrame | None
             特征有效分组数量表。
@@ -1777,24 +2058,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
         # 中间指标计算
         # RiskCorr (RC) 跨期稳定性逻辑
         # 确定基准序列 (选取时间最早的一组)
-        first_group = metrics_groups.select(pl.col(group_col).min()).item()
-        default_baseline_df = (
-            metrics_groups
-            .filter((pl.col(group_col) == first_group) & (pl.col("bin_index") >= 0))
-            .select(["feature", "bin_index", "bad_rate"])
-            .rename({"bad_rate": "base_br"})
-        )
-        if risk_corr_baseline_df is not None and not risk_corr_baseline_df.is_empty():
-            override_features = risk_corr_baseline_df.get_column("feature").unique().to_list()
-            baseline_df = pl.concat(
-                [
-                    default_baseline_df.filter(~pl.col("feature").is_in(override_features)),
-                    risk_corr_baseline_df.select(["feature", "bin_index", "base_br"]),
-                ],
-                how="vertical_relaxed",
+        baseline_df = (
+            risk_corr_reference_table
+            if risk_corr_reference_table is not None
+            else pl.DataFrame(
+                schema={
+                    "y": pl.String,
+                    "feature": pl.String,
+                    "bin_index": pl.Int16,
+                    "base_br": pl.Float64,
+                    "source": pl.String,
+                }
             )
-        else:
-            baseline_df = default_baseline_df
+        )
+        baseline_df = baseline_df.select(["feature", "bin_index", "base_br"])
 
         _ = feature_valid_groups_df
         monitoring_groups = self._merge_feature_frame(metrics_groups, monitor_metrics_groups)
@@ -1865,6 +2142,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
                   .fill_nan(1.0)
                   .alias("risk_corr")
             )
+        )
+        risk_corr_long = self._build_risk_corr_long(
+            all_metrics_for_corr,
+            baseline_df,
+            group_col=group_col,
         )
         _ = _null_metric_for_invalid_groups
 
@@ -2110,6 +2392,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
             feature_data_source=feature_source_map or {},
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
+            risk_corr_reference_table=self._format_output(
+                risk_corr_reference_table
+                if risk_corr_reference_table is not None
+                else self._empty_risk_corr_reference_table(self.target),
+            ),
         )
 
 from mars.analysis._risk_profile import profile_risk as profile_risk  # noqa: E402

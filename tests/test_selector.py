@@ -265,7 +265,7 @@ def test_stats_selector_preserves_selected_feature_order(sample_credit_df):
     )
 
 
-def test_stats_selector_propagates_feature_start_aware_baseline(feature_start_aware_df):
+def test_stats_selector_propagates_feature_start_aware_reference(feature_start_aware_df):
     selector = MarsStatsSelector(
         skip_fine_scan=True,
         rough_binning_params={"method": "quantile", "n_bins": 2, "min_bin_size": 0.05, "merge_small_bins": True},
@@ -277,12 +277,12 @@ def test_stats_selector_propagates_feature_start_aware_baseline(feature_start_aw
         features=["x"],
         time_col="biz_dt",
         time_grain="month",
-        feature_start_aware_baseline=True,
+        feature_start_aware_reference=True,
     )
     report = selector.get_binning_report(feature_start_aware_df)
 
-    assert report.report_meta["feature_start_aware_baseline"] is True
-    assert report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}
+    assert report.report_meta["feature_start_aware_reference"] is True
+    assert report.report_meta["feature_start_reference_dates"] == {"x": "2024-02-15"}
 
 
 def test_stats_selector_handles_notebook_mock_data_with_group_context() -> None:

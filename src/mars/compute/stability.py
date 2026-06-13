@@ -1,12 +1,14 @@
-"""分析与监控共用的 PSI/稳定性算子。"""
+"""稳定性相关表达式工厂。"""
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import polars as pl
 
 from mars.core.constants import METRIC_EPSILON
+
+RiskCorrBaseline = Literal["total", "first_group", "benchmark"]
 
 
 def psi_valid_condition(
@@ -44,60 +46,99 @@ def psi_contribution_expr(
     return (actual_expr - expected_expr) * (actual_expr / (expected_expr + epsilon)).log()
 
 
-def with_psi_from_counts(
-    df: pl.DataFrame,
+def psi_exprs(
+    group_keys: Sequence[str],
     *,
-    group_col: str,
-    feature_col: str = "feature",
     bin_col: str = "bin_index",
     count_col: str = "count",
     expected_dist_col: str = "expected_dist",
+    total_count_col: str = "total_count_psi",
+    total_expected_dist_col: str = "total_expected_dist_psi",
+    actual_prob_col: str = "act_prob_clean",
+    expected_prob_col: str = "exp_prob_clean",
     output_col: str = "psi_bin",
     include_missing: bool = True,
     include_special: bool = True,
     epsilon: float = METRIC_EPSILON,
-) -> pl.DataFrame:
-    """基于分组计数与期望分布计算分箱级 PSI。"""
+) -> list[pl.Expr]:
+    """构造 PSI 支撑列与分箱贡献表达式列表。"""
+    partitions = list(group_keys)
     valid_condition = psi_valid_condition(
         pl.col(bin_col),
         include_missing=include_missing,
         include_special=include_special,
         is_numeric_bin=True,
     )
-    with_totals = df.with_columns(
-        [
-            pl.col(count_col)
-            .filter(valid_condition)
-            .sum()
-            .over([group_col, feature_col])
-            .alias("total_count_psi"),
-            pl.col(expected_dist_col)
-            .filter(valid_condition)
-            .sum()
-            .over([group_col, feature_col])
-            .alias("total_expected_dist_psi"),
-        ]
+    total_count_expr = (
+        pl.col(count_col)
+        .filter(valid_condition)
+        .sum()
+        .over(partitions)
     )
-    return (
-        with_totals.with_columns(
-            [
-                (pl.col(count_col) / (pl.col("total_count_psi") + epsilon)).alias("act_prob_clean"),
-                (
-                    pl.col(expected_dist_col)
-                    / (pl.col("total_expected_dist_psi") + epsilon)
-                ).alias("exp_prob_clean"),
-            ]
-        )
-        .with_columns(
+    total_expected_expr = (
+        pl.col(expected_dist_col)
+        .filter(valid_condition)
+        .sum()
+        .over(partitions)
+    )
+    actual_prob_expr = pl.col(count_col) / (total_count_expr + epsilon)
+    expected_prob_expr = pl.col(expected_dist_col) / (total_expected_expr + epsilon)
+    return [
+        total_count_expr.alias(total_count_col),
+        total_expected_expr.alias(total_expected_dist_col),
+        actual_prob_expr.alias(actual_prob_col),
+        expected_prob_expr.alias(expected_prob_col),
+        (
             pl.when(valid_condition)
             .then(
                 psi_contribution_expr(
-                    pl.col("act_prob_clean"),
-                    pl.col("exp_prob_clean"),
+                    actual_prob_expr,
+                    expected_prob_expr,
                     epsilon=epsilon,
-                )
+                ),
             )
             .otherwise(None)
             .alias(output_col)
+        ),
+    ]
+
+
+def normalize_risk_corr_baseline(value: str | None) -> RiskCorrBaseline:
+    """标准化并校验 RiskCorr 基准模式。"""
+    normalized = str(value or "total").strip().lower()
+    valid_modes = {"total", "first_group", "benchmark"}
+    if normalized not in valid_modes:
+        raise ValueError(
+            "risk_corr_baseline must be one of {'total', 'first_group', 'benchmark'}, "
+            f"got {value!r}.",
         )
+    return normalized  # type: ignore[return-value]
+
+
+def risk_corr_expr(
+    *,
+    bad_rate_col: str = "bad_rate",
+    reference_col: str = "base_br",
+    observed_count_col: str = "observed_count",
+    output_col: str = "risk_corr",
+) -> pl.Expr:
+    """构造分组级 RC 聚合表达式。"""
+    return (
+        pl.when(pl.col(observed_count_col).sum() <= 0)
+        .then(pl.lit(None).cast(pl.Float64))
+        .when(pl.len() > 1)
+        .then(pl.corr(bad_rate_col, reference_col, method="spearman"))
+        .otherwise(pl.lit(1.0))
+        .fill_nan(1.0)
+        .alias(output_col)
     )
+
+
+__all__ = [
+    "RiskCorrBaseline",
+    "normalize_risk_corr_baseline",
+    "psi_contribution_expr",
+    "psi_exprs",
+    "psi_valid_condition",
+    "risk_corr_expr",
+]

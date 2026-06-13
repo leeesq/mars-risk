@@ -8,6 +8,7 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis.report import MarsBinningReport
+from mars.compute import RiskCorrBaseline
 from mars.feature.base import MarsBinnerBase
 from mars.utils.logger import logger
 
@@ -24,7 +25,8 @@ def profile_risk(
     group_col: str | None = None,
     time_col: str | None = None,
     time_grain: str | None = None,
-    feature_start_aware_baseline: bool = False,
+    feature_start_aware_reference: bool = False,
+    risk_corr_baseline: RiskCorrBaseline = "total",
     psi_include_missing: bool = False,
     psi_include_special: bool = False,
     binning_type: Literal["native", "optimal", "lite_opt"] = "native",
@@ -57,7 +59,9 @@ def profile_risk(
         原始日期列名。
     time_grain : str | None
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-    feature_start_aware_baseline : bool
+    feature_start_aware_reference : bool
+        RC 鍙傜収鍙ｅ緞锛岄粯璁ゆ寜 `Total` 鍒嗙鍧忕巼璁＄畻涓€鑷存€с€?
+    risk_corr_baseline : {"total", "first_group", "benchmark"}
         是否按特征首次出现的分组选择 PSI 基准。
     psi_include_missing : bool
         计算 PSI 时是否纳入缺失值箱。
@@ -118,6 +122,8 @@ def profile_risk(
     primary_evaluator = MarsBinEvaluator(
         binning_type=binning_type,
         binner_params=effective_binner_params,
+        feature_start_aware_reference=feature_start_aware_reference,
+        risk_corr_baseline=risk_corr_baseline,
     )
     primary_run = primary_evaluator.evaluate(
         df=df,
@@ -128,7 +134,8 @@ def profile_risk(
         group_col=group_col,
         time_col=time_col,
         time_grain=time_grain,
-        feature_start_aware_baseline=feature_start_aware_baseline,
+        feature_start_aware_reference=feature_start_aware_reference,
+        risk_corr_baseline=risk_corr_baseline,
         psi_include_missing=psi_include_missing,
         psi_include_special=psi_include_special,
         benchmark_df=benchmark_df,
@@ -149,11 +156,17 @@ def profile_risk(
 
         p_summary = to_pl(primary_report.summary_table).with_columns(pl.lit(primary_target).alias("target"))
         p_detail = to_pl(primary_report.detail_table)
+        p_reference = to_pl(primary_report.risk_corr_reference_table)
         all_details: list[pl.DataFrame] = [p_detail]
         all_summaries: list[pl.DataFrame] = [p_summary]
+        all_references: list[pl.DataFrame] = [p_reference]
 
         for sec_target in target_list[1:]:
-            sec_run = MarsBinEvaluator(binning_type=binning_type).evaluate(
+            sec_run = MarsBinEvaluator(
+                binning_type=binning_type,
+                feature_start_aware_reference=feature_start_aware_reference,
+                risk_corr_baseline=risk_corr_baseline,
+            ).evaluate(
                 df=df,
                 target=sec_target,
                 features=features,
@@ -162,7 +175,8 @@ def profile_risk(
                 group_col=group_col,
                 time_col=time_col,
                 time_grain=time_grain,
-                feature_start_aware_baseline=feature_start_aware_baseline,
+                feature_start_aware_reference=feature_start_aware_reference,
+                risk_corr_baseline=risk_corr_baseline,
                 psi_include_missing=psi_include_missing,
                 psi_include_special=psi_include_special,
                 benchmark_df=benchmark_df,
@@ -173,12 +187,18 @@ def profile_risk(
             all_summaries.append(
                 to_pl(sec_run.report.summary_table).with_columns(pl.lit(sec_target).alias("target"))
             )
+            all_references.append(to_pl(sec_run.report.risk_corr_reference_table))
 
         final_detail: pl.DataFrame | pd.DataFrame = pl.concat(all_details, how="vertical_relaxed")
         final_summary: pl.DataFrame | pd.DataFrame = pl.concat(all_summaries, how="vertical_relaxed")
+        final_reference: pl.DataFrame | pd.DataFrame = pl.concat(
+            all_references,
+            how="vertical_relaxed",
+        )
         if input_is_pandas:
             final_detail = final_detail.to_pandas()
             final_summary = final_summary.to_pandas()
+            final_reference = final_reference.to_pandas()
 
         logger.info("`trend_tables` in the merged report contains primary-target data only.")
         merged_meta = dict(primary_report.report_meta or {})
@@ -204,6 +224,7 @@ def profile_risk(
             feature_data_source=primary_report.feature_data_source,
             dt_col=primary_report.dt_col,
             missing_by_day_table=primary_report.missing_by_day_table,
+            risk_corr_reference_table=final_reference,
             report_meta=merged_meta,
         )
         final_targets = [str(t) for t in target_list]

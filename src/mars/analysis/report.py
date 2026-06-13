@@ -13,6 +13,7 @@ import pandas as pd
 import polars as pl
 
 from mars.analysis._report_utils import _as_pandas_frame
+from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE
 from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
 from mars.reporting.plotter import MarsPlotter
@@ -713,6 +714,7 @@ class MarsBinningReport:
         feature_data_source: Dict[str, str] | None = None,
         dt_col: str | None = None,
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
+        risk_corr_reference_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
         report_meta: Dict[str, Any] | None = None,
     ) -> None:
         """
@@ -748,6 +750,7 @@ class MarsBinningReport:
         self.feature_data_source = feature_data_source or {}
         self.dt_col = dt_col
         self._missing_by_day = missing_by_day_table
+        self._risk_corr_reference = risk_corr_reference_table
         self._report_meta = report_meta or {}
 
     @property
@@ -850,6 +853,18 @@ class MarsBinningReport:
         return self._report_meta
 
     @property
+    def risk_corr_reference_table(self) -> Union[pl.DataFrame, pd.DataFrame] | None:
+        """
+        返回 RC 参考坏率表。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame or None
+            报告生成时保存的 RC 参考表。
+        """
+        return self._risk_corr_reference
+
+    @property
     def detail_group_col(self) -> str | None:
         """
         返回明细表内部使用的分组列名。
@@ -911,6 +926,62 @@ class MarsBinningReport:
         }
         return sort_key_map.get(str(sort_by).lower(), str(sort_by))
 
+    def _resolve_plot_risk_corr_baseline(
+        self,
+        risk_corr_baseline: RiskCorrBaseline | None,
+    ) -> RiskCorrBaseline:
+        """解析绘图阶段生效的 RC 基准。"""
+        meta_baseline = self.report_meta.get("risk_corr_baseline")
+        return normalize_risk_corr_baseline(risk_corr_baseline or meta_baseline or "total")
+
+    @staticmethod
+    def _build_plot_risk_corr_reference(
+        detail_pd: pd.DataFrame,
+        *,
+        group_col: str,
+        baseline: RiskCorrBaseline,
+        current_target: str | None,
+        saved_reference: pd.DataFrame | None,
+    ) -> pd.DataFrame:
+        """按目标和基准模式解析绘图所需的 RC 参考表。"""
+        if baseline == "benchmark":
+            if saved_reference is None or saved_reference.empty:
+                raise ValueError(
+                    "`risk_corr_baseline='benchmark'` requires a saved reference table in the report.",
+                )
+            reference_pd = saved_reference.copy()
+            if current_target is not None and "y" in reference_pd.columns:
+                reference_pd = reference_pd[reference_pd["y"].astype(str) == current_target].copy()
+            if reference_pd.empty:
+                raise ValueError(
+                    f"Target {current_target!r} does not have benchmark RC reference data.",
+                )
+            return reference_pd[["feature", "bin_index", "base_br"]].copy()
+
+        normal_detail = detail_pd[detail_pd["bin_index"] >= 0].copy()
+        if normal_detail.empty:
+            return pd.DataFrame(columns=["feature", "bin_index", "base_br"])
+
+        if baseline == "total":
+            total_reference = normal_detail[normal_detail[group_col].astype(str) == "Total"].copy()
+            return total_reference.rename(columns={"bad_rate": "base_br"})[
+                ["feature", "bin_index", "base_br"]
+            ].copy()
+
+        groups = sorted(
+            group
+            for group in normal_detail[group_col].astype(str).drop_duplicates().tolist()
+            if group != "Total"
+        )
+        if not groups:
+            return pd.DataFrame(columns=["feature", "bin_index", "base_br"])
+        first_group = groups[0]
+        return (
+            normal_detail[normal_detail[group_col].astype(str) == first_group]
+            .rename(columns={"bad_rate": "base_br"})[["feature", "bin_index", "base_br"]]
+            .copy()
+        )
+
     def _resolve_plot_features(
         self,
         *,
@@ -957,6 +1028,7 @@ class MarsBinningReport:
         features: str | List[str] | None = None,
         *,
         target: str | List[str] | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -1037,6 +1109,11 @@ class MarsBinningReport:
             )
 
         summary_pd = _as_pandas_frame(self.summary_table).copy()
+        reference_pd = (
+            _as_pandas_frame(self.risk_corr_reference_table).copy()
+            if self.risk_corr_reference_table is not None
+            else None
+        )
         requested_targets = self._normalize_name_list(target)
         if "y" in detail_pd.columns and detail_pd["y"].notna().any():
             available_targets = detail_pd["y"].astype(str).drop_duplicates().tolist()
@@ -1086,14 +1163,27 @@ class MarsBinningReport:
                 if current_target not in {None, "", "dummy_target"}
                 else "Target"
             )
+            effective_risk_corr_baseline = self._resolve_plot_risk_corr_baseline(
+                risk_corr_baseline,
+            )
+            current_reference = self._build_plot_risk_corr_reference(
+                current_detail,
+                group_col=plot_group_col,
+                baseline=effective_risk_corr_baseline,
+                current_target=current_target,
+                saved_reference=reference_pd,
+            )
             MarsPlotter.plot_feature_binning_risk_trend_batch(
                 df_detail=current_detail,
                 features=plot_features,
                 group_col=plot_group_col,
                 target_name=display_target,
+                target_key=current_target,
                 dpi=dpi,
                 sort_by="",
                 ascending=ascending,
+                risk_corr_reference_df=current_reference,
+                risk_corr_baseline=effective_risk_corr_baseline,
             )
 
     def _repr_html_(self) -> str:
@@ -1444,8 +1534,8 @@ class MarsBinningReport:
         else:
             rate_text = "N/A"
         cards.append(("Event Rate", html.escape(rate_text)))
-        if report_meta.get("feature_start_aware_baseline"):
-            active_features = report_meta.get("feature_start_baseline_features") or []
+        if report_meta.get("feature_start_aware_reference"):
+            active_features = report_meta.get("feature_start_reference_features") or []
             cards.append(
                 (
                     "Start-Aware Baseline",

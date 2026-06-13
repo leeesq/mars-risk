@@ -8,6 +8,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from mars.compute import (
+    binary_distribution_exprs,
+    binary_metric_exprs,
+    ordered_binary_metric_exprs,
+)
 from mars.core.base import MarsTransformer
 from mars.core.constants import METRIC_EPSILON
 from mars.utils.decorators import time_it
@@ -479,6 +484,19 @@ class MarsBinnerBase(MarsTransformer):
         if self._cache_X is None or self._cache_y is None:
             logger.warning("No training data cached. WOE cannot be computed.")
             return
+
+        logger.info(
+            "Materializing WOE mappings by reusing profile_bin_performance().",
+        )
+        y_series = pl.Series(name="_y_tmp", values=self._cache_y)
+        self.profile_bin_performance(
+            self._cache_X,
+            y_series,
+            update_woe=True,
+            batch_size=batch_size,
+            include_bin_index=True,
+        )
+        return
 
         n_cols = len(self.bin_cuts_) + len(self.cat_cuts_)
         logger.info(f"Materializing WOE mappings for {n_cols} features.")
@@ -968,6 +986,119 @@ class MarsBinnerBase(MarsTransformer):
         gc.collect()
 
         # 基础计算
+        stats_df = (
+            stats_df
+            .with_columns(pl.col("count").alias("observed_count"))
+            .with_columns(binary_distribution_exprs(["feature"]))
+            .with_columns(
+                binary_metric_exprs(
+                    actual_dist_col="count_dist",
+                    lift_col="Lift",
+                    iv_bin_col="bin_iv",
+                )
+            )
+            .with_columns(pl.col("woe").fill_null(-999.0).alias("_woe_sort_key"))
+            .sort(["feature", "_woe_sort_key", "bin_index"])
+            .with_columns(
+                ordered_binary_metric_exprs(
+                    ["feature"],
+                    ks_bin_col="bin_ks",
+                    auc_bin_col="bin_auc_contrib",
+                )
+            )
+            .with_columns(
+                [
+                    pl.col("bin_iv").sum().over("feature").alias("IV"),
+                    pl.col("bin_ks").max().over("feature").alias("KS"),
+                    pl.col("bin_auc_contrib").sum().over("feature").alias("AUC"),
+                ]
+            )
+            .with_columns(
+                pl.when(pl.col("AUC") < 0.5)
+                .then(1 - pl.col("AUC"))
+                .otherwise(pl.col("AUC"))
+                .alias("AUC")
+            )
+            .drop(["bin_auc_contrib", "_woe_sort_key"])
+        )
+
+        if update_woe:
+            woe_data = stats_df.select(["feature", "bin_index", "woe"]).to_dict(
+                as_series=False,
+            )
+            from collections import defaultdict
+
+            temp_woe_map = defaultdict(dict)
+            for f, b, w in zip(
+                woe_data["feature"],
+                woe_data["bin_index"],
+                woe_data["woe"],
+                strict=False,
+            ):
+                if b is not None and not (isinstance(b, float) and np.isnan(b)):
+                    temp_woe_map[f][int(b)] = w
+            self.bin_woes_.update(temp_woe_map)
+
+        mapping_rows = []
+        for col, map_dict in self.bin_mappings_.items():
+            for idx, label in map_dict.items():
+                mapping_rows.append(
+                    {"feature": col, "bin_index": idx, "bin_label": label},
+                )
+
+        if not mapping_rows:
+            return self._format_output(stats_df)
+
+        mapping_df = pl.DataFrame(
+            mapping_rows,
+            schema={
+                "feature": pl.Utf8,
+                "bin_index": pl.Int16,
+                "bin_label": pl.Utf8,
+            },
+        )
+
+        final_df = (
+            stats_df
+            .join(mapping_df, on=["feature", "bin_index"], how="left")
+            .with_columns((pl.col("bin_index") < 0).alias("_is_special"))
+            .sort(["feature", "_is_special", "bin_index"])
+            .drop("_is_special")
+            .select(
+                [
+                    pl.col("feature"),
+                    *([pl.col("bin_index")] if include_bin_index else []),
+                    pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)),
+                    pl.all().exclude(["feature", "bin_index", "bin_label"]),
+                ]
+            )
+        )
+
+        trend_df = self._build_trend_shape_frame(
+            stats_df.lazy()
+            .filter(pl.col("bin_index") >= 0)
+            .sort(["feature", "bin_index"])
+            .group_by("feature")
+            .agg(pl.col("woe"))
+            .collect(),
+            trend_col_name="trend_shape",
+        )
+
+        final_df = (
+            final_df
+            .join(trend_df, on="feature", how="left")
+            .with_columns(pl.col("trend_shape").fill_null("undefined"))
+        )
+
+        base_cols = ["feature"]
+        if include_bin_index:
+            base_cols.append("bin_index")
+        base_cols.extend(["bin_label", "trend_shape"])
+        other_cols = [c for c in final_df.columns if c not in base_cols]
+
+        out_df = final_df.select(base_cols + other_cols)
+        return self._format_output(out_df)
+
         stats_df = stats_df.with_columns([
             (pl.col("count") - pl.col("bad")).alias("good")
         ]).with_columns([

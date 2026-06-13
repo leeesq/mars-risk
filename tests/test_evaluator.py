@@ -89,17 +89,23 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
         features: list[str],
         group_col: str = "month",
         target_name: str = "Target",
+        target_key: str | None = None,
         dpi: int = 150,
         sort_by: str = "iv",
         ascending: bool = False,
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        risk_corr_baseline: str = "total",
     ) -> None:
         captured["df_detail"] = df_detail
         captured["features"] = features
         captured["group_col"] = group_col
         captured["target_name"] = target_name
+        captured["target_key"] = target_key
         captured["dpi"] = dpi
         captured["sort_by"] = sort_by
         captured["ascending"] = ascending
+        captured["risk_corr_reference_df"] = risk_corr_reference_df
+        captured["risk_corr_baseline"] = risk_corr_baseline
 
     monkeypatch.setattr(
         MarsPlotter,
@@ -114,8 +120,11 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
     assert captured["features"] == ["income"]
     assert captured["group_col"] == "mars_group"
     assert captured["target_name"] == "target"
+    assert captured["target_key"] == "target"
     assert captured["dpi"] == 90
     assert captured["sort_by"] == ""
+    assert captured["risk_corr_baseline"] == "total"
+    assert captured["risk_corr_reference_df"] is not None
 
 
 def test_binning_report_plot_risk_trends_supports_multi_target_filter(
@@ -140,9 +149,12 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
         features: list[str],
         group_col: str = "month",
         target_name: str = "Target",
+        target_key: str | None = None,
         dpi: int = 150,
         sort_by: str = "iv",
         ascending: bool = False,
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        risk_corr_baseline: str = "total",
     ) -> None:
         calls.append(
             {
@@ -150,9 +162,12 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
                 "features": features,
                 "group_col": group_col,
                 "target_name": target_name,
+                "target_key": target_key,
                 "dpi": dpi,
                 "sort_by": sort_by,
                 "ascending": ascending,
+                "risk_corr_reference_df": risk_corr_reference_df,
+                "risk_corr_baseline": risk_corr_baseline,
             }
         )
 
@@ -168,8 +183,11 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
     assert run.report.detail_group_col == "mars_group"
     assert len(calls) == 1
     assert calls[0]["target_name"] == "target_alt"
+    assert calls[0]["target_key"] == "target_alt"
     assert calls[0]["group_col"] == "mars_group"
     assert calls[0]["sort_by"] == ""
+    assert calls[0]["risk_corr_baseline"] == "total"
+    assert calls[0]["risk_corr_reference_df"] is not None
     assert len(calls[0]["features"]) == 1
     assert set(calls[0]["df_detail"]["y"].astype(str).tolist()) == {"target_alt"}
 
@@ -966,7 +984,7 @@ def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv():
     assert "No grouped pivot rows match current filters." in html_text
 
 
-def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(feature_start_aware_df):
+def test_feature_start_aware_reference_reanchors_monthly_psi_and_summary_metrics(feature_start_aware_df):
     default_report, _ = _profile_risk_report(
         feature_start_aware_df,
         target="target",
@@ -982,7 +1000,7 @@ def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(
         features=["x"],
         group_col="month",
         time_col="biz_dt",
-        feature_start_aware_baseline=True,
+        feature_start_aware_reference=True,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 2},
     )
@@ -995,8 +1013,8 @@ def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(
     default_row = default_summary.loc[default_summary["feature"] == "x"].iloc[0]
     psi_row = aware_psi.loc[aware_psi["feature"] == "x"].iloc[0]
 
-    assert aware_report.report_meta["feature_start_aware_baseline"] is True
-    assert aware_report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}
+    assert aware_report.report_meta["feature_start_aware_reference"] is True
+    assert aware_report.report_meta["feature_start_reference_dates"] == {"x": "2024-02-15"}
     assert default_row["psi_max"] > 0.1
     assert "202401" not in aware_psi.columns
     assert psi_row["202402"] == pytest.approx(0.0, abs=1e-9)
@@ -1007,7 +1025,7 @@ def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(
 
 
 @pytest.mark.parametrize("include_missing", [False, True])
-def test_feature_start_aware_baseline_exact_monthly_cutover_keeps_feb_psi_zero(include_missing):
+def test_feature_start_aware_reference_exact_monthly_cutover_keeps_feb_psi_zero(include_missing):
     df = _make_exact_start_aware_monthly_df()
     evaluator = MarsBinEvaluator(binner_params={"method": "quantile", "n_bins": 2})
 
@@ -1017,7 +1035,7 @@ def test_feature_start_aware_baseline_exact_monthly_cutover_keeps_feb_psi_zero(i
         features=["EXT_SOURCE_1"],
         time_col="dt",
         time_grain="month",
-        feature_start_aware_baseline=True,
+        feature_start_aware_reference=True,
         psi_include_missing=include_missing,
     )
     report = run.report
@@ -1025,8 +1043,8 @@ def test_feature_start_aware_baseline_exact_monthly_cutover_keeps_feb_psi_zero(i
     psi_df = _as_pandas(report.trend_tables["psi"])
     psi_row = psi_df.loc[psi_df["feature"] == "EXT_SOURCE_1"].iloc[0]
 
-    assert report.report_meta["feature_start_aware_baseline"] is True
-    assert report.report_meta["feature_start_baseline_dates"] == {"EXT_SOURCE_1": "2018-02-15"}
+    assert report.report_meta["feature_start_aware_reference"] is True
+    assert report.report_meta["feature_start_reference_dates"] == {"EXT_SOURCE_1": "2018-02-15"}
     assert "201801" not in psi_df.columns
     assert psi_row["201802"] == pytest.approx(0.0, abs=1e-9)
     assert psi_row["201803"] == pytest.approx(0.0, abs=1e-9)
@@ -1099,14 +1117,14 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
     assert scoped_run.report.report_meta["psi_include_special"] is True
 
 
-def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(feature_start_aware_df):
+def test_feature_start_aware_reference_supports_custom_profile_by_with_dt_col(feature_start_aware_df):
     report, _ = _profile_risk_report(
         feature_start_aware_df,
         target="target",
         features=["x"],
         group_col="segment",
         time_col="biz_dt",
-        feature_start_aware_baseline=True,
+        feature_start_aware_reference=True,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 2},
     )
@@ -1114,8 +1132,8 @@ def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(fea
     psi_df = _as_pandas(report.trend_tables["psi"])
     psi_row = psi_df.loc[psi_df["feature"] == "x"].iloc[0]
 
-    assert report.report_meta["feature_start_aware_baseline"] is True
-    assert report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}
+    assert report.report_meta["feature_start_aware_reference"] is True
+    assert report.report_meta["feature_start_reference_dates"] == {"x": "2024-02-15"}
     assert "ACTIVE_A" in psi_df.columns
     assert "ACTIVE_B" in psi_df.columns
     assert "PRE" not in psi_df.columns
@@ -1123,7 +1141,7 @@ def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(fea
     assert psi_row["ACTIVE_B"] == pytest.approx(0.0, abs=1e-9)
 
 
-def test_feature_start_aware_baseline_is_ignored_when_benchmark_df_is_provided(feature_start_aware_df, caplog):
+def test_feature_start_aware_reference_is_ignored_when_benchmark_df_is_provided(feature_start_aware_df, caplog):
     benchmark_df = feature_start_aware_df.select(["biz_dt", "x", "target"])
 
     with caplog.at_level("WARNING", logger="mars"):
@@ -1134,12 +1152,12 @@ def test_feature_start_aware_baseline_is_ignored_when_benchmark_df_is_provided(f
             group_col="month",
             time_col="biz_dt",
             benchmark_df=benchmark_df,
-            feature_start_aware_baseline=True,
+            feature_start_aware_reference=True,
             binning_type="native",
             binner_params={"method": "quantile", "n_bins": 2},
         )
 
-    assert report.report_meta["feature_start_aware_baseline"] is False
+    assert report.report_meta["feature_start_aware_reference"] is False
     assert any("ignored because `benchmark_df` was provided" in message for message in caplog.messages)
 
 
