@@ -144,6 +144,26 @@ class MarsPlotter:
         display(HTML(html_code))
 
     @staticmethod
+    def _build_rollup_row_mask(df_detail: pd.DataFrame) -> pd.Series:
+        """标记分箱明细中的汇总行。"""
+        rollup_mask = pd.Series(False, index=df_detail.index, dtype=bool)
+        if "bin_label" in df_detail.columns:
+            rollup_mask = rollup_mask | (df_detail["bin_label"].astype(str) == "Total")
+        if "bin_type" in df_detail.columns:
+            rollup_mask = rollup_mask | (df_detail["bin_type"].astype(str) == "汇总组")
+        return rollup_mask
+
+    @staticmethod
+    def _summarize_binning_metrics(df_detail: pd.DataFrame) -> tuple[float, float, float]:
+        """按单个面板口径汇总 IV、KS 和 AUC。"""
+        iv_value = float(df_detail["iv_bin"].sum()) if "iv_bin" in df_detail.columns else 0.0
+        ks_value = float(df_detail["ks_bin"].max()) if "ks_bin" in df_detail.columns else 0.0
+        auc_value = float(df_detail["auc_bin"].sum()) if "auc_bin" in df_detail.columns else 0.0
+        if auc_value < 0.5:
+            auc_value = 1 - auc_value
+        return iv_value, ks_value, auc_value
+
+    @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
         """将 Matplotlib 图表序列化为 Base64 PNG 字符串。"""
         buf = BytesIO()
@@ -282,36 +302,51 @@ class MarsPlotter:
             logger.error("Group column '%s' not found in detail table.", group_col)
             return None
 
-        plot_df = df_feat.copy()
-        if "bin_label" in plot_df.columns:
-            plot_df = plot_df[plot_df["bin_label"].astype(str) != "Total"]
-        if "bin_type" in plot_df.columns:
-            plot_df = plot_df[plot_df["bin_type"].astype(str) != "汇总组"]
+        group_values = df_feat[group_col].astype(str)
+        has_total_panel = "Total" in group_values.values
 
-        if "Total" in df_feat[group_col].values:
-            df_total = df_feat[df_feat[group_col] == "Total"]
+        # 绘图时剔除汇总行，但保留 `Total` 分组下的正常分箱。
+        rollup_mask = MarsPlotter._build_rollup_row_mask(df_feat)
+        plot_df = df_feat.loc[~rollup_mask].copy()
+
+        if has_total_panel:
+            total_metric_df = plot_df[plot_df[group_col].astype(str) == "Total"].copy()
+            total_rollup_df = df_feat[
+                (df_feat[group_col].astype(str) == "Total") & rollup_mask
+            ].copy()
         else:
-            df_total = df_feat
+            total_metric_df = plot_df.copy()
+            total_rollup_df = df_feat.loc[rollup_mask].copy()
 
-        total_count = df_total["count"].sum() if "total_count" not in df_total.columns else df_total["total_count"].iloc[0]
-        has_target_global = "bad_rate" in df_total.columns and df_total["bad_rate"].notna().any()
+        if not total_rollup_df.empty and "total_count" in total_rollup_df.columns:
+            total_count = int(total_rollup_df["total_count"].iloc[0])
+        elif "total_count" in total_metric_df.columns and not total_metric_df.empty:
+            total_count = int(total_metric_df["total_count"].iloc[0])
+        else:
+            total_count = int(total_metric_df["count"].sum()) if not total_metric_df.empty else 0
+
+        has_target_global = (
+            "bad_rate" in total_metric_df.columns
+            and total_metric_df["bad_rate"].notna().any()
+        )
 
         if has_target_global:
-            global_iv = df_total["iv_bin"].sum()
-            global_ks = df_total["ks_bin"].max()
-            global_auc = df_total["auc_bin"].sum()
-            if global_auc < 0.5:
-                global_auc = 1 - global_auc
+            global_iv, global_ks, global_auc = MarsPlotter._summarize_binning_metrics(
+                total_metric_df,
+            )
 
         trend_str = "n.a."
         if has_target_global:
-            if "trend" in df_total.columns:
-                raw_trend = df_total["trend"].iloc[0]
+            trend_source_df = total_rollup_df if not total_rollup_df.empty else total_metric_df
+            if "trend" in trend_source_df.columns:
+                raw_trend = trend_source_df["trend"].iloc[0]
                 if pd.notna(raw_trend) and str(raw_trend).lower() != "undefined":
                     trend_str = str(raw_trend)
 
             if trend_str == "n.a.":
-                df_trend_calc = df_total[df_total["bin_index"] >= 0].sort_values("bin_index")
+                df_trend_calc = total_metric_df[
+                    total_metric_df["bin_index"] >= 0
+                ].sort_values("bin_index")
                 if len(df_trend_calc) > 1:
                     x_arr = df_trend_calc["bin_index"].values
                     y_arr = df_trend_calc["bad_rate"].values
@@ -326,7 +361,7 @@ class MarsPlotter:
                     else:
                         trend_str = "flat"
 
-        missing_row = df_total[df_total["bin_index"] == -1]
+        missing_row = total_metric_df[total_metric_df["bin_index"] == -1]
         if not missing_row.empty and total_count > 0:
             miss_count = missing_row["count"].sum()
             miss_rate = miss_count / total_count
@@ -334,7 +369,7 @@ class MarsPlotter:
         else:
             miss_str = "nan%"
 
-        groups = [g for g in plot_df[group_col].unique() if g != "Total"]
+        groups = [g for g in plot_df[group_col].astype(str).unique() if g != "Total"]
         groups = sorted(groups)
         time_range = f"[{groups[0]} ~ {groups[-1]}]" if groups else ""
 
@@ -348,7 +383,7 @@ class MarsPlotter:
         else:
             base_vec = None
 
-        all_groups = groups
+        all_groups = groups + (["Total"] if has_total_panel else [])
 
         n_panels = len(all_groups)
         if n_panels == 0:
@@ -499,10 +534,7 @@ class MarsPlotter:
                 avg_bad_rate = total_bad / total_count_g if total_count_g > 0 else 0
                 ax.set_title(f"{group}   ({int(total_bad)}/{int(total_count_g)}, {avg_bad_rate:.1%})", fontsize=fs_title + 0.85, y=1.05, ha="center")
 
-                iv_val = df_g["iv_bin"].sum()
-                ks_val = df_g["ks_bin"].max()
-                auc_val = df_g["auc_bin"].sum()
-                auc_val = 1 - auc_val if auc_val < 0.5 else auc_val
+                iv_val, ks_val, auc_val = MarsPlotter._summarize_binning_metrics(df_g)
 
                 rc_str = f"RC:{rc_val:.2f}" if not np.isnan(rc_val) else "RC:n.a."
                 rc_color = "red" if (not np.isnan(rc_val) and rc_val < 0.7) else "#555555"

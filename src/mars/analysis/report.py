@@ -15,6 +15,7 @@ import polars as pl
 from mars.analysis._report_utils import _as_pandas_frame
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE
 from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
+from mars.reporting.plotter import MarsPlotter
 from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
 
@@ -660,7 +661,7 @@ class MarsProfileReport:
 
         return styler
 
-class MarsEvaluationReport:
+class MarsBinningReport:
     """
     特征效能与稳定性评估报告容器。
 
@@ -697,7 +698,7 @@ class MarsEvaluationReport:
     >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
     >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
     >>> trend_tables = {"psi": pl.DataFrame({"feature": ["age"], "202601": [0.01]})}
-    >>> report = MarsEvaluationReport(summary, trend_tables, detail, group_col="month")
+    >>> report = MarsBinningReport(summary, trend_tables, detail, group_col="month")
     >>> report.get_evaluation_data()[0].height
     1
     """
@@ -708,6 +709,7 @@ class MarsEvaluationReport:
         trend_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         detail_table: Union[pl.DataFrame, pd.DataFrame],
         group_col: str | None = None,
+        detail_group_col: str | None = None,
         feature_data_source: Dict[str, str] | None = None,
         dt_col: str | None = None,
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
@@ -725,7 +727,9 @@ class MarsEvaluationReport:
         detail_table : Union[pl.DataFrame, pd.DataFrame]
             最细粒度的分箱明细表。
         group_col : str | None
-            分组列名（例如：'month' 或 'vintage'）。
+            公开分组语义列名（例如 `'month'` 或 `'vintage'`）。
+        detail_group_col : str | None
+            明细表内部实际使用的分组列名。未显式传入时默认沿用 ``group_col``。
         feature_data_source : Dict[str, str] | None
             特征到数据源标签的映射。
         dt_col : str | None
@@ -740,6 +744,7 @@ class MarsEvaluationReport:
         self._trend_dict = trend_tables
         self._detail = detail_table
         self.group_col = group_col
+        self._detail_group_col = detail_group_col or group_col
         self.feature_data_source = feature_data_source or {}
         self.dt_col = dt_col
         self._missing_by_day = missing_by_day_table
@@ -759,7 +764,7 @@ class MarsEvaluationReport:
         --------
         >>> import polars as pl
         >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12]})
-        >>> report = MarsEvaluationReport(summary, {}, pl.DataFrame())
+        >>> report = MarsBinningReport(summary, {}, pl.DataFrame())
         >>> report.summary_table.height
         1
         """
@@ -779,7 +784,7 @@ class MarsEvaluationReport:
         --------
         >>> import polars as pl
         >>> trend = {"psi": pl.DataFrame({"feature": ["age"], "2026-01": [0.01]})}
-        >>> report = MarsEvaluationReport(pl.DataFrame(), trend, pl.DataFrame())
+        >>> report = MarsBinningReport(pl.DataFrame(), trend, pl.DataFrame())
         >>> sorted(report.trend_tables)
         ['psi']
         """
@@ -799,7 +804,7 @@ class MarsEvaluationReport:
         --------
         >>> import polars as pl
         >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0]})
-        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, detail)
+        >>> report = MarsBinningReport(pl.DataFrame(), {}, detail)
         >>> report.detail_table.height
         1
         """
@@ -819,7 +824,7 @@ class MarsEvaluationReport:
         --------
         >>> import polars as pl
         >>> missing = pl.DataFrame({"feature": ["age"], "date": ["2026-01-01"], "missing_rate": [0.0]})
-        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, pl.DataFrame(), missing_by_day_table=missing)
+        >>> report = MarsBinningReport(pl.DataFrame(), {}, pl.DataFrame(), missing_by_day_table=missing)
         >>> report.missing_by_day_table.height
         1
         """
@@ -838,11 +843,23 @@ class MarsEvaluationReport:
         Examples
         --------
         >>> import polars as pl
-        >>> report = MarsEvaluationReport(pl.DataFrame(), {}, pl.DataFrame(), report_meta={"target": "y"})
+        >>> report = MarsBinningReport(pl.DataFrame(), {}, pl.DataFrame(), report_meta={"target": "y"})
         >>> report.report_meta["target"]
         'y'
         """
         return self._report_meta
+
+    @property
+    def detail_group_col(self) -> str | None:
+        """
+        返回明细表内部使用的分组列名。
+
+        Returns
+        -------
+        str | None
+            分箱明细表中的真实分组列名。
+        """
+        return self._detail_group_col
 
     def get_evaluation_data(self) -> Tuple[
         Union[pl.DataFrame, pd.DataFrame],
@@ -863,11 +880,221 @@ class MarsEvaluationReport:
         >>> import polars as pl
         >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12]})
         >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0]})
-        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> report = MarsBinningReport(summary, {}, detail)
         >>> report.get_evaluation_data()[0].height
         1
         """
         return self.summary_table, self.trend_tables, self.detail_table
+
+    @staticmethod
+    def _normalize_name_list(values: str | List[str] | None) -> List[str] | None:
+        """将单个名称或名称列表统一规范为字符串列表。"""
+        if values is None:
+            return None
+        if isinstance(values, str):
+            return [values]
+        return [str(value) for value in values]
+
+    @staticmethod
+    def _resolve_plot_sort_key(sort_by: str) -> str:
+        """将公开排序字段映射为汇总表中的实际列名。"""
+        sort_key_map = {
+            "iv": "iv",
+            "ks": "ks",
+            "auc": "auc",
+            "psi": "psi_max",
+            "rc": "rc_min",
+            "risk_corr": "rc_min",
+            "mono": "mono",
+            "missing": "missing_max",
+            "lift": "lift_max",
+        }
+        return sort_key_map.get(str(sort_by).lower(), str(sort_by))
+
+    def _resolve_plot_features(
+        self,
+        *,
+        summary_pd: pd.DataFrame,
+        detail_pd: pd.DataFrame,
+        features: str | List[str] | None,
+        target: str | None,
+        sort_by: str,
+        ascending: bool,
+        max_plots: int,
+    ) -> List[str]:
+        """根据显式特征、目标筛选和排序规则确定最终绘图特征列表。"""
+        available_features = detail_pd["feature"].astype(str).drop_duplicates().tolist()
+        requested_features = self._normalize_name_list(features)
+        if requested_features is not None:
+            seen_features: set[str] = set()
+            resolved_features: List[str] = []
+            for feature in requested_features:
+                if feature in available_features and feature not in seen_features:
+                    resolved_features.append(feature)
+                    seen_features.add(feature)
+            return resolved_features
+
+        scoped_summary = summary_pd.copy()
+        if target is not None and "target" in scoped_summary.columns:
+            scoped_summary = scoped_summary[scoped_summary["target"].astype(str) == target]
+
+        sort_key = self._resolve_plot_sort_key(sort_by)
+        if sort_key in scoped_summary.columns:
+            scoped_summary = scoped_summary.sort_values(
+                by=sort_key,
+                ascending=ascending,
+                na_position="last",
+            )
+
+        if not scoped_summary.empty and "feature" in scoped_summary.columns:
+            ordered_features = scoped_summary["feature"].astype(str).drop_duplicates().tolist()
+        else:
+            ordered_features = available_features
+        return ordered_features[:max_plots]
+
+    def plot_risk_trends(
+        self,
+        features: str | List[str] | None = None,
+        *,
+        target: str | List[str] | None = None,
+        sort_by: str = "iv",
+        ascending: bool = False,
+        max_plots: int = 20,
+        dpi: int = 150,
+    ) -> None:
+        """
+        直接展示分箱风险趋势图。
+
+        Parameters
+        ----------
+        features : str | List[str] | None
+            需要绘图的特征名。传入 ``None`` 时，会按 ``sort_by`` 和
+            ``max_plots`` 从汇总表中自动挑选特征。
+        target : str | List[str] | None
+            多目标报告下需要展示的目标列名。传入 ``None`` 时，默认展示报告中的全部目标。
+        sort_by : str
+            未显式指定 ``features`` 时的特征排序字段。支持 ``iv``、``ks``、``auc``、
+            ``psi``、``rc``、``risk_corr``、``mono``、``missing`` 和 ``lift``。
+        ascending : bool
+            是否按 ``sort_by`` 升序选择特征。
+        max_plots : int
+            未显式指定 ``features`` 时，最多展示的特征数量。
+        dpi : int
+            图像显示分辨率。
+
+        Returns
+        -------
+        None
+            图像会直接显示在当前交互环境中，函数本身不返回图形对象。
+
+        Raises
+        ------
+        ValueError
+            当 ``detail_table`` 为空、缺少分组列，或 ``target`` 指向不存在的目标时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12]})
+        >>> detail = pl.DataFrame(
+        ...     {
+        ...         "y": ["target"],
+        ...         "feature": ["age"],
+        ...         "month": ["2026-01"],
+        ...         "bin_index": [0],
+        ...         "bin_label": ["[20, 40)"],
+        ...         "count": [100],
+        ...         "observed_count": [100],
+        ...         "bad": [12],
+        ...         "good": [88],
+        ...         "pct": [1.0],
+        ...         "bad_rate": [0.12],
+        ...         "lift": [1.0],
+        ...         "cum_count": [100],
+        ...         "cum_observed_count": [100],
+        ...         "cum_bad": [12],
+        ...         "cum_bad_rate": [0.12],
+        ...         "psi_bin": [0.0],
+        ...         "ks_bin": [12.0],
+        ...         "auc_bin": [0.61],
+        ...         "iv_bin": [0.12],
+        ...         "total_count": [100],
+        ...         "bin_type": ["正常组"],
+        ...     }
+        ... )
+        >>> report = MarsBinningReport(summary, {}, detail, group_col="month")
+        >>> report.plot_risk_trends(features="age", dpi=80) is None
+        True
+        """
+        detail_pd = _as_pandas_frame(self.detail_table).copy()
+        if detail_pd.empty:
+            raise ValueError("detail_table is empty. Cannot plot risk trends.")
+
+        plot_group_col = self.detail_group_col or "mars_group"
+        if plot_group_col not in detail_pd.columns:
+            raise ValueError(
+                f"Group column '{plot_group_col}' was not found in detail_table."
+            )
+
+        summary_pd = _as_pandas_frame(self.summary_table).copy()
+        requested_targets = self._normalize_name_list(target)
+        if "y" in detail_pd.columns and detail_pd["y"].notna().any():
+            available_targets = detail_pd["y"].astype(str).drop_duplicates().tolist()
+        else:
+            available_targets = []
+
+        if requested_targets is None:
+            target_list: List[str | None] = available_targets if available_targets else [None]
+        else:
+            if not available_targets:
+                target_list = [None]
+            else:
+                target_list = [item for item in requested_targets if item in available_targets]
+                if not target_list:
+                    raise ValueError(
+                        f"Targets {requested_targets!r} were not found in this binning report."
+                    )
+
+        for current_target in target_list:
+            current_detail = detail_pd.copy()
+            if current_target is not None and "y" in current_detail.columns:
+                current_detail = current_detail[
+                    current_detail["y"].astype(str) == current_target
+                ].copy()
+            if current_detail.empty:
+                logger.warning(
+                    "Target '%s' has no detail rows in the current binning report.",
+                    current_target,
+                )
+                continue
+
+            plot_features = self._resolve_plot_features(
+                summary_pd=summary_pd,
+                detail_pd=current_detail,
+                features=features,
+                target=current_target,
+                sort_by=sort_by,
+                ascending=ascending,
+                max_plots=max_plots,
+            )
+            if not plot_features:
+                logger.warning("No features were available for risk trend plotting.")
+                continue
+
+            display_target = (
+                current_target
+                if current_target not in {None, "", "dummy_target"}
+                else "Target"
+            )
+            MarsPlotter.plot_feature_binning_risk_trend_batch(
+                df_detail=current_detail,
+                features=plot_features,
+                group_col=plot_group_col,
+                target_name=display_target,
+                dpi=dpi,
+                sort_by="",
+                ascending=ascending,
+            )
 
     def _repr_html_(self) -> str:
         """返回 Jupyter 环境下的评估摘要面板。"""
@@ -894,6 +1121,7 @@ class MarsEvaluationReport:
         # 查看类操作
         lines.append('👉 <code>.show_summary()</code> &nbsp;<span style="color:#7f8c8d">View Feature Ranking</span>')
         lines.append(f'👉 <code>.show_trend(metric)</code> <span style="color:#7f8c8d">metric: {trend_pills}</span>')
+        lines.append('👉 <code>.plot_risk_trends()</code> &nbsp;<span style="color:#7f8c8d">Show Binning Charts</span>')
 
         # 数据访问与导出入口
         lines.append('<hr style="margin: 8px 0; border: 0; border-top: 1px dashed #ccc;">')
@@ -902,7 +1130,7 @@ class MarsEvaluationReport:
 
         return f"""
         <div style="border-left: 5px solid #8e44ad; background-color: #f4f6f7; padding: 15px; border-radius: 0 5px 5px 0; font-family: 'Segoe UI', sans-serif;">
-            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📉 Mars Feature Evaluation</h3>
+            <h3 style="margin:0 0 10px 0; color:#2c3e50;">📉 Mars Binning Report</h3>
 
             <div style="display: flex; gap: 30px; margin-bottom: 12px; font-size: 0.95em;">
                 <div><strong>🏷️ Features:</strong> {n_feats}</div>
@@ -945,7 +1173,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _format_html_value(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         value: Any,
         *,
         as_percent: bool = False,
@@ -967,7 +1195,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _is_percent_column(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         col_name: Any,
         *,
         metric_name: str | None = None,
@@ -1010,7 +1238,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _three_color_rgb(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         ratio: float,
         *,
         reverse: bool = False,
@@ -1025,12 +1253,12 @@ class MarsEvaluationReport:
         return cls._interpolate_rgb(mid, high, (ratio - 0.5) * 2.0)
 
     @classmethod
-    def _column_colspan(cls: type["MarsEvaluationReport"], col_name: Any) -> int:
+    def _column_colspan(cls: type["MarsBinningReport"], col_name: Any) -> int:
         """根据扁平化列名中的分隔符估算表头 colspan。"""
         return max(1, str(col_name).count("|") + 1)
 
     @classmethod
-    def _format_sort_value(cls: type["MarsEvaluationReport"], value: Any, sort_type: str) -> str:
+    def _format_sort_value(cls: type["MarsBinningReport"], value: Any, sort_type: str) -> str:
         """为前端排序属性生成稳定的字符串化值。"""
         if cls._is_missing_html_value(value):
             return ""
@@ -1118,7 +1346,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _summary_style_rule(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         metric: str | None,
     ) -> Dict[str, Any] | None:
         """解析汇总表指标对应的阈值色阶规则。"""
@@ -1157,7 +1385,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_threshold_legend_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         items: List[Tuple[str, str]],
         *,
         legend_id: str,
@@ -1173,7 +1401,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_dataset_overview_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         report_meta: Dict[str, Any],
     ) -> str:
         """
@@ -1233,7 +1461,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_feature_jump_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         features: List[str],
     ) -> str:
         """构建 Summary 表格的特征跳转控件。"""
@@ -1294,13 +1522,13 @@ class MarsEvaluationReport:
         )
 
     @classmethod
-    def _build_html_styles(cls: type["MarsEvaluationReport"]) -> str:
+    def _build_html_styles(cls: type["MarsBinningReport"]) -> str:
         """返回评估 HTML 报告的样式表。"""
         return build_html_styles()
 
     @classmethod
     def _build_html_runtime_script(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         *,
         summary_filter_columns: list[str],
     ) -> str:
@@ -1309,7 +1537,7 @@ class MarsEvaluationReport:
 
     @classmethod
     def _build_html_document(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         *,
         report_name: str,
         styles: str,
@@ -1346,7 +1574,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_global_tools_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         *,
         feature_jump_html: str,
         source_options: str,
@@ -1626,7 +1854,7 @@ __RUNTIME_SCRIPT__
                     block_html = MarsPlotter.render_feature_binning_risk_trend_html(
                         df_detail=chart_detail_pd,
                         feature=feature,
-                        group_col=self.group_col or "mars_group",
+                        group_col=self.detail_group_col or "mars_group",
                         target_name=y_val,
                         dpi=150,
                     )
@@ -1662,7 +1890,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_threshold_style(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         value: float,
         rule: Dict[str, Any],
     ) -> str:
@@ -1713,7 +1941,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _cell_style(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         value: Any,
         *,
         semantic: str,
@@ -1782,7 +2010,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_enhanced_table_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         df: pd.DataFrame,
         table_id: str,
         *,
@@ -1920,7 +2148,7 @@ __RUNTIME_SCRIPT__
 
     @classmethod
     def _build_grouped_pivot_section_html(
-        cls: type["MarsEvaluationReport"],
+        cls: type["MarsBinningReport"],
         detail_pd: pd.DataFrame,
         *,
         group_col: str,
@@ -2212,7 +2440,7 @@ __RUNTIME_SCRIPT__
         >>> from tempfile import TemporaryDirectory
         >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
         >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
-        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> report = MarsBinningReport(summary, {}, detail)
         >>> with TemporaryDirectory() as tmp:
         ...     path = Path(tmp) / "report.html"
         ...     report.write_html(str(path), include_charts=False, include_detail=False)
@@ -2323,7 +2551,7 @@ __RUNTIME_SCRIPT__
         if not detail_pd.empty:
             pivot_body = self._build_grouped_pivot_section_html(
                 detail_pd,
-                group_col=self.group_col or "mars_group",
+                group_col=self.detail_group_col or "mars_group",
                 feature_sources=feature_sources,
             )
             html_parts.append(
@@ -2400,7 +2628,7 @@ __RUNTIME_SCRIPT__
         with open(path, "w", encoding="utf-8") as f:
             f.write(page_html)
 
-        logger.info("Exported evaluation report to HTML: %s", path)
+        logger.info("Exported binning report to HTML: %s", path)
 
     def show_summary(self,
                      features: Union[str, List[str]] | None = None
@@ -2422,7 +2650,7 @@ __RUNTIME_SCRIPT__
         --------
         >>> import polars as pl
         >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
-        >>> report = MarsEvaluationReport(summary, {}, pl.DataFrame())
+        >>> report = MarsBinningReport(summary, {}, pl.DataFrame())
         >>> hasattr(report.show_summary(features="age"), "to_html")
         True
         """
@@ -2507,7 +2735,7 @@ __RUNTIME_SCRIPT__
         --------
         >>> import polars as pl
         >>> trend = pl.DataFrame({"feature": ["age"], "2026-01": [0.01], "Total": [0.01]})
-        >>> report = MarsEvaluationReport(pl.DataFrame(), {"psi": trend}, pl.DataFrame())
+        >>> report = MarsBinningReport(pl.DataFrame(), {"psi": trend}, pl.DataFrame())
         >>> hasattr(report.show_trend("psi", features="age"), "to_html")
         True
         """
@@ -2603,7 +2831,7 @@ __RUNTIME_SCRIPT__
         >>> from tempfile import TemporaryDirectory
         >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
         >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
-        >>> report = MarsEvaluationReport(summary, {}, detail)
+        >>> report = MarsBinningReport(summary, {}, detail)
         >>> with TemporaryDirectory() as tmp:
         ...     report.write_excel(str(Path(tmp) / "evaluation.xlsx"), engine="openpyxl") is None
         True
@@ -2730,7 +2958,7 @@ __RUNTIME_SCRIPT__
                     ws.range(f"{final_row + 1}:{last_used_row}").delete()
 
                 wb.save(path)
-                logger.info("Exported evaluation report via xlwings: %s", path)
+                logger.info("Exported binning report via xlwings: %s", path)
 
             except Exception as e:
                 logger.exception("xlwings 导出过程出错。")
@@ -2810,4 +3038,4 @@ __RUNTIME_SCRIPT__
                 ws.delete_rows(final_row + 1, ws.max_row - final_row)
 
             wb.save(path)
-            logger.info("Exported evaluation report via openpyxl: %s", path)
+            logger.info("Exported binning report via openpyxl: %s", path)

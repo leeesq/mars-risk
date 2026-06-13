@@ -60,7 +60,7 @@ MARS 将数据质量、分箱规则、指标评估、特征筛选、模型调参
 | 模块 | 主 API | 典型问题 | 主要产出 |
 | --- | --- | --- | --- |
 | 数据画像 | `MarsDataProfiler` / `profile_stats` | 缺失率、零值、均值/分布、PSI、时间趋势、特征来源分组 | `MarsProfileReport` |
-| 分箱评估 | `MarsNativeBinner` / `MarsLiteOptBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsEvaluationReport`、分箱规则 |
+| 分箱评估 | `MarsNativeBinner` / `MarsLiteOptBinner` / `MarsOptimalBinner` / `MarsBinEvaluator` / `profile_risk` | 连续/类别分箱、IV、KS、AUC、Lift、分箱规则复用、部署转换、SQL 生成 | `MarsRiskProfile`、`MarsBinningReport`、分箱规则 |
 | 特征分析 | `MarsDataProfiler` / `profile_stats` / `profile_risk` | 特征质量、单变量风险、稳定性、分布变化、业务特殊值影响 | 画像表、指标明细、趋势表 |
 | 特征筛选 | `MarsStatsSelector` / `MarsLinearSelector` / `MarsImportanceSelector` | 质量筛选、稳定性、相关性、模型重要性 | `selected_features_`、筛选报告 |
 | Modeling 建模 | `MarsModelingSession` / `MarsModelTuner` / `MarsModelReplayRunner` / `MarsModelEvaluator` | train/val/oot 切分、模型调参、benchmark 对比、Top-K / 指定 trial replay、重要性表、建模评估报告 | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
@@ -206,12 +206,12 @@ risk_profile = profile_risk(
     binner_params={"method": "quantile", "n_bins": 4},
     psi_include_missing=False,
     psi_include_special=False,
-    plot=False,
 )
 
 eval_report = risk_profile.report
 binner = risk_profile.binner
 summary = eval_report.summary_table
+eval_report.plot_risk_trends(max_plots=5)
 ```
 
 `profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 用于复用本次分箱规则。
@@ -260,7 +260,8 @@ selector.fit(
 )
 
 selected_features = selector.selected_features_
-selection_report = selector.get_eval_report(df)
+selection_report = selector.get_binning_report(df)
+selection_report.plot_risk_trends(max_plots=5)
 ```
 
 ### 特征/模型监控
@@ -415,7 +416,7 @@ scored_df = pipeline.predict(modeling_df, pred_col="model_score")
   <img src="docs/assets/mars-report-flow.svg" alt="Report 对象输出 summary_table、detail_tables、trend_tables、metadata，并支持 Excel/HTML、看板和 Agent 二次加工" width="920">
 </div>
 
-画像、风险评估、建模评估和评分卡结果都以对象形式返回。`MarsProfileReport`、`MarsEvaluationReport`、`MarsModelingReport` 等 report 对象会保留 `summary_table`、`detail_table` / `detail_tables`、`trend_tables`、`metadata` / `report_meta` 等结构化数据，使用者可以按模块、特征、分组、时间或样本切片继续加工。
+画像、风险评估、建模评估和评分卡结果都以对象形式返回。`MarsProfileReport`、`MarsBinningReport`、`MarsModelingReport` 等 report 对象会保留 `summary_table`、`detail_table` / `detail_tables`、`trend_tables`、`metadata` / `report_meta` 等结构化数据，使用者可以按模块、特征、分组、时间或样本切片继续加工。
 
 这些多粒度表格适合继续做特征复盘、基于结构化表继续定制监控规则、接入内部看板和定制化分析，也便于借助 Agent 基于明细表进行摘要、筛选、解释和报告重排。需要交付给业务或评审时，可以直接导出 Excel/HTML：
 

@@ -75,12 +75,12 @@ risk_profile = profile_risk(
     binner_params={"method": "quantile", "n_bins": 4},
     psi_include_missing=False,
     psi_include_special=False,
-    plot=False,
 )
 
 eval_report = risk_profile.report
 binner = risk_profile.binner
 summary = eval_report.summary_table
+eval_report.plot_risk_trends(max_plots=5)
 ```
 
 `profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看指标和导出报表，`binner` 用于复用分箱规则。
@@ -133,7 +133,8 @@ selector.fit(
 )
 
 selected_features = selector.selected_features_
-selection_report = selector.get_eval_report(df)
+selection_report = selector.get_binning_report(df)
+selection_report.plot_risk_trends(max_plots=5)
 ```
 
 ## 特征/模型监控

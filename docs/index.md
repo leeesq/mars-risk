@@ -38,7 +38,7 @@ MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling 
 | 模块 | 主要 API | 主要产出 |
 | --- | --- | --- |
 | 数据画像 | `MarsDataProfiler`、`profile_stats` | `MarsProfileReport` |
-| 分箱评估 | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsBinEvaluator`、`profile_risk` | `MarsRiskProfile`、`MarsEvaluationReport` |
+| 分箱评估 | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsBinEvaluator`、`profile_risk` | `MarsRiskProfile`、`MarsBinningReport` |
 | 特征筛选 | `MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` | `selected_features_`、筛选报告 |
 | Modeling 建模 | `MarsModelingSession`、`MarsModelTuner`、`MarsModelReplayRunner`、`MarsModelEvaluator` | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
 | Pipeline 编排 | `MarsModelingPipeline`、`MarsSelectionStep`、`MarsWOEBinningStep`、`MarsModelingStep` | `MarsPipelineResult` |

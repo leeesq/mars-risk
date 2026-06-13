@@ -1,13 +1,16 @@
 import warnings
 from pathlib import Path
+from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
 
-from mars.analysis import MarsBinEvaluator, MarsEvaluationReport, MarsRiskProfile, profile_risk
+from mars.analysis import MarsBinEvaluator, MarsBinningReport, MarsRiskProfile, profile_risk
 from mars.feature import MarsNativeBinner
+from mars.reporting.plotter import MarsPlotter
 
 
 def _as_pandas(df):
@@ -46,7 +49,6 @@ def test_profile_risk_returns_structured_run(sample_credit_df):
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binner_params={"method": "quantile", "n_bins": 3},
     )
 
@@ -54,6 +56,184 @@ def test_profile_risk_returns_structured_run(sample_credit_df):
     assert isinstance(run.binner, MarsNativeBinner)
     assert run.targets == ["target"]
     assert run.report.summary_table.height == 2
+
+
+def test_profile_risk_no_longer_accepts_plot_argument(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with pytest.raises(TypeError, match="plot"):
+        profile_risk(  # type: ignore[call-arg]
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            plot=False,
+        )
+
+
+def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
+    sample_credit_df: pl.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income", "utilization"],
+        group_col="month",
+        binner_params={"method": "quantile", "n_bins": 3},
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_batch(
+        df_detail: pd.DataFrame | pl.DataFrame,
+        features: list[str],
+        group_col: str = "month",
+        target_name: str = "Target",
+        dpi: int = 150,
+        sort_by: str = "iv",
+        ascending: bool = False,
+    ) -> None:
+        captured["df_detail"] = df_detail
+        captured["features"] = features
+        captured["group_col"] = group_col
+        captured["target_name"] = target_name
+        captured["dpi"] = dpi
+        captured["sort_by"] = sort_by
+        captured["ascending"] = ascending
+
+    monkeypatch.setattr(
+        MarsPlotter,
+        "plot_feature_binning_risk_trend_batch",
+        staticmethod(_fake_batch),
+    )
+
+    run.report.plot_risk_trends(features="income", dpi=90)
+
+    assert run.report.group_col == "month"
+    assert run.report.detail_group_col == "mars_group"
+    assert captured["features"] == ["income"]
+    assert captured["group_col"] == "mars_group"
+    assert captured["target_name"] == "target"
+    assert captured["dpi"] == 90
+    assert captured["sort_by"] == ""
+
+
+def test_binning_report_plot_risk_trends_supports_multi_target_filter(
+    sample_credit_df: pl.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    df = sample_credit_df.with_columns(
+        (pl.col("utilization") >= 0.45).cast(pl.Int8).alias("target_alt")
+    )
+    run = profile_risk(
+        df,
+        target=["target", "target_alt"],
+        features=["income", "utilization"],
+        group_col="month",
+        binner_params={"method": "quantile", "n_bins": 3},
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def _fake_batch(
+        df_detail: pd.DataFrame | pl.DataFrame,
+        features: list[str],
+        group_col: str = "month",
+        target_name: str = "Target",
+        dpi: int = 150,
+        sort_by: str = "iv",
+        ascending: bool = False,
+    ) -> None:
+        calls.append(
+            {
+                "df_detail": df_detail,
+                "features": features,
+                "group_col": group_col,
+                "target_name": target_name,
+                "dpi": dpi,
+                "sort_by": sort_by,
+                "ascending": ascending,
+            }
+        )
+
+    monkeypatch.setattr(
+        MarsPlotter,
+        "plot_feature_binning_risk_trend_batch",
+        staticmethod(_fake_batch),
+    )
+
+    run.report.plot_risk_trends(target="target_alt", max_plots=1)
+
+    assert run.report.group_col == "month"
+    assert run.report.detail_group_col == "mars_group"
+    assert len(calls) == 1
+    assert calls[0]["target_name"] == "target_alt"
+    assert calls[0]["group_col"] == "mars_group"
+    assert calls[0]["sort_by"] == ""
+    assert len(calls[0]["features"]) == 1
+    assert set(calls[0]["df_detail"]["y"].astype(str).tolist()) == {"target_alt"}
+
+
+def test_binning_plot_figure_keeps_total_panel_on_the_right(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binner_params={"method": "quantile", "n_bins": 3},
+    )
+
+    fig = MarsPlotter._build_feature_binning_risk_figure(
+        df_detail=run.report.detail_table,
+        feature="income",
+        group_col="mars_group",
+        target_name="target",
+    )
+
+    assert fig is not None
+    titled_axes = [ax for ax in fig.axes if ax.get_title()]
+    assert titled_axes
+    assert titled_axes[-1].get_title().startswith("Total")
+    plt.close(fig)
+
+
+def test_binning_plot_summary_header_uses_total_panel_metric_scope(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binner_params={"method": "quantile", "n_bins": 3},
+    )
+
+    fig = MarsPlotter._build_feature_binning_risk_figure(
+        df_detail=run.report.detail_table,
+        feature="income",
+        group_col="mars_group",
+        target_name="target",
+    )
+
+    assert fig is not None
+    detail_pd = _as_pandas(run.report.detail_table)
+    total_panel_df = detail_pd[
+        (detail_pd["feature"].astype(str) == "income")
+        & (detail_pd["mars_group"].astype(str) == "Total")
+        & (detail_pd["bin_label"].astype(str) != "Total")
+        & (detail_pd["bin_type"].astype(str) != "汇总组")
+    ].copy()
+    expected_iv, expected_ks, expected_auc = MarsPlotter._summarize_binning_metrics(
+        total_panel_df,
+    )
+    summary_text = fig.texts[0].get_text()
+
+    assert f"IV: {expected_iv:.3f}" in summary_text
+    assert f"KS: {expected_ks:.1f}" in summary_text
+    assert f"AUC: {expected_auc:.2f}" in summary_text
+    plt.close(fig)
 
 
 def test_binning_type_opt_alias_is_removed(sample_credit_df):
@@ -66,7 +246,6 @@ def test_binning_type_opt_alias_is_removed(sample_credit_df):
             target="target",
             features=["income"],
             binning_type="opt",  # type: ignore[arg-type]
-            plot=False,
         )
 
 
@@ -93,7 +272,6 @@ def test_profile_risk_time_grain_aliases_do_not_warn(time_grain, caplog):
                 time_grain=time_grain,
                 binning_type="native",
                 binner_params={"method": "quantile", "n_bins": 3},
-                plot=False,
             )
 
     assert run.report.report_meta["profile_by_input"] == time_grain
@@ -108,7 +286,6 @@ def test_profile_risk_returns_report_and_evaluator_for_pandas_input(sample_credi
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -124,7 +301,6 @@ def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_cre
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -133,7 +309,6 @@ def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_cre
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -153,7 +328,6 @@ def test_profile_risk_multi_target_keeps_pandas_return_type(sample_credit_pd):
         target=["target", "target_alt"],
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -172,7 +346,6 @@ def test_profile_risk_without_target_returns_distribution_only_metrics(sample_cr
         target=None,
         features=["income", "utilization", "segment"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -253,7 +426,6 @@ def test_profile_risk_rejects_binner_and_binner_params_together(sample_credit_df
             features=["income"],
             binner=binner,
             binner_params={"method": "quantile"},
-            plot=False,
         )
 
 
@@ -265,7 +437,6 @@ def test_evaluator_external_benchmark_skips_missing_benchmark_columns(sample_cre
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         benchmark_df=benchmark_df,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
@@ -280,7 +451,6 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
         target="target",
         features=["income"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -316,7 +486,6 @@ def test_evaluation_report_excel_contains_detail_sheet_and_data_source(sample_cr
             "EXT_SOURCE_2": ["utilization"],
         },
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -369,7 +538,6 @@ def test_evaluation_report_can_write_html(sample_credit_df, caplog):
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -499,7 +667,6 @@ def test_evaluation_report_produces_missing_and_lift_trend_tables(sample_credit_
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -529,7 +696,6 @@ def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
         target=["target", "target_alt"],
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -560,7 +726,6 @@ def test_show_summary_uses_pandas_view_without_mutating_polars_report(sample_cre
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -579,7 +744,6 @@ def test_feature_data_source_is_attached_to_report_outputs(sample_credit_df):
         features=["income", "utilization"],
         feature_data_source={"APP": ["income"]},
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -623,7 +787,6 @@ def test_evaluator_generates_missing_by_day_table_when_dt_col_is_provided(sample
         features=["income", "utilization"],
         group_col="month",
         time_col="biz_dt",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -643,7 +806,6 @@ def test_summary_table_includes_missing_and_lift_monitor_columns(sample_credit_d
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -671,7 +833,6 @@ def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(s
         feature_data_source={"EXT_SOURCE_1": ["income"], "EXT_SOURCE_2": ["utilization"]},
         group_col="month",
         time_col="biz_dt",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 3},
     )
@@ -707,58 +868,58 @@ def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(s
 
 
 def test_trend_threshold_style_rules_cover_purple_and_three_color_thresholds():
-    iv_rule = MarsEvaluationReport._trend_style_rule("iv")
-    psi_rule = MarsEvaluationReport._trend_style_rule("psi")
-    lift_min_rule = MarsEvaluationReport._summary_style_rule("lift_min")
-    lift_rule = MarsEvaluationReport._trend_style_rule("lift")
+    iv_rule = MarsBinningReport._trend_style_rule("iv")
+    psi_rule = MarsBinningReport._trend_style_rule("psi")
+    lift_min_rule = MarsBinningReport._summary_style_rule("lift_min")
+    lift_rule = MarsBinningReport._trend_style_rule("lift")
     assert iv_rule is not None
     assert psi_rule is not None
     assert lift_min_rule is not None
     assert lift_rule is not None
 
-    iv_gradient = MarsEvaluationReport._cell_style(
+    iv_gradient = MarsBinningReport._cell_style(
         0.15,
         semantic="good_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=iv_rule,
     )
-    iv_purple = MarsEvaluationReport._cell_style(
+    iv_purple = MarsBinningReport._cell_style(
         0.25,
         semantic="good_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=iv_rule,
     )
-    psi_green = MarsEvaluationReport._cell_style(
+    psi_green = MarsBinningReport._cell_style(
         0.0,
         semantic="risk_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=psi_rule,
     )
-    psi_red = MarsEvaluationReport._cell_style(
+    psi_red = MarsBinningReport._cell_style(
         0.25,
         semantic="risk_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=psi_rule,
     )
-    lift_min_green = MarsEvaluationReport._cell_style(
+    lift_min_green = MarsBinningReport._cell_style(
         0.5,
         semantic="risk_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=lift_min_rule,
     )
-    lift_min_yellow = MarsEvaluationReport._cell_style(
+    lift_min_yellow = MarsBinningReport._cell_style(
         0.7,
         semantic="risk_high",
         vmin=0.0,
         vmax=1.0,
         style_rule=lift_min_rule,
     )
-    lift_purple = MarsEvaluationReport._cell_style(
+    lift_purple = MarsBinningReport._cell_style(
         1.5,
         semantic="good_high",
         vmin=0.0,
@@ -786,7 +947,7 @@ def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv():
         ]
     )
 
-    html_text = MarsEvaluationReport._build_grouped_pivot_section_html(
+    html_text = MarsBinningReport._build_grouped_pivot_section_html(
         detail_df,
         group_col="grp",
         feature_sources={"feature_high": "SRC", "feature_low": "SRC"},
@@ -812,7 +973,6 @@ def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(
         features=["x"],
         group_col="month",
         time_col="biz_dt",
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 2},
     )
@@ -823,7 +983,6 @@ def test_feature_start_aware_baseline_reanchors_monthly_psi_and_summary_metrics(
         group_col="month",
         time_col="biz_dt",
         feature_start_aware_baseline=True,
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 2},
     )
@@ -915,7 +1074,6 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
         },
         psi_include_missing=False,
         psi_include_special=False,
-        plot=False,
     )
     scoped_run = profile_risk(
         df,
@@ -931,7 +1089,6 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
         },
         psi_include_missing=True,
         psi_include_special=True,
-        plot=False,
     )
 
     base_psi = _as_pandas(base_run.report.trend_tables["psi"]).loc[0, "2024-02"]
@@ -950,7 +1107,6 @@ def test_feature_start_aware_baseline_supports_custom_profile_by_with_dt_col(fea
         group_col="segment",
         time_col="biz_dt",
         feature_start_aware_baseline=True,
-        plot=False,
         binning_type="native",
         binner_params={"method": "quantile", "n_bins": 2},
     )
@@ -979,7 +1135,6 @@ def test_feature_start_aware_baseline_is_ignored_when_benchmark_df_is_provided(f
             time_col="biz_dt",
             benchmark_df=benchmark_df,
             feature_start_aware_baseline=True,
-            plot=False,
             binning_type="native",
             binner_params={"method": "quantile", "n_bins": 2},
         )
@@ -1025,7 +1180,6 @@ def test_profile_risk_handles_notebook_drift_missing_and_special_values() -> Non
             "special_values": [-999],
             "missing_values": [-999],
         },
-        plot=False,
     )
 
     report = risk_profile.report

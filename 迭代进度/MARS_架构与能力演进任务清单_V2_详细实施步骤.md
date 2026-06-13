@@ -339,24 +339,33 @@
 4. 先在高频配置对象落地。
 5. 补配置错误测试。
 
-## P1-03 DRY 重构与胖类瘦身
+## P1-03 DRY 重构与胖类瘦身（进行中）
 
 ### 前置依赖
 
-- 强依赖 `P0-04` 的最小拆包成果。
-- 同时承接原 `P0-02` 中不再放在 `P0` 的系统性深拆范围。
+- 强依赖 `P0-04` 已完成的 modeling 一级分层与稳定入口收口成果。
+- 同时承接原 `P0-02` 中不再放在 `P0` 的系统性深拆范围，但本阶段重点已经从“先分类目录”转为“继续完成 modeling 边界收口”。
+
+### 当前状态
+
+- `src/mars/modeling/` 已完成 `backends / workflows / inference / evaluation / contracts / artifacts` 分层。
+- `mars.modeling` 已成为稳定入口，当前不再需要为“是否建立内部分类文件夹”做架构决策。
+- 剩余工作主要集中在第二阶段收口：`contracts` 纯化、`ModelingSpec` 收口、`inference / evaluation` 解耦、胖文件继续拆薄、重复 helper 与依赖方向清理。
 
 ### 实施步骤
 
-1. 盘点重复逻辑最多的热点文件，并把“未纳入 `P0-04` 的深拆清单”并入施工范围。
-2. 抽重复 helper，但只抽稳定重复。
-3. 将胖方法拆为：
-   - 参数解析
-   - 核心计算
-   - 结果组装
-4. 统一私有模块命名风格。
-5. 按模块族继续完成大文件深拆与子包化清理，但不反向破坏 `P0` 已建立的 `compute / reporting / registry` 边界。
-6. 补回归测试。
+1. 先纯化 `contracts`。
+   预期出口：`contracts` 只保留结构化对象与协议；结果对象不再继续承担 artifact I/O，高层流程也不再反向渗入 `contracts`。
+2. 再收口 `ModelingSpec`。
+   预期出口：session / tuner / replay / feature growth 统一围绕 `ModelingSpec` / `ReplaySpec` 传递规格，不再平行维护一套大参数与构造逻辑。
+3. 再拆 `inference / evaluation` 职责。
+   预期出口：`predictor` 聚焦推理与薄包装便利能力；评估主逻辑回到 `evaluation`，不再把评分后评估装配写死在推理层。
+4. 再继续拆剩余胖文件。
+   预期出口：重点处理 `workflows/tuner.py`、`workflows/feature_growth.py`、`evaluation/metrics.py`、`contracts/tuning_result.py` 等热点文件，把职责拆到更清晰的内部 helper 或同层模块中。
+5. 最后清理重复 helper 和内部依赖方向。
+   预期出口：`split_name_sort_key`、`_json_dumps` 等重复实现收口为单一来源；`contracts` 不再反向依赖高层，`inference` 与 `evaluation` 的内部依赖方向清晰稳定。
+6. 补回归测试并同步更新文档。
+   预期出口：涉及 `mars.modeling` 主链路的 tests、README 和 docs 与新边界保持一致，不再出现“目录已分层但文档仍按旧平铺结构理解”的失真。
 
 ## P1-04 升级测试体系：镜像目录、快照测试、契约测试
 

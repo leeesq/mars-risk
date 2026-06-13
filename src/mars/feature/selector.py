@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.analysis.report import MarsEvaluationReport
+from mars.analysis.report import MarsBinningReport
 from mars.core.base import MarsBaseSelector
 from mars.core.constants import DIVISION_EPSILON
 from mars.feature.base import MarsBinnerBase
@@ -115,9 +115,11 @@ class MarsStatsSelector(MarsBaseSelector):
         special_values : List[Any] | None
             需要单独处理的特殊值列表。
         binning_params : Dict[str, Any] | None
-            精筛阶段分箱器参数。
+            精筛阶段分箱器参数。支持增量更新，传入的字典将与默认配置合并，未指定的参数将保留默认值。
+            默认配置为：`{"prebinning_method": "cart", "n_bins": 10, "min_bin_size": 0.05}`。
         rough_binning_params : Dict[str, Any] | None
-            粗筛阶段分箱器参数。
+            粗筛阶段分箱器参数。支持增量更新，传入的字典将与默认配置合并，未指定的参数将保留默认值。
+            默认配置为：`{"method": "quantile", "n_bins": 20, "min_bin_size": 0.02, "merge_small_bins": True}`。
         batch_size : int | None
             批量评估时的特征批大小。
         n_jobs : int
@@ -141,22 +143,29 @@ class MarsStatsSelector(MarsBaseSelector):
         self.zeros_thr = zeros_thr
 
         self.skip_rough_scan = skip_rough_scan
-        self.rough_binning_params = rough_binning_params or {
+        default_rough_params = {
             "method": "quantile",
             "n_bins": 20,
-            "min_bin_size": 0.01,
+            "min_bin_size": 0.02,
             "merge_small_bins": True
         }
+        # 如果用户传了参数，就更新对应的值，否则保持默认
+        if rough_binning_params:
+            default_rough_params.update(rough_binning_params)
+        self.rough_binning_params = default_rough_params
         self.rough_iv_thr = rough_iv_thr
         self.rough_lift_thr = rough_lift_thr
         self.rough_min_sample_rate = rough_min_sample_rate
 
         self.skip_fine_scan = skip_fine_scan
-        self.binning_params = binning_params or {
+        default_fine_params = {
             "prebinning_method": "cart",
             "n_bins": 10,
             "min_bin_size": 0.05,
         }
+        if binning_params:
+            default_fine_params.update(binning_params)
+        self.binning_params = default_fine_params
         self.iv_thr = iv_thr
         self.lift_thr = lift_thr
         self.min_sample_rate = min_sample_rate
@@ -763,7 +772,9 @@ class MarsStatsSelector(MarsBaseSelector):
 
         lift_recall_set = set()
         if self.lift_thr is not None:
-            group_col = report.group_col
+            group_col = report.detail_group_col
+            if group_col is None:
+                raise ValueError("Binning report detail group column is missing.")
             lift_cond = (
                 (pl.col("lift") > self.lift_thr)
                 & (pl.col("pct") > self.min_sample_rate)
@@ -927,7 +938,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         return [f for f in features if f in kept_features_set]
 
-    def get_eval_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> MarsEvaluationReport:
+    def get_binning_report(self, df: Union[pl.DataFrame, pd.DataFrame]) -> MarsBinningReport:
         """
         为已选中特征生成最终风险评估报告。
 
@@ -938,7 +949,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Returns
         -------
-        MarsEvaluationReport
+        MarsBinningReport
             基于 `selected_features_` 生成的风险评估报告。
 
         Raises
@@ -952,8 +963,8 @@ class MarsStatsSelector(MarsBaseSelector):
         >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
         >>> selector = MarsStatsSelector(skip_fine_scan=True)
         >>> selector.fit(df, target="y", features=["age"])
-        >>> report = selector.get_eval_report(df)
-        >>> isinstance(report, MarsEvaluationReport)
+        >>> report = selector.get_binning_report(df)
+        >>> isinstance(report, MarsBinningReport)
         True
         """
         self._check_is_fitted()
@@ -985,7 +996,7 @@ class MarsStatsSelector(MarsBaseSelector):
         if self._return_pandas:
             evaluator.set_output("pandas")
 
-        logger.info(f"Generating final evaluation report for {len(self.selected_features_)} selected features...")
+        logger.info(f"Generating final binning report for {len(self.selected_features_)} selected features...")
 
         run = evaluator.evaluate(
             df=X_pl,
@@ -1000,7 +1011,7 @@ class MarsStatsSelector(MarsBaseSelector):
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
         )
-        report: MarsEvaluationReport = run.report
+        report: MarsBinningReport = run.report
 
         return report
 

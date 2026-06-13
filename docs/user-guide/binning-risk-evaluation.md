@@ -14,15 +14,17 @@ risk_profile = profile_risk(
     group_col="month",
     binning_type="native",
     binner_params={"method": "quantile", "n_bins": 5},
-    plot=False,
 )
+
+report = risk_profile.report
+report.plot_risk_trends(max_plots=5)
 ```
 
 返回值是 `MarsRiskProfile(report, binner, targets, metadata)`：
 
-- `report`：`MarsEvaluationReport`，保存汇总表、明细表、趋势表和导出能力。
+- `report`：`MarsBinningReport`，保存汇总表、明细表、趋势表和导出能力。
 - `binner`：本次拟合或复用的分箱器。
-- `targets`：本次评估的 target 列表。
+- `targets`：本次评估的目标列列表。
 - `metadata`：运行上下文。
 
 ## 评估器入口：`MarsBinEvaluator`
@@ -43,12 +45,11 @@ risk_profile = evaluator.evaluate(
 )
 ```
 
-`MarsBinEvaluator` 不把 target 和 features 放进构造函数。每次 `evaluate` 都可以传入新的数据、目标列和特征范围，避免复用对象时状态串扰。
+`MarsBinEvaluator` 不把 `target` 和 `features` 放进构造函数。每次 `evaluate()` 都可以传入新的数据、目标列和特征范围，避免复用对象时状态串扰。
 
 ## 分箱器共享能力
 
-`MarsNativeBinner`、`MarsLiteOptBinner` 和 `MarsOptimalBinner` 都继承 `MarsBinnerBase`。
-子类只负责拟合各自的分箱规则，规则转换、WOE 转换、分箱效果评估、规则裁剪和序列化由基类统一提供。
+`MarsNativeBinner`、`MarsLiteOptBinner` 和 `MarsOptimalBinner` 都继承 `MarsBinnerBase`。子类只负责拟合各自的分箱规则；规则转换、WOE 转换、分箱效果评估、规则裁剪和序列化由基类统一提供。
 
 | 共享方法 | 用途 |
 | --- | --- |
@@ -56,9 +57,6 @@ risk_profile = evaluator.evaluate(
 | `profile_bin_performance` | 基于已拟合规则计算分箱明细、IV、WOE 和坏账率 |
 | `to_dict` / `from_dict` | 保存和恢复分箱规则 |
 | `prune` | 只保留指定特征的分箱规则 |
-
-用户通常只需要实例化具体子类，例如 `MarsNativeBinner` 或 `MarsLiteOptBinner`；
-这些共享能力会自动继承，无需单独操作 `MarsBinnerBase`。
 
 ## 原生分箱：`MarsNativeBinner`
 
@@ -84,8 +82,6 @@ X_woe = binner.transform(X, return_type="woe")
 - `uniform`：等宽分箱，可无标签运行。
 - `cart`：基于 target 的监督分箱，必须传入 `y`。
 
-原生分箱支持处理类别特征，缺失值、`NaN`、自定义 `missing_values` 和业务特殊值 `special_values` 会独立隔离，不挤占正常分箱数量。
-
 ## 轻量最优分箱：`MarsLiteOptBinner`
 
 ```python
@@ -101,7 +97,7 @@ lite_binner = MarsLiteOptBinner(
 lite_binner.fit(X, y, cat_features=["segment"])
 ```
 
-`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并，支持 `ascending`、`descending`、`peak`、`valley`、`auto` 和 `auto_asc_desc`。`auto_asc_desc` 用于自动判断单调方向，但禁止峰形/谷形；`fitted_trends_` 会记录每个数值特征最终采用的趋势，`candidate_scores_` 会记录 auto 候选评分。
+`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它会先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并。
 
 ## 最优分箱：`MarsOptimalBinner`
 
@@ -118,7 +114,7 @@ optimal_binner.fit(X, y, cat_features=["segment"])
 X_opt_woe = optimal_binner.transform(X, return_type="woe")
 ```
 
-`MarsOptimalBinner.fit(X, y, ...)` 要求 `y` 必填。最优分箱支持类别合并，适合降低高基数类别带来的不稳定性。
+`MarsOptimalBinner.fit(X, y, ...)` 同样要求 `y` 必填。最优分箱支持类别合并，适合降低高基数类别带来的不稳定性。
 
 ## 分箱评估报告
 

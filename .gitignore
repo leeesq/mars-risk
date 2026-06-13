@@ -44,6 +44,7 @@ secret_config.py
 .ipynb_checkpoints/
 
 # 示例文件
+迭代进度/
 examples/
 modeling_artifacts/
 *_report.html

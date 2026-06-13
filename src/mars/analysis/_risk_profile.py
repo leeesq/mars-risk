@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import pandas as pd
 import polars as pl
 
-from mars.analysis.report import MarsEvaluationReport
+from mars.analysis.report import MarsBinningReport
 from mars.feature.base import MarsBinnerBase
-from mars.reporting.plotting import _plot_report_helper
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -33,33 +32,31 @@ def profile_risk(
     binner_params: dict[str, Any] | None = None,
     benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
     weights_col: str | None = None,
-    plot: bool = True,
-    plot_target: str | list[str] | None = None,
-    max_plots: int = 10,
-    sort_by: str = "iv",
-    ascending: bool = False,
-    dpi: int = 300,
     batch_size: int = 100,
 ) -> MarsRiskProfile:
     """
-    运行高层风险画像工作流。
+    运行高层分箱风险评估工作流。
+
+    `profile_risk` 会统一编排分箱器构建、分箱评估、多目标合并和结果对象组装，
+    最终返回 `MarsRiskProfile`。函数本身不再承担绘图副作用；需要查看趋势图时，
+    请直接调用 `report.plot_risk_trends(...)`。
 
     Parameters
     ----------
     df : pl.DataFrame | pd.DataFrame
-        待画像样本表。
+        待评估样本表。
     target : str | list[str] | None
-        二分类目标列名或目标列列表；``None`` 表示无标签画像。
+        目标列名或目标列列表。传入 `None` 时进入无标签模式，只计算分布类指标与 PSI。
     features : list[str] | None
-        本次参与画像的特征列。
+        参与本次评估的特征列。传入 `None` 时自动从输入表中推断。
     feature_data_source : dict[str, list[str]] | None
-        特征来源映射，键为来源名称，值为该来源下的特征列表。
+        特征来源映射，用于在报告中保留数据源维度。
     group_col : str | None
         已存在的分组列名。
     time_col : str | None
         原始日期列名。
     time_grain : str | None
-        时间聚合粒度，例如 ``"day"``、``"week"``、``"month"`` 或 ``"7d"``。
+        时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
     feature_start_aware_baseline : bool
         是否按特征首次出现的分组选择 PSI 基准。
     psi_include_missing : bool
@@ -67,46 +64,34 @@ def profile_risk(
     psi_include_special : bool
         计算 PSI 时是否纳入特殊值箱。
     binning_type : Literal["native", "optimal", "lite_opt"]
-        未显式传入 ``binner`` 时使用的分箱器类型。
+        未显式传入 `binner` 时使用的分箱器类型。
     binner : MarsBinnerBase | None
-        显式复用的分箱器；传入后不允许再传 ``binner_params``。
+        显式复用的分箱器。传入后不允许再同时传 `binner_params`。
     binner_params : dict[str, Any] | None
-        构造默认分箱器时使用的参数。
+        自动构建分箱器时使用的参数。
     benchmark_df : pl.DataFrame | pd.DataFrame | None
         外部 benchmark 样本。
     weights_col : str | None
         样本权重列名。
-    plot : bool
-        是否生成图表明细。
-    plot_target : str | list[str] | None
-        指定需要绘图的目标列；``"all"`` 表示全部目标，``"primary"`` 表示主目标。
-    max_plots : int
-        最多绘制的特征数量。
-    sort_by : str
-        绘图特征排序指标。
-    ascending : bool
-        是否按 ``sort_by`` 升序排序。
-    dpi : int
-        图表分辨率。
     batch_size : int
         批量评估时的特征批大小。
 
     Returns
     -------
     MarsRiskProfile
-        单次风险画像结果，包含报告、分箱器、目标列列表和运行元数据。
+        单次风险评估结果，包含 `MarsBinningReport`、分箱器、目标列表和元数据。
 
     Raises
     ------
     ValueError
-        ``binner`` 与 ``binner_params`` 同时传入，或输入列配置不合法时抛出。
+        当 `binner` 与 `binner_params` 同时传入，或输入配置不满足要求时抛出。
 
     Examples
     --------
     >>> import polars as pl
     >>> from mars.analysis import profile_risk
     >>> df = pl.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
-    >>> profile = profile_risk(df, target="y", features=["age"], plot=False)
+    >>> profile = profile_risk(df, target="y", features=["age"])
     >>> profile.targets
     ['y']
     """
@@ -210,42 +195,18 @@ def profile_risk(
                     event_rate_map[str(target_name)] = None
         merged_meta["event_rate_by_target"] = event_rate_map
 
-        final_report = MarsEvaluationReport(
+        final_report = MarsBinningReport(
             summary_table=final_summary,
             trend_tables=primary_report.trend_tables,
             detail_table=final_detail,
             group_col=primary_report.group_col,
+            detail_group_col=primary_report.detail_group_col,
             feature_data_source=primary_report.feature_data_source,
             dt_col=primary_report.dt_col,
             missing_by_day_table=primary_report.missing_by_day_table,
             report_meta=merged_meta,
         )
         final_targets = [str(t) for t in target_list]
-
-    if plot and final_targets:
-        targets_to_plot: list[str] = []
-        if plot_target is None or plot_target == "all":
-            targets_to_plot = final_targets
-        elif plot_target == "primary" and final_targets:
-            targets_to_plot = [final_targets[0]]
-        elif isinstance(plot_target, str):
-            targets_to_plot = [plot_target]
-        elif isinstance(plot_target, list):
-            targets_to_plot = plot_target
-
-        targets_to_plot = [t for t in targets_to_plot if t in final_targets]
-        if not targets_to_plot:
-            logger.warning("No valid targets specified for plotting.")
-        else:
-            _plot_report_helper(
-                evaluator=primary_evaluator,
-                report=final_report,
-                target_list=targets_to_plot,
-                sort_by=sort_by,
-                ascending=ascending,
-                max_plots=max_plots,
-                dpi=dpi,
-            )
 
     return MarsRiskProfile(
         report=final_report,

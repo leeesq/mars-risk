@@ -3,13 +3,13 @@
 import inspect
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.analysis.report import MarsEvaluationReport
+from mars.analysis.report import MarsBinningReport
 from mars.compute import build_missing_by_period_stats, with_psi_from_counts
 from mars.core.base import MarsBaseEstimator
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE, METRIC_EPSILON
@@ -33,7 +33,7 @@ class MarsRiskProfile:
 
     Attributes
     ----------
-    report : MarsEvaluationReport
+    report : MarsBinningReport
         风险评估报告，包含汇总表、明细表、趋势表和导出方法。
     binner : MarsBinnerBase
         本次评估拟合或显式传入的分箱器。
@@ -43,7 +43,7 @@ class MarsRiskProfile:
         本次运行的列名、特征范围、分箱配置和其他上下文信息。
     """
 
-    report: MarsEvaluationReport
+    report: MarsBinningReport
     binner: MarsBinnerBase
     targets: list[str]
     metadata: dict[str, Any]
@@ -463,6 +463,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             group_col,
             monotonicity_df,
             feature_source_map=feature_source_map,
+            display_group_col=profile_by or ("month" if dt_col else None),
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
             risk_corr_baseline_df=feature_start_reference["baseline_bad_rate"] if feature_start_reference else None,
@@ -1540,13 +1541,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
         monotonicity_df: pl.DataFrame,
         *,
         feature_source_map: Dict[str, str] | None = None,
+        display_group_col: str | None = None,
         dt_col: str | None = None,
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
         risk_corr_baseline_df: pl.DataFrame | None = None,
         feature_valid_groups_df: pl.DataFrame | None = None,
         monitor_metrics_groups: pl.DataFrame | None = None,
         monitor_metrics_total: pl.DataFrame | None = None,
-    ) -> "MarsEvaluationReport":
+    ) -> "MarsBinningReport":
         """
         构建评估报告的明细、汇总与趋势数据。
 
@@ -1569,6 +1571,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             单调性检查结果。包含特征在全量分组下的 Spearman 相关系数 (mono)。
         feature_source_map : Dict[str, str] | None
             特征到来源分组的映射，用于在汇总报告中保留来源字段。
+        display_group_col : str | None
+            报告层对外展示的分组语义列名。
         dt_col : str | None
             原始日期列名，用于生成按日缺失率附表。
         missing_by_day_table : Union[pl.DataFrame, pd.DataFrame] | None
@@ -1584,7 +1588,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Returns
         -------
-        MarsEvaluationReport
+        MarsBinningReport
             报告容器实例。包含 Summary, Trend, Detail 三张重塑后的报表。
         """
         map_df = self._build_bin_label_map(stats_long)
@@ -2097,145 +2101,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
             trend_tables[metric] = self._format_output(pivot_df.select(["feature", "dtype"] + sorted_cols))
 
-        return MarsEvaluationReport(
+        return MarsBinningReport(
             summary_table=self._format_output(summary_df),
             trend_tables=trend_tables,
             detail_table=self._format_output(detail_table),
-            group_col=group_col,
+            group_col=display_group_col,
+            detail_group_col=group_col,
             feature_data_source=feature_source_map or {},
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
         )
-
-    def plot_feature_binning_risk_trends(
-        self,
-        *,
-        report: Optional["MarsEvaluationReport"] = None,
-        df_detail: Union[pl.DataFrame, pd.DataFrame, None] = None,
-        features: Union[str, List[str], None] = None,
-        group_col: str | None = None,
-        target_name: str | None = None,
-        sort_by: str = "iv",
-        ascending: bool = False,
-        dpi: int = 150,
-    ) -> None:
-        """
-        批量绘制特征分箱风险趋势图。
-
-        该方法用于展示特征在不同分组切片下的样本分布与坏率走势，
-        便于快速识别风险倒挂、稳定性漂移和分箱效果异常。
-
-        Parameters
-        ----------
-        report : Optional['MarsEvaluationReport']
-            由 ``evaluate`` 生成的评估报告对象。
-        df_detail : Union[pl.DataFrame, pd.DataFrame, None]
-            直接传入分箱明细表；当未提供 ``report`` 时使用。
-        features : Union[str, List[str], None]
-            需要绘图的特征名称。若为 ``None``，绘制明细表中的全部特征。
-        group_col : str | None
-            分组列名。当直接传入 ``df_detail`` 且无法自动推断时可显式指定。
-        target_name : str | None
-            图表标题中展示的目标名称。未提供时默认使用 ``self.target``。
-        sort_by : str
-            绘图特征的排序依据。
-        ascending : bool
-            是否按 ``sort_by`` 升序绘制。
-        dpi : int
-            图像分辨率。
-
-        Raises
-        ------
-        ValueError
-            当 ``report`` 和 ``df_detail`` 同时缺失时抛出。
-
-        Examples
-        --------
-        >>> import polars as pl
-        >>> detail = pl.DataFrame(
-        ...     {
-        ...         "feature": ["age"],
-        ...         "bin_index": [0],
-        ...         "bin_label": ["[20, 40)"],
-        ...         "month": ["2026-01"],
-        ...         "count": [100],
-        ...         "bad": [12],
-        ...         "bad_rate": [0.12],
-        ...         "lift": [1.0],
-        ...         "iv_bin": [0.02],
-        ...     }
-        ... )
-        >>> evaluator = MarsBinEvaluator()
-        >>> evaluator.plot_feature_binning_risk_trends(
-        ...     df_detail=detail,
-        ...     features="age",
-        ...     group_col="month",
-        ... ) is None
-        True
-        """
-        target_df = None
-        target_group_col = None
-
-        # 尝试从 Report 提取绘图所需数据
-        if report is not None:
-            dt_table = report.detail_table
-            # 兼容 Pandas DataFrame
-            target_df = self._ensure_polars_dataframe(dt_table).filter(pl.col("bin_index") != 9999)
-            target_group_col = report.group_col
-
-        # 尝试从 df_detail 提取数据
-        elif df_detail is not None:
-            target_df = self._ensure_polars_dataframe(df_detail).filter(pl.col("bin_index") != 9999)
-
-            if group_col:
-                target_group_col = group_col
-            else:
-                # 自动推断分组列
-                # 排除已知列，剩下的通常就是分组列
-                known = {
-                    "feature",
-                    "bin_index",
-                    "bin_label",
-                    "count",
-                    "observed_count",
-                    "bad",
-                    "bad_rate",
-                    "lift",
-                    "psi_bin",
-                    "ks_bin",
-                    "auc_bin",
-                    "iv_bin",
-                    "total_count",
-                    "trend",
-                    "y",
-                }
-                candidates = [c for c in target_df.columns if c not in known]
-                target_group_col = candidates[0] if candidates else "month"
-                logger.debug(f"Auto-inferred group_col: '{target_group_col}'")
-        else:
-            raise ValueError("Must provide either 'report' or 'df_detail' to plot.")
-
-        if features is None:
-            features = target_df["feature"].unique().to_list()
-        elif isinstance(features, str):
-            features = [features]
-
-        # 确定最终显示的 Target Name
-        # 优先使用传入的 target_name (多目标循环时传入)，否则使用实例绑定的 target
-        final_target_name = target_name if target_name else self.target
-
-        from mars.reporting.plotter import MarsPlotter
-
-        # 调用 MarsPlotter 绘图组件进行渲染
-        MarsPlotter.plot_feature_binning_risk_trend_batch(
-            df_detail=target_df,
-            features=features,
-            group_col=target_group_col,
-            target_name=final_target_name, # 透传参数
-            sort_by=sort_by,
-            ascending=ascending,
-            dpi=dpi
-        )
-
 
 from mars.analysis._risk_profile import profile_risk as profile_risk  # noqa: E402

@@ -1,9 +1,15 @@
-"""MARS 风险建模工具包的公开导出入口。"""
+"""
+MARS: MODELING ANALYSIS RISK SCORE
+
+High-performance Risk Modeling Toolkit powered by Polars
+
+Copyright (c) 2026 Christian and Tina
+"""
 
 from .analysis import (
     MarsBinEvaluator,
     MarsDataProfiler,
-    MarsEvaluationReport,
+    MarsBinningReport,
     MarsProfileConfig,
     MarsProfileReport,
     MarsRiskProfile,
@@ -44,7 +50,7 @@ _BANNER = rf"""
 
     MODELING ANALYSIS RISK SCORE
     __________________________________________________________________________
-    Version: {__version__} | Copyright (c) 2026 Christian Li
+    Version: {__version__} | Copyright (c) 2026 Christian and Tina
     High-performance Risk Modeling Toolkit powered by Polars
     __________________________________________________________________________
 """
@@ -69,7 +75,7 @@ __all__ = [
     "MarsNativeBinner",
     "MarsOptimalBinner",
     "MarsBinEvaluator",
-    "MarsEvaluationReport",
+    "MarsBinningReport",
     "profile_stats",
     "profile_risk",
     "MarsStatsSelector",

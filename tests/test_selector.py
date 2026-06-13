@@ -220,7 +220,7 @@ def test_stats_selector_trims_filtered_feature_data_source_for_eval_report(sampl
         group_col="month",
         white_list=["income", "utilization"],
     )
-    report = selector.get_eval_report(df)
+    report = selector.get_binning_report(df)
     decision_report = selector.get_report()
 
     decision_source_map = {
@@ -279,7 +279,7 @@ def test_stats_selector_propagates_feature_start_aware_baseline(feature_start_aw
         time_grain="month",
         feature_start_aware_baseline=True,
     )
-    report = selector.get_eval_report(feature_start_aware_df)
+    report = selector.get_binning_report(feature_start_aware_df)
 
     assert report.report_meta["feature_start_aware_baseline"] is True
     assert report.report_meta["feature_start_baseline_dates"] == {"x": "2024-02-15"}

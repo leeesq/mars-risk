@@ -1,6 +1,6 @@
 # 特征筛选
 
-特征筛选用于把宽表候选特征压缩到更适合建模和监控的特征集合。MARS 提供统计筛选、线性模型筛选和重要性筛选三类入口。
+特征筛选用于把宽表候选特征压缩到更适合建模和监控的特征集合。MARS 目前提供统计筛选、线性模型筛选和重要性筛选三类入口。
 
 ## 统计筛选：`MarsStatsSelector`
 
@@ -33,12 +33,13 @@ selector.fit(
 ```python
 selected_features = selector.selected_features_
 decision_table = selector.decision_table_
-report = selector.get_eval_report(df)
+report = selector.get_binning_report(df)
+report.plot_risk_trends(max_plots=5)
 ```
 
-`feature_data_source` 表示本次候选特征全集的数据源配置。筛选过程中如果部分特征被过滤，传给评估报告的来源映射会自动裁剪到当前 active features；筛选决策表仍保留被过滤特征的来源信息，方便复盘。
+`feature_data_source` 表示本次候选特征全集的数据源配置。如果部分特征在筛选过程中被过滤，传给评估报告的数据源映射会自动裁剪到当前 `active features`；筛选决策表仍会保留被过滤特征的来源信息，方便复盘。
 
-## 线性筛选：`MarsLinearSelector`
+## 线性模型筛选：`MarsLinearSelector`
 
 `MarsLinearSelector` 使用 sklearn 风格，`fit(X, y, ...)` 中 `y` 必填。
 
@@ -61,7 +62,7 @@ selected = selector.selected_features_
 ```python
 from mars.feature import MarsImportanceSelector
 
-selector = MarsImportanceSelector(top_k=50)
+selector = MarsImportanceSelector(selection_threshold=50)
 
 selector.fit(
     X,
@@ -86,7 +87,7 @@ selector.fit(
 ```
 
 - `white_list` 用于保护必须保留的特征。
-- `black_list` 用于剔除不可用、合规限制或调试字段。
+- `black_list` 用于剔除不可用、合规受限或调试字段。
 
 ## 使用建议
 
@@ -94,4 +95,3 @@ selector.fit(
 - 再用相关性或模型重要性减少重复信息。
 - 对业务强约束特征使用 `white_list`，对泄漏字段或上线不可用字段使用 `black_list`。
 - 对数据源分组做监控和复盘，避免某个来源特征被大规模过滤后仍在后续评估中误用。
-

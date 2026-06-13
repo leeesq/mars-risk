@@ -18,7 +18,7 @@
 
 ::: mars.analysis.MarsRiskProfile
 
-::: mars.analysis.MarsEvaluationReport
+::: mars.analysis.MarsBinningReport
 
 ## 配置对象
 

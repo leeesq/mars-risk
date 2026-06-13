@@ -217,23 +217,42 @@
     - 合法取值是什么
     - 如何修复
 
-## P1-03 DRY 重构与胖类瘦身
+## P1-03 DRY 重构与胖类瘦身（进行中）
 
+- 当前状态：
+  `src/mars/modeling/` 已完成 `backends / workflows / inference / evaluation / contracts / artifacts` 一级分层，稳定入口也已收口到 `mars.modeling`。当前问题已从“是否建立内部分类目录”转为“如何把第二阶段边界彻底做干净”。
+- 已完成基础：
+  - `modeling` 子包分层已落地，根目录不再承担平铺式业务模块堆放。
+  - 训练 / replay / prediction 已完成 registry 主路径收口。
+  - `mars.modeling.__init__` 已成为稳定导出入口。
+- 仍待收口：
+  - `contracts` 仍承担 artifact I/O，边界尚未纯化。
+  - `ModelingSpec` 已存在，但 session / tuner / replay / feature growth 仍有平行参数与构造逻辑。
+  - `inference/predictor.py` 仍混有评估便利能力，推理与评估边界还不够收紧。
+  - `workflows/tuner.py`、`workflows/feature_growth.py`、`evaluation/metrics.py`、`contracts/tuning_result.py` 等文件仍偏大。
+  - `split_name_sort_key`、`_json_dumps` 这类重复 helper 仍未完全收口。
 - Issue 标题：
-  `refactor: remove duplicated preprocessing logic and split god methods`
+  `refactor: finish modeling boundary cleanup and split remaining god modules`
 - 目标：
-  消除重复特征类型探测、公共预处理和超长 `_fit_impl()` / 评估组装方法，并承接原 `P0-02` 中不再属于 `P0` 的系统性深拆范围。
+  在已完成 modeling 子包分层的基础上，继续完成结果契约纯化、spec 收口、推理/评估解耦、胖文件继续深拆与重复 helper 收口，让 `mars.modeling` 从“目录已分类”进入“边界已稳定”的第二阶段。
 - 涉及文件：
-  - `src/mars/feature/base.py`
-  - `src/mars/feature/native_binner.py`
-  - `src/mars/feature/optimal_binner.py`
-  - `src/mars/feature/lite_opt_binner.py`
-  - `src/mars/analysis/evaluator.py`
+  - `src/mars/modeling/contracts/`
+  - `src/mars/modeling/workflows/`
+  - `src/mars/modeling/inference/predictor.py`
+  - `src/mars/modeling/evaluation/`
+  - `src/mars/modeling/__init__.py`
+- 子项清单：
+  1. `contracts` 纯化：结果对象不再继续承担 artifact I/O 和高层流程依赖，`contracts` 只保留结构化对象与协议。
+  2. `ModelingSpec` 收口为唯一规格源：session / tuner / replay / feature growth 不再重复维护大段平行参数与构造逻辑。
+  3. `inference` 与 `evaluation` 边界收紧：`predictor` 负责推理；评估便利能力可保留薄包装，但不再把评估主逻辑混在推理层。
+  4. 建模胖文件继续深拆：重点承接 `workflows/tuner.py`、`workflows/feature_growth.py`、`evaluation/metrics.py`、`contracts/tuning_result.py` 等热点文件。
+  5. 重复 helper 清理：排序 key、JSON 序列化等重复实现收口为单一来源。
 - 验收标准：
-  - 特征类型探测逻辑收口到基类或共享 helper。
-  - 至少 2 个超长主流程方法被拆为更细私有方法。
-  - 新增对应单元测试覆盖拆分后的 helper。
-  - 原 `P0-02` 中未纳入 `P0-04` 的深拆项有明确迁移清单，并按模块族继续落地。
+  - `contracts` 不再直接承担 artifact I/O，相关读写能力收口到 `artifacts`。
+  - `ModelingSpec` 成为 session / tuner / replay / feature growth 的唯一规格源，不再平行维护一套大参数传递。
+  - `predictor` 只保留推理与薄包装便利能力，评估主逻辑回到 `evaluation`。
+  - 上述热点文件继续拆薄，主链路复杂度明显下降，不再停留在“目录已分层但文件仍过胖”的中间态。
+  - `split_name_sort_key`、`_json_dumps` 这类重复 helper 收口为单一来源，并补回归测试。
 
 ## P1-04 升级测试体系：镜像目录、快照测试、契约测试
 
