@@ -27,6 +27,7 @@ site/
 .cache/
 *.tmp
 *.log
+.pycache-codex/
 
 # 数据与隐私 
 *.csv

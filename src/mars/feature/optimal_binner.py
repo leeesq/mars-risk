@@ -44,7 +44,7 @@ class MarsOptimalBinner(MarsBinnerBase):
     Examples
     --------
     >>> import polars as pl
-    >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=1)
+    >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=30)
     >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
     >>> y = pl.Series("y", [0, 0, 1, 1])
     >>> binner.fit(X, y).transform(X).columns
@@ -55,9 +55,9 @@ class MarsOptimalBinner(MarsBinnerBase):
         self,
         *,
         n_bins: int = 10,
-        min_n_bins: int = 1,
-        min_bin_size: float = 0.02,
-        min_bin_n_event: int = 3,
+        min_n_bins: int = 2,
+        min_bin_size: float = 0.05,
+        min_bin_n_event: int = 30,
         prebinning_method: Literal["quantile", "uniform", "cart"] = "cart",
         n_prebins: int = 50,
         min_prebin_size: float = 0.01,
@@ -178,7 +178,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
         >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=1)
+        >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=30)
         >>> binner.fit(X, y).feature_names_in_
         ['age']
         """

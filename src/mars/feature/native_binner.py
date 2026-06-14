@@ -57,7 +57,7 @@ class MarsNativeBinner(MarsBinnerBase):
         n_bins: int = 10,
         special_values: List[Union[int, float, str]] | None = None,
         missing_values: List[Union[int, float, str]] | None = None,
-        min_bin_size: float = 0.02,
+        min_bin_size: float = 0.05,
         merge_small_bins: bool = False,
         cart_params: Dict[str, Any] | None = None,
         remove_empty_bins: bool = False,

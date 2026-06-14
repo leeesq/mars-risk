@@ -4,21 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-risk"      
-version = "0.0.17"       
+version = "0.0.18"       
 description = "High-performance Risk Modeling Toolkit powered by Polars"
 readme = "README.md"
 requires-python = ">=3.10" 
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
-    "Intended Audience :: Financial and Insurance Industry",
-    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 license = {file = "LICENSE"}
-keywords = ["risk", "scorecard", "polars", "credit-scoring", "feature-binning", "modeling", "machine-learning"]
+keywords = [
+    "credit-risk",
+    "credit-scoring",
+    "risk-analytics",
+    "risk-modeling",
+    "scorecard",
+    "feature-binning",
+    "feature-selection",
+    "risk-monitoring",
+    "polars",
+    "pipeline",
+    "psi",
+    "ks",
+]
 authors = [
   {name = "christian", email = "lee_sq001@163.com"}
 ]
