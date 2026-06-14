@@ -12,6 +12,9 @@ import polars as pl
 from mars.analysis.report import MarsBinningReport
 from mars.compute import (
     RiskCorrBaseline,
+    amount_distribution_exprs,
+    amount_metric_exprs,
+    amount_stats_agg_exprs,
     bad_rate_expr,
     binary_distribution_exprs,
     binary_metric_exprs,
@@ -119,6 +122,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             未显式传入分箱器时使用的默认分箱策略。
         binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
+        feature_start_aware_reference : bool
+            是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
+        risk_corr_baseline : RiskCorrBaseline
+            RC 的默认基准选择方式。
 
         Raises
         ------
@@ -159,6 +166,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         psi_include_special: bool = False,
         benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
         weights_col: str | None = None,
+        amount_col: str | None = None,
         batch_size: int = 100,
     ) -> MarsRiskProfile:
         """
@@ -185,8 +193,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
             仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
-        feature_start_aware_reference : bool
-            是否按特征首次出现的分组选择 PSI 基准，适合特征上线时间不一致的场景。
+        feature_start_aware_reference : bool | None
+            是否按特征首次出现的分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
+        risk_corr_baseline : RiskCorrBaseline | None
+            本次评估使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
         psi_include_missing : bool
             计算 PSI 时是否单独保留缺失值分布。
         psi_include_special : bool
@@ -195,6 +205,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             外部 benchmark 样本；传入后分布稳定性可与该样本进行对比。
         weights_col : str | None
             样本权重列名。
+        amount_col : str | None
+            金额列名；传入后会在 `detail_table` 中额外产出金额视角指标。
         batch_size : int
             批量评估时的特征批大小。
 
@@ -261,16 +273,21 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 )
 
         working_df, group_col = self._prepare_context(working_df, profile_by, dt_col)
+        if amount_col is not None and amount_col not in working_df.columns:
+            raise ValueError(f"Amount column '{amount_col}' was not found in dataframe.")
 
         # 自动识别特征列
         # 排除 target, weights, 和刚刚生成的统一 mars_group 列
         exclude_cols = {self.target, group_col}
         if weights_col:
             exclude_cols.add(weights_col)
+        if amount_col:
+            exclude_cols.add(amount_col)
 
-        target_features = features if features else [
-            c for c in working_df.columns if c not in exclude_cols
-        ]
+        if features:
+            target_features = [col for col in features if col != amount_col]
+        else:
+            target_features = [col for col in working_df.columns if col not in exclude_cols]
 
         effective_feature_data_source = feature_data_source if feature_data_source is not None else {}
         feature_source_map = self._normalize_feature_data_source(effective_feature_data_source, target_features)
@@ -354,6 +371,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         logger.debug("Step 1: scanning grouped bin statistics.")
         group_stats_raw = self._agg_basic_stats(
             df_binned, group_col, target_features, self.target, weights_col,
+            amount_col=amount_col,
             batch_size=batch_size
         )
 
@@ -408,6 +426,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 指标计算
+        total_stats_raw = self._rollup_total_stats(
+            group_stats_raw,
+            group_col=group_col,
+        )
         logger.debug("Step 3: calculating metrics.")
 
         # 计算 Trend 数据
@@ -442,6 +464,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                         pl.col("bad").sum().alias("bad"),
                     ])
                     .with_columns(pl.lit("Total").alias(group_col))
+                )
+                monitor_total_stats_raw = self._rollup_total_stats(
+                    monitor_group_stats_raw,
+                    group_col=group_col,
                 )
                 monitor_metrics_groups = (
                     self._calc_metrics_from_stats_v2(
@@ -535,6 +561,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "psi_include_special": psi_include_special,
             "risk_corr_baseline": effective_risk_corr_baseline,
             "risk_corr_reference_source": risk_corr_reference_source,
+            "amount_col": amount_col,
             "feature_start_reference_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
             "feature_start_reference_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
         }
@@ -570,6 +597,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 "auc_bin",
                 "iv_bin",
                 "mono",
+                "good_amt",
+                "bad_amt",
+                "amt_bad_rate",
+                "lift_amt",
             ]
 
             # detail_table 擦除
@@ -682,6 +713,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         features: List[str],
         y_col: str,
         weights_col: str | None,
+        amount_col: str | None = None,
         batch_size: int = 500
     ) -> pl.DataFrame:
         """
@@ -733,12 +765,19 @@ class MarsBinEvaluator(MarsBaseEstimator):
         index_cols = [group_col, y_col] # 注意这里 y_col 被放到 index 是为了 unpivot 后不丢失信息
         if weights_col:
             index_cols.append(weights_col)
+        if amount_col:
+            index_cols.append(amount_col)
 
         # 预定义聚合表达式，count 保留全量分布，observed_count 只记录已表现样本。
         agg_exprs = binary_stats_agg_exprs(
             y_col,
             weight_col=weights_col,
         )
+        if amount_col:
+            agg_exprs += amount_stats_agg_exprs(
+                y_col,
+                amount_col,
+            )
 
         result_frames: List[pl.DataFrame] = []
 
@@ -776,6 +815,28 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # 合并结果：将所有批次的小表 (Reduced Tables) 纵向合并
         return pl.concat(result_frames)
+
+    @staticmethod
+    def _rollup_total_stats(
+        stats_df: pl.DataFrame,
+        *,
+        group_col: str,
+    ) -> pl.DataFrame:
+        """把分组级统计表汇总为 ``Total`` 面板所需统计表。"""
+        agg_exprs: list[pl.Expr] = [
+            pl.col("count").sum().alias("count"),
+            pl.col("observed_count").sum().alias("observed_count"),
+            pl.col("bad").sum().alias("bad"),
+        ]
+        for amount_metric in ["tot_amt", "good_amt", "bad_amt"]:
+            if amount_metric in stats_df.columns:
+                agg_exprs.append(pl.col(amount_metric).sum().alias(amount_metric))
+        return (
+            stats_df
+            .group_by(["feature", "bin_index"])
+            .agg(agg_exprs)
+            .with_columns(pl.lit("Total").alias(group_col))
+        )
 
     def _ensure_woe_info(self, group_stats_raw: pl.DataFrame) -> None:
         """
@@ -1130,6 +1191,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ]
             )
             .with_columns(binary_distribution_exprs([group_col, "feature"]))
+        )
+        if {"tot_amt", "good_amt", "bad_amt"}.issubset(base_df.columns):
+            base_df = base_df.with_columns(
+                amount_distribution_exprs([group_col, "feature"]),
+            )
+        base_df = (
+            base_df
             .with_columns(
                 psi_exprs(
                     [group_col, "feature"],
@@ -1139,6 +1207,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
             .with_columns(binary_metric_exprs())
         )
+        if {
+            "tot_amt",
+            "good_amt",
+            "bad_amt",
+            "observed_amt",
+            "total_observed_amt",
+            "total_bad_amt",
+        }.issubset(base_df.columns):
+            base_df = base_df.with_columns(amount_metric_exprs())
 
         sorted_df = (
             base_df
@@ -1880,6 +1957,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .join(map_df, on=["feature", "bin_index"], how="left")
             .with_columns(pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)))
         )
+        amount_detail_cols = (
+            ["tot_amt", "good_amt", "bad_amt", "avg_amt", "amt_bad_rate", "lift_amt"]
+            if {"tot_amt", "good_amt", "bad_amt"}.issubset(detail_base.columns)
+            else []
+        )
 
         # 提取 WOE 序列
         trend_source = (
@@ -2019,6 +2101,37 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # total 行也要 join trend 列
+        if amount_detail_cols:
+            amount_totals = (
+                stats_long
+                .group_by(["feature", group_col])
+                .agg([
+                    pl.col("count").sum().alias("count"),
+                    pl.col("tot_amt").sum().alias("tot_amt"),
+                    pl.col("good_amt").sum().alias("good_amt"),
+                    pl.col("bad_amt").sum().alias("bad_amt"),
+                ])
+                .with_columns([
+                    pl.when(pl.col("count") > 0)
+                    .then(pl.col("tot_amt") / pl.col("count"))
+                    .otherwise(None)
+                    .alias("avg_amt"),
+                    pl.when((pl.col("good_amt") + pl.col("bad_amt")) > 0)
+                    .then(pl.col("bad_amt") / (pl.col("good_amt") + pl.col("bad_amt")))
+                    .otherwise(None)
+                    .alias("amt_bad_rate"),
+                    pl.when((pl.col("good_amt") + pl.col("bad_amt")) > 0)
+                    .then(pl.lit(1.0))
+                    .otherwise(None)
+                    .alias("lift_amt"),
+                ])
+                .select(["feature", group_col] + amount_detail_cols)
+            )
+            total_rows = total_rows.join(
+                amount_totals,
+                on=["feature", group_col],
+                how="left",
+            )
         total_rows = total_rows.join(trend_shape_df, on="feature", how="left")
 
         targets = [
@@ -2028,6 +2141,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
             "bin_type"
         ]
+        if amount_detail_cols:
+            targets.extend(amount_detail_cols)
 
         detail_table = (
             pl.concat([
@@ -2044,7 +2159,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
             "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
             "bin_type"
-        ])
+        ] + amount_detail_cols)
 
         if feature_source_map:
             source_df = pl.DataFrame({

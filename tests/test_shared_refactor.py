@@ -55,7 +55,8 @@ def test_model_evaluator_reuses_binning_psi_without_special_value_parameter(
         features=["pred_score"],
         group_col="dataset_flag",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 10},
+        method="quantile",
+        n_bins=10,
         psi_include_missing=True,
     )
     risk_trend = risk_profile.report.trend_tables["psi"]

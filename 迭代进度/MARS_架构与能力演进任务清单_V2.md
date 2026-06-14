@@ -177,6 +177,21 @@
 
 ## 4. P1 任务
 
+### 当前阶段调整：暂停建模迭代，切回分析层稳定化
+
+基于当前真实使用反馈，`P1` 的执行口径从“并行推进分析与建模演进”调整为“先把最开始的分析功能彻底做稳，再恢复建模专项迭代”。当前阶段的约束如下：
+
+- 暂停 `modeling / pipeline / scorecard / replay / artifact schema` 相关新能力与结构优化，不再把它们作为当前迭代主线。
+- 建模链路仅保留阻塞性修复：只有当问题直接阻塞 `analysis / reporting / selector` 主链路验证时，才做最小修补。
+- `P1` 当前优先级切换到分析层稳定化，重点收口：
+  - `profile_stats`
+  - `profile_risk`
+  - `MarsBinEvaluator`
+  - `MarsBinningReport`
+  - `MarsStatsSelector`
+  - `reporting` 层图表、导出与多目标展示一致性
+- 凡是以 `modeling` 为主战场的任务，统一降权；等分析层指标口径、图表语义、report summary/detail/trend 一致性稳定后再恢复推进。
+
 ## P1-01 补齐 sklearn 协议并新增协议合规测试
 
 - Issue 标题：
@@ -217,10 +232,12 @@
     - 合法取值是什么
     - 如何修复
 
-## P1-03 DRY 重构与胖类瘦身（进行中）
+## P1-03 DRY 重构与胖类瘦身（进行中，当前暂停）
 
 - 当前状态：
   `src/mars/modeling/` 已完成 `backends / workflows / inference / evaluation / contracts / artifacts` 一级分层，稳定入口也已收口到 `mars.modeling`。当前问题已从“是否建立内部分类目录”转为“如何把第二阶段边界彻底做干净”。
+- 当前阶段说明：
+  这项工作本身没有被否定，但已不再属于当前迭代主线。现阶段只保留“若直接阻塞分析层修复，则做最小补丁”的处理方式；系统性 modeling 收口延后到分析层稳定之后再恢复。
 - 已完成基础：
   - `modeling` 子包分层已落地，根目录不再承担平铺式业务模块堆放。
   - 训练 / replay / prediction 已完成 registry 主路径收口。
@@ -291,12 +308,14 @@
   - 大日志调用改用惰性占位符。
   - Joblib 并行路径明确配置共享内存阈值或等价策略。
 
-## P1-06 补齐 Vintage、Swap、金额纵向分析
+## P1-06 补齐 Vintage、Swap、金额纵向分析（后置）
 
 - Issue 标题：
   `feat: add vintage swap and amount longitudinal analysis`
 - 目标：
   补齐最贴近风控日常分析的第一批业务能力。
+- 当前阶段说明：
+  这类能力属于分析增强，不属于当前“先把基础分析功能做稳”的阶段目标；现阶段统一后置。
 - 涉及文件：
   - `src/mars/modeling/evaluation.py`
   - `src/mars/analysis/report.py`
@@ -330,12 +349,14 @@
 
 ---
 
-## P1-08 为产物与导出结构建立协议版本化
+## P1-08 为产物与导出结构建立协议版本化（已降权）
 
 - Issue 标题：
   `chore: version artifact and export schemas`
 - 目标：
   为落盘产物和对外导出结构建立稳定协议，避免后续字段演进时打碎兼容性。
+- 当前阶段说明：
+  这项能力主要服务建模产物治理与长期交付，不再属于当前阶段主线；保留规划，但延后执行。
 - 涉及文件：
   - `src/mars/modeling/results.py`
   - `src/mars/modeling/artifacts.py`
@@ -365,12 +386,14 @@
     - 转 Arrow
     - 转 Pandas
 
-## P1-10 为预测链路增加 schema 契约保护
+## P1-10 为预测链路增加 schema 契约保护（已降权）
 
 - Issue 标题：
   `feat: enforce prediction schema contract checks`
 - 目标：
   在训练和预测之间建立显式 schema 契约，降低线上列漂移、dtype 漂移、类别字典漂移的风险。
+- 当前阶段说明：
+  这是典型的建模链路增强项，当前随建模主线一起降权，待分析层稳定后再恢复推进。
 - 涉及文件：
   - `src/mars/modeling/prediction.py`
   - `src/mars/pipeline/pipeline.py`
@@ -453,12 +476,14 @@
   - 至少有一层稳定承诺入口与一层实验能力入口。
   - 包级导出不再无限扩张。
 
-## P1-15 为建模与评估链路落 run manifest
+## P1-15 为建模与评估链路落 run manifest（已降权）
 
 - Issue 标题：
   `feat: persist run manifest for modeling and evaluation workflows`
 - 目标：
   为训练、评估、导出统一生成可回放的运行清单，增强可复现性和审计性。
+- 当前阶段说明：
+  这项能力主要服务建模工作台和产物治理，不再属于当前分析层稳定化阶段；保留规划，但延后执行。
 - 涉及文件：
   - `src/mars/modeling/spec.py`
   - `src/mars/modeling/session.py`
@@ -469,12 +494,14 @@
   - manifest 至少包含版本、特征、配置、随机种子、切分信息、产物路径。
   - manifest 可被导出并重新读取。
 
-## P1-16 在 pipeline / session 增加泄漏防护检查
+## P1-16 在 pipeline / session 增加泄漏防护检查（已降权）
 
 - Issue 标题：
   `feat: add leakage guardrails to pipeline and modeling session`
 - 目标：
   在正式训练前尽早识别时间穿越、目标泄漏、样本交叉污染等高风险问题。
+- 当前阶段说明：
+  这项能力价值很高，但当前已随建模主线一起降权；等分析层稳定后，再回到 `pipeline / session` 统一补防护。
 - 涉及文件：
   - `src/mars/pipeline/pipeline.py`
   - `src/mars/modeling/session.py`
@@ -510,12 +537,14 @@
   - 如提供 `feature_data_source`，可聚合到数据源级别，识别多特征同步异常。
   - 只输出 report / table / summary，不包含 Webhook、调度或外部处置流程。
 
-## P1-18 金额加权评估 / 件数与金额双视角评估
+## P1-18 金额加权评估 / 件数与金额双视角评估（已降权）
 
 - Issue 标题：
   `feat: add amount-weighted evaluation and dual-perspective binning`
 - 目标：
   在模型评估和分箱评估中补齐金额 / 敞口口径，形成件数与金额双视角；这项能力从原 `P0-05` 下放到 `P1`，作为进入 `P1` 后优先执行的第一张业务增强单。
+- 当前阶段说明：
+  这项能力仍然合理，但它已经不再是当前阶段的第一张单。现阶段先把分析层既有口径、图表和多目标语义做稳，金额视角评估延后到分析层稳定之后再推进。
 - 涉及文件：
   - `src/mars/modeling/evaluation.py`
   - `src/mars/modeling/metrics.py`
@@ -682,30 +711,30 @@
 
 ## 6. 建议的建单顺序
 
-如果按真正落地执行来排，我建议 issue 创建顺序如下。`P0` 的退出标准是形成 `P1` 可开工基线；进入 `P1` 后，第一张业务增强单优先开 `P1-18`。
+如果按当前真实执行节奏来排，我建议 issue 创建顺序改成下面这样。当前口径不是继续扩张建模层，而是先完成“分析层稳定化”，把指标口径、图表语义和多目标展示做实；建模相关项统一后置。
 
 1. `P0-01` 建立共享 `compute` 层并明确 Pandas 白名单边界（已完成）
 2. `P0-02` 抽离 `reporting` 层并纯化 `utils`（已完成）
 3. `P0-03` 将 `BACKEND_MAP` 演进为 registry，并统一训练/预测后端适配（已完成）
 4. `P0-04` 为 `compute / reporting / registry` 服务的最小拆包（已完成）
-5. `P1-18` 金额加权评估 / 件数与金额双视角评估
-6. `P1-01` 补齐 sklearn 协议并新增协议合规测试
-7. `P1-02` 统一配置对象生命周期与声明式校验
-8. `P1-14` 定义稳定 API 层级与 experimental 命名空间
-9. `P1-04` 升级测试体系：镜像目录、快照测试、契约测试
-10. `P1-03` DRY 重构与胖类瘦身
+5. `P1-04` 升级测试体系：镜像目录、快照测试、契约测试
+6. `P1-05` 收口工程质量细节
+7. `P1-12` 为核心链路补性能回归基准
+8. `P1-13` 收口领域异常层级
+9. `P1-14` 定义稳定 API 层级与 experimental 命名空间
+10. `P1-02` 统一配置对象生命周期与声明式校验
 11. `P1-07` 建立全局配置中心
-12. `P1-08` 为产物与导出结构建立协议版本化
-13. `P1-09` 建立统一的数据物化策略层
-14. `P1-10` 为预测链路增加 schema 契约保护
-15. `P1-15` 为建模与评估链路落 run manifest
-16. `P1-16` 在 pipeline / session 增加泄漏防护检查
-17. `P1-17` 为特征筛选与监控补齐缺失率异常检测
-18. `P1-05` 收口工程质量细节
-19. `P1-11` 建立公共 API 兼容层与废弃策略
-20. `P1-13` 收口领域异常层级
-21. `P1-12` 为核心链路补性能回归基准
-22. `P1-06` 补齐 Vintage、Swap、金额纵向分析
+12. `P1-09` 建立统一的数据物化策略层
+13. `P1-01` 补齐 sklearn 协议并新增协议合规测试
+14. `P1-17` 为特征筛选与监控补齐缺失率异常检测
+15. `P1-11` 建立公共 API 兼容层与废弃策略
+16. `P1-18` 金额加权评估 / 件数与金额双视角评估（降权）
+17. `P1-03` DRY 重构与胖类瘦身（暂停）
+18. `P1-08` 为产物与导出结构建立协议版本化（降权）
+19. `P1-10` 为预测链路增加 schema 契约保护（降权）
+20. `P1-15` 为建模与评估链路落 run manifest（降权）
+21. `P1-16` 在 pipeline / session 增加泄漏防护检查（降权）
+22. `P1-06` 补齐 Vintage、Swap、金额纵向分析（后置）
 23. `P2-09` 收敛最小可用路径并新增 dry-run / preflight 模式
 24. `P2-06` 为评分卡补充 reason code 输出
 25. `P2-07` 为报告增加业务语义层与口径说明卡片

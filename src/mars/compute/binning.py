@@ -9,6 +9,15 @@ import polars as pl
 from mars.core.constants import METRIC_EPSILON
 
 
+def _valid_amount_value_expr(amount_col: str) -> pl.Expr:
+    """构造可参与金额统计的金额值表达式。"""
+    return (
+        pl.when(pl.col(amount_col).is_not_null() & (pl.col(amount_col) >= 0))
+        .then(pl.col(amount_col).cast(pl.Float64))
+        .otherwise(0.0)
+    )
+
+
 def binary_count_expr(
     *,
     weight_col: str | None = None,
@@ -81,6 +90,73 @@ def binary_stats_agg_exprs(
     ]
 
 
+def total_amount_expr(
+    amount_col: str,
+    *,
+    output_col: str = "tot_amt",
+) -> pl.Expr:
+    """构造总金额聚合表达式。"""
+    return _valid_amount_value_expr(amount_col).sum().alias(output_col)
+
+
+def good_amount_expr(
+    target_col: str,
+    amount_col: str,
+    *,
+    output_col: str = "good_amt",
+) -> pl.Expr:
+    """构造好样本金額聚合表达式。"""
+    valid_amount_expr = _valid_amount_value_expr(amount_col)
+    return (
+        pl.when(pl.col(target_col) == 0)
+        .then(valid_amount_expr)
+        .otherwise(0.0)
+        .sum()
+        .alias(output_col)
+    )
+
+
+def bad_amount_expr(
+    target_col: str,
+    amount_col: str,
+    *,
+    output_col: str = "bad_amt",
+) -> pl.Expr:
+    """构造坏样本金額聚合表达式。"""
+    valid_amount_expr = _valid_amount_value_expr(amount_col)
+    return (
+        pl.when(pl.col(target_col) == 1)
+        .then(valid_amount_expr)
+        .otherwise(0.0)
+        .sum()
+        .alias(output_col)
+    )
+
+
+def amount_stats_agg_exprs(
+    target_col: str,
+    amount_col: str,
+    *,
+    total_amount_col: str = "tot_amt",
+    good_amount_col: str = "good_amt",
+    bad_amount_col: str = "bad_amt",
+) -> list[pl.Expr]:
+    """构造金额统计聚合表达式列表。"""
+    return [
+        total_amount_expr(amount_col, output_col=total_amount_col),
+        good_amount_expr(
+            target_col,
+            amount_col,
+            output_col=good_amount_col,
+        ),
+        bad_amount_expr(
+            target_col,
+            amount_col,
+            output_col=bad_amount_col,
+        ),
+    ]
+
+
 def binary_distribution_exprs(
     group_keys: Sequence[str],
     *,
@@ -102,6 +178,26 @@ def binary_distribution_exprs(
         pl.col(observed_count_col).sum().over(partitions).alias(total_observed_col),
         pl.col(bad_col).sum().over(partitions).alias(total_bad_col),
         good_value.sum().over(partitions).alias(total_good_col),
+    ]
+
+
+def amount_distribution_exprs(
+    group_keys: Sequence[str],
+    *,
+    total_amount_col: str = "tot_amt",
+    good_amount_col: str = "good_amt",
+    bad_amount_col: str = "bad_amt",
+    observed_amount_col: str = "observed_amt",
+    total_observed_amount_col: str = "total_observed_amt",
+    total_bad_amount_col: str = "total_bad_amt",
+) -> list[pl.Expr]:
+    """构造金额口径的中间量表达式列表。"""
+    partitions = list(group_keys)
+    observed_amount_expr = pl.col(good_amount_col) + pl.col(bad_amount_col)
+    return [
+        observed_amount_expr.alias(observed_amount_col),
+        observed_amount_expr.sum().over(partitions).alias(total_observed_amount_col),
+        pl.col(bad_amount_col).sum().over(partitions).alias(total_bad_amount_col),
     ]
 
 
@@ -129,7 +225,7 @@ def binary_metric_exprs(
         (pl.col(observed_count_col) - pl.col(bad_col))
         / (pl.col(total_good_col) + epsilon)
     )
-    bad_rate_expr = (
+    current_bad_rate_expr = (
         pl.when(pl.col(observed_count_col) > 0)
         .then(pl.col(bad_col) / pl.col(observed_count_col))
         .otherwise(None)
@@ -141,11 +237,11 @@ def binary_metric_exprs(
         ),
         bad_dist_expr.alias(bad_dist_col),
         good_dist_expr.alias(good_dist_col),
-        bad_rate_expr.alias(bad_rate_col),
+        current_bad_rate_expr.alias(bad_rate_col),
         (
             pl.when(pl.col(total_observed_col) > 0)
             .then(
-                bad_rate_expr
+                current_bad_rate_expr
                 / (
                     (pl.col(total_bad_col) + epsilon)
                     / (pl.col(total_observed_col) + epsilon)
@@ -161,6 +257,48 @@ def binary_metric_exprs(
             .otherwise(None)
             .cast(pl.Float32)
             .alias(iv_bin_col)
+        ),
+    ]
+
+
+def amount_metric_exprs(
+    *,
+    count_col: str = "count",
+    total_amount_col: str = "tot_amt",
+    observed_amount_col: str = "observed_amt",
+    total_observed_amount_col: str = "total_observed_amt",
+    bad_amount_col: str = "bad_amt",
+    total_bad_amount_col: str = "total_bad_amt",
+    average_amount_col: str = "avg_amt",
+    amount_bad_rate_col: str = "amt_bad_rate",
+    amount_lift_col: str = "lift_amt",
+    epsilon: float = METRIC_EPSILON,
+) -> list[pl.Expr]:
+    """构造金额口径指标表达式列表。"""
+    amount_bad_rate_expr = (
+        pl.when(pl.col(observed_amount_col) > 0)
+        .then(pl.col(bad_amount_col) / pl.col(observed_amount_col))
+        .otherwise(None)
+    )
+    return [
+        (
+            pl.when(pl.col(count_col) > 0)
+            .then(pl.col(total_amount_col) / pl.col(count_col))
+            .otherwise(None)
+            .alias(average_amount_col)
+        ),
+        amount_bad_rate_expr.alias(amount_bad_rate_col),
+        (
+            pl.when(pl.col(total_observed_amount_col) > 0)
+            .then(
+                amount_bad_rate_expr
+                / (
+                    (pl.col(total_bad_amount_col) + epsilon)
+                    / (pl.col(total_observed_amount_col) + epsilon)
+                )
+            )
+            .otherwise(None)
+            .alias(amount_lift_col)
         ),
     ]
 
@@ -220,6 +358,10 @@ def bad_rate_expr(
 
 
 __all__ = [
+    "amount_distribution_exprs",
+    "amount_metric_exprs",
+    "amount_stats_agg_exprs",
+    "bad_amount_expr",
     "bad_rate_expr",
     "binary_bad_expr",
     "binary_count_expr",
@@ -227,5 +369,7 @@ __all__ = [
     "binary_metric_exprs",
     "binary_observed_count_expr",
     "binary_stats_agg_exprs",
+    "good_amount_expr",
     "ordered_binary_metric_exprs",
+    "total_amount_expr",
 ]

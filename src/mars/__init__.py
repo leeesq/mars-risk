@@ -38,7 +38,7 @@ from .pipeline import (
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.16"
+__version__ = "0.0.17"
 
 _BANNER = rf"""
     __________________________________________________________________________

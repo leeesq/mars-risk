@@ -203,7 +203,11 @@ risk_profile = profile_risk(
     features=["income", "utilization", "segment"],
     group_col="month",
     binning_type="native",
-    binner_params={"method": "quantile", "n_bins": 4},
+    method="quantile",
+    n_bins=4,
+    missing_values=[-999],
+    special_values=[-999],
+    n_jobs=4,
     psi_include_missing=False,
     psi_include_special=False,
 )
@@ -215,6 +219,29 @@ eval_report.plot_risk_trends(max_plots=5)
 ```
 
 `profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 用于复用本次分箱规则。
+
+当需要切换不同分箱器的底层高级参数时，优先使用按类型分仓的
+`advanced_binning_params`，而不是反复改注释：
+
+```python
+risk_profile = profile_risk(
+    df,
+    target="target",
+    features=["income", "utilization"],
+    group_col="month",
+    binning_type="lite_opt",
+    method="quantile",
+    n_bins=6,
+    advanced_binning_params={
+        "native": {"merge_small_bins": True},
+        "lite_opt": {"n_prebins": 30, "join_threshold": 80},
+    },
+)
+```
+
+当 `profile_risk()` 使用 `optimal` 或 `lite_opt` 且未显式传 `monotonic_trend`
+时，高层默认会补成 `auto_asc_desc`。这与直接构造 `MarsLiteOptBinner()`
+时底层默认的 `auto` 不同。
 
 ### 分箱器
 

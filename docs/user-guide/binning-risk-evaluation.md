@@ -13,7 +13,11 @@ risk_profile = profile_risk(
     features=["income", "utilization", "segment"],
     group_col="month",
     binning_type="native",
-    binner_params={"method": "quantile", "n_bins": 5},
+    method="quantile",
+    n_bins=5,
+    missing_values=[-999],
+    special_values=[-999],
+    n_jobs=4,
 )
 
 report = risk_profile.report
@@ -26,6 +30,29 @@ report.plot_risk_trends(max_plots=5)
 - `binner`：本次拟合或复用的分箱器。
 - `targets`：本次评估的目标列列表。
 - `metadata`：运行上下文。
+
+如果你会在 `native`、`optimal` 和 `lite_opt` 之间来回切换，建议把各自的底层
+高级参数按类型分仓，避免每次切换都去改同一个参数字典：
+
+```python
+risk_profile = profile_risk(
+    df,
+    target="target",
+    features=["income", "utilization"],
+    group_col="month",
+    binning_type="lite_opt",
+    method="quantile",
+    n_bins=6,
+    advanced_binning_params={
+        "native": {"merge_small_bins": True},
+        "lite_opt": {"n_prebins": 50, "join_threshold": 100},
+    },
+)
+```
+
+`profile_risk()` 在 `optimal` 和 `lite_opt` 下如果未显式传 `monotonic_trend`，
+会默认补成 `auto_asc_desc`。这与直接构造 `MarsLiteOptBinner()` 时底层默认的
+`auto` 不同。
 
 ## 评估器入口：`MarsBinEvaluator`
 

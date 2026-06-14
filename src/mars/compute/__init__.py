@@ -1,6 +1,10 @@
 """共享计算底座的公共导出入口。"""
 
 from .binning import (
+    amount_distribution_exprs,
+    amount_metric_exprs,
+    amount_stats_agg_exprs,
+    bad_amount_expr,
     bad_rate_expr,
     binary_bad_expr,
     binary_count_expr,
@@ -8,7 +12,9 @@ from .binning import (
     binary_metric_exprs,
     binary_observed_count_expr,
     binary_stats_agg_exprs,
+    good_amount_expr,
     ordered_binary_metric_exprs,
+    total_amount_expr,
 )
 from .materialization import (
     FrameLike,
@@ -38,6 +44,10 @@ from .stability import (
 __all__ = [
     "FrameLike",
     "RiskCorrBaseline",
+    "amount_distribution_exprs",
+    "amount_metric_exprs",
+    "amount_stats_agg_exprs",
+    "bad_amount_expr",
     "bad_rate_expr",
     "binary_bad_expr",
     "binary_count_expr",
@@ -47,6 +57,7 @@ __all__ = [
     "binary_stats_agg_exprs",
     "build_missing_by_period_stats",
     "filter_compatible_values",
+    "good_amount_expr",
     "is_numeric_dtype",
     "is_polars_dataframe",
     "missing_condition_expr",
@@ -58,6 +69,7 @@ __all__ = [
     "psi_valid_condition",
     "restore_frame_type",
     "risk_corr_expr",
+    "total_amount_expr",
     "to_pandas_frame",
     "to_pandas_table",
     "to_polars_frame",

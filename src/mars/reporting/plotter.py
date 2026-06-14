@@ -3,7 +3,7 @@
 import base64
 import uuid
 from io import BytesIO
-from typing import Union
+from typing import Literal, Union, cast
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -196,7 +196,27 @@ class MarsPlotter:
         corr_value = merged_df["bad_rate"].corr(merged_df["base_br"], method="spearman")
         if np.isnan(corr_value):
             return 1.0
-        return corr_value
+        return float(corr_value)
+
+    @staticmethod
+    def _normalize_show_risk(
+        show_risk: str,
+    ) -> Literal["count", "amt", "both"]:
+        """规范化公开的风险线展示模式。"""
+        normalized = str(show_risk).strip().lower()
+        if normalized not in {"count", "amt", "both"}:
+            raise ValueError(
+                "`show_risk` only supports 'count', 'amt', or 'both'.",
+            )
+        return cast(Literal["count", "amt", "both"], normalized)
+
+    @staticmethod
+    def _has_amount_risk_columns(df_detail: pd.DataFrame) -> bool:
+        """判断明细表是否具备可绘制的金额风险列。"""
+        required_cols = {"amt_bad_rate", "lift_amt"}
+        if not required_cols.issubset(df_detail.columns):
+            return False
+        return bool(df_detail["amt_bad_rate"].notna().any())
 
     @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
@@ -263,6 +283,7 @@ class MarsPlotter:
         group_col: str = "month",
         target_name: str = "Target",
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
     ) -> str:
         """
@@ -278,6 +299,11 @@ class MarsPlotter:
             趋势分组列名。
         target_name : str
             目标变量展示名称。
+        risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
+            当前特征绘图使用的 RC 参考坏率表；传入后图中 RC 与报告口径保持一致。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
+            `both` 同时展示两条风险线。
         dpi : int | None
             输出 PNG 的渲染分辨率。为 ``None`` 时使用默认值 ``150``。
 
@@ -313,6 +339,7 @@ class MarsPlotter:
             group_col=group_col,
             target_name=target_name,
             risk_corr_reference_df=risk_corr_reference_df,
+            show_risk=show_risk,
         )
         if fig is None:
             return ""
@@ -327,9 +354,14 @@ class MarsPlotter:
         group_col: str = "month",
         target_name: str = "Target",
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
     ) -> plt.Figure | None:
         """构建风险趋势图对象但不直接展示。"""
         df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
+        show_risk = MarsPlotter._normalize_show_risk(show_risk)
+        amount_risk_available = MarsPlotter._has_amount_risk_columns(df_detail)
+        if show_risk == "amt" and not amount_risk_available:
+            raise ValueError("Amount risk columns are unavailable in detail_table.")
         reference_pd = (
             MarsPlotter._as_pandas_detail_frame(risk_corr_reference_df)
             if risk_corr_reference_df is not None
@@ -459,6 +491,7 @@ class MarsPlotter:
 
         global_max_count = 0.0
         global_max_bad = 0.0
+        global_max_amt_bad = 0.0
         for group in all_groups:
             tmp_df = plot_df[plot_df[group_col] == group]
             if tmp_df.empty:
@@ -472,6 +505,10 @@ class MarsPlotter:
                 tmp_bads = tmp_df["bad_rate"]
                 if len(tmp_bads) > 0:
                     global_max_bad = max(global_max_bad, tmp_bads.max())
+            if amount_risk_available and "amt_bad_rate" in tmp_df.columns:
+                tmp_amt_bads = tmp_df["amt_bad_rate"].dropna()
+                if len(tmp_amt_bads) > 0:
+                    global_max_amt_bad = max(global_max_amt_bad, tmp_amt_bads.max())
 
         to_percent = FuncFormatter(lambda y, _: f"{y:.0%}")
 
@@ -520,19 +557,58 @@ class MarsPlotter:
                 mask_special = ~mask_normal
                 x_arr = np.array(list(x))
                 bads_arr = np.array(bads)
+                draw_count_risk = show_risk in {"count", "both"}
+                draw_amount_risk = show_risk in {"amt", "both"} and amount_risk_available
 
                 color_red = "#fc5853"
+                color_amount_risk = "#d4a017"
                 color_blue = "#210fe8"
                 color_grey = "#555555"
+                color_amt_lift_text = "#6a0dad"
+                color_amt_bad_rate_text = "#b57edc"
+                color_amt_lift_special_text = "#355cde"
+                color_amt_bad_rate_special_text = "#7f8cff"
 
-                if mask_normal.any():
+                if draw_count_risk and mask_normal.any():
                     ax2.plot(x_arr[mask_normal], bads_arr[mask_normal], color=color_red, linewidth=1.2, zorder=1)
                     ax2.scatter(x_arr[mask_normal], bads_arr[mask_normal], color=color_red, s=6.5, zorder=2)
 
-                if mask_special.any():
+                if draw_count_risk and mask_special.any():
                     ax2.scatter(x_arr[mask_special], bads_arr[mask_special], color=color_blue, s=6.5, zorder=2)
 
-                y_max_limit = global_max_bad * 1.25 if global_max_bad > 0 else 1.0
+                amount_bads_arr = None
+                if draw_amount_risk:
+                    amount_bads_arr = df_g["amt_bad_rate"].to_numpy(dtype=float)
+                    if mask_normal.any():
+                        ax2.plot(
+                            x_arr[mask_normal],
+                            amount_bads_arr[mask_normal],
+                            color=color_amount_risk,
+                            linewidth=1.2,
+                            zorder=1,
+                        )
+                        ax2.scatter(
+                            x_arr[mask_normal],
+                            amount_bads_arr[mask_normal],
+                            color=color_amount_risk,
+                            s=6.5,
+                            zorder=2,
+                        )
+                    if mask_special.any():
+                        ax2.scatter(
+                            x_arr[mask_special],
+                            amount_bads_arr[mask_special],
+                            color=color_amount_risk,
+                            s=6.5,
+                            zorder=2,
+                        )
+
+                risk_axis_max = 0.0
+                if draw_count_risk:
+                    risk_axis_max = max(risk_axis_max, global_max_bad)
+                if draw_amount_risk:
+                    risk_axis_max = max(risk_axis_max, global_max_amt_bad)
+                y_max_limit = risk_axis_max * 1.25 if risk_axis_max > 0 else 1.0
                 ax2.set_ylim(0, y_max_limit)
 
                 if i == len(all_groups) - 1:
@@ -541,17 +617,57 @@ class MarsPlotter:
                 else:
                     ax2.set_yticks([])
 
-                for j, val in enumerate(bads):
-                    is_special = indices[j] < 0
-                    color_lift_text = color_blue if is_special else "black"
+                if draw_count_risk:
+                    for j, val in enumerate(bads):
+                        is_special = indices[j] < 0
+                        color_lift_text = color_blue if is_special else "black"
 
-                    if "lift" in df_g.columns:
-                        lift_val = df_g["lift"].iloc[j]
+                        if "lift" in df_g.columns:
+                            lift_val = df_g["lift"].iloc[j]
+                            offset_up = y_max_limit * 0.02
+                            ax2.text(j, val + offset_up, f"{lift_val:.1f}", color=color_lift_text, ha="center", va="bottom", fontweight="bold", fontsize=fs_text + 2.6)
+
+                        offset_down = y_max_limit * 0.03
+                        ax2.text(j, val - offset_down, f"{val:.1%}", color=color_grey, ha="center", va="top", fontweight="bold", fontsize=fs_text + 0.8)
+
+                if draw_amount_risk and amount_bads_arr is not None:
+                    for j, amt_val in enumerate(amount_bads_arr):
+                        if np.isnan(amt_val):
+                            continue
+                        is_special = indices[j] < 0
+                        lift_amt_val = df_g["lift_amt"].iloc[j]
                         offset_up = y_max_limit * 0.02
-                        ax2.text(j, val + offset_up, f"{lift_val:.1f}", color=color_lift_text, ha="center", va="bottom", fontweight="bold", fontsize=fs_text + 2.6)
-
-                    offset_down = y_max_limit * 0.03
-                    ax2.text(j, val - offset_down, f"{val:.1%}", color=color_grey, ha="center", va="top", fontweight="bold", fontsize=fs_text + 0.8)
+                        offset_down = y_max_limit * 0.03
+                        lift_amt_text_color = (
+                            color_amt_lift_special_text
+                            if is_special
+                            else color_amt_lift_text
+                        )
+                        amt_bad_rate_text_color = (
+                            color_amt_bad_rate_special_text
+                            if is_special
+                            else color_amt_bad_rate_text
+                        )
+                        ax2.text(
+                            j,
+                            amt_val + offset_up,
+                            f"{lift_amt_val:.1f}",
+                            color=lift_amt_text_color,
+                            ha="center",
+                            va="bottom",
+                            fontweight="bold",
+                            fontsize=fs_text + 2.4,
+                        )
+                        ax2.text(
+                            j,
+                            amt_val - offset_down,
+                            f"{amt_val:.1%}",
+                            color=amt_bad_rate_text_color,
+                            ha="center",
+                            va="top",
+                            fontweight="bold",
+                            fontsize=fs_text + 0.6,
+                        )
 
             for j, val in enumerate(counts):
                 ax.text(j, max(counts) * 0.05, f"{val:.1%}", color="#333333", ha="center", va="bottom", fontsize=fs_text + 0.5)
@@ -578,7 +694,25 @@ class MarsPlotter:
                 ax.text(0.837, 0.945, f" {rc_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.36, color=rc_color)
                 ax.text(0.837, 1.015, f" Miss:{g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
 
-                ax2.axhline(avg_bad_rate, color="grey", linestyle="--", alpha=0.5, linewidth=0.8)
+                if draw_count_risk:
+                    ax2.axhline(avg_bad_rate, color="grey", linestyle="--", alpha=0.5, linewidth=0.8)
+                if draw_amount_risk and "amt_bad_rate" in df_g.columns:
+                    total_good_amt = df_g["good_amt"].sum() if "good_amt" in df_g.columns else 0.0
+                    total_bad_amt = df_g["bad_amt"].sum() if "bad_amt" in df_g.columns else 0.0
+                    total_observed_amt = total_good_amt + total_bad_amt
+                    avg_amt_bad_rate = (
+                        total_bad_amt / total_observed_amt
+                        if total_observed_amt > 0
+                        else np.nan
+                    )
+                    if not np.isnan(avg_amt_bad_rate):
+                        ax2.axhline(
+                            avg_amt_bad_rate,
+                            color=color_amount_risk,
+                            linestyle="--",
+                            alpha=0.5,
+                            linewidth=0.8,
+                        )
                 df_normal = df_g[df_g["bin_index"] >= 0].sort_values("bin_index")
                 if not df_normal.empty:
                     for suffix, idx in [("L", 0), ("R", -1)]:
@@ -602,6 +736,7 @@ class MarsPlotter:
         group_col: str = "month",
         target_name: str = "Target",
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
     ) -> None:
         """
@@ -623,6 +758,11 @@ class MarsPlotter:
             分组维度列名（如月份、客群）。
         target_name : str
             目标变量名称，用于标题显示。
+        risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
+            当前特征绘图使用的 RC 参考坏率表；传入后图中 RC 与报告口径保持一致。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
+            `both` 同时展示两条风险线。
         dpi : int | None
             绘图分辨率。
 
@@ -650,6 +790,7 @@ class MarsPlotter:
             group_col=group_col,
             target_name=target_name,
             risk_corr_reference_df=risk_corr_reference_df,
+            show_risk=show_risk,
         )
         if fig is None:
             return
@@ -664,6 +805,7 @@ class MarsPlotter:
         target_name: str = "Target",
         target_key: str | None = None,
         dpi: int = 150,
+        show_risk: Literal["count", "amt", "both"] = "both",
         sort_by: str = "iv",
         ascending: bool = False,
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
@@ -684,12 +826,21 @@ class MarsPlotter:
             分组维度列。
         target_name : str
             目标名。
+        target_key : str | None
+            批量绘图时当前目标列的标识；仅用于日志与标题上下文。
         dpi : int
             图像分辨率。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
+            `both` 同时展示两条风险线。
         sort_by : str
             排序依据指标，可选 'iv', 'ks', 'auc'。
         ascending : bool
             是否升序排列（默认降序，即最重要的特征排在最前面）。
+        risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
+            批量绘图时共用的 RC 参考坏率表。
+        risk_corr_baseline : RiskCorrBaseline
+            批量绘图阶段默认生效的 RC 基准。
 
         Returns
         -------
@@ -771,6 +922,7 @@ class MarsPlotter:
                 group_col=group_col,
                 target_name=target_name,
                 risk_corr_reference_df=risk_corr_reference_df,
+                show_risk=show_risk,
                 dpi=dpi
             )
         logger.info("Batch plotting completed.")

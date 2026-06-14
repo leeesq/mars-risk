@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 
 from mars.analysis import MarsBinEvaluator, MarsBinningReport, MarsRiskProfile, profile_risk
-from mars.feature import MarsNativeBinner
+from mars.feature import MarsLiteOptBinner, MarsNativeBinner, MarsOptimalBinner
 from mars.reporting.plotter import MarsPlotter
 
 
@@ -43,13 +43,23 @@ def _make_exact_start_aware_monthly_df() -> pl.DataFrame:
     )
 
 
+def _with_amount_col(df: pl.DataFrame) -> pl.DataFrame:
+    amount_values = [
+        100.0, 120.0, 150.0, 200.0, None, 300.0, -50.0, 180.0,
+        110.0, 130.0, 160.0, 210.0, 260.0, -10.0, 310.0, 190.0,
+        115.0, 135.0, 170.0, 220.0, 280.0, None, 320.0, 195.0,
+    ]
+    return df.with_columns(pl.Series("loan_amt", amount_values, dtype=pl.Float64))
+
+
 def test_profile_risk_returns_structured_run(sample_credit_df):
     run = profile_risk(
         sample_credit_df,
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert isinstance(run, MarsRiskProfile)
@@ -79,7 +89,8 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
         target="target",
         features=["income", "utilization"],
         group_col="month",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     captured: dict[str, Any] = {}
@@ -91,6 +102,7 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
         target_name: str = "Target",
         target_key: str | None = None,
         dpi: int = 150,
+        show_risk: str = "both",
         sort_by: str = "iv",
         ascending: bool = False,
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
@@ -102,6 +114,7 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
         captured["target_name"] = target_name
         captured["target_key"] = target_key
         captured["dpi"] = dpi
+        captured["show_risk"] = show_risk
         captured["sort_by"] = sort_by
         captured["ascending"] = ascending
         captured["risk_corr_reference_df"] = risk_corr_reference_df
@@ -122,6 +135,7 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
     assert captured["target_name"] == "target"
     assert captured["target_key"] == "target"
     assert captured["dpi"] == 90
+    assert captured["show_risk"] == "both"
     assert captured["sort_by"] == ""
     assert captured["risk_corr_baseline"] == "total"
     assert captured["risk_corr_reference_df"] is not None
@@ -139,7 +153,8 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
         target=["target", "target_alt"],
         features=["income", "utilization"],
         group_col="month",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     calls: list[dict[str, Any]] = []
@@ -151,6 +166,7 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
         target_name: str = "Target",
         target_key: str | None = None,
         dpi: int = 150,
+        show_risk: str = "both",
         sort_by: str = "iv",
         ascending: bool = False,
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
@@ -164,6 +180,7 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
                 "target_name": target_name,
                 "target_key": target_key,
                 "dpi": dpi,
+                "show_risk": show_risk,
                 "sort_by": sort_by,
                 "ascending": ascending,
                 "risk_corr_reference_df": risk_corr_reference_df,
@@ -185,11 +202,113 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
     assert calls[0]["target_name"] == "target_alt"
     assert calls[0]["target_key"] == "target_alt"
     assert calls[0]["group_col"] == "mars_group"
+    assert calls[0]["show_risk"] == "both"
     assert calls[0]["sort_by"] == ""
     assert calls[0]["risk_corr_baseline"] == "total"
     assert calls[0]["risk_corr_reference_df"] is not None
     assert len(calls[0]["features"]) == 1
     assert set(calls[0]["df_detail"]["y"].astype(str).tolist()) == {"target_alt"}
+
+
+def test_profile_risk_amount_metrics_only_enter_detail_table(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    df = _with_amount_col(sample_credit_df)
+    run = profile_risk(
+        df,
+        target="target",
+        features=["income", "utilization"],
+        group_col="month",
+        amount_col="loan_amt",
+        method="quantile",
+        n_bins=3,
+    )
+
+    detail_pd = _as_pandas(run.report.detail_table)
+    summary_pd = _as_pandas(run.report.summary_table)
+    amount_columns = {
+        "tot_amt",
+        "good_amt",
+        "bad_amt",
+        "avg_amt",
+        "amt_bad_rate",
+        "lift_amt",
+    }
+
+    assert amount_columns.issubset(detail_pd.columns)
+    assert amount_columns.isdisjoint(summary_pd.columns)
+    assert all("amt" not in metric for metric in run.report.trend_tables)
+
+    total_row = detail_pd[
+        (detail_pd["y"].astype(str) == "target")
+        & (detail_pd["feature"].astype(str) == "income")
+        & (detail_pd["mars_group"].astype(str) == "Total")
+        & (detail_pd["bin_label"].astype(str) == "Total")
+    ].iloc[0]
+    valid_amounts = [value for value in df["loan_amt"].to_list() if value is not None and value >= 0]
+    total_amount = sum(valid_amounts)
+    bad_amount = sum(
+        float(row["loan_amt"])
+        for row in df.filter(pl.col("loan_amt").is_not_null() & (pl.col("loan_amt") >= 0) & (pl.col("target") == 1)).to_dicts()
+    )
+    good_amount = sum(
+        float(row["loan_amt"])
+        for row in df.filter(pl.col("loan_amt").is_not_null() & (pl.col("loan_amt") >= 0) & (pl.col("target") == 0)).to_dicts()
+    )
+
+    assert total_row["tot_amt"] == pytest.approx(total_amount, rel=1e-6)
+    assert total_row["good_amt"] == pytest.approx(good_amount, rel=1e-6)
+    assert total_row["bad_amt"] == pytest.approx(bad_amount, rel=1e-6)
+    assert total_row["avg_amt"] == pytest.approx(total_amount / df.height, rel=1e-6)
+    assert total_row["amt_bad_rate"] == pytest.approx(bad_amount / total_amount, rel=1e-6)
+    assert total_row["lift_amt"] == pytest.approx(1.0, rel=1e-6)
+
+
+def test_binning_report_plot_risk_trends_accepts_amount_show_risk(
+    sample_credit_df: pl.DataFrame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = profile_risk(
+        _with_amount_col(sample_credit_df),
+        target="target",
+        features=["income"],
+        group_col="month",
+        amount_col="loan_amt",
+        method="quantile",
+        n_bins=3,
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_batch(
+        df_detail: pd.DataFrame | pl.DataFrame,
+        features: list[str],
+        group_col: str = "month",
+        target_name: str = "Target",
+        target_key: str | None = None,
+        dpi: int = 150,
+        show_risk: str = "both",
+        sort_by: str = "iv",
+        ascending: bool = False,
+        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
+        risk_corr_baseline: str = "total",
+    ) -> None:
+        captured["show_risk"] = show_risk
+        captured["features"] = features
+
+    monkeypatch.setattr(
+        MarsPlotter,
+        "plot_feature_binning_risk_trend_batch",
+        staticmethod(_fake_batch),
+    )
+
+    run.report.plot_risk_trends(features="income", show_risk="amt")
+
+    assert captured["show_risk"] == "amt"
+    assert captured["features"] == ["income"]
+
+    with pytest.raises(ValueError, match="show_risk"):
+        run.report.plot_risk_trends(features="income", show_risk="cum_risk")  # type: ignore[arg-type]
 
 
 def test_binning_plot_figure_keeps_total_panel_on_the_right(
@@ -200,7 +319,8 @@ def test_binning_plot_figure_keeps_total_panel_on_the_right(
         target="target",
         features=["income"],
         group_col="month",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     fig = MarsPlotter._build_feature_binning_risk_figure(
@@ -225,7 +345,8 @@ def test_binning_plot_summary_header_uses_total_panel_metric_scope(
         target="target",
         features=["income"],
         group_col="month",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     fig = MarsPlotter._build_feature_binning_risk_figure(
@@ -289,7 +410,8 @@ def test_profile_risk_time_grain_aliases_do_not_warn(time_grain, caplog):
                 time_col="apply_dt",
                 time_grain=time_grain,
                 binning_type="native",
-                binner_params={"method": "quantile", "n_bins": 3},
+                method="quantile",
+                n_bins=3,
             )
 
     assert run.report.report_meta["profile_by_input"] == time_grain
@@ -305,7 +427,8 @@ def test_profile_risk_returns_report_and_evaluator_for_pandas_input(sample_credi
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert isinstance(report.summary_table, pd.DataFrame)
@@ -320,7 +443,8 @@ def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_cre
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
     report_pd, _ = _profile_risk_report(
         sample_credit_pd,
@@ -328,7 +452,8 @@ def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_cre
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     summary_pl = report_pl.summary_table.to_pandas().sort_values("feature").reset_index(drop=True)
@@ -347,7 +472,8 @@ def test_profile_risk_multi_target_keeps_pandas_return_type(sample_credit_pd):
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert isinstance(report.summary_table, pd.DataFrame)
@@ -365,7 +491,8 @@ def test_profile_risk_without_target_returns_distribution_only_metrics(sample_cr
         features=["income", "utilization", "segment"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     summary = report.summary_table
@@ -434,17 +561,143 @@ def test_evaluator_reuses_only_explicit_binner(sample_credit_df):
     assert run.binner is binner
 
 
-def test_profile_risk_rejects_binner_and_binner_params_together(sample_credit_df):
+def test_profile_risk_no_longer_accepts_legacy_binner_params(sample_credit_df):
+    with pytest.raises(TypeError, match="binner_params"):
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            binner_params={"method": "quantile"},
+        )
+
+
+def test_profile_risk_rejects_binner_and_advanced_binning_params_together(sample_credit_df):
     binner = MarsNativeBinner(method="quantile", n_bins=3)
 
-    with pytest.raises(ValueError, match="binner_params"):
+    with pytest.raises(ValueError, match="advanced_binning_params"):
         profile_risk(
             sample_credit_df,
             target="target",
             features=["income"],
             binner=binner,
-            binner_params={"method": "quantile"},
+            advanced_binning_params={"native": {"merge_small_bins": True}},
         )
+
+
+@pytest.mark.parametrize(
+    ("explicit_kwargs", "message"),
+    [
+        ({"method": "quantile"}, "method"),
+        ({"n_bins": 3}, "n_bins"),
+        ({"min_bin_size": 0.1}, "min_bin_size"),
+        ({"monotonic_trend": "auto_asc_desc"}, "monotonic_trend"),
+        ({"missing_values": [-999]}, "missing_values"),
+        ({"special_values": [-999]}, "special_values"),
+        ({"n_jobs": 1}, "n_jobs"),
+    ],
+)
+def test_profile_risk_rejects_explicit_binner_passthrough_with_binner(
+    sample_credit_df: pl.DataFrame,
+    explicit_kwargs: dict[str, Any],
+    message: str,
+) -> None:
+    binner = MarsNativeBinner(method="quantile", n_bins=3)
+
+    with pytest.raises(ValueError, match=message):
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            binner=binner,
+            **explicit_kwargs,
+        )
+
+
+@pytest.mark.parametrize(
+    ("advanced_binning_params", "message"),
+    [
+        ({"native": {"method": "quantile"}}, "method"),
+        ({"native": {"prebinning_method": "cart"}}, "prebinning_method"),
+        ({"native": {"n_bins": 3}}, "n_bins"),
+        ({"native": {"min_bin_size": 0.1}}, "min_bin_size"),
+        ({"native": {"monotonic_trend": "auto_asc_desc"}}, "monotonic_trend"),
+        ({"native": {"missing_values": [-999]}}, "missing_values"),
+        ({"native": {"special_values": [-999]}}, "special_values"),
+        ({"native": {"n_jobs": 1}}, "n_jobs"),
+    ],
+)
+def test_profile_risk_rejects_public_keys_inside_active_advanced_binning_bucket(
+    sample_credit_df: pl.DataFrame,
+    advanced_binning_params: dict[str, dict[str, Any]],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError) as exc_info:
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            advanced_binning_params=advanced_binning_params,
+        )
+    error_message = str(exc_info.value)
+    assert message in error_message
+    assert "Allowed keys are" in error_message
+    assert "`merge_small_bins`" in error_message
+    assert "`cart_params`" in error_message
+    assert "`remove_empty_bins`" in error_message
+    assert "`method`" in error_message
+    assert "`n_bins`" in error_message
+    assert "`monotonic_trend`" in error_message
+
+
+def test_profile_risk_rejects_unknown_advanced_binning_param_with_current_allowlist(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with pytest.raises(ValueError) as exc_info:
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            binning_type="lite_opt",
+            advanced_binning_params={"lite_opt": {"solver": "cp"}},
+        )
+
+    error_message = str(exc_info.value)
+    assert "`solver`" in error_message
+    assert "Allowed keys are" in error_message
+    assert "`n_prebins`" in error_message
+    assert "`join_threshold`" in error_message
+    assert "`monotonic_trend`" in error_message
+
+
+def test_profile_risk_rejects_unknown_advanced_binning_bucket(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with pytest.raises(ValueError, match="only supports these buckets"):
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            advanced_binning_params={"unexpected": {"foo": 1}},
+        )
+
+
+def test_profile_risk_only_validates_current_advanced_binning_bucket(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        binning_type="native",
+        method="quantile",
+        n_bins=3,
+        advanced_binning_params={
+            "native": {"merge_small_bins": True},
+            "lite_opt": {"solver": "cp"},
+        },
+    )
+
+    assert run.binner.merge_small_bins is True
 
 
 def test_evaluator_external_benchmark_skips_missing_benchmark_columns(sample_credit_df):
@@ -457,7 +710,8 @@ def test_evaluator_external_benchmark_skips_missing_benchmark_columns(sample_cre
         group_col="month",
         benchmark_df=benchmark_df,
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert set(report.summary_table["feature"].to_list()) == {"income", "utilization"}
@@ -470,7 +724,8 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
         features=["income"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
@@ -491,7 +746,10 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
             artifacts_dir.rmdir()
 
 
-def test_evaluation_report_excel_contains_detail_sheet_and_data_source(sample_credit_df, tmp_path):
+def test_evaluation_report_excel_uses_template_headers_for_detail_sheet(
+    sample_credit_df: pl.DataFrame,
+    tmp_path: Path,
+) -> None:
     from openpyxl import load_workbook
     from openpyxl.utils.cell import range_boundaries
 
@@ -505,47 +763,145 @@ def test_evaluation_report_excel_contains_detail_sheet_and_data_source(sample_cr
         },
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
     output_path = tmp_path / "evaluation_report.xlsx"
 
     report.write_excel(str(output_path), engine="openpyxl")
 
+    template_path = MarsBinningReport._resolve_excel_template_path("mars_bin_report_linux.xlsx")
+    template_workbook = load_workbook(template_path)
+    try:
+        template_worksheet = template_workbook["分组明细"]
+        template_table_ref = next(iter(template_worksheet.tables.values())).ref
+        _, _, template_max_col, _ = range_boundaries(template_table_ref)
+        template_headers = [
+            template_worksheet.cell(row=1, column=col_idx).value
+            for col_idx in range(1, template_max_col + 1)
+        ]
+        template_headers = [str(header) for header in template_headers if header is not None]
+    finally:
+        template_workbook.close()
+
     workbook = load_workbook(output_path)
     try:
         assert "分组明细" in workbook.sheetnames
         worksheet = workbook["分组明细"]
+        table_ref = next(iter(worksheet.tables.values())).ref
+        _, min_row, max_col, max_row = range_boundaries(table_ref)
         headers = [
             worksheet.cell(row=1, column=col_idx).value
-            for col_idx in range(1, worksheet.max_column + 1)
+            for col_idx in range(1, max_col + 1)
         ]
-        header_index = {
-            str(header): col_idx + 1
-            for col_idx, header in enumerate(headers)
-            if header is not None
-        }
-        assert {"feature", "data_source", "bin_label", "count"}.issubset(header_index)
+        export_headers = [str(header) for header in headers if header is not None]
+        assert export_headers == template_headers
 
         rows = [
             {
-                column_name: worksheet.cell(row=row_idx, column=col_idx).value
-                for column_name, col_idx in header_index.items()
+                column_name: worksheet.cell(row=row_idx, column=col_idx + 1).value
+                for col_idx, column_name in enumerate(export_headers)
             }
             for row_idx in range(4, worksheet.max_row + 1)
         ]
         data_rows = [row for row in rows if row.get("feature")]
         feature_values = {row["feature"] for row in data_rows}
-        data_sources = {row["data_source"] for row in data_rows}
+        non_template_columns = set(report.detail_table.columns) - set(template_headers)
 
         assert {"income", "utilization"}.issubset(feature_values)
-        assert {"EXT_SOURCE_1", "EXT_SOURCE_2"}.issubset(data_sources)
+        assert non_template_columns
+        assert non_template_columns.isdisjoint(export_headers)
         assert worksheet.tables
 
-        table_ref = next(iter(worksheet.tables.values())).ref
-        _, min_row, max_col, max_row = range_boundaries(table_ref)
         assert min_row == 1
-        assert max_col >= header_index["data_source"]
+        assert max_col == template_max_col
         assert max_row >= worksheet.max_row
+    finally:
+        workbook.close()
+
+
+def test_evaluation_report_excel_raises_when_template_has_unknown_detail_column(
+    sample_credit_df: pl.DataFrame,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    from openpyxl.utils.cell import range_boundaries
+
+    report, _ = _profile_risk_report(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binning_type="native",
+        method="quantile",
+        n_bins=3,
+    )
+    template_path = MarsBinningReport._resolve_excel_template_path("mars_bin_report_linux.xlsx")
+    custom_template_path = tmp_path / "custom_template.xlsx"
+    custom_template_path.write_bytes(template_path.read_bytes())
+
+    workbook = load_workbook(custom_template_path)
+    try:
+        worksheet = workbook["分组明细"]
+        next_column = worksheet.max_column + 1
+        worksheet.cell(row=1, column=next_column, value="unknown_detail_column")
+        table = next(iter(worksheet.tables.values()))
+        table.ref = (
+            f"A1:{get_column_letter(next_column)}"
+            f"{range_boundaries(table.ref)[3]}"
+        )
+        workbook.save(custom_template_path)
+    finally:
+        workbook.close()
+
+    monkeypatch.setattr(
+        MarsBinningReport,
+        "_resolve_excel_template_path",
+        classmethod(lambda cls, file_name: custom_template_path),
+    )
+
+    with pytest.raises(ValueError, match="detail_table"):
+        report.write_excel(str(tmp_path / "broken.xlsx"), engine="openpyxl")
+
+
+def test_evaluation_report_excel_hides_amount_detail_columns(
+    sample_credit_df: pl.DataFrame,
+    tmp_path: Path,
+) -> None:
+    from openpyxl import load_workbook
+
+    report, _ = _profile_risk_report(
+        _with_amount_col(sample_credit_df),
+        target="target",
+        features=["income"],
+        group_col="month",
+        amount_col="loan_amt",
+        binning_type="native",
+        method="quantile",
+        n_bins=3,
+    )
+    output_path = tmp_path / "evaluation_report_amount.xlsx"
+
+    report.write_excel(str(output_path), engine="openpyxl")
+
+    workbook = load_workbook(output_path)
+    try:
+        worksheet = workbook[workbook.sheetnames[0]]
+        headers = [
+            worksheet.cell(row=1, column=col_idx).value
+            for col_idx in range(1, worksheet.max_column + 1)
+        ]
+        hidden_amount_columns = {
+            "tot_amt",
+            "good_amt",
+            "bad_amt",
+            "avg_amt",
+            "amt_bad_rate",
+            "lift_amt",
+        }
+        assert hidden_amount_columns.isdisjoint({str(header) for header in headers if header is not None})
     finally:
         workbook.close()
 
@@ -557,7 +913,8 @@ def test_evaluation_report_can_write_html(sample_credit_df, caplog):
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
@@ -686,7 +1043,8 @@ def test_evaluation_report_produces_missing_and_lift_trend_tables(sample_credit_
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert "missing" in report.trend_tables
@@ -715,7 +1073,8 @@ def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
@@ -745,7 +1104,8 @@ def test_show_summary_uses_pandas_view_without_mutating_polars_report(sample_cre
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     styler = report.show_summary(features=["income"])
@@ -763,7 +1123,8 @@ def test_feature_data_source_is_attached_to_report_outputs(sample_credit_df):
         feature_data_source={"APP": ["income"]},
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     summary_map = {
@@ -806,7 +1167,8 @@ def test_evaluator_generates_missing_by_day_table_when_dt_col_is_provided(sample
         group_col="month",
         time_col="biz_dt",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     assert report.dt_col == "biz_dt"
@@ -825,7 +1187,8 @@ def test_summary_table_includes_missing_and_lift_monitor_columns(sample_credit_d
         features=["income", "utilization"],
         group_col="month",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     summary_pd = report.summary_table.to_pandas() if isinstance(report.summary_table, pl.DataFrame) else report.summary_table.copy()
@@ -852,7 +1215,8 @@ def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(s
         group_col="month",
         time_col="biz_dt",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 3},
+        method="quantile",
+        n_bins=3,
     )
 
     artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
@@ -992,7 +1356,8 @@ def test_feature_start_aware_reference_reanchors_monthly_psi_and_summary_metrics
         group_col="month",
         time_col="biz_dt",
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 2},
+        method="quantile",
+        n_bins=2,
     )
     aware_report, _ = _profile_risk_report(
         feature_start_aware_df,
@@ -1002,7 +1367,8 @@ def test_feature_start_aware_reference_reanchors_monthly_psi_and_summary_metrics
         time_col="biz_dt",
         feature_start_aware_reference=True,
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 2},
+        method="quantile",
+        n_bins=2,
     )
 
     aware_summary = _as_pandas(aware_report.summary_table)
@@ -1084,12 +1450,10 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
         features=["score"],
         group_col="month",
         binning_type="native",
-        binner_params={
-            "method": "quantile",
-            "n_bins": 2,
-            "missing_values": [-999],
-            "special_values": [-999],
-        },
+        method="quantile",
+        n_bins=2,
+        missing_values=[-999],
+        special_values=[-999],
         psi_include_missing=False,
         psi_include_special=False,
     )
@@ -1099,12 +1463,10 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
         features=["score"],
         group_col="month",
         binning_type="native",
-        binner_params={
-            "method": "quantile",
-            "n_bins": 2,
-            "missing_values": [-999],
-            "special_values": [-999],
-        },
+        method="quantile",
+        n_bins=2,
+        missing_values=[-999],
+        special_values=[-999],
         psi_include_missing=True,
         psi_include_special=True,
     )
@@ -1117,6 +1479,161 @@ def test_profile_risk_exposes_psi_missing_and_special_scope() -> None:
     assert scoped_run.report.report_meta["psi_include_special"] is True
 
 
+def test_profile_risk_exposes_public_native_binner_args_as_direct_parameters(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binning_type="native",
+        method="uniform",
+        n_bins=3,
+        min_bin_size=0.1,
+        missing_values=[-999],
+        special_values=[-888],
+        n_jobs=1,
+    )
+
+    assert run.binner.method == "uniform"
+    assert run.binner.n_bins == 3
+    assert run.binner.min_bin_size == pytest.approx(0.1, rel=1e-6)
+    assert run.binner.missing_values == [-999]
+    assert run.binner.special_values == [-888]
+    assert run.binner.n_jobs == 1
+
+
+@pytest.mark.parametrize(
+    ("binning_type", "advanced_binning_params", "expected_class"),
+    [
+        (
+            "optimal",
+            {"optimal": {"min_bin_n_event": 1, "n_prebins": 12, "time_limit": 1}},
+            MarsOptimalBinner,
+        ),
+        (
+            "lite_opt",
+            {"lite_opt": {"n_prebins": 12, "join_threshold": 80}},
+            MarsLiteOptBinner,
+        ),
+    ],
+)
+def test_profile_risk_maps_method_and_default_monotonic_trend_for_non_native_binners(
+    sample_credit_df: pl.DataFrame,
+    binning_type: str,
+    advanced_binning_params: dict[str, dict[str, Any]],
+    expected_class: type,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binning_type=binning_type,  # type: ignore[arg-type]
+        method="uniform",
+        n_bins=3,
+        advanced_binning_params=advanced_binning_params,
+    )
+
+    assert isinstance(run.binner, expected_class)
+    assert run.binner.prebinning_method == "uniform"
+    assert run.binner.monotonic_trend == "auto_asc_desc"
+
+
+def test_profile_risk_exposes_public_monotonic_trend_for_lite_opt(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binning_type="lite_opt",
+        method="quantile",
+        n_bins=3,
+        monotonic_trend="peak",
+        advanced_binning_params={"lite_opt": {"n_prebins": 12}},
+    )
+
+    assert isinstance(run.binner, MarsLiteOptBinner)
+    assert run.binner.monotonic_trend == "peak"
+
+
+def test_profile_risk_rejects_peak_monotonic_trend_for_optimal(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with pytest.raises(ValueError, match="Allowed values are"):
+        profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            group_col="month",
+            binning_type="optimal",
+            n_bins=3,
+            monotonic_trend="peak",
+            advanced_binning_params={"optimal": {"n_prebins": 12}},
+        )
+
+
+def test_profile_risk_warns_and_ignores_monotonic_trend_for_native(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with pytest.warns(UserWarning, match="monotonic_trend"):
+        run = profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            group_col="month",
+            binning_type="native",
+            method="quantile",
+            n_bins=3,
+            monotonic_trend="auto_asc_desc",
+        )
+
+    assert isinstance(run.binner, MarsNativeBinner)
+    assert not hasattr(run.binner, "monotonic_trend")
+
+
+def test_profile_risk_default_native_path_does_not_warn_for_monotonic_trend(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run = profile_risk(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            group_col="month",
+            binning_type="native",
+            method="quantile",
+            n_bins=3,
+        )
+
+    assert isinstance(run.binner, MarsNativeBinner)
+    assert not [item for item in caught if "monotonic_trend" in str(item.message)]
+
+
+def test_profile_risk_without_target_uses_native_advanced_binning_bucket(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df.select(["income"]),
+        target=None,
+        features=["income"],
+        binning_type="lite_opt",
+        n_bins=3,
+        advanced_binning_params={
+            "native": {"merge_small_bins": True},
+            "lite_opt": {"n_prebins": 12},
+        },
+    )
+
+    assert isinstance(run.binner, MarsNativeBinner)
+    assert run.binner.method == "quantile"
+    assert run.binner.merge_small_bins is True
+
+
 def test_feature_start_aware_reference_supports_custom_profile_by_with_dt_col(feature_start_aware_df):
     report, _ = _profile_risk_report(
         feature_start_aware_df,
@@ -1126,7 +1643,8 @@ def test_feature_start_aware_reference_supports_custom_profile_by_with_dt_col(fe
         time_col="biz_dt",
         feature_start_aware_reference=True,
         binning_type="native",
-        binner_params={"method": "quantile", "n_bins": 2},
+        method="quantile",
+        n_bins=2,
     )
 
     psi_df = _as_pandas(report.trend_tables["psi"])
@@ -1154,7 +1672,8 @@ def test_feature_start_aware_reference_is_ignored_when_benchmark_df_is_provided(
             benchmark_df=benchmark_df,
             feature_start_aware_reference=True,
             binning_type="native",
-            binner_params={"method": "quantile", "n_bins": 2},
+            method="quantile",
+            n_bins=2,
         )
 
     assert report.report_meta["feature_start_aware_reference"] is False
@@ -1192,12 +1711,10 @@ def test_profile_risk_handles_notebook_drift_missing_and_special_values() -> Non
         features=["stable", "drift", "utilization", "special_feature"],
         group_col="month",
         binning_type="native",
-        binner_params={
-            "method": "quantile",
-            "n_bins": 4,
-            "special_values": [-999],
-            "missing_values": [-999],
-        },
+        method="quantile",
+        n_bins=4,
+        special_values=[-999],
+        missing_values=[-999],
     )
 
     report = risk_profile.report

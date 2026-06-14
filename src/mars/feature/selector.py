@@ -99,6 +99,10 @@ class MarsStatsSelector(MarsBaseSelector):
             排名变化率筛选阈值。
         corr_thr : float | None
             WOE 相关性筛选阈值。
+        feature_start_aware_reference : bool
+            是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
+        risk_corr_baseline : RiskCorrBaseline
+            RC 的默认基准选择方式。
         psi_include_missing : bool
             稳定性筛选和评估报告计算 PSI 时是否纳入缺失值箱。
         psi_include_special : bool
@@ -233,8 +237,10 @@ class MarsStatsSelector(MarsBaseSelector):
             黑名单特征，会被强制剔除。
         max_samples : int | None
             本次筛选允许使用的最大样本量。
-        feature_start_aware_reference : bool
-            是否按特征首次出现分组选择 PSI 基准。
+        feature_start_aware_reference : bool | None
+            是否按特征首次出现分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
+        risk_corr_baseline : RiskCorrBaseline | None
+            本次筛选使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
 
         Returns
         -------

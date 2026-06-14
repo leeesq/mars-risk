@@ -31,8 +31,9 @@ def test_profiler_returns_pandas_tables_for_pandas_input(sample_credit_pd):
 
 
 def test_evaluation_templates_are_packaged():
-    linux_template = resources.files("mars.analysis").joinpath("mars_bin_report_linux.xlsx")
-    win_mac_template = resources.files("mars.analysis").joinpath("mars_bin_report_win_mac.xlsx")
+    template_dir = resources.files("mars.reporting").joinpath("template")
+    linux_template = template_dir.joinpath("mars_bin_report_linux.xlsx")
+    win_mac_template = template_dir.joinpath("mars_bin_report_win_mac.xlsx")
 
     assert linux_template.is_file()
     assert win_mac_template.is_file()

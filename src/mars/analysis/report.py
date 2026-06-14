@@ -3,10 +3,9 @@
 import html
 import importlib.util
 import json
-import os
 import sys
-from copy import copy
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -738,6 +737,8 @@ class MarsBinningReport:
             原始日期列名。
         missing_by_day_table : Union[pl.DataFrame, pd.DataFrame] | None
             按日汇总的缺失率明细表。
+        risk_corr_reference_table : Union[pl.DataFrame, pd.DataFrame] | None
+            报告内部保存的 RC 参考坏率表，供图表与明细复用同一口径。
         report_meta : Dict[str, Any] | None
             报告元信息，例如目标列、绘图配置或上下文标签。
         """
@@ -875,6 +876,88 @@ class MarsBinningReport:
             分箱明细表中的真实分组列名。
         """
         return self._detail_group_col
+
+    @classmethod
+    def _detail_export_columns(
+        cls: type["MarsBinningReport"],
+        columns: List[str],
+    ) -> List[str]:
+        """返回文本导出默认保留的明细列。"""
+        return list(columns)
+
+    @classmethod
+    def _resolve_excel_template_path(
+        cls: type["MarsBinningReport"],
+        file_name: str,
+    ) -> Path:
+        """解析 `mars.reporting.template` 下的 Excel 模板路径。"""
+        reporting_spec = importlib.util.find_spec("mars.reporting")
+        if reporting_spec is None or reporting_spec.origin is None:
+            raise FileNotFoundError("无法定位 `mars.reporting` 模块，因此无法读取 Excel 模板。")
+
+        reporting_dir = Path(reporting_spec.origin).resolve().parent
+        template_path = reporting_dir / "template" / file_name
+        if not template_path.exists():
+            raise FileNotFoundError(f"找不到 Excel 模板文件: {template_path}")
+        return template_path
+
+    @classmethod
+    def _read_detail_template_schema(
+        cls: type["MarsBinningReport"],
+        template_path: Path,
+        sheet_name: str,
+    ) -> Tuple[List[str], int, int]:
+        """读取明细 sheet 的模板列与表格列范围。"""
+        import openpyxl
+        from openpyxl.utils.cell import range_boundaries
+
+        workbook = openpyxl.load_workbook(template_path)
+        try:
+            worksheet = workbook[sheet_name]
+            if not worksheet.tables:
+                raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
+
+            table = next(iter(worksheet.tables.values()))
+            table_ref = getattr(table, "ref", None)
+            if not isinstance(table_ref, str) or not table_ref:
+                raise ValueError(
+                    f"sheet `{sheet_name}` 的 Excel table 缺少 `ref`，无法读取模板列结构。"
+                )
+
+            first_col, _, last_col, _ = range_boundaries(table_ref)
+            headers: List[str] = []
+            for col_idx in range(first_col, last_col + 1):
+                header_value = worksheet.cell(row=1, column=col_idx).value
+                if header_value is None or not str(header_value).strip():
+                    raise ValueError(
+                        f"sheet `{sheet_name}` 第 1 行第 {col_idx} 列表头为空，无法按模板导出。"
+                    )
+                headers.append(str(header_value))
+
+            return headers, first_col, last_col
+        finally:
+            workbook.close()
+
+    @classmethod
+    def _build_excel_detail_export_frame(
+        cls: type["MarsBinningReport"],
+        detail_df: pd.DataFrame,
+        template_headers: List[str],
+    ) -> pd.DataFrame:
+        """按模板列顺序构建 Excel 明细导出数据。"""
+        missing_columns = [
+            column_name
+            for column_name in template_headers
+            if column_name not in detail_df.columns
+        ]
+        if missing_columns:
+            missing_display = ", ".join(missing_columns)
+            raise ValueError(
+                "Excel 模板列在 `detail_table` 中缺失："
+                f" {missing_display}"
+            )
+
+        return detail_df.loc[:, template_headers].copy()
 
     def get_evaluation_data(self) -> Tuple[
         Union[pl.DataFrame, pd.DataFrame],
@@ -1029,6 +1112,7 @@ class MarsBinningReport:
         *,
         target: str | List[str] | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -1044,6 +1128,11 @@ class MarsBinningReport:
             ``max_plots`` 从汇总表中自动挑选特征。
         target : str | List[str] | None
             多目标报告下需要展示的目标列名。传入 ``None`` 时，默认展示报告中的全部目标。
+        risk_corr_baseline : RiskCorrBaseline | None
+            绘图阶段使用的 RC 基准；传入 `None` 时沿用报告生成时保存的默认口径。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
+            `both` 同时展示两条风险线。
         sort_by : str
             未显式指定 ``features`` 时的特征排序字段。支持 ``iv``、``ks``、``auc``、
             ``psi``、``rc``、``risk_corr``、``mono``、``missing`` 和 ``lift``。
@@ -1101,6 +1190,7 @@ class MarsBinningReport:
         detail_pd = _as_pandas_frame(self.detail_table).copy()
         if detail_pd.empty:
             raise ValueError("detail_table is empty. Cannot plot risk trends.")
+        show_risk = MarsPlotter._normalize_show_risk(show_risk)
 
         plot_group_col = self.detail_group_col or "mars_group"
         if plot_group_col not in detail_pd.columns:
@@ -1180,6 +1270,7 @@ class MarsBinningReport:
                 target_name=display_target,
                 target_key=current_target,
                 dpi=dpi,
+                show_risk=show_risk,
                 sort_by="",
                 ascending=ascending,
                 risk_corr_reference_df=current_reference,
@@ -1946,6 +2037,7 @@ __RUNTIME_SCRIPT__
                         feature=feature,
                         group_col=self.detail_group_col or "mars_group",
                         target_name=y_val,
+                        show_risk="both",
                         dpi=150,
                     )
                     if not block_html:
@@ -2909,8 +3001,6 @@ __RUNTIME_SCRIPT__
         ------
         ValueError
             当 ``engine`` 不在支持列表中时抛出。
-        FileNotFoundError
-            当内置 Excel 模板文件缺失时抛出。
         RuntimeError
             当底层 Excel 导出流程失败时抛出。
 
@@ -2930,202 +3020,117 @@ __RUNTIME_SCRIPT__
         if engine not in valid_engines:
             raise ValueError(f"不支持的 engine: '{engine}'，请从 {valid_engines} 中选择。")
 
-        # 智能定位模板路径
-        package_name = "mars.analysis"
+        start_write_row = 4
+        sheet_name = "分组明细"
         template_name_xlwings = "mars_bin_report_win_mac.xlsx"
         template_name_openpyxl = "mars_bin_report_linux.xlsx"
+        is_gui_env = sys.platform.startswith("win") or sys.platform.startswith("darwin")
+        use_xlwings = engine == "xlwings" or (engine == "auto" and is_gui_env)
 
-        def get_template_path(fname: str) -> str:
-            """解析 Excel 模板文件的物理路径。"""
-            try:
-                import importlib.resources as resources
-                with resources.as_file(resources.files(package_name).joinpath(fname)) as p:
-                    return str(p)
-            except Exception:
-                return os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
-
-        # 配置内部参数
-        START_WRITE_ROW = 4
-        STYLE_SOURCE_ROW = 2
-        FONT_NAME = "Microsoft YaHei"
-        FONT_SIZE = 8
-        SHEET_NAME = "分组明细"
-
-        # 引擎解析与初始化
-        use_xlwings = False
-
-        if engine == "xlwings":
-            use_xlwings = True
-        elif engine == "openpyxl":
-            use_xlwings = False
-        else:  # 自动选择导出引擎。
-            # 自动探测环境
-            is_gui_env = sys.platform.startswith("win") or sys.platform.startswith("darwin")
-            use_xlwings = is_gui_env
-
-        # 验证 xlwings 可用性
         if use_xlwings:
             try:
                 import xlwings as xw
-                # 测试 Excel 应用程序是否真正可用
-                xw.App(visible=False, add_book=False).quit()
-                template_path = get_template_path(template_name_xlwings)
-            except Exception as e:
+
+                probe_app = xw.App(visible=False, add_book=False)
+                probe_app.quit()
+                template_path = self._resolve_excel_template_path(template_name_xlwings)
+            except Exception as exc:
                 if engine == "xlwings":
-                    # 用户强制要求但失败，直接抛错
                     raise RuntimeError(
-                        "强制使用 xlwings 引擎失败，请确认系统已正确安装 Excel 及 xlwings 库。"
-                        f"\n报错详情: {e}"
-                    ) from e
-                else:
-                    # auto 模式下失败，降级处理
-                    logger.warning("xlwings 启动失败，将降级使用 openpyxl 引擎: %s", e)
-                    use_xlwings = False
+                        "强制使用 xlwings 导出失败，请确认本机已安装 Excel 与 xlwings。"
+                        f"\n错误详情: {exc}"
+                    ) from exc
+                logger.warning("xlwings 不可用，自动降级为 openpyxl 导出: %s", exc)
+                use_xlwings = False
 
-        # 若未使用 xlwings，则准备 openpyxl 依赖
         if not use_xlwings:
-            import openpyxl
-            from openpyxl.utils import get_column_letter
-            from openpyxl.worksheet.table import Table, TableStyleInfo
-            template_path = get_template_path(template_name_openpyxl)
+            template_path = self._resolve_excel_template_path(template_name_openpyxl)
 
-        if not os.path.exists(template_path):
-            raise FileNotFoundError(f"找不到模板文件: {template_path}")
+        template_headers, first_col, last_col = self._read_detail_template_schema(
+            template_path=template_path,
+            sheet_name=sheet_name,
+        )
+        detail_pd: pd.DataFrame = _as_pandas_frame(self.detail_table).copy()
+        export_pd = self._build_excel_detail_export_frame(
+            detail_df=detail_pd,
+            template_headers=template_headers,
+        )
+        rows: List[List[Any]] = export_pd.values.tolist()
+        final_row = start_write_row + len(rows) - 1
+        table_last_row = max(final_row, start_write_row - 1)
 
-        # 准备数据
-        df_pd = _as_pandas_frame(self.detail_table)
-        total_cols = len(df_pd.columns)
-
-        # ================= 路径 A: xlwings 写入 (Win/Mac 跨平台兼容) =================
         if use_xlwings:
             app = None
+            workbook = None
             try:
                 app = xw.App(visible=False, add_book=False)
                 app.display_alerts = False
                 app.screen_updating = False
 
-                wb = app.books.open(template_path)
-                ws = wb.sheets[SHEET_NAME]
+                workbook = app.books.open(str(template_path))
+                worksheet = workbook.sheets[sheet_name]
 
-                # 防止 Excel 将长数字字符串转为科学计数法
-                if 'mars_group' in df_pd.columns:
-                    df_pd['mars_group'] = "'" + df_pd['mars_group'].astype(str)
+                if rows:
+                    worksheet.range((start_write_row, first_col)).value = rows
 
-                # 模板可能落后于明细表结构，先同步表头再写入数据。
-                ws.range((1, 1)).value = [df_pd.columns.tolist()]
+                table = worksheet.tables[0] if worksheet.tables else None
+                if table is None:
+                    raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
+                table.resize(
+                    worksheet.range(
+                        (1, first_col),
+                        (table_last_row, last_col),
+                    )
+                )
 
-                # 写入数据
-                ws.range((START_WRITE_ROW, 1)).value = df_pd.values
-                final_row = START_WRITE_ROW + len(df_pd) - 1
+                last_used_row = worksheet.used_range.last_cell.row
+                if last_used_row > table_last_row:
+                    worksheet.range(f"{table_last_row + 1}:{last_used_row}").delete()
 
-                # 样式格式刷 (跨平台原生写法)
-                if final_row >= START_WRITE_ROW:
-                    src_row = int(STYLE_SOURCE_ROW)
-                    start_row = int(START_WRITE_ROW)
-                    end_row = int(final_row)
-                    max_col = int(total_cols)
-
-                    source_range = ws.range((src_row, 1), (src_row, max_col))
-                    data_range = ws.range((start_row, 1), (end_row, max_col))
-
-                    source_range.copy()
-                    data_range.paste(paste='formats')
-
-                # 统一字体 (跨平台原生写法)
-                full_range = ws.range((1, 1), (final_row, total_cols))
-                full_range.font.name = FONT_NAME
-                full_range.font.size = FONT_SIZE
-
-                # 更新超级表 ListObject (跨平台原生写法)
-                if len(ws.tables) > 0:
-                    table = ws.tables[0]
-                    new_ref_range = ws.range((1, 1), (final_row, total_cols))
-                    table.resize(new_ref_range)
-
-                # 清理旧数据 (跨平台原生写法)
-                last_used_row = ws.used_range.last_cell.row
-                if last_used_row > final_row:
-                    ws.range(f"{final_row + 1}:{last_used_row}").delete()
-
-                wb.save(path)
+                workbook.save(path)
                 logger.info("Exported binning report via xlwings: %s", path)
-
-            except Exception as e:
-                logger.exception("xlwings 导出过程出错。")
-                raise RuntimeError(f"xlwings 导出过程出错: {e}") from e
+            except Exception as exc:
+                logger.exception("xlwings 导出过程中发生错误。")
+                raise RuntimeError(f"xlwings 导出过程中发生错误: {exc}") from exc
             finally:
-                if "wb" in locals() and wb:
-                    wb.close()
-                if app:
+                if workbook is not None:
+                    workbook.close()
+                if app is not None:
                     app.quit()
+            return
 
-        # ================= 路径 B: openpyxl 写入 (Linux 等无界面的兜底方案) =================
-        else:
-            wb = openpyxl.load_workbook(template_path)
-            ws = wb[SHEET_NAME]
+        import openpyxl
+        from openpyxl.utils import get_column_letter
 
-            mars_group_idx = -1
-            if "mars_group" in df_pd.columns:
-                mars_group_idx = list(df_pd.columns).index("mars_group") + 1
+        workbook = openpyxl.load_workbook(template_path)
+        try:
+            worksheet = workbook[sheet_name]
+            for row_offset, row_data in enumerate(rows):
+                current_row = start_write_row + row_offset
+                for col_offset, value in enumerate(row_data):
+                    worksheet.cell(
+                        row=current_row,
+                        column=first_col + col_offset,
+                        value=value,
+                    )
 
-            # 模板可能落后于明细表结构，先同步表头再写入数据。
-            for c_offset, column_name in enumerate(df_pd.columns):
-                ws.cell(row=1, column=c_offset + 1, value=column_name)
+            if not worksheet.tables:
+                raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
 
-            # 提取并缓存样式模板
-            style_map = {}
-            for c in range(1, total_cols + 1):
-                cell = ws.cell(row=STYLE_SOURCE_ROW, column=c)
-                style_map[c] = {
-                    "font": copy(cell.font),
-                    "border": copy(cell.border),
-                    "fill": copy(cell.fill),
-                    "alignment": copy(cell.alignment),
-                    "number_format": cell.number_format
-                }
+            table = next(iter(worksheet.tables.values()))
+            table_ref = (
+                f"{get_column_letter(first_col)}1:"
+                f"{get_column_letter(last_col)}{table_last_row}"
+            )
+            if not hasattr(table, "ref"):
+                raise ValueError(f"sheet `{sheet_name}` 的 Excel table 缺少 `ref`，无法更新表格范围。")
+            table.ref = table_ref
 
-            # 写入数据
-            rows = df_pd.values.tolist()
-            for r_offset, row_data in enumerate(rows):
-                current_row = START_WRITE_ROW + r_offset
-                for c_offset, value in enumerate(row_data):
-                    c_idx = c_offset + 1
-                    cell = ws.cell(row=current_row, column=c_idx, value=value)
+            if worksheet.max_row > table_last_row:
+                worksheet.delete_rows(table_last_row + 1, worksheet.max_row - table_last_row)
 
-                    # 应用样式
-                    if c_idx in style_map:
-                        s = style_map[c_idx]
-                        cell.font = s["font"]
-                        cell.border = s["border"]
-                        cell.fill = s["fill"]
-                        cell.alignment = s["alignment"]
-                        cell.number_format = s["number_format"]
-
-                    # 日期列单独处理
-                    if c_idx == mars_group_idx:
-                        cell.number_format = "yyyy-mm-dd"
-
-            final_row = START_WRITE_ROW + len(rows) - 1
-
-            # 更新超级表范围并容错
-            if hasattr(ws, 'tables') and ws.tables:
-                new_ref = f"A1:{get_column_letter(total_cols)}{final_row}"
-                for tbl_name in list(ws.tables.keys()):
-                    tbl_obj = ws.tables[tbl_name]
-
-                    if hasattr(tbl_obj, 'ref'):
-                        tbl_obj.ref = new_ref
-                    else:
-                        # 容错：处理 openpyxl 偶尔将 Table 解析为纯字符串的问题
-                        del ws.tables[tbl_name]
-                        new_tbl = Table(displayName=tbl_name, ref=new_ref)
-                        style = TableStyleInfo(name="TableStyleMedium9", showRowStripes=True)
-                        new_tbl.tableStyleInfo = style
-                        ws.add_table(new_tbl)
-
-            # 删除多余行
-            if ws.max_row > final_row:
-                ws.delete_rows(final_row + 1, ws.max_row - final_row)
-
-            wb.save(path)
+            workbook.save(path)
             logger.info("Exported binning report via openpyxl: %s", path)
+        finally:
+            workbook.close()
+        return
