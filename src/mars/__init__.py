@@ -8,15 +8,20 @@ Copyright (c) 2026 Christian and Tina
 
 from .analysis import (
     MarsBinEvaluator,
-    MarsDataProfiler,
     MarsBinningReport,
+    MarsDataProfiler,
     MarsProfileConfig,
     MarsProfileReport,
     MarsRiskProfile,
     profile_risk,
     profile_stats,
 )
-from .feature import MarsLiteOptBinner, MarsNativeBinner, MarsOptimalBinner, MarsStatsSelector
+from .feature import (
+    MarsLiteOptBinner,
+    MarsNativeBinner,
+    MarsOptimalBinner,
+    MarsStatsSelector,
+)
 from .modeling import MarsModelingSession
 from .monitoring import (
     MarsMonitor,
