@@ -673,7 +673,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if dtype.is_numeric():
             invalid_values = (
                 df
-                .filter(pl.col(target).is_not_null() & ~pl.col(target).is_in([0, 1]))
+                .filter(
+                    pl.col(target).is_not_null()
+                    & ~pl.col(target).is_in(pl.Series([0, 1]).implode())
+                )
                 .select(pl.col(target).unique().head(5))
                 .to_series()
                 .to_list()
@@ -861,7 +864,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
         logger.debug(f"Calculating missing WOEs for {len(missing_woe_feats)} features.")
 
         # 过滤出需要计算的特征
-        target_stats = group_stats_raw.filter(pl.col("feature").is_in(missing_woe_feats))
+        target_stats = group_stats_raw.filter(
+            pl.col("feature").is_in(pl.Series(missing_woe_feats).implode())
+        )
 
         epsilon = METRIC_EPSILON # 平滑因子，防止除零或对0取对数
 
@@ -1582,7 +1587,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             return default_expected_dist
 
         override_features = feature_expected_dist.get_column("feature").unique().to_list()
-        retained_default = default_expected_dist.filter(~pl.col("feature").is_in(override_features))
+        retained_default = default_expected_dist.filter(
+            ~pl.col("feature").is_in(pl.Series(override_features).implode())
+        )
         return pl.concat([retained_default, feature_expected_dist], how="vertical_relaxed")
 
     @staticmethod
@@ -1595,7 +1602,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             return default_df
 
         override_features = override_df.get_column("feature").unique().to_list()
-        retained_default = default_df.filter(~pl.col("feature").is_in(override_features))
+        retained_default = default_df.filter(
+            ~pl.col("feature").is_in(pl.Series(override_features).implode())
+        )
         return pl.concat([retained_default, override_df], how="vertical_relaxed")
 
     def _build_feature_start_baseline_reference(

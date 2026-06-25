@@ -303,7 +303,7 @@ class MarsNativeBinner(MarsBinnerBase):
             if col_dtype in [pl.Float32, pl.Float64]:
                 valid_mask &= series.is_not_nan()
             if safe_exclude:
-                valid_mask &= ~series.is_in(safe_exclude)
+                valid_mask &= ~series.is_in(pl.Series(safe_exclude).implode())
 
             clean_series = series.filter(valid_mask)
             clean_total = clean_series.len()
@@ -378,7 +378,7 @@ class MarsNativeBinner(MarsBinnerBase):
             # 构建过滤掩码：剔除空值与业务指定的特殊值
             valid_mask = series.is_not_null()
             if safe_exclude:
-                valid_mask &= (~series.is_in(safe_exclude))
+                valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
 
             clean_series = series.filter(valid_mask)
 
@@ -452,7 +452,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 keep_mask &= ~pl.col(c).is_nan()
             # 非特殊值
             if safe_exclude:
-                keep_mask &= ~pl.col(c).is_in(safe_exclude)
+                keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
 
             target_col = pl.col(c).filter(keep_mask)
             unique_exprs.append(target_col.n_unique().alias(c))
@@ -487,7 +487,7 @@ class MarsNativeBinner(MarsBinnerBase):
 
                 # 叠加: 非 Special Values
                 if safe_exclude:
-                    valid_cond &= ~pl.col(c).is_in(safe_exclude)
+                    valid_cond &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
 
                 # 应用过滤
                 target_col = pl.col(c).filter(valid_cond)
@@ -601,7 +601,7 @@ class MarsNativeBinner(MarsBinnerBase):
             if col_dtype in [pl.Float32, pl.Float64]:
                 keep_mask &= ~pl.col(c).is_nan()
             if safe_exclude:
-                keep_mask &= ~pl.col(c).is_in(safe_exclude)
+                keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
 
             target_col = pl.col(c).filter(keep_mask)
 
@@ -666,7 +666,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 if col_dtype in [pl.Float32, pl.Float64]:
                     keep_mask &= ~pl.col(c).is_nan()
                 if safe_exclude:
-                    keep_mask &= ~pl.col(c).is_in(safe_exclude)
+                    keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
                 target_col = pl.col(c).filter(keep_mask)
 
                 labels = [str(i) for i in range(len(breaks)+1)]
@@ -788,7 +788,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 if col_dtype in self.NUMERIC_DTYPES:
                     valid_mask &= (~series.is_nan())
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(safe_exclude))
+                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
 
                 if not valid_mask.any():
                     continue

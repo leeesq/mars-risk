@@ -32,7 +32,7 @@ def psi_valid_condition(
         condition &= (bin_expr != "Missing") & bin_expr.is_not_null()
     if not include_special and special_values:
         special_str_list = [str(value) for value in special_values]
-        condition &= ~bin_expr.is_in(special_str_list)
+        condition &= ~bin_expr.is_in(pl.Series(special_str_list).implode())
     return condition
 
 

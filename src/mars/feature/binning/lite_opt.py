@@ -346,7 +346,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
 
         invalid_values = (
             y_checked
-            .filter(~y_checked.is_in([0, 1, False, True]))
+            .filter(~y_checked.is_in(pl.Series([0, 1, False, True], strict=False).implode()))
             .unique()
             .head(5)
             .to_list()
@@ -422,7 +422,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
             if series.dtype in {pl.Float32, pl.Float64}:
                 valid_mask &= ~series.is_nan()
             if safe_exclude:
-                valid_mask &= ~series.is_in(safe_exclude)
+                valid_mask &= ~series.is_in(pl.Series(safe_exclude).implode())
 
             clean_series = series.filter(valid_mask)
             if clean_series.len() == 0 or clean_series.n_unique() <= 1:

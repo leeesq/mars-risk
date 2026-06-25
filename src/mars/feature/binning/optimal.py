@@ -518,7 +518,7 @@ class MarsOptimalBinner(MarsBinnerBase):
 
                 # 针对业务特殊值进行排除, 如 -999, -998
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(safe_exclude))
+                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
 
                 # 将位掩码转换为 NumPy 布尔数组, 用于 y 的快速切片
                 mask_np = valid_mask.to_numpy()
@@ -613,7 +613,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                     top_vals = top_k_df.get_column(c)
 
                     truncated_expr: pl.Expr = (
-                        pl.when(pl.col(c).is_in(top_vals))
+                        pl.when(pl.col(c).is_in(top_vals.implode()))
                         .then(pl.col(c))
                         .otherwise(pl.lit("__Mars_Other_Pre__"))
                     )
@@ -625,7 +625,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 # 过滤条件: 非空 且 不在排除列表中
                 valid_mask = series.is_not_null()
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(safe_exclude))
+                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
 
                 # 执行过滤
                 clean_series = series.filter(valid_mask)

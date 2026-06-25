@@ -39,7 +39,10 @@ class PolarsSplitterMixin:
         """重置 Polars 切片列，并标记无效样本为 ``other``。"""
         assert isinstance(self.df, pl.DataFrame)
         self.df = self.df.with_columns(
-            pl.when(pl.col(self.label_col).is_in([0, 1]) & pl.col("__date__").is_not_null())
+            pl.when(
+                pl.col(self.label_col).is_in(pl.Series([0, 1]).implode())
+                & pl.col("__date__").is_not_null()
+            )
             .then(pl.lit("unassigned"))
             .otherwise(pl.lit("other"))
             .alias(self.dataset_flag_col)
