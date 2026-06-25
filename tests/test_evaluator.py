@@ -68,6 +68,33 @@ def test_profile_risk_returns_structured_run(sample_credit_df):
     assert run.report.summary_table.height == 2
 
 
+def test_profile_risk_preserves_feature_names_containing_bin_suffix() -> None:
+    values = np.linspace(0.0, 1.0, 80)
+    df = pl.DataFrame(
+        {
+            "foo_bin": values,
+            "foo_bin_score": values[::-1],
+            "target": (values >= 0.5).astype(int),
+            "month": ["202401"] * 40 + ["202402"] * 40,
+        }
+    )
+
+    run = profile_risk(
+        df,
+        target="target",
+        features=["foo_bin", "foo_bin_score"],
+        group_col="month",
+        benchmark_df=df,
+        method="quantile",
+        n_bins=3,
+    )
+    detail_features = set(run.report.detail_table["feature"].unique().to_list())
+    summary_features = set(run.report.summary_table["feature"].unique().to_list())
+
+    assert detail_features == {"foo_bin", "foo_bin_score"}
+    assert summary_features == {"foo_bin", "foo_bin_score"}
+
+
 def test_profile_risk_no_longer_accepts_plot_argument(
     sample_credit_df: pl.DataFrame,
 ) -> None:

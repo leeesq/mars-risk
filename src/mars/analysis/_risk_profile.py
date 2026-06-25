@@ -10,7 +10,7 @@ import polars as pl
 
 from mars.analysis.report import MarsBinningReport
 from mars.compute import RiskCorrBaseline
-from mars.feature.base import MarsBinnerBase
+from mars.feature.binning.base import MarsBinnerBase
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:

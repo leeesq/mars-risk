@@ -2356,7 +2356,7 @@ __RUNTIME_SCRIPT__
 
         missing_idx = -1
         try:
-            from mars.feature.base import MarsBinnerBase
+            from mars.feature.binning.base import MarsBinnerBase
 
             missing_idx = int(MarsBinnerBase.IDX_MISSING)
         except Exception:

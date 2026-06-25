@@ -9,7 +9,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from sklearn.tree import DecisionTreeClassifier
 
-from mars.feature.base import MarsBinnerBase
+from mars.feature.binning.base import MarsBinnerBase
 from mars.utils.logger import logger
 
 

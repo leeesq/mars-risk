@@ -5,8 +5,7 @@ import pytest
 
 import mars
 import mars.feature as feature_module
-from mars.feature import MarsImportanceSelector, MarsLinearSelector
-from mars.feature.selector import MarsStatsSelector
+from mars.feature import MarsImportanceSelector, MarsLinearSelector, MarsStatsSelector
 
 
 def test_feature_subpackage_exports_new_selectors_without_top_level_exports():

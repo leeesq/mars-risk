@@ -10,9 +10,20 @@ from joblib import Parallel, delayed
 from optbinning import OptimalBinning
 
 from mars.core.constants import MIN_VARIANCE
-from mars.feature.base import MarsBinnerBase
-from mars.feature.native_binner import MarsNativeBinner
+from mars.feature.binning.base import MarsBinnerBase
+from mars.feature.binning.native import MarsNativeBinner
 from mars.utils.logger import logger
+
+_FALLBACK_BINNER_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {
+        "method",
+        "n_bins",
+        "min_bin_size",
+        "merge_small_bins",
+        "remove_empty_bins",
+        "cart_params",
+    }
+)
 
 
 class MarsOptimalBinner(MarsBinnerBase):
@@ -69,6 +80,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         special_values: List[Any] | None = None,
         missing_values: List[Any] | None = None,
         cart_params: Dict[str, Any] | None = None,
+        fallback_binner_params: Dict[str, Any] | None = None,
         join_threshold: int = 100,
         n_jobs: int = -1
     ) -> None:
@@ -107,6 +119,10 @@ class MarsOptimalBinner(MarsBinnerBase):
             需要额外识别为缺失的值集合。
         cart_params : Dict[str, Any] | None
             透传给预分箱决策树的参数。
+        fallback_binner_params : Dict[str, Any] | None
+            最优求解失败后使用的原生分箱回退参数。只允许覆盖
+            ``method``、``n_bins``、``min_bin_size``、``merge_small_bins``、
+            ``remove_empty_bins`` 和 ``cart_params``。
         join_threshold : int
             高基数类别映射时切换到 Join 模式的阈值。
         n_jobs : int
@@ -139,8 +155,92 @@ class MarsOptimalBinner(MarsBinnerBase):
         self.max_cats_to_solver = max_cats_to_solver
         self.min_cat_fraction = min_cat_fraction
         self.cart_params = cart_params if cart_params is not None else {}
+        self.fallback_binner_params = self._validate_fallback_binner_params(
+            fallback_binner_params,
+        )
 
         self.OptimalBinning = OptimalBinning
+
+    @staticmethod
+    def _validate_fallback_binner_params(params: Dict[str, Any] | None) -> Dict[str, Any]:
+        """校验最优分箱失败后的原生分箱回退参数。"""
+        if params is None:
+            return {}
+
+        invalid_keys = sorted(set(params) - _FALLBACK_BINNER_ALLOWED_KEYS)
+        if invalid_keys:
+            allowed_text = ", ".join(sorted(_FALLBACK_BINNER_ALLOWED_KEYS))
+            invalid_text = ", ".join(invalid_keys)
+            raise ValueError(
+                "`fallback_binner_params` contains invalid keys: "
+                f"{invalid_text}. Allowed keys are: {allowed_text}. "
+                "`special_values`, `missing_values` and `n_jobs` are inherited "
+                "from MarsOptimalBinner and must not be provided here.",
+            )
+
+        return dict(params)
+
+    def _resolve_fallback_binner_params(self) -> Dict[str, Any]:
+        """生成当前特征失败时使用的原生分箱回退参数。"""
+        fallback_params: Dict[str, Any] = {
+            "method": "quantile",
+            "n_bins": self.n_bins,
+            "min_bin_size": self.min_bin_size,
+            "merge_small_bins": True,
+            "remove_empty_bins": False,
+            "cart_params": {},
+        }
+        fallback_params.update(self.fallback_binner_params)
+
+        cart_params = fallback_params.get("cart_params")
+        fallback_params["cart_params"] = dict(cart_params) if cart_params is not None else {}
+        return fallback_params
+
+    def _fit_numeric_native_fallback(
+        self,
+        X: pl.DataFrame,
+        y: pl.Series,
+        feature: str,
+    ) -> List[float]:
+        """使用原生分箱为最优求解失败的数值特征重新生成切点。"""
+        fallback_params = self._resolve_fallback_binner_params()
+        fallback_binner = MarsNativeBinner(
+            **fallback_params,
+            special_values=self.special_values,
+            missing_values=self.missing_values,
+            n_jobs=self.n_jobs,
+        )
+        fallback_binner.fit(X.select([feature]), y, features=[feature])
+        return list(fallback_binner.bin_cuts_.get(feature, []))
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        将最优分箱器状态序列化为字典。
+
+        Returns
+        -------
+        Dict[str, Any]
+            包含构造参数与拟合状态的可序列化字典。
+        """
+        data = super().to_dict()
+        data["params"].update(
+            {
+                "min_n_bins": self.min_n_bins,
+                "min_bin_size": self.min_bin_size,
+                "min_bin_n_event": self.min_bin_n_event,
+                "prebinning_method": self.prebinning_method,
+                "n_prebins": self.n_prebins,
+                "min_prebin_size": self.min_prebin_size,
+                "monotonic_trend": self.monotonic_trend,
+                "solver": self.solver,
+                "time_limit": self.time_limit,
+                "max_cats_to_solver": self.max_cats_to_solver,
+                "min_cat_fraction": self.min_cat_fraction,
+                "cart_params": self.cart_params,
+                "fallback_binner_params": self.fallback_binner_params,
+            }
+        )
+        return data
 
     def fit(
         self,
@@ -311,7 +411,10 @@ class MarsOptimalBinner(MarsBinnerBase):
             if len(cuts) > 2:
                 active_cols.append(col)
             else:
-                self.bin_cuts_[col] = cuts
+                self.bin_cuts_[col] = self._fit_numeric_native_fallback(X, y_series, col)
+                self.fit_failures_[col] = (
+                    "Prebinning produced no usable optimization splits; native fallback applied."
+                )
 
         if not active_cols:
             return
@@ -324,9 +427,8 @@ class MarsOptimalBinner(MarsBinnerBase):
             pre_cuts: List[float],
             col_data: np.ndarray,
             y_data: np.ndarray
-        ) -> Tuple[str, List[float], str | None]:
+        ) -> Tuple[str, List[float] | None, str | None]:
             """对单个数值特征执行最优分箱求解。"""
-            fallback_res = (col, pre_cuts, None)
             try:
                 # 计算基于"总体"的绝对 min_bin_size
                 if isinstance(self.min_bin_size, float):
@@ -337,10 +439,10 @@ class MarsOptimalBinner(MarsBinnerBase):
                 # 绝对值检查
                 # 如果当前数据量 < 最小分箱数 * 最小单箱大小, 直接回退
                 if len(col_data) < self.min_n_bins * min_bin_size_abs:
-                     return fallback_res
+                    return col, None, "Insufficient samples for optimal constraints"
 
                 if len(col_data) < 10 or np.var(col_data) < MIN_VARIANCE:
-                    return col, pre_cuts, "Low variance or insufficient samples"
+                    return col, None, "Low variance or insufficient samples"
 
                 # 将绝对值转换回当前数据的相对比例
                 # OptBinning 源码限制 min_bin_size 必须在 (0, 0.5] 之间
@@ -351,7 +453,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 # 如果比例超过 0.5, 说明当前数据甚至无法切分出两个满足要求的箱子
                 # (例如: 要求每箱至少500人, 但当前只有800人, 500/800 = 0.625 > 0.5)
                 if current_ratio > 0.5:
-                    return fallback_res
+                    return col, None, "min_bin_size is too large for the clean sample"
 
                 # 为了防止浮点精度问题导致正好等于 0.50000001 报错, 做个截断保护
                 current_ratio = min(current_ratio, 0.5)
@@ -366,7 +468,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                     user_splits = raw_splits
 
                 if len(user_splits) == 0:
-                    return fallback_res
+                    return col, None, "No valid user_splits after prebinning"
 
                 opt = self.OptimalBinning(
                     name=col,
@@ -388,11 +490,11 @@ class MarsOptimalBinner(MarsBinnerBase):
                     return col, res_cuts, None
 
                 # 捕获求解器非最优状态 (如 TIMEOUT)
-                return col, pre_cuts, f"Solver status: {opt.status}"
+                return col, None, f"Solver status: {opt.status}"
 
             except Exception as e:
                 # 捕获代码级异常
-                return col, pre_cuts, f"{type(e).__name__}: {str(e)}"
+                return col, None, f"{type(e).__name__}: {str(e)}"
 
         # 预处理排除值
         raw_exclude = self.special_values + self.missing_values
@@ -444,6 +546,11 @@ class MarsOptimalBinner(MarsBinnerBase):
        )
 
         for col, cuts, error_msg in results:
+            if cuts is None:
+                self.bin_cuts_[col] = self._fit_numeric_native_fallback(X, y_series, col)
+                self.fit_failures_[col] = f"{error_msg}; native fallback applied."
+                continue
+
             self.bin_cuts_[col] = cuts
             if error_msg:
                 self.fit_failures_[col] = error_msg

@@ -950,7 +950,9 @@ class MarsBinnerBase(MarsTransformer):
         global_bad_rate = (total_bads / total_counts) if total_counts > 0 else 0
 
         current_cols = X_bin_lazy.collect_schema().names()
-        bin_cols = [c for c in current_cols if c.endswith("_bin")]
+        fitted_features = list(self.bin_cuts_.keys()) + list(getattr(self, "cat_cuts_", {}).keys())
+        expected_bin_cols = {f"{feature}_bin" for feature in fitted_features}
+        bin_cols = [c for c in current_cols if c in expected_bin_cols]
 
         agg_results: List[pl.DataFrame] = []
         for i in range(0, len(bin_cols), batch_size):
@@ -966,13 +968,14 @@ class MarsBinnerBase(MarsTransformer):
                     variable_name="feature",
                     value_name="bin_index"
                 )
+                .with_columns(pl.col("bin_index").cast(pl.Int16))
                 .group_by(["feature", "bin_index"])
                 .agg([
                     pl.len().alias("count"),
                     pl.col(y_name).sum().alias("bad")
                 ])
                 .with_columns(
-                    pl.col("feature").str.replace("_bin", "")
+                    pl.col("feature").str.replace(r"_bin$", "")
                 )
                 .collect(engine="streaming")
             )

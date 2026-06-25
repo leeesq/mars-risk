@@ -27,20 +27,13 @@ from mars.compute import (
 )
 from mars.core.base import MarsBaseEstimator
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE, METRIC_EPSILON
-from mars.feature.base import MarsBinnerBase
-from mars.feature.lite_opt_binner import MarsLiteOptBinner
-from mars.feature.native_binner import MarsNativeBinner
-from mars.feature.optimal_binner import MarsOptimalBinner
+from mars.feature.binning.base import MarsBinnerBase
+from mars.feature.binning.lite_opt import MarsLiteOptBinner
+from mars.feature.binning.native import MarsNativeBinner
+from mars.feature.binning.optimal import MarsOptimalBinner
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
-
-
-def with_psi_from_counts(*args: Any, **kwargs: Any) -> pl.DataFrame:
-    """旧版 DataFrame PSI helper 占位桩。"""
-    raise RuntimeError(
-        "`with_psi_from_counts` is deprecated. Use the pure Expr compute helpers instead.",
-    )
 
 
 @dataclass
@@ -799,7 +792,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 )
                 # 还原原始特征名 (去除 _bin 后缀)
                 .with_columns(
-                    pl.col("feature_bin").str.replace("_bin", "").alias("feature")
+                    pl.col("feature_bin").str.replace(r"_bin$", "").alias("feature")
                 )
                 # 聚合至最小粒度：(Group x Feature x Bin)
                 .group_by([group_col, "feature", "bin_index"])
@@ -985,7 +978,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             return (
                 bench_binned.select(bin_cols + idx_cols)
                 .unpivot(index=idx_cols, on=bin_cols, variable_name="feat_bin", value_name="bin_index")
-                .with_columns(pl.col("feat_bin").str.replace("_bin", "").alias("feature"))
+                .with_columns(pl.col("feat_bin").str.replace(r"_bin$", "").alias("feature"))
                 .group_by(["feature", "bin_index"])
                 .agg(agg_expr)
                 .with_columns((pl.col("expected_count") / pl.col("expected_count").sum().over("feature")).alias("expected_dist"))
@@ -1070,12 +1063,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
             pl.col("good").sum().over([group_col, "feature"]).alias("total_good"),
         ])
 
-        base_df = with_psi_from_counts(
-            base_df,
-            group_col=group_col,
-            include_missing=include_missing,
-            include_special=include_special,
-            epsilon=epsilon,
+        base_df = base_df.with_columns(
+            psi_exprs(
+                [group_col, "feature"],
+                include_missing=include_missing,
+                include_special=include_special,
+                epsilon=epsilon,
+            ),
         )
 
         base_df = base_df.with_columns([
@@ -1973,7 +1967,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         # 调用 Binner 中的静态方法进行判断
-        from mars.feature.base import MarsBinnerBase
+        from mars.feature.binning.base import MarsBinnerBase
 
         trend_shape_df = MarsBinnerBase._build_trend_shape_frame(
             trend_source.group_by("feature").agg(pl.col("woe")).collect(),

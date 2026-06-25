@@ -9,7 +9,7 @@ import polars as pl
 from mars.analysis import MarsBinEvaluator
 from mars.compute import FrameLike
 from mars.core.base import MarsBaseEstimator
-from mars.feature.base import MarsBinnerBase
+from mars.feature.binning.base import MarsBinnerBase
 
 TrendColumnOrder = Literal["asc", "desc"]
 

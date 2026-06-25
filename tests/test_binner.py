@@ -6,17 +6,17 @@ import polars as pl
 import pytest
 
 from mars.feature import MarsNativeBinner, MarsOptimalBinner
-from mars.feature.base import MarsBinnerBase
+from mars.feature.binning.base import MarsBinnerBase
 
 
-def test_binner_compat_facade_exports_split_classes():
-    from mars.feature.binner import MarsBinnerBase as FacadeBase
-    from mars.feature.binner import MarsNativeBinner as FacadeNative
-    from mars.feature.binner import MarsOptimalBinner as FacadeOptimal
+def test_feature_public_entry_exports_binner_classes():
+    from mars.feature import MarsBinnerBase as PublicBase
+    from mars.feature import MarsNativeBinner as PublicNative
+    from mars.feature import MarsOptimalBinner as PublicOptimal
 
-    assert FacadeBase is MarsBinnerBase
-    assert FacadeNative is MarsNativeBinner
-    assert FacadeOptimal is MarsOptimalBinner
+    assert PublicBase is MarsBinnerBase
+    assert PublicNative is MarsNativeBinner
+    assert PublicOptimal is MarsOptimalBinner
 
 
 def test_native_binner_generates_bin_columns_and_handles_special_values(sample_credit_df):
@@ -350,3 +350,100 @@ def test_optimal_binner_handles_missing_special_join_and_direct_optbinning() -> 
     assert transformed["cat_bin"].to_list()[0] == -1
     assert transformed["cat_bin"].to_list()[1] == -4
     assert transformed["cat_bin"].to_list()[2] is not None
+
+
+def test_optimal_binner_uses_native_fallback_when_constraints_fail() -> None:
+    values = np.linspace(0.0, 1.0, 120)
+    df = pl.DataFrame({"score": values})
+    target = pl.Series("target", (values >= 0.5).astype(int))
+
+    binner = MarsOptimalBinner(
+        n_bins=3,
+        min_n_bins=4,
+        min_bin_size=0.3,
+        min_bin_n_event=1,
+        n_prebins=20,
+        n_jobs=1,
+    )
+    binner.fit(df, target, features=["score"])
+    expected_binner = MarsNativeBinner(
+        method="quantile",
+        n_bins=binner.n_bins,
+        min_bin_size=binner.min_bin_size,
+        merge_small_bins=True,
+        remove_empty_bins=False,
+    )
+    expected_binner.fit(df, target, features=["score"])
+
+    cuts = binner.bin_cuts_["score"]
+    assert np.allclose(cuts, expected_binner.bin_cuts_["score"])
+    assert len(cuts) <= binner.n_bins + 1
+    assert len(cuts) < binner.n_prebins
+    assert "native fallback applied" in binner.fit_failures_["score"]
+
+
+def test_optimal_binner_respects_explicit_native_fallback_params() -> None:
+    values = np.linspace(0.0, 1.0, 120)
+    df = pl.DataFrame({"score": values})
+    target = pl.Series("target", (values >= 0.5).astype(int))
+
+    fallback_params = {
+        "method": "uniform",
+        "n_bins": 3,
+        "min_bin_size": 0.05,
+        "merge_small_bins": False,
+    }
+    binner = MarsOptimalBinner(
+        n_bins=8,
+        min_n_bins=4,
+        min_bin_size=0.3,
+        min_bin_n_event=1,
+        n_prebins=20,
+        fallback_binner_params=fallback_params,
+        n_jobs=1,
+    )
+    expected_binner = MarsNativeBinner(**fallback_params)
+
+    binner.fit(df, target, features=["score"])
+    expected_binner.fit(df, target, features=["score"])
+
+    assert np.allclose(binner.bin_cuts_["score"], expected_binner.bin_cuts_["score"])
+    assert "native fallback applied" in binner.fit_failures_["score"]
+
+
+def test_optimal_binner_rejects_invalid_fallback_binner_params() -> None:
+    with pytest.raises(ValueError, match="Allowed keys"):
+        MarsOptimalBinner(fallback_binner_params={"n_jobs": 1})
+
+    with pytest.raises(ValueError, match="prebinning_method"):
+        MarsOptimalBinner(fallback_binner_params={"prebinning_method": "quantile"})
+
+
+def test_optimal_binner_serializes_fallback_binner_params() -> None:
+    binner = MarsOptimalBinner(
+        fallback_binner_params={"method": "uniform", "n_bins": 3},
+    )
+
+    restored = MarsOptimalBinner.from_dict(binner.to_dict())
+
+    assert isinstance(restored, MarsOptimalBinner)
+    assert restored.fallback_binner_params == {"method": "uniform", "n_bins": 3}
+
+
+def test_profile_bin_performance_preserves_feature_names_with_bin_text() -> None:
+    values = np.linspace(0.0, 1.0, 80)
+    df = pl.DataFrame(
+        {
+            "foo_bin": values,
+            "foo_bin_score": values[::-1],
+        }
+    )
+    target = pl.Series("target", (values >= 0.5).astype(int))
+    binner = MarsNativeBinner(method="quantile", n_bins=4)
+
+    binner.fit(df, target, features=["foo_bin", "foo_bin_score"])
+    transformed = binner.transform(df, return_type="index")
+    stats = binner.profile_bin_performance(df, target, include_bin_index=True)
+
+    assert {"foo_bin_bin", "foo_bin_score_bin"}.issubset(transformed.columns)
+    assert set(stats["feature"].unique().to_list()) == {"foo_bin", "foo_bin_score"}

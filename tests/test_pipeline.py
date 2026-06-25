@@ -6,8 +6,8 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mars.core.base import MarsBaseSelector
 from mars.feature import MarsImportanceSelector, MarsLinearSelector, MarsLiteOptBinner
+from mars.feature.selection.base import MarsBaseSelector
 from mars.modeling import MarsModelTuningResult
 from mars.pipeline import (
     MarsModelingPipeline,

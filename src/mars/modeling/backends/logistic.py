@@ -9,10 +9,10 @@ import pandas as pd
 import polars as pl
 
 from mars.compute import to_pandas_frame
-from mars.feature.base import MarsBinnerBase
-from mars.feature.lite_opt_binner import MarsLiteOptBinner
-from mars.feature.native_binner import MarsNativeBinner
-from mars.feature.optimal_binner import MarsOptimalBinner
+from mars.feature.binning.base import MarsBinnerBase
+from mars.feature.binning.lite_opt import MarsLiteOptBinner
+from mars.feature.binning.native import MarsNativeBinner
+from mars.feature.binning.optimal import MarsOptimalBinner
 from mars.modeling.backends._logistic_diagnostics import build_logistic_diagnostics
 from mars.modeling.backends._logistic_model import MarsLogisticModel
 from mars.modeling.backends.base import MarsBaseModelStrategy

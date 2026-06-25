@@ -42,9 +42,12 @@ def test_hardcoded_epsilon_only_lives_in_constants_module() -> None:
 
 def test_feature_module_does_not_depend_on_modeling_optional_imports() -> None:
     """feature 模块不能为了可选依赖工具反向依赖 modeling。"""
-    selector_source = (SRC_ROOT / "feature" / "selector.py").read_text(encoding="utf-8")
-    assert "from mars.modeling.utils import require_optional_module" not in selector_source
-    assert "from mars.utils.imports import require_optional_module" in selector_source
+    selection_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((SRC_ROOT / "feature" / "selection").glob("*.py"))
+    )
+    assert "from mars.modeling.utils import require_optional_module" not in selection_sources
+    assert "from mars.utils.imports import require_optional_module" in selection_sources
 
 
 def test_profile_risk_keeps_original_public_import_path() -> None:

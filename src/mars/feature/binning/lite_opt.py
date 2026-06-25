@@ -13,7 +13,7 @@ from mars.core.constants import FLOAT_TOLERANCE
 from mars.utils.logger import logger
 
 from .base import MarsBinnerBase
-from .native_binner import MarsNativeBinner
+from .native import MarsNativeBinner
 
 PrebinningMethod = Literal["quantile", "uniform", "cart"]
 TrendShape = Literal["ascending", "descending", "peak", "valley", "auto", "auto_asc_desc"]
@@ -178,7 +178,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
         self.fitted_trends_: dict[str, str] = {}
         self.candidate_scores_: dict[str, dict[str, float]] = {}
 
-    def fit(  # type: ignore[override]
+    def fit(
         self,
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any],

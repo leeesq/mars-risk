@@ -10,7 +10,7 @@ import pandas as pd
 import polars as pl
 
 from mars.compute import to_pandas_frame
-from mars.feature.base import MarsBinnerBase
+from mars.feature.binning.base import MarsBinnerBase
 
 
 @dataclass(slots=True)

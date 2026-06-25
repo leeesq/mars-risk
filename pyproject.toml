@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-risk"      
-version = "0.0.18"       
+version = "0.0.19"
 description = "High-performance Risk Modeling Toolkit powered by Polars"
 readme = "README.md"
 requires-python = ">=3.10" 
@@ -112,7 +112,7 @@ where = ["src"]
 include = ["mars*"]  
 [tool.setuptools.package-data]
 "mars" = ["py.typed"]
-"mars.analysis" = ["*.xlsx"]
+"mars.reporting" = ["template/*.xlsx"]
 
 [tool.ruff]
 target-version = "py310"
@@ -211,11 +211,14 @@ module = [
     "mars.analysis.profiler",
     "mars.analysis.report",
     "mars.core.base",
-    "mars.feature.base",
-    "mars.feature.binner",
-    "mars.feature.native_binner",
-    "mars.feature.optimal_binner",
-    "mars.feature.selector",
+    "mars.feature.binning.base",
+    "mars.feature.binning.lite_opt",
+    "mars.feature.binning.native",
+    "mars.feature.binning.optimal",
+    "mars.feature.selection.base",
+    "mars.feature.selection.importance",
+    "mars.feature.selection.linear",
+    "mars.feature.selection.stats",
 ]
 disable_error_code = [
     "arg-type",
