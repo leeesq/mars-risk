@@ -60,9 +60,9 @@ class MarsDate:
 
         Notes
         -----
-        1. **类型优先保护**: 优先尝试直接 Cast。如果输入已经是 Date/Datetime，
-           则跳过后续字符串解析，大幅提升处理规整数据时的性能。
-        2. **强制转 String**: 对于无法直接 Cast 的类型，转换为 ``pl.Utf8`` 统一处理。
+        1. **统一字符串解析**: 先转为 ``pl.Utf8``，再按显式格式解析，避免 Polars 2.0
+           废弃的 ``String -> Date`` 直接 cast 路径。
+        2. **强制转 String**: 对于 Date、Datetime、整数和字符串列，统一进入格式化解析链路。
            这解决了整数日期 (如 20250101) 被误读为天数偏移的 bug。
         3. **多格式尝试**: 依次尝试解析常用的 ISO 格式、紧凑格式、斜杠和点号格式。
 
@@ -87,25 +87,26 @@ class MarsDate:
         # 预生成 String 表达式用于多格式解析尝试
         str_expr = expr.cast(pl.Utf8)
 
-        # Coalesce: 从上到下尝试，返回第一个非 Null 的结果
+        # Coalesce: 从上到下尝试，返回第一个非 Null 的结果。
+        # 这里不使用 expr.cast(pl.Date)，否则字符串列在 Polars 新版本会触发弃用警告。
         return pl.coalesce([
-            # 1. 尝试直接 Cast
-            # 如果是原生 Date/Datetime 或标准 "YYYY-MM-DD" 字符串，此步最高效
-            expr.cast(pl.Date, strict=False),
-
-            # 2. 标准 ISO 格式 (2025-01-01)
+            # 1. 标准 ISO 格式 (2025-01-01)
             # 强化匹配：部分特殊 Object 转 Str 后可能符合此格式
             str_expr.str.to_date("%Y-%m-%d", strict=False),
 
-            # 3. 紧凑格式 (20250101)
+            # 2. 紧凑格式 (20250101)
             # 解决 Int 类型转为 Str 后的情况
             str_expr.str.to_date("%Y%m%d", strict=False),
 
-            # 4. 斜杠格式 (2025/01/01)
+            # 3. 斜杠格式 (2025/01/01)
             str_expr.str.to_date("%Y/%m/%d", strict=False),
 
-            # 5. 点号格式 (2025.01.01)
+            # 4. 点号格式 (2025.01.01)
             str_expr.str.to_date("%Y.%m.%d", strict=False),
+
+            # 5. Datetime 字符串格式，覆盖原生 Datetime 列 cast 到 Utf8 后的表现。
+            str_expr.str.to_datetime("%Y-%m-%d %H:%M:%S%.f", strict=False).dt.date(),
+            str_expr.str.to_datetime("%Y-%m-%dT%H:%M:%S%.f", strict=False).dt.date(),
         ])
 
     @staticmethod
