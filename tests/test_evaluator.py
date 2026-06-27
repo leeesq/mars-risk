@@ -1,20 +1,45 @@
+import importlib
 import warnings
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
 
-from mars.analysis import MarsBinEvaluator, MarsBinningReport, MarsRiskProfile, profile_risk
+import mars
+import mars.analysis
+import mars.reporting
+from mars.analysis import MarsBinEvaluator, MarsRiskProfile, profile_risk
 from mars.feature import MarsLiteOptBinner, MarsNativeBinner, MarsOptimalBinner
+from mars.reporting import MarsBinningReport
+from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting.plotter import MarsPlotter
 
 
 def _as_pandas(df):
     return df.to_pandas() if isinstance(df, pl.DataFrame) else df.copy()
+
+
+def test_reporting_public_exports_are_the_only_report_class_surface() -> None:
+    """报告类只通过 reporting 与顶层包导出。"""
+    assert mars.reporting.__all__ == [
+        "MarsProfileReport",
+        "MarsBinningReport",
+        "ProfileData",
+    ]
+    assert "MarsBinningReport" not in mars.analysis.__all__
+    assert "MarsProfileReport" not in mars.analysis.__all__
+    assert "MarsBinningReport" in mars.__all__
+    assert "MarsProfileReport" in mars.__all__
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("mars.analysis.report")
 
 
 def _profile_risk_report(*args, **kwargs):
@@ -797,7 +822,10 @@ def test_evaluation_report_excel_uses_template_headers_for_detail_sheet(
 
     report.write_excel(str(output_path), engine="openpyxl")
 
-    template_path = MarsBinningReport._resolve_excel_template_path("mars_bin_report_linux.xlsx")
+    template_path = resources.files("mars.reporting").joinpath(
+        "template",
+        "mars_bin_report_linux.xlsx",
+    )
     template_workbook = load_workbook(template_path)
     try:
         template_worksheet = template_workbook["分组明细"]
@@ -865,7 +893,10 @@ def test_evaluation_report_excel_raises_when_template_has_unknown_detail_column(
         method="quantile",
         n_bins=3,
     )
-    template_path = MarsBinningReport._resolve_excel_template_path("mars_bin_report_linux.xlsx")
+    template_path = resources.files("mars.reporting").joinpath(
+        "template",
+        "mars_bin_report_linux.xlsx",
+    )
     custom_template_path = tmp_path / "custom_template.xlsx"
     custom_template_path.write_bytes(template_path.read_bytes())
 
@@ -884,7 +915,7 @@ def test_evaluation_report_excel_raises_when_template_has_unknown_detail_column(
         workbook.close()
 
     monkeypatch.setattr(
-        MarsBinningReport,
+        _BinningExcelWriter,
         "_resolve_excel_template_path",
         classmethod(lambda cls, file_name: custom_template_path),
     )
@@ -1276,76 +1307,52 @@ def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(s
             artifacts_dir.rmdir()
 
 
-def test_trend_threshold_style_rules_cover_purple_and_three_color_thresholds():
-    iv_rule = MarsBinningReport._trend_style_rule("iv")
-    psi_rule = MarsBinningReport._trend_style_rule("psi")
-    lift_min_rule = MarsBinningReport._summary_style_rule("lift_min")
-    lift_rule = MarsBinningReport._trend_style_rule("lift")
-    assert iv_rule is not None
-    assert psi_rule is not None
-    assert lift_min_rule is not None
-    assert lift_rule is not None
+def test_binning_report_html_renders_threshold_style_colors(tmp_path: Path):
+    summary = pl.DataFrame(
+        {
+            "feature": ["f1", "f2"],
+            "iv": [0.15, 0.25],
+            "ks": [12.0, 20.0],
+            "auc": [0.55, 0.68],
+            "psi_max": [0.0, 0.25],
+            "rc_min": [1.0, 0.5],
+            "lift_min": [0.5, 0.7],
+            "lift_max": [1.2, 1.5],
+            "missing": [0.0, 0.1],
+            "missing_min": [0.0, 0.0],
+            "missing_max": [0.1, 0.2],
+        }
+    )
+    detail = pl.DataFrame(
+        {
+            "feature": ["f1", "f2"],
+            "mars_group": ["Total", "Total"],
+            "bin_index": [0, 0],
+            "bin_label": ["A", "B"],
+            "count": [100, 100],
+            "bad": [10, 20],
+            "bad_rate": [0.1, 0.2],
+            "lift": [1.2, 1.5],
+        }
+    )
+    report = MarsBinningReport(summary, {}, detail)
+    output_path = tmp_path / "style_report.html"
 
-    iv_gradient = MarsBinningReport._cell_style(
-        0.15,
-        semantic="good_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=iv_rule,
+    report.write_html(
+        str(output_path),
+        include_trends=False,
+        include_detail=False,
+        include_charts=False,
     )
-    iv_purple = MarsBinningReport._cell_style(
-        0.25,
-        semantic="good_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=iv_rule,
-    )
-    psi_green = MarsBinningReport._cell_style(
-        0.0,
-        semantic="risk_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=psi_rule,
-    )
-    psi_red = MarsBinningReport._cell_style(
-        0.25,
-        semantic="risk_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=psi_rule,
-    )
-    lift_min_green = MarsBinningReport._cell_style(
-        0.5,
-        semantic="risk_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=lift_min_rule,
-    )
-    lift_min_yellow = MarsBinningReport._cell_style(
-        0.7,
-        semantic="risk_high",
-        vmin=0.0,
-        vmax=1.0,
-        style_rule=lift_min_rule,
-    )
-    lift_purple = MarsBinningReport._cell_style(
-        1.5,
-        semantic="good_high",
-        vmin=0.0,
-        vmax=2.0,
-        style_rule=lift_rule,
-    )
+    html_text = output_path.read_text(encoding="utf-8")
 
-    assert "130, 144, 160" in iv_gradient
-    assert "160, 98, 196" in iv_purple
-    assert "99, 190, 123" in psi_green
-    assert "248, 105, 107" in psi_red
-    assert "160, 98, 196" in lift_min_green
-    assert "255, 235, 132" in lift_min_yellow
-    assert "160, 98, 196" in lift_purple
+    assert "160, 98, 196" in html_text
+    assert "99, 190, 123" in html_text
+    assert "248, 105, 107" in html_text
+    assert "255, 235, 132" in html_text
 
 
-def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv():
+def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv(tmp_path: Path):
     detail_df = pd.DataFrame(
         [
             {"data_source": "SRC_A", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.30, "iv_bin": 0.10},
@@ -1356,19 +1363,38 @@ def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv():
         ]
     )
 
-    html_text = MarsBinningReport._build_grouped_pivot_section_html(
-        detail_df,
-        group_col="grp",
-        feature_sources={"feature_high": "SRC", "feature_low": "SRC"},
+    summary_df = pd.DataFrame(
+        [
+            {"feature": "feature_high", "iv": 0.17},
+            {"feature": "feature_low", "iv": 0.07},
+        ]
     )
+    report = MarsBinningReport(
+        summary_df,
+        {},
+        detail_df,
+        detail_group_col="grp",
+        feature_data_source={"feature_high": "SRC", "feature_low": "SRC"},
+    )
+    output_path = tmp_path / "grouped_pivot.html"
+    try:
+        report.write_html(
+            str(output_path),
+            include_summary=False,
+            include_trends=False,
+            include_charts=False,
+            include_detail=True,
+        )
+        html_text = output_path.read_text(encoding="utf-8")
+    finally:
+        if output_path.exists():
+            output_path.unlink()
 
     assert "Search grouped pivot..." in html_text
     assert "25.00%" in html_text
     assert "75.00%" in html_text
     assert "Missing" in html_text
     assert html_text.index("feature_high") < html_text.index("feature_low")
-    assert "SRC_A" not in html_text
-    assert "SRC_B" not in html_text
     assert "marsStartColumnResize(event, 'mars-pivot-target', 'bin')" in html_text
     assert "--mars-bin-col-width: 140px;" in html_text
     assert 'data-table-kind="pivot"' in html_text

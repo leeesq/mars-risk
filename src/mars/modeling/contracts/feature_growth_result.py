@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
@@ -11,11 +10,6 @@ import pandas as pd
 
 from mars.modeling.artifacts import read_json, write_json
 from mars.modeling.contracts.tuning_result import MarsModelTuningResult
-
-
-def _json_dumps(value: Any) -> str:
-    """生成稳定、可读的 JSON 文本。"""
-    return json.dumps(value, ensure_ascii=False)
 
 
 @dataclass(slots=True)

@@ -22,17 +22,14 @@ report = profiler.generate_profile(
     group_col="month",
     psi_include_missing=False,
     psi_include_special=False,
-    config_overrides={
-        "dq_metrics": ["missing", "zeros"],
-        "stat_metrics": ["mean", "psi"],
-        "enable_sparkline": False,
-    },
+    metrics=["missing", "zeros", "mean", "psi"],
+    enable_sparkline=False,
 )
 ```
 
-`generate_profile` 接收本次数据、特征范围、分组和配置覆盖项。`MarsDataProfiler` 构造函数只保留稳定策略，例如缺失值、特殊值和默认配置。
+`generate_profile` 接收本次数据、特征范围、分组和指标列表。`MarsDataProfiler` 构造函数只保留稳定策略，例如缺失值、特殊值和 PSI 策略。
 
-画像里的 PSI 可通过 `psi_include_missing` 和 `psi_include_special` 控制是否纳入缺失箱和特殊值箱；显式方法参数会覆盖 `config_overrides` 中的同名配置。
+画像里的 PSI 可通过 `psi_include_missing` 和 `psi_include_special` 控制是否纳入缺失箱和特殊值箱。画像 PSI 公式复用 `compute` 表达式底座，数值和类别特征都会先走 `MarsNativeBinner` 分箱，再按分箱索引计算 PSI。数值特征默认会删除全局空箱，并合并占比低于 `psi_min_bin_size=0.02` 的小箱，以降低极小箱带来的 PSI 噪音。类别特征的 `psi_n_bins` 表示最多保留的 Top-K 类别数量，其余类别进入 Other 箱。需要更敏感地观察数值小箱漂移时，可以显式设置 `psi_merge_small_bins=False`，或调低 `psi_min_bin_size`。
 
 ## 常见输出
 

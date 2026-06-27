@@ -8,10 +8,7 @@ Copyright (c) 2026 Christian and Tina
 
 from .analysis import (
     MarsBinEvaluator,
-    MarsBinningReport,
     MarsDataProfiler,
-    MarsProfileConfig,
-    MarsProfileReport,
     MarsRiskProfile,
     profile_risk,
     profile_stats,
@@ -40,6 +37,7 @@ from .pipeline import (
     MarsStepResult,
     MarsWOEBinningStep,
 )
+from .reporting import MarsBinningReport, MarsProfileReport
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
@@ -73,7 +71,6 @@ def __str__() -> str:
 
 __all__ = [
     "MarsDataProfiler",
-    "MarsProfileConfig",
     "MarsProfileReport",
     "MarsRiskProfile",
     "MarsLiteOptBinner",

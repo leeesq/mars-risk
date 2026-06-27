@@ -9,11 +9,11 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 import polars as pl
 
-from mars.analysis.report import MarsBinningReport
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.selection.base import MarsBaseSelector
+from mars.reporting import MarsBinningReport
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -654,23 +654,20 @@ class MarsStatsSelector(MarsBaseSelector):
         )
         report = profiler.generate_profile(
             df,
+            metrics=["missing", "zeros", "mode"],
             features=features,
-            config_overrides={
-                "dq_metrics": ["missing", "zeros", "top1"],
-                "stat_metrics": [],
-                "enable_sparkline": False
-            }
+            enable_sparkline=False,
         )
 
         stats_records = report.overview_table.select([
-            "feature", "missing_rate", "top1_ratio", "zeros_rate"
+            "feature", "missing_rate", "mode_rate", "zeros_rate"
         ]).to_dicts()
         kept_features = []
 
         for row in stats_records:
             feat = row["feature"]
             missing = row["missing_rate"]
-            mode_rate = row["top1_ratio"]
+            mode_rate = row["mode_rate"]
             zeros_rate = row["zeros_rate"]
 
             # 实施特定属性旁路绕过数据分布的边界校验

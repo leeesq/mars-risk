@@ -16,7 +16,6 @@ from mars.utils.html import (
     escape_html_value,
     flatten_columns,
     format_html_value,
-    is_missing_html_value,
 )
 from mars.utils.imports import optional_import as _optional_import
 
@@ -83,16 +82,6 @@ class _ModelReportHtmlRenderer:
         table = to_pandas_table(value)
         return None if table.empty else table
 
-    @staticmethod
-    def _escape(value: Any) -> str:
-        """按 HTML 属性和文本上下文转义任意值。"""
-        return escape_html_value(value)
-
-    @staticmethod
-    def _is_missing(value: Any) -> bool:
-        """判断报告单元格值是否应按缺失展示。"""
-        return is_missing_html_value(value)
-
     @classmethod
     def _format_value(
         cls: type[_ModelReportHtmlRenderer],
@@ -108,11 +97,6 @@ class _ModelReportHtmlRenderer:
             missing_text="-",
             compact_float=True,
         )
-
-    @staticmethod
-    def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
-        """将 MultiIndex 列名压平成前端表格可展示的字符串列名。"""
-        return flatten_columns(df)
 
     @classmethod
     def _table_html(
@@ -130,8 +114,8 @@ class _ModelReportHtmlRenderer:
         附加截断提示。
         """
         if df is None or df.empty:
-            return f'<div class="mars-empty">{cls._escape(empty_text)}</div>'
-        view = cls._flatten_columns(df)
+            return f'<div class="mars-empty">{escape_html_value(empty_text)}</div>'
+        view = flatten_columns(df)
         if max_rows is not None and len(view) > max_rows:
             view = view.head(max_rows).copy()
             note = f'<div class="mars-note">Showing first {max_rows:,} rows.</div>'
@@ -139,7 +123,8 @@ class _ModelReportHtmlRenderer:
             note = ""
 
         headers = "".join(
-            f'<th><button type="button" onclick="marsSortTable(\'{table_id}\',{idx})">{cls._escape(col)}</button></th>'
+            f'<th><button type="button" onclick="marsSortTable(\'{table_id}\',{idx})">'
+            f"{escape_html_value(col)}</button></th>"
             for idx, col in enumerate(view.columns)
         )
         body_rows: List[str] = []
@@ -158,7 +143,9 @@ class _ModelReportHtmlRenderer:
             for col in view.columns:
                 lower_col = str(col).lower()
                 percent = any(token in lower_col for token in ("rate", "pct", "capture"))
-                cells.append(f"<td>{cls._escape(cls._format_value(row[col], percent=percent))}</td>")
+                cells.append(
+                    f"<td>{escape_html_value(cls._format_value(row[col], percent=percent))}</td>"
+                )
             body_rows.append(f"<tr{row_class}>{''.join(cells)}</tr>")
 
         return f"""
@@ -415,7 +402,11 @@ class _ModelReportHtmlRenderer:
             value = self.metadata.get(key)
             if value is not None:
                 cards.append((key.replace("_", " ").title(), self._format_value(value)))
-        return "".join(f'<div class="mars-card"><span>{self._escape(label)}</span><strong>{self._escape(value)}</strong></div>' for label, value in cards)
+        return "".join(
+            f'<div class="mars-card"><span>{escape_html_value(label)}</span>'
+            f"<strong>{escape_html_value(value)}</strong></div>"
+            for label, value in cards
+        )
 
     def _metadata_table(self) -> pd.DataFrame:
         """将训练配置、版本和 run 元数据展开为二维表。"""
@@ -464,7 +455,7 @@ class _ModelReportHtmlRenderer:
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>{self._escape(self.title)}</title>
+<title>{escape_html_value(self.title)}</title>
 <style>{self._styles()}</style>
 </head>
 <body>
@@ -472,7 +463,7 @@ class _ModelReportHtmlRenderer:
 <header class="mars-hero">
   <div>
     <p class="mars-kicker">MARS Modeling Report</p>
-    <h1>{self._escape(self.title)}</h1>
+    <h1>{escape_html_value(self.title)}</h1>
     <p>Single-file model audit report for discrimination, calibration, stability, explainability, and tuning review.</p>
   </div>
 </header>
@@ -581,7 +572,8 @@ class _ModelReportHtmlRenderer:
             ("Calibration Curve", self._line_chart(calibration, x_col="pred_mean", y_col="bad_rate", title="Reliability Diagram", xlabel="Mean predicted risk", ylabel="Observed bad rate", diagonal=True)),
         ]
         chart_html = '<div class="mars-chart-grid">' + "".join(
-            f'<article class="mars-chart"><h3>{self._escape(name)}</h3>{chart}</article>' for name, chart in charts
+            f'<article class="mars-chart"><h3>{escape_html_value(name)}</h3>{chart}</article>'
+            for name, chart in charts
         ) + "</div>"
         body_parts.append(self._section("Discrimination & Calibration", chart_html, "discrimination-calibration"))
 

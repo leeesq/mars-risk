@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Sequence
 
@@ -10,6 +9,7 @@ import pandas as pd
 
 from mars.compute import FrameLike
 from mars.modeling.artifacts import step_artifact_dir
+from mars.modeling.artifacts.io import _json_dumps
 from mars.modeling.contracts.feature_growth_result import MarsFeatureGrowthResult
 from mars.modeling.contracts.tuning_result import MarsModelTuningResult
 from mars.modeling.workflows._spec_builder import build_modeling_spec
@@ -27,11 +27,6 @@ def _dedupe_preserve_order(values: Sequence[str]) -> List[str]:
         seen.add(item)
         output.append(item)
     return output
-
-
-def _json_dumps(value: Any) -> str:
-    """生成稳定、可读的 JSON 文本。"""
-    return json.dumps(value, ensure_ascii=False)
 
 
 class MarsFeatureIncrementalTuner:

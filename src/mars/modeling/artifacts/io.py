@@ -43,6 +43,11 @@ def to_json_safe(value: Any) -> Any:
     return value
 
 
+def _json_dumps(value: Any) -> str:
+    """生成统一的 JSON 安全文本。"""
+    return json.dumps(to_json_safe(value), ensure_ascii=False)
+
+
 def write_json(path: Path, data: Dict[str, Any]) -> None:
     """
     以 UTF-8 写入稳定格式 JSON 文件。

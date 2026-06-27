@@ -123,16 +123,32 @@ class MarsBaseEstimator(BaseEstimator):
                 X_pl = pl.from_pandas(X)
             except Exception as exc:
                 raise DataTypeError(
-                    f"Failed to convert Pandas DataFrame to Polars: {exc}"
+                    f"Failed to convert Pandas DataFrame to Polars: {exc}",
+                    context={
+                        "input_type": type(X).__name__,
+                        "expected_type": "polars.DataFrame",
+                    },
                 ) from exc
 
             self._validate_conversion(X, X_pl)
             return X_pl
 
         if isinstance(X, (pd.Series, pl.Series)):
-            raise DataTypeError(f"Input must be a generic DataFrame (2D), got Series (1D): {type(X)}")
+            raise DataTypeError(
+                f"Input must be a generic DataFrame (2D), got Series (1D): {type(X)}",
+                context={
+                    "input_type": type(X).__name__,
+                    "expected_type": "DataFrame",
+                },
+            )
 
-        raise DataTypeError(f"Mars expects Polars/Pandas DataFrame, got {type(X)}")
+        raise DataTypeError(
+            f"Mars expects Polars/Pandas DataFrame, got {type(X)}",
+            context={
+                "input_type": type(X).__name__,
+                "expected_type": "polars.DataFrame | pandas.DataFrame",
+            },
+        )
 
     def _ensure_polars_series(
         self,
@@ -195,7 +211,12 @@ class MarsBaseEstimator(BaseEstimator):
                 raise DataTypeError(
                     f"Column '{col}' is numeric in Pandas ({pd_dtype}) "
                     f"but converted to non-numeric in Polars ({pl_dtype}). "
-                    "Check for mixed dtypes in your Pandas DataFrame."
+                    "Check for mixed dtypes in your Pandas DataFrame.",
+                    context={
+                        "feature": str(col),
+                        "pandas_dtype": str(pd_dtype),
+                        "polars_dtype": str(pl_dtype),
+                    },
                 )
 
             if pd_dtype == "object" and pl_dtype == pl.Utf8:
@@ -288,7 +309,6 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
     def __init__(self) -> None:
         super().__init__()
-        self.feature_names_in_: list[str] = []
         self._is_fitted: bool = False
 
     def __sklearn_is_fitted__(self) -> bool:
@@ -298,7 +318,10 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     def _check_is_fitted(self) -> None:
         """检查当前转换器是否已完成拟合。"""
         if not self._is_fitted:
-            raise NotFittedError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")
+            raise NotFittedError(
+                f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.",
+                context={"estimator": self.__class__.__name__},
+            )
 
     def get_feature_names_out(self, input_features: Any | None = None) -> list[str]:
         """
@@ -325,6 +348,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         >>> transformer.get_feature_names_out()
         ['age']
         """
+        self._check_is_fitted()
         return self.feature_names_in_
 
     @time_it

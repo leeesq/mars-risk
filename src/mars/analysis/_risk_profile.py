@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import pandas as pd
 import polars as pl
 
-from mars.analysis.report import MarsBinningReport
-from mars.compute import RiskCorrBaseline
+from mars.compute import RiskCorrBaseline, to_polars_frame
 from mars.feature.binning.base import MarsBinnerBase
+from mars.reporting import MarsBinningReport
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -477,16 +477,11 @@ def profile_risk(
         final_report = primary_report
         final_targets = primary_run.targets
     else:
-
-        def to_pl(data: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
-            """将报告中间表统一转换为 Polars DataFrame。"""
-            return pl.from_pandas(data) if isinstance(data, pd.DataFrame) else data
-
-        p_summary = to_pl(primary_report.summary_table).with_columns(
+        p_summary = to_polars_frame(primary_report.summary_table).with_columns(
             pl.lit(primary_target).alias("target")
         )
-        p_detail = to_pl(primary_report.detail_table)
-        p_reference = to_pl(primary_report.risk_corr_reference_table)
+        p_detail = to_polars_frame(primary_report.detail_table)
+        p_reference = to_polars_frame(primary_report.risk_corr_reference_table)
         all_details: list[pl.DataFrame] = [p_detail]
         all_summaries: list[pl.DataFrame] = [p_summary]
         all_references: list[pl.DataFrame] = [p_reference]
@@ -514,11 +509,13 @@ def profile_risk(
                 amount_col=amount_col,
                 batch_size=batch_size,
             )
-            all_details.append(to_pl(sec_run.report.detail_table))
+            all_details.append(to_polars_frame(sec_run.report.detail_table))
             all_summaries.append(
-                to_pl(sec_run.report.summary_table).with_columns(pl.lit(sec_target).alias("target"))
+                to_polars_frame(sec_run.report.summary_table).with_columns(
+                    pl.lit(sec_target).alias("target")
+                )
             )
-            all_references.append(to_pl(sec_run.report.risk_corr_reference_table))
+            all_references.append(to_polars_frame(sec_run.report.risk_corr_reference_table))
 
         final_detail: pl.DataFrame | pd.DataFrame = pl.concat(all_details, how="vertical_relaxed")
         final_summary: pl.DataFrame | pd.DataFrame = pl.concat(

@@ -1,9 +1,6 @@
 """MARS 风控特征趋势图绘制与 HTML 渲染工具。"""
 
-import base64
-import uuid
-from io import BytesIO
-from typing import Literal, Union, cast
+from typing import Literal, Union
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -15,6 +12,17 @@ from matplotlib.ticker import FuncFormatter
 
 from mars.compute import RiskCorrBaseline
 from mars.core.constants import DIVISION_EPSILON
+from mars.reporting._plotter_support import (
+    as_pandas_detail_frame,
+    build_image_html,
+    build_rollup_row_mask,
+    calculate_panel_risk_corr,
+    figure_to_base64,
+    has_amount_risk_columns,
+    normalize_show_risk,
+    show_scrollable,
+    summarize_binning_metrics,
+)
 from mars.utils.logger import logger
 
 
@@ -57,9 +65,7 @@ class MarsPlotter:
         pd.DataFrame
             可直接用于 Matplotlib 和 Pandas 切片的表对象。
         """
-        if isinstance(df_detail, pl.DataFrame):
-            return df_detail.to_pandas()
-        return df_detail
+        return as_pandas_detail_frame(df_detail)
 
     @staticmethod
     def _show_scrollable(fig: plt.Figure, dpi: int = 150) -> None:
@@ -73,96 +79,17 @@ class MarsPlotter:
         dpi : int
             图像分辨率。
         """
-        # 将图像序列化为 Base64 字符串
-        buf = BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=dpi)
-        buf.seek(0)
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close(fig) # 关闭 figure 释放内存
-
-        # 生成唯一 ID 避免 HTML 元素冲突
-        unique_id = str(uuid.uuid4())
-        container_id = f"cont_{unique_id}"
-        img_id = f"img_{unique_id}"
-        hint_id = f"hint_{unique_id}"
-
-        # 构造 HTML 代码：包含缩放逻辑的 CSS 和 JS
-        html_code = f"""
-        <style>
-            #{container_id} {{
-                width: 100%;
-                overflow-x: hidden;
-                border: 1px solid #e0e0e0;
-                padding: 5px;
-                cursor: zoom-in;
-                transition: all 0.2s ease;
-                margin-bottom: 25px;
-            }}
-            #{img_id} {{
-                width: 100%;
-                height: auto;
-                display: block;
-            }}
-            .mars-plotter-hint {{
-                color: #888;
-                font-size: 12px;
-                text-align: left;
-                margin-bottom: 5px;
-                margin-left: 2px;
-            }}
-        </style>
-
-        <div id="{container_id}" ondblclick="toggleZoom_{unique_id.replace('-', '_')}(this)">
-            <img id="{img_id}" src="data:image/png;base64,{img_str}" title="双击图片：放大查看细节 / 缩小查看全貌" />
-        </div>
-
-        <script>
-        (function() {{
-            // 控制提示语仅在第一张图表上方显示
-            if (typeof window.MARS_PLOTTER_HINT_SHOWN === 'undefined') {{
-                document.getElementById('{hint_id}').style.display = 'block';
-                window.MARS_PLOTTER_HINT_SHOWN = true;
-            }}
-        }})();
-
-        // 双击切换缩放状态
-        function toggleZoom_{unique_id.replace('-', '_')}(container) {{
-            var img = container.querySelector('img');
-            if (img.style.width === '100%' || img.style.width === '') {{
-                img.style.width = 'auto';
-                img.style.maxWidth = 'none';
-                container.style.overflowX = 'auto';
-                container.style.cursor = 'zoom-out';
-            }} else {{
-                img.style.width = '100%';
-                img.style.maxWidth = '100%';
-                container.style.overflowX = 'hidden';
-                container.style.cursor = 'zoom-in';
-            }}
-        }}
-        </script>
-        """
-        display(HTML(html_code))
+        show_scrollable(fig, dpi=dpi)
 
     @staticmethod
     def _build_rollup_row_mask(df_detail: pd.DataFrame) -> pd.Series:
         """标记分箱明细中的汇总行。"""
-        rollup_mask = pd.Series(False, index=df_detail.index, dtype=bool)
-        if "bin_label" in df_detail.columns:
-            rollup_mask = rollup_mask | (df_detail["bin_label"].astype(str) == "Total")
-        if "bin_type" in df_detail.columns:
-            rollup_mask = rollup_mask | (df_detail["bin_type"].astype(str) == "汇总组")
-        return rollup_mask
+        return build_rollup_row_mask(df_detail)
 
     @staticmethod
     def _summarize_binning_metrics(df_detail: pd.DataFrame) -> tuple[float, float, float]:
         """按单个面板口径汇总 IV、KS 和 AUC。"""
-        iv_value = float(df_detail["iv_bin"].sum()) if "iv_bin" in df_detail.columns else 0.0
-        ks_value = float(df_detail["ks_bin"].max()) if "ks_bin" in df_detail.columns else 0.0
-        auc_value = float(df_detail["auc_bin"].sum()) if "auc_bin" in df_detail.columns else 0.0
-        if auc_value < 0.5:
-            auc_value = 1 - auc_value
-        return iv_value, ks_value, auc_value
+        return summarize_binning_metrics(df_detail)
 
     @staticmethod
     def _calculate_panel_risk_corr(
@@ -170,111 +97,29 @@ class MarsPlotter:
         reference_df: pd.DataFrame | None,
     ) -> float:
         """按参考坏率表计算单个面板的 RC。"""
-        if reference_df is None or reference_df.empty:
-            return 1.0
-
-        current_df = panel_df[panel_df["bin_index"] >= 0].copy()
-        if current_df.empty:
-            return 1.0
-
-        merged_df = current_df.merge(
-            reference_df[["feature", "bin_index", "base_br"]],
-            on=["feature", "bin_index"],
-            how="left",
-        )
-        merged_df = merged_df.dropna(subset=["bad_rate", "base_br"])
-        if merged_df.empty:
-            return 1.0
-
-        current_values = merged_df["bad_rate"].to_numpy(dtype=float)
-        baseline_values = merged_df["base_br"].to_numpy(dtype=float)
-        if len(current_values) <= 1:
-            return 1.0
-        if np.std(current_values) <= DIVISION_EPSILON or np.std(baseline_values) <= DIVISION_EPSILON:
-            return 1.0
-
-        corr_value = merged_df["bad_rate"].corr(merged_df["base_br"], method="spearman")
-        if np.isnan(corr_value):
-            return 1.0
-        return float(corr_value)
+        return calculate_panel_risk_corr(panel_df, reference_df)
 
     @staticmethod
     def _normalize_show_risk(
         show_risk: str,
     ) -> Literal["count", "amt", "both"]:
         """规范化公开的风险线展示模式。"""
-        normalized = str(show_risk).strip().lower()
-        if normalized not in {"count", "amt", "both"}:
-            raise ValueError(
-                "`show_risk` only supports 'count', 'amt', or 'both'.",
-            )
-        return cast(Literal["count", "amt", "both"], normalized)
+        return normalize_show_risk(show_risk)
 
     @staticmethod
     def _has_amount_risk_columns(df_detail: pd.DataFrame) -> bool:
         """判断明细表是否具备可绘制的金额风险列。"""
-        required_cols = {"amt_bad_rate", "lift_amt"}
-        if not required_cols.issubset(df_detail.columns):
-            return False
-        return bool(df_detail["amt_bad_rate"].notna().any())
+        return has_amount_risk_columns(df_detail)
 
     @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
         """将 Matplotlib 图表序列化为 Base64 PNG 字符串。"""
-        buf = BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=dpi)
-        buf.seek(0)
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
-        if close:
-            plt.close(fig)
-        return img_str
+        return figure_to_base64(fig, dpi=dpi, close=close)
 
     @staticmethod
     def _build_image_html(img_str: str) -> str:
         """为已序列化的 PNG 图片构建可缩放 HTML 片段。"""
-        unique_id = str(uuid.uuid4())
-        container_id = f"cont_{unique_id}"
-        img_id = f"img_{unique_id}"
-
-        return f"""
-        <style>
-            #{container_id} {{
-                width: 100%;
-                overflow-x: hidden;
-                border: 1px solid #e0e0e0;
-                padding: 5px;
-                cursor: zoom-in;
-                transition: all 0.2s ease;
-                margin-bottom: 25px;
-            }}
-            #{img_id} {{
-                width: 100%;
-                height: auto;
-                display: block;
-            }}
-        </style>
-
-        <div id="{container_id}" ondblclick="toggleZoom_{unique_id.replace('-', '_')}(this)">
-            <img id="{img_id}" src="data:image/png;base64,{img_str}" title="双击图片：放大查看细节 / 缩小查看全貌" />
-        </div>
-
-        <script>
-        function toggleZoom_{unique_id.replace('-', '_')}(container) {{
-            var img = container.querySelector('img');
-            if (img.style.width === '100%' || img.style.width === '') {{
-                img.style.width = 'auto';
-                img.style.maxWidth = 'none';
-                container.style.overflowX = 'auto';
-                container.style.cursor = 'zoom-out';
-            }} else {{
-                img.style.width = '100%';
-                img.style.maxWidth = '100%';
-                container.style.overflowX = 'hidden';
-                container.style.cursor = 'zoom-in';
-            }}
-        }}
-        </script>
-        """
+        return build_image_html(img_str)
 
     @staticmethod
     def render_feature_binning_risk_trend_html(

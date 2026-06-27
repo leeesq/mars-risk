@@ -11,10 +11,10 @@ import polars as pl
 from mars.compute import (
     binary_distribution_exprs,
     binary_metric_exprs,
+    normalized_auc_expr,
     ordered_binary_metric_exprs,
 )
 from mars.core.base import MarsTransformer
-from mars.core.constants import METRIC_EPSILON
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -496,92 +496,6 @@ class MarsBinnerBase(MarsTransformer):
             batch_size=batch_size,
             include_bin_index=True,
         )
-        return
-
-        n_cols = len(self.bin_cuts_) + len(self.cat_cuts_)
-        logger.info(f"Materializing WOE mappings for {n_cols} features.")
-
-        y_name = "_y_tmp"
-        y_series = pl.Series(name=y_name, values=self._cache_y)
-        epsilon: float = METRIC_EPSILON
-        total_bads: float = float(y_series.sum() or 0.0)
-        total_goods: float = float(len(y_series)) - total_bads
-
-        # 涵盖数值和类别特征
-        bin_cols_orig = [
-            c for c in self.bin_cuts_.keys()] + (list(self.cat_cuts_.keys())
-            if hasattr(self, 'cat_cuts_') else []
-        )
-
-        for i in range(0, len(bin_cols_orig), batch_size):
-            batch_features = bin_cols_orig[i: i + batch_size]
-
-            X_batch_bin: pl.DataFrame = self.transform(
-                self._cache_X.select(batch_features),
-                return_type="index",
-                lazy=False
-            )
-            X_batch_bin = X_batch_bin.with_columns(y_series)
-
-            # 逐列聚合分箱统计量，避免宽转长物化出 N 行 * M 特征的长表。
-            stats_list = []
-            for feature in batch_features:
-                target_bin_col = f"{feature}_bin"
-                if target_bin_col not in X_batch_bin.columns:
-                    continue
-
-                stats_list.append(
-                    X_batch_bin.group_by(target_bin_col)
-                    .agg([
-                        pl.col(y_name).sum().alias("bin_bads"),
-                        pl.len().alias("bin_total")
-                    ])
-                    .rename({target_bin_col: "bin_index"})
-                    .with_columns(pl.lit(feature).alias("feature"))
-                    .select(["feature", "bin_index", "bin_bads", "bin_total"])
-                )
-
-            if not stats_list:
-                del X_batch_bin
-                gc.collect()
-                continue
-
-            stats_df = (
-                pl.concat(stats_list)
-                .with_columns(
-                    (
-                        ((pl.col("bin_bads") + epsilon) / (total_bads + epsilon))
-                        /
-                        (
-                            (pl.col("bin_total") - pl.col("bin_bads") + epsilon)
-                            / (total_goods + epsilon)
-                        )
-                    )
-                    .log()
-                    .cast(pl.Float32)
-                    .alias("woe")
-                )
-            )
-
-            woe_data = stats_df.select(["feature", "bin_index", "woe"]).to_dict(as_series=False)
-
-            from collections import defaultdict
-            temp_woe_map = defaultdict(dict)
-
-            for f, b, w in zip(
-                woe_data["feature"],
-                woe_data["bin_index"],
-                woe_data["woe"],
-                strict=False,
-            ):
-                # 严格过滤: 只有合法的索引 (-1, 0, 1...) 允许进入 WOE 映射表
-                if b is not None and not (isinstance(b, float) and np.isnan(b)):
-                    temp_woe_map[f][int(b)] = w
-
-            self.bin_woes_.update(temp_woe_map)
-
-            del X_batch_bin, stats_list, stats_df
-            gc.collect()
 
     def _transform_impl(
         self,
@@ -938,17 +852,6 @@ class MarsBinnerBase(MarsTransformer):
         X_bin_lazy = X_bin_lazy.with_columns(pl.lit(np.array(y)).alias(y_name))
 
         # 获取全局统计量
-        meta = X_bin_lazy.select([
-            pl.len().alias("total_counts"),
-            pl.col(y_name).sum().alias("total_bads")
-        ]).collect()
-
-        epsilon: float = METRIC_EPSILON
-        total_counts: float = float(meta[0, "total_counts"] or 0.0)
-        total_bads: float = float(meta[0, "total_bads"] or 0.0)
-        total_goods: float = total_counts - total_bads
-        global_bad_rate = (total_bads / total_counts) if total_counts > 0 else 0
-
         current_cols = X_bin_lazy.collect_schema().names()
         fitted_features = list(self.bin_cuts_.keys()) + list(getattr(self, "cat_cuts_", {}).keys())
         expected_bin_cols = {f"{feature}_bin" for feature in fitted_features}
@@ -1017,10 +920,7 @@ class MarsBinnerBase(MarsTransformer):
                 ]
             )
             .with_columns(
-                pl.when(pl.col("AUC") < 0.5)
-                .then(1 - pl.col("AUC"))
-                .otherwise(pl.col("AUC"))
-                .alias("AUC")
+                normalized_auc_expr(auc_col="AUC", output_col="AUC")
             )
             .drop(["bin_auc_contrib", "_woe_sort_key"])
         )
@@ -1100,132 +1000,9 @@ class MarsBinnerBase(MarsTransformer):
         other_cols = [c for c in final_df.columns if c not in base_cols]
 
         out_df = final_df.select(base_cols + other_cols)
+
         return self._format_output(out_df)
 
-        stats_df = stats_df.with_columns([
-            (pl.col("count") - pl.col("bad")).alias("good")
-        ]).with_columns([
-            (pl.col("count") / total_counts).cast(pl.Float32).alias("count_dist"),
-            (pl.col("bad") / pl.col("count")).cast(pl.Float32).alias("bad_rate"),
-            (pl.col("bad") / (total_bads + epsilon)).cast(pl.Float32).alias("bad_dist"),
-            (pl.col("good") / (total_goods + epsilon)).cast(pl.Float32).alias("good_dist")
-        ])
-
-        # 计算 WOE 与 IV
-        stats_df = (
-            stats_df
-            .with_columns([
-                (
-                    ((pl.col("bad") + epsilon) / (total_bads + epsilon))
-                    /
-                    ((pl.col("good") + epsilon) / (total_goods + epsilon))
-                )
-                .log()
-                .cast(pl.Float32)
-                .alias("woe")
-            ])
-            .with_columns([
-                ((pl.col("bad_dist") - pl.col("good_dist")) * pl.col("woe")).cast(pl.Float32).alias("bin_iv")
-            ])
-        )
-
-        # 计算 KS 和 AUC
-        stats_df = (
-            stats_df
-            .with_columns(pl.col("woe").fill_null(-999.0).alias("_woe_sort_key"))
-            .sort(["feature", "_woe_sort_key", "bin_index"])
-            .with_columns([
-                pl.col("bad_dist").cum_sum().over("feature").alias("cum_bad_dist"),
-                pl.col("good_dist").cum_sum().over("feature").alias("cum_good_dist")
-            ])
-            .with_columns([
-                (pl.col("cum_bad_dist") - pl.col("cum_good_dist")).abs().alias("bin_ks"),
-                (
-                    (pl.col("cum_good_dist") - pl.col("cum_good_dist").shift(1, fill_value=0).over("feature"))
-                    *
-                    (pl.col("cum_bad_dist") + pl.col("cum_bad_dist").shift(1, fill_value=0).over("feature"))
-                    / 2
-                ).alias("bin_auc_contrib")
-            ])
-            .with_columns([
-                pl.col("bin_iv").sum().over("feature").alias("IV"),
-                pl.col("bin_ks").max().over("feature").alias("KS"),
-                pl.col("bin_auc_contrib").sum().over("feature").alias("AUC"),
-                (pl.col("bad_rate") / (global_bad_rate + METRIC_EPSILON)).alias("Lift")
-            ])
-            .with_columns([
-                pl.when(pl.col("AUC") < 0.5).then(1 - pl.col("AUC")).otherwise(pl.col("AUC")).alias("AUC")
-            ])
-            .drop(["bin_auc_contrib", "_woe_sort_key"])
-        )
-
-        if update_woe:
-            woe_data = stats_df.select(["feature", "bin_index", "woe"]).to_dict(as_series=False)
-            from collections import defaultdict
-            temp_woe_map = defaultdict(dict)
-
-            for f, b, w in zip(
-                woe_data["feature"],
-                woe_data["bin_index"],
-                woe_data["woe"],
-                strict=False,
-            ):
-                if b is not None and not (isinstance(b, float) and np.isnan(b)):
-                    temp_woe_map[f][int(b)] = w
-            self.bin_woes_.update(temp_woe_map)
-
-        mapping_rows = []
-        for col, map_dict in self.bin_mappings_.items():
-            for idx, label in map_dict.items():
-                mapping_rows.append({"feature": col, "bin_index": idx, "bin_label": label})
-
-        if not mapping_rows:
-            return stats_df
-
-        mapping_df = pl.DataFrame(mapping_rows, schema={
-            "feature": pl.Utf8,
-            "bin_index": pl.Int16,
-            "bin_label": pl.Utf8
-        })
-
-        final_df = (
-            stats_df
-            .join(mapping_df, on=["feature", "bin_index"], how="left")
-            .with_columns((pl.col("bin_index") < 0).alias("_is_special"))
-            .sort(["feature", "_is_special", "bin_index"])
-            .drop("_is_special")
-            .select([
-                pl.col("feature"),
-                *([pl.col("bin_index")] if include_bin_index else []),
-                pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)),
-                pl.all().exclude(["feature", "bin_index", "bin_label"])
-            ])
-        )
-
-        trend_df = self._build_trend_shape_frame(
-            stats_df.lazy()
-            .filter(pl.col("bin_index") >= 0)
-            .sort(["feature", "bin_index"])
-            .group_by("feature")
-            .agg(pl.col("woe"))
-            .collect(),
-            trend_col_name="trend_shape",
-        )
-
-        final_df = (
-            final_df
-            .join(trend_df, on="feature", how="left")
-            .with_columns(pl.col("trend_shape").fill_null("undefined"))
-        )
-
-        base_cols = ["feature"]
-        if include_bin_index:
-            base_cols.append("bin_index")
-        base_cols.extend(["bin_label", "trend_shape"])
-        other_cols = [c for c in final_df.columns if c not in base_cols]
-
-        out_df = final_df.select(base_cols + other_cols)
-        return self._format_output(out_df)
 
     def update_bins(
         self,

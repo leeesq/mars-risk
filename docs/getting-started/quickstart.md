@@ -37,11 +37,8 @@ profile_report = MarsDataProfiler(missing_values=[-999]).generate_profile(
     group_col="month",
     psi_include_missing=False,
     psi_include_special=False,
-    config_overrides={
-        "enable_sparkline": False,
-        "dq_metrics": ["missing", "zeros"],
-        "stat_metrics": ["mean", "psi"],
-    },
+    metrics=["missing", "zeros", "mean", "psi"],
+    enable_sparkline=False,
 )
 
 quick_report = profile_stats(

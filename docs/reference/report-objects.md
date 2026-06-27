@@ -6,8 +6,8 @@ MARS 的 report 对象不只是导出文件，也保留多粒度结构化数据�
 
 | 对象 | 来源模块 | 常用场景 | API 页面 |
 | --- | --- | --- | --- |
-| `MarsProfileReport` | 数据画像 | 数据质量、统计分布、PSI 和趋势表 | [Analysis](analysis.md) |
-| `MarsBinningReport` | 分箱评估 | IV、KS、AUC、Lift、分箱明细和趋势 | [Analysis](analysis.md) |
+| `MarsProfileReport` | 数据画像 | 数据质量、统计分布、PSI 和趋势表 | [Reporting](reporting.md) |
+| `MarsBinningReport` | 分箱评估 | IV、KS、AUC、Lift、分箱明细和趋势 | [Reporting](reporting.md) |
 | `MarsMonitoringReport` | 监控 | 特征/模型监控、target 表现覆盖率和报警摘要 | [Monitoring](monitoring.md) |
 | `MarsPipelineResult` | Pipeline 编排 | 每个 step 的输入输出、特征映射、最终特征和建模结果 | [Modeling / Pipeline](modeling.md) |
 | `MarsModelTuningResult` | Modeling 建模 | 调参结果、最优模型、retained models、重要性表和 artifact 元数据 | [Modeling / Pipeline](modeling.md) |

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import polars as pl
+
+from mars.modeling.workflows._splitter_protocols import _HybridKeyValidator
 
 
 class PandasSplitterMixin:
@@ -16,15 +18,6 @@ class PandasSplitterMixin:
     time_col: str
     label_col: str
     dataset_flag_col: str
-
-    def _validate_hybrid_keys(
-        self,
-        split_ratios: dict[str, float],
-        train_key: str,
-        val_key: str,
-    ) -> tuple[float, float, float]:
-        """校验 hybrid 切分键。"""
-        raise NotImplementedError
 
     def _init_pandas(self) -> None:
         """初始化 Pandas 工作副本中的辅助列。"""
@@ -98,7 +91,11 @@ class PandasSplitterMixin:
     ) -> pd.DataFrame:
         """执行 Pandas hybrid 随机验证集切分。"""
         assert isinstance(self.df, pd.DataFrame)
-        _, val_ratio, modeling_ratio = self._validate_hybrid_keys(split_ratios, train_key, val_key)
+        _, val_ratio, modeling_ratio = cast(_HybridKeyValidator, self)._validate_hybrid_keys(
+            split_ratios,
+            train_key,
+            val_key,
+        )
         self._reset_and_mark_other_pandas()
 
         timeline_ratios: dict[str, float] = {"__modeling__": modeling_ratio}

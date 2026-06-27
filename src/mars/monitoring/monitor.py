@@ -7,7 +7,20 @@ from typing import Any, Dict, List, Literal, NamedTuple, cast
 import polars as pl
 
 from mars.analysis import MarsBinEvaluator
-from mars.compute import FrameLike
+from mars.analysis._evaluation.context import (
+    normalize_binary_target_column,
+    prepare_group_context,
+    resolve_profile_by,
+)
+from mars.compute import (
+    FrameLike,
+    bad_rate_expr,
+    binary_bad_expr,
+    binary_count_expr,
+    binary_observed_count_expr,
+    binary_unobserved_count_expr,
+    ratio_expr,
+)
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
 
@@ -321,14 +334,13 @@ class MarsMonitor(MarsBaseEstimator):
         )
 
         prepared_df, resolved_group_col = self._prepare_monitoring_context(
-            evaluator=evaluator,
             df=working_df,
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
         )
         if target is not None:
-            prepared_df = MarsBinEvaluator._normalize_binary_target_column(prepared_df, target)
+            prepared_df = normalize_binary_target_column(prepared_df, target)
 
         detail_result = self._ensure_polars_dataframe(risk_profile.report.detail_table)
         detail_table = detail_result.collect() if isinstance(detail_result, pl.LazyFrame) else detail_result
@@ -428,19 +440,23 @@ class MarsMonitor(MarsBaseEstimator):
     @staticmethod
     def _prepare_monitoring_context(
         *,
-        evaluator: MarsBinEvaluator,
         df: pl.DataFrame,
         group_col: str | None,
         time_col: str | None,
         time_grain: str | None,
     ) -> tuple[pl.DataFrame, str]:
-        """复用评估器的分组解析逻辑，保证监控附表和风险评估口径一致。"""
-        profile_by = evaluator._resolve_profile_by(
+        """复用评估上下文解析逻辑，保证监控附表和风险评估口径一致。"""
+        profile_by = resolve_profile_by(
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
         )
-        return evaluator._prepare_context(df, profile_by, time_col)
+        return prepare_group_context(
+            df,
+            profile_by=profile_by,
+            dt_col=time_col,
+            mars_group_col=MarsBinEvaluator.MARS_GROUP_COL,
+        )
 
     def _build_bin_value_stats(
         self,
@@ -557,10 +573,10 @@ class MarsMonitor(MarsBaseEstimator):
             return None
 
         agg_exprs = [
-            pl.len().alias("sample_count"),
-            pl.col(target).is_not_null().sum().alias("target_observed_count"),
-            pl.col(target).is_null().sum().alias("target_unobserved_count"),
-            pl.col(target).fill_null(0).cast(pl.Float64).sum().alias("bad"),
+            binary_count_expr(output_col="sample_count"),
+            binary_observed_count_expr(target, output_col="target_observed_count"),
+            binary_unobserved_count_expr(target),
+            binary_bad_expr(target),
         ]
         group_table = df.group_by(group_col).agg(agg_exprs).with_columns(pl.col(group_col).cast(pl.String))
         total_table = (
@@ -572,14 +588,15 @@ class MarsMonitor(MarsBaseEstimator):
         return (
             pl.concat([total_table, group_table], how="vertical_relaxed")
             .with_columns([
-                pl.when(pl.col("sample_count") > 0)
-                .then(pl.col("target_observed_count") / pl.col("sample_count"))
-                .otherwise(None)
-                .alias("target_observed_rate"),
-                pl.when(pl.col("target_observed_count") > 0)
-                .then(pl.col("bad") / pl.col("target_observed_count"))
-                .otherwise(None)
-                .alias("bad_rate_observed"),
+                ratio_expr(
+                    numerator_col="target_observed_count",
+                    denominator_col="sample_count",
+                    output_col="target_observed_rate",
+                ),
+                bad_rate_expr(
+                    observed_count_col="target_observed_count",
+                    output_col="bad_rate_observed",
+                ),
             ])
             .sort(group_col)
         )

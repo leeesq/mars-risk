@@ -161,6 +161,28 @@ risk_profile.report.write_html("risk_report.html")
 | `trend_tables` | 按时间或分组展开的 PSI、缺失率、坏账率等趋势 |
 | `missing_by_day_table` | 按日缺失率趋势，适合排查数据链路异常 |
 
+## 缺失率异常扫描
+
+`MarsMissingShiftScanner` 适合在建模前批量扫描训练宽表，自动找出按时间粒度发生缺失率突变的特征。
+它复用 MARS 的共享缺失语义，输出结构化异常候选，不自动删除特征，也不阻断后续流程。
+
+```python
+from mars.analysis import MarsMissingShiftScanner
+
+missing_shift = MarsMissingShiftScanner().scan(
+    df,
+    date_col="apply_dt",
+    features=["income", "utilization"],
+    time_grain="1d",
+    missing_values=[-999],
+    feature_data_source={"income": "base", "utilization": "base"},
+)
+
+missing_shift.summary_table
+missing_shift.detail_table
+missing_shift.write_excel("missing_shift.xlsx")
+```
+
 ## PSI 口径
 
 分箱评估可以通过 `psi_include_missing` 和 `psi_include_special` 控制 PSI 是否纳入缺失箱和特殊值箱。监控场景通常建议默认不纳入缺失箱，因为缺失率会单独监控。

@@ -1,7 +1,10 @@
-"""独立展现层命名空间。
+"""MARS 报告对象稳定导出入口。"""
 
-按需从 ``mars.reporting.html_assets``、``mars.reporting.plotter`` 等子模块
-导入具体能力，避免形成跨层提前加载依赖。
-"""
+from .binning_report import MarsBinningReport
+from .profile_report import MarsProfileReport, ProfileData
 
-__all__: list[str] = []
+__all__ = [
+    "MarsProfileReport",
+    "MarsBinningReport",
+    "ProfileData",
+]

@@ -176,11 +176,8 @@ profile_report = profiler.generate_profile(
     group_col="month",
     psi_include_missing=False,
     psi_include_special=False,
-    config_overrides={
-        "enable_sparkline": False,
-        "dq_metrics": ["missing", "zeros"],
-        "stat_metrics": ["mean", "psi"],
-    },
+    metrics=["missing", "zeros", "mean", "psi"],
+    enable_sparkline=False,
 )
 
 quick_report = profile_stats(
@@ -219,6 +216,27 @@ eval_report.plot_risk_trends(max_plots=5)
 ```
 
 `profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 用于复用本次分箱规则。
+
+### 缺失率异常扫描
+
+`MarsMissingShiftScanner` 用于建模前的静态训练数据质量复核。它按时间粒度扫描特征缺失率突变，
+输出结构化异常候选，不自动删除特征，也不阻断后续筛选或建模。
+
+```python
+from mars.analysis import MarsMissingShiftScanner
+
+missing_shift = MarsMissingShiftScanner().scan(
+    df,
+    date_col="apply_dt",
+    features=["income", "utilization"],
+    time_grain="1d",
+    missing_values=[-999],
+    feature_data_source={"income": "base", "utilization": "base"},
+)
+
+missing_shift.detail_table
+missing_shift.write_excel("missing_shift.xlsx")
+```
 
 当需要切换不同分箱器的底层高级参数时，优先使用按类型分仓的
 `advanced_binning_params`，而不是反复改注释：

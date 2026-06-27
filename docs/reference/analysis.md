@@ -8,7 +8,11 @@
 
 ::: mars.analysis.profile_stats
 
-::: mars.analysis.MarsProfileReport
+## 缺失率异常扫描
+
+::: mars.analysis.MarsMissingShiftScanner
+
+::: mars.analysis.MarsMissingShiftResult
 
 ## 分箱评估
 
@@ -17,10 +21,3 @@
 ::: mars.analysis.profile_risk
 
 ::: mars.analysis.MarsRiskProfile
-
-::: mars.analysis.MarsBinningReport
-
-## 配置对象
-
-::: mars.analysis.MarsProfileConfig
-

@@ -95,5 +95,6 @@ nav:
       - Monitoring: reference/monitoring.md
       - Modeling / Pipeline: reference/modeling.md
       - Scoring: reference/scoring.md
+      - Reporting: reference/reporting.md
       - Report 对象: reference/report-objects.md
   - FAQ: faq.md
