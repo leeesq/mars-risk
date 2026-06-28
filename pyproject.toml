@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-risk"      
-version = "0.0.19"
+version = "0.0.2"
 description = "High-performance Risk Modeling Toolkit powered by Polars"
 readme = "README.md"
 requires-python = ">=3.10" 
