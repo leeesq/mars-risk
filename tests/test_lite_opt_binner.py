@@ -332,7 +332,7 @@ def test_lite_opt_binner_routes_through_evaluator_and_profile_risk() -> None:
         binning_type="lite_opt",
         n_bins=4,
         monotonic_trend="auto_asc_desc",
-        advanced_binning_params={"lite_opt": {"n_prebins": 12}},
+        binner_params={"n_prebins": 12},
     )
 
     assert isinstance(evaluator_run.binner, MarsLiteOptBinner)

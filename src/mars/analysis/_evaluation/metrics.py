@@ -9,12 +9,14 @@ import numpy as np
 import polars as pl
 
 from mars.compute import (
+    OrderedMetricSortBy,
     amount_distribution_exprs,
     amount_metric_exprs,
     bad_dist_expr,
     binary_distribution_exprs,
     binary_metric_exprs,
     good_dist_expr,
+    normalize_ordered_metric_sort_by,
     ordered_binary_metric_exprs,
     psi_exprs,
     woe_expr,
@@ -107,8 +109,10 @@ def calculate_metrics_from_stats(
     group_col: str,
     include_missing: bool = True,
     include_special: bool = True,
+    ordered_metric_sort_by: OrderedMetricSortBy = "woe",
 ) -> pl.DataFrame:
     """使用 compute 表达式 bundle 计算分箱指标。"""
+    effective_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
     woe_df = build_woe_table_from_mapping(binner.bin_woes_)
     working_df = stats_df
     if "observed_count" not in working_df.columns:
@@ -150,10 +154,40 @@ def calculate_metrics_from_stats(
     }.issubset(base_df.columns):
         base_df = base_df.with_columns(amount_metric_exprs())
 
+    if effective_sort_by == "woe":
+        ordered_df = (
+            base_df
+            .sort([group_col, "feature", "woe"])
+            .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
+        )
+    else:
+        normal_bins = (
+            base_df
+            .filter(pl.col("bin_index") >= 0)
+            .with_columns(binary_distribution_exprs([group_col, "feature"]))
+            .with_columns(binary_metric_exprs())
+            .sort([group_col, "feature", "bin_index"])
+            .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
+            .select(
+                [
+                    group_col,
+                    "feature",
+                    "bin_index",
+                    "cum_bad_dist",
+                    "cum_good_dist",
+                    "ks_bin",
+                    "auc_bin",
+                ]
+            )
+        )
+        ordered_df = (
+            base_df
+            .drop(["cum_bad_dist", "cum_good_dist", "ks_bin", "auc_bin"], strict=False)
+            .join(normal_bins, on=[group_col, "feature", "bin_index"], how="left")
+        )
+
     return (
-        base_df
-        .sort([group_col, "feature", "woe"])
-        .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
+        ordered_df
         .with_columns(
             pl.when(pl.col("psi_bin").abs() < FLOAT_TOLERANCE)
             .then(0.0)

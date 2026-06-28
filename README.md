@@ -215,31 +215,10 @@ summary = eval_report.summary_table
 eval_report.plot_risk_trends(max_plots=5)
 ```
 
-`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 用于复用本次分箱规则。
+`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 是本次自动拟合出的分箱器，可用于后续复用分箱规则。
 
-### 缺失率异常扫描
-
-`MarsMissingShiftScanner` 用于建模前的静态训练数据质量复核。它按时间粒度扫描特征缺失率突变，
-输出结构化异常候选，不自动删除特征，也不阻断后续筛选或建模。
-
-```python
-from mars.analysis import MarsMissingShiftScanner
-
-missing_shift = MarsMissingShiftScanner().scan(
-    df,
-    date_col="apply_dt",
-    features=["income", "utilization"],
-    time_grain="1d",
-    missing_values=[-999],
-    feature_data_source={"income": "base", "utilization": "base"},
-)
-
-missing_shift.detail_table
-missing_shift.write_excel("missing_shift.xlsx")
-```
-
-当需要切换不同分箱器的底层高级参数时，优先使用按类型分仓的
-`advanced_binning_params`，而不是反复改注释：
+当需要切换不同分箱器的底层高级参数时，优先使用单层
+`binner_params`，而不是反复改注释：
 
 ```python
 risk_profile = profile_risk(
@@ -250,9 +229,10 @@ risk_profile = profile_risk(
     binning_type="lite_opt",
     method="quantile",
     n_bins=6,
-    advanced_binning_params={
-        "native": {"merge_small_bins": True},
-        "lite_opt": {"n_prebins": 30, "join_threshold": 80},
+    binner_params={
+        "merge_small_bins": True,
+        "n_prebins": 30,
+        "join_threshold": 80,
     },
 )
 ```
@@ -508,7 +488,7 @@ MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
 
 ### `profile_risk()` 返回什么？
 
-返回 `MarsRiskProfile(report, binner, targets, metadata)`。其中 `report` 是风险评估报告，`binner` 是本次拟合或复用的分箱器，`targets` 是目标列列表，`metadata` 保存运行上下文。
+返回 `MarsRiskProfile(report, binner, targets, metadata)`。其中 `report` 是风险评估报告，`binner` 是本次自动拟合出的分箱器，`targets` 是目标列列表，`metadata` 保存运行上下文。如需显式复用已有分箱器，请使用 `MarsBinEvaluator.evaluate(..., binner=...)`。
 
 ### 为什么高层 API 用 `target`，底层对象用 `y`？
 

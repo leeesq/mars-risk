@@ -84,11 +84,11 @@ summary = eval_report.summary_table
 eval_report.plot_risk_trends(max_plots=5)
 ```
 
-`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看指标和导出报表，`binner` 用于复用分箱规则。
+`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看指标和导出报表，`binner` 是本次自动拟合出的分箱器，可用于后续复用分箱规则。
 
 如果需要在不同分箱器之间反复切换底层高级参数，优先使用
-`advanced_binning_params={"native": {...}, "optimal": {...}, "lite_opt": {...}}`
-这种按类型分仓的写法，而不是维护一个会频繁改注释的单参数字典。
+`binner_params={"merge_small_bins": True, "n_prebins": 30, "join_threshold": 80}`
+这种单层自动识别写法；当前 `binning_type` 不适用但已识别的键会被忽略。
 
 当 `profile_risk()` 使用 `optimal` 或 `lite_opt` 且未显式传 `monotonic_trend`
 时，高层默认会补成 `auto_asc_desc`。这与直接构造 `MarsLiteOptBinner()` 时

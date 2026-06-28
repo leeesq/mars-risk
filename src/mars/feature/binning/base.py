@@ -9,8 +9,10 @@ import pandas as pd
 import polars as pl
 
 from mars.compute import (
+    OrderedMetricSortBy,
     binary_distribution_exprs,
     binary_metric_exprs,
+    normalize_ordered_metric_sort_by,
     normalized_auc_expr,
     ordered_binary_metric_exprs,
 )
@@ -122,6 +124,45 @@ class MarsBinnerBase(MarsTransformer):
         self._cache_y: Any | None = None
 
         self.fit_failures_: Dict[str, str] = {}
+
+    def fit(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
+        *,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> "MarsBinnerBase":
+        """
+        拟合分箱器并缓存本次分箱特征范围。
+
+        Parameters
+        ----------
+        X : pl.DataFrame | pd.DataFrame
+            输入特征矩阵。
+        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
+            目标变量。监督型分箱器或监督型分箱方法会使用该参数。
+        features : list[str] | None
+            本次拟合的特征列；不传时由具体分箱器使用全部候选列。
+        cat_features : list[str] | None
+            显式指定为类别型的特征列。
+
+        Returns
+        -------
+        MarsBinnerBase
+            拟合完成后的当前分箱器实例。
+
+        Examples
+        --------
+        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
+        >>> binner = MarsNativeBinner(method="quantile", n_bins=2)
+        >>> binner.fit(X, features=["age"]).features
+        ['age']
+        """
+        self.features = list(features or [])
+        self.cat_features = list(cat_features or [])
+        super().fit(X, y)
+        return self
 
     def transform(
         self,
@@ -485,9 +526,6 @@ class MarsBinnerBase(MarsTransformer):
             logger.warning("No training data cached. WOE cannot be computed.")
             return
 
-        logger.info(
-            "Materializing WOE mappings by reusing profile_bin_performance().",
-        )
         y_series = pl.Series(name="_y_tmp", values=self._cache_y)
         self.profile_bin_performance(
             self._cache_X,
@@ -801,6 +839,7 @@ class MarsBinnerBase(MarsTransformer):
         update_woe: bool = True,
         batch_size: int = 100,
         include_bin_index: bool = False,
+        ordered_metric_sort_by: OrderedMetricSortBy = "woe",
     ) -> pl.DataFrame | pd.DataFrame:
         """
         计算分箱表现统计报告。
@@ -818,6 +857,9 @@ class MarsBinnerBase(MarsTransformer):
         include_bin_index : bool
             是否在返回明细中保留内部 ``bin_index`` 列。默认不保留，保持既有
             报告展示顺序；轻量最优分箱等内部算法可开启该参数以稳定回溯预分箱顺序。
+        ordered_metric_sort_by : OrderedMetricSortBy
+            KS/AUC 的排序口径。默认 ``"woe"`` 适合普通特征预测力评估；
+            传入 ``"bin_index"`` 时只用正常箱按原始箱序计算 KS/AUC。
 
         Returns
         -------
@@ -840,6 +882,7 @@ class MarsBinnerBase(MarsTransformer):
         True
         """
         X = self._ensure_polars_dataframe(X)
+        effective_ordered_metric_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
 
         raw_name = getattr(y, "name", None)
         if raw_name is None or raw_name == "":
@@ -903,15 +946,47 @@ class MarsBinnerBase(MarsTransformer):
                     iv_bin_col="bin_iv",
                 )
             )
-            .with_columns(pl.col("woe").fill_null(-999.0).alias("_woe_sort_key"))
-            .sort(["feature", "_woe_sort_key", "bin_index"])
-            .with_columns(
-                ordered_binary_metric_exprs(
-                    ["feature"],
-                    ks_bin_col="bin_ks",
-                    auc_bin_col="bin_auc_contrib",
+        )
+        if effective_ordered_metric_sort_by == "woe":
+            stats_df = (
+                stats_df
+                .with_columns(pl.col("woe").fill_null(-999.0).alias("_woe_sort_key"))
+                .sort(["feature", "_woe_sort_key", "bin_index"])
+                .with_columns(
+                    ordered_binary_metric_exprs(
+                        ["feature"],
+                        ks_bin_col="bin_ks",
+                        auc_bin_col="bin_auc_contrib",
+                    )
                 )
+                .drop("_woe_sort_key")
             )
+        else:
+            ordered_metrics = (
+                stats_df
+                .filter(pl.col("bin_index") >= 0)
+                .with_columns(binary_distribution_exprs(["feature"]))
+                .with_columns(
+                    binary_metric_exprs(
+                        actual_dist_col="count_dist",
+                        lift_col="Lift",
+                        iv_bin_col="bin_iv",
+                    )
+                )
+                .sort(["feature", "bin_index"])
+                .with_columns(
+                    ordered_binary_metric_exprs(
+                        ["feature"],
+                        ks_bin_col="bin_ks",
+                        auc_bin_col="bin_auc_contrib",
+                    )
+                )
+                .select(["feature", "bin_index", "bin_ks", "bin_auc_contrib"])
+            )
+            stats_df = stats_df.join(ordered_metrics, on=["feature", "bin_index"], how="left")
+
+        stats_df = (
+            stats_df
             .with_columns(
                 [
                     pl.col("bin_iv").sum().over("feature").alias("IV"),
@@ -922,7 +997,7 @@ class MarsBinnerBase(MarsTransformer):
             .with_columns(
                 normalized_auc_expr(auc_col="AUC", output_col="AUC")
             )
-            .drop(["bin_auc_contrib", "_woe_sort_key"])
+            .drop(["bin_auc_contrib"])
         )
 
         if update_woe:
@@ -1092,9 +1167,6 @@ class MarsBinnerBase(MarsTransformer):
             logger.warning("No valid features were updated.")
             return None
 
-        # 执行即时重算 (Batch 模式)
-        logger.info(f"Recalculating WOE and statistics for {len(updated_features)} modified features.")
-
         # 仅截取被更新的特征列送入 profile 引擎，实现单次极速扫描
         stats_df = self.profile_bin_performance(
             X=calc_X.select(updated_features),
@@ -1143,7 +1215,6 @@ class MarsBinnerBase(MarsTransformer):
         # 更新输入特征名单
         self.feature_names_in_ = [f for f in self.feature_names_in_ if f in keep_set]
 
-        logger.info(f"Pruned binner down to {len(self.feature_names_in_)} features.")
         return self
 
     def generate_sql(

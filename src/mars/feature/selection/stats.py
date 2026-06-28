@@ -341,7 +341,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
         # 跨阶段分箱器实例继承机制
         elif self.skip_fine_scan:
-            logger.info("Fine Scan skipped. Promoting Rough Scan Binner to main pipeline.")
             self._stage3_binner = self._rough_binner
 
         # 验证截面分布漂移指标
@@ -390,7 +389,6 @@ class MarsStatsSelector(MarsBaseSelector):
 
         # 触发底层引擎缓存销毁与空间压缩
         if self._stage3_binner is not None:
-            logger.info(f"Pruning internal binner state to {len(self.selected_features_)} selected features...")
             self._stage3_binner.prune(self.selected_features_)
             self.clear_cache()
 
@@ -613,7 +611,7 @@ class MarsStatsSelector(MarsBaseSelector):
             from IPython.display import display
             display(styler)
         except ImportError:
-            logger.info("Selector summary:\n%s", df_summary.to_string(index=False))
+            return None
 
     def _should_bypass_filter(self, feat: str) -> bool:
         """内部方法：解析特征实体是否命中免检逻辑池。"""
@@ -696,9 +694,6 @@ class MarsStatsSelector(MarsBaseSelector):
         cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
         cat_features = [c for c in features if df.schema[c] in cat_types]
 
-        if cat_features:
-            logger.info(f"Native Binner will also evaluate {len(cat_features)} categorical features.")
-
         binner = MarsNativeBinner(
             missing_values=self.missing_values,
             special_values=self.special_values,
@@ -770,15 +765,15 @@ class MarsStatsSelector(MarsBaseSelector):
             df=df,
             target=self.target,
             features=features,
-            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            batch_size=self.batch_size,
-            feature_start_aware_reference=self.feature_start_aware_reference,
-            risk_corr_baseline=self.risk_corr_baseline,
+            feature_data_source=self._feature_data_source_for(features),
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
+            batch_size=self.batch_size,
         )
         report = run.report
 
@@ -841,15 +836,15 @@ class MarsStatsSelector(MarsBaseSelector):
             df=df,
             target=self.target,
             features=features,
-            binner=self._stage3_binner,
-            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_reference=self.feature_start_aware_reference,
-            risk_corr_baseline=self.risk_corr_baseline,
+            feature_data_source=self._feature_data_source_for(features),
+            binner=self._stage3_binner,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
         )
         report = run.report
         psi_map = {r["feature"]: r["psi_max"] for r in report.summary_table.select(["feature", "psi_max"]).to_dicts()}
@@ -879,15 +874,15 @@ class MarsStatsSelector(MarsBaseSelector):
             df=df,
             target=self.target,
             features=features,
-            binner=self._stage3_binner,
-            feature_data_source=self._feature_data_source_for(features),
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_reference=self.feature_start_aware_reference,
-            risk_corr_baseline=self.risk_corr_baseline,
+            feature_data_source=self._feature_data_source_for(features),
+            binner=self._stage3_binner,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
         )
         report = run.report
 
@@ -1023,21 +1018,19 @@ class MarsStatsSelector(MarsBaseSelector):
         if self._return_pandas:
             evaluator.set_output("pandas")
 
-        logger.info(f"Generating final binning report for {len(self.selected_features_)} selected features...")
-
         run = evaluator.evaluate(
             df=X_pl,
             target=self.target,
             features=self.selected_features_,
-            binner=eval_binner,
             group_col=None if self.time_col else self.profile_by,
             time_col=self.time_col,
             time_grain=self.profile_by if self.time_col else None,
-            feature_start_aware_reference=self.feature_start_aware_reference,
-            risk_corr_baseline=self.risk_corr_baseline,
             feature_data_source=self._feature_data_source_for(self.selected_features_),
+            binner=eval_binner,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
+            feature_start_aware_reference=self.feature_start_aware_reference,
+            risk_corr_baseline=self.risk_corr_baseline,
         )
         report: MarsBinningReport = run.report
 
@@ -1082,8 +1075,6 @@ class MarsStatsSelector(MarsBaseSelector):
                 return
             pd_df = report_df.to_pandas()
 
-        logger.info(f"Exporting Selection Report to {path}...")
-
         if path.endswith(".csv"):
             pd_df.to_csv(path, index=False, encoding="utf-8-sig")
         else:
@@ -1096,8 +1087,6 @@ class MarsStatsSelector(MarsBaseSelector):
             except Exception as e:
                 logger.warning(f"Failed to export styled excel, falling back to basic export. Error: {e}")
                 pd_df.to_excel(path, index=False)
-
-        logger.info("Export Complete.")
 
     def save_selector_lists(
         self,
@@ -1260,5 +1249,3 @@ class MarsStatsSelector(MarsBaseSelector):
             stats_msg.append(f"IV >= {thr:<13} : {count} ({count/total:.1%})")
 
         stats_msg.append(f"{'='*50}")
-
-        logger.info("\n%s", "\n".join(stats_msg))

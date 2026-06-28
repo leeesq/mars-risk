@@ -10,7 +10,7 @@ optbinning 是优秀的最优分箱算法库。MARS 使用 `MarsOptimalBinner` �
 
 ## `profile_risk()` 返回什么？
 
-返回 `MarsRiskProfile(report, binner, targets, metadata)`。其中 `report` 是风险评估报告，`binner` 是本次拟合或复用的分箱器，`targets` 是目标列列表，`metadata` 保存运行上下文。
+返回 `MarsRiskProfile(report, binner, targets, metadata)`。其中 `report` 是风险评估报告，`binner` 是本次自动拟合出的分箱器，`targets` 是目标列列表，`metadata` 保存运行上下文。如需显式复用已有分箱器，请使用 `MarsBinEvaluator.evaluate(..., binner=...)`。
 
 ## 为什么高层 API 用 `target`，底层算法用 `y`？
 

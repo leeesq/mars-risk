@@ -27,12 +27,15 @@ report.plot_risk_trends(max_plots=5)
 返回值是 `MarsRiskProfile(report, binner, targets, metadata)`：
 
 - `report`：`MarsBinningReport`，保存汇总表、明细表、趋势表和导出能力。
-- `binner`：本次拟合或复用的分箱器。
+- `binner`：本次自动拟合出的分箱器，可用于后续复用分箱规则。
 - `targets`：本次评估的目标列列表。
 - `metadata`：运行上下文。
 
 如果你会在 `native`、`optimal` 和 `lite_opt` 之间来回切换，建议把各自的底层
-高级参数按类型分仓，避免每次切换都去改同一个参数字典：
+高级参数放在同一个 `binner_params` 里；当前 `binning_type` 不适用但已识别的键会被忽略：
+
+如果需要显式复用已有分箱器，请使用 `MarsBinEvaluator.evaluate(..., binner=...)`；
+`profile_risk` 只负责按高层分箱参数自动构建分箱器。
 
 ```python
 risk_profile = profile_risk(
@@ -43,9 +46,10 @@ risk_profile = profile_risk(
     binning_type="lite_opt",
     method="quantile",
     n_bins=6,
-    advanced_binning_params={
-        "native": {"merge_small_bins": True},
-        "lite_opt": {"n_prebins": 50, "join_threshold": 100},
+    binner_params={
+        "merge_small_bins": True,
+        "n_prebins": 50,
+        "join_threshold": 100,
     },
 )
 ```
@@ -160,28 +164,6 @@ risk_profile.report.write_html("risk_report.html")
 | `detail_table` | 分箱明细，包含箱内样本数、坏账率、WOE、IV 等 |
 | `trend_tables` | 按时间或分组展开的 PSI、缺失率、坏账率等趋势 |
 | `missing_by_day_table` | 按日缺失率趋势，适合排查数据链路异常 |
-
-## 缺失率异常扫描
-
-`MarsMissingShiftScanner` 适合在建模前批量扫描训练宽表，自动找出按时间粒度发生缺失率突变的特征。
-它复用 MARS 的共享缺失语义，输出结构化异常候选，不自动删除特征，也不阻断后续流程。
-
-```python
-from mars.analysis import MarsMissingShiftScanner
-
-missing_shift = MarsMissingShiftScanner().scan(
-    df,
-    date_col="apply_dt",
-    features=["income", "utilization"],
-    time_grain="1d",
-    missing_values=[-999],
-    feature_data_source={"income": "base", "utilization": "base"},
-)
-
-missing_shift.summary_table
-missing_shift.detail_table
-missing_shift.write_excel("missing_shift.xlsx")
-```
 
 ## PSI 口径
 

@@ -79,7 +79,7 @@ def prepare_profile_data(
             dtype_selector = cs.by_dtype(target_dtypes)
             candidates = df_pl.select(pl.col(candidates)).select(dtype_selector).columns
         except (pl.exceptions.PolarsError, TypeError, ValueError) as exc:
-            logger.error(
+            logger.warning(
                 "Type filtering failed: %s. Falling back to direct schema filtering.",
                 exc,
             )

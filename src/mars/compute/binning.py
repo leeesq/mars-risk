@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Literal, Sequence, cast
 
 import polars as pl
 
 from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
+
+OrderedMetricSortBy = Literal["woe", "bin_index"]
+
+
+def normalize_ordered_metric_sort_by(value: str | None) -> OrderedMetricSortBy:
+    """校验并规范化 KS/AUC 有序指标排序口径。"""
+    normalized = "woe" if value is None else str(value).strip().lower()
+    if normalized not in {"woe", "bin_index"}:
+        raise ValueError(
+            "ordered_metric_sort_by must be one of {'woe', 'bin_index'}, "
+            f"got {value!r}."
+        )
+    return cast(OrderedMetricSortBy, normalized)
 
 
 def _valid_amount_value_expr(amount_col: str) -> pl.Expr:
@@ -1156,6 +1169,8 @@ __all__ = [
     "observed_max_agg_expr",
     "observed_min_agg_expr",
     "observed_sum_agg_expr",
+    "OrderedMetricSortBy",
+    "normalize_ordered_metric_sort_by",
     "ordered_binary_metric_exprs",
     "ordered_count_metric_exprs",
     "partition_distribution_expr",

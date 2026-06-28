@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import pandas as pd
 import polars as pl
 
-from mars.compute import RiskCorrBaseline, to_polars_frame
-from mars.feature.binning.base import MarsBinnerBase
+from mars.compute import OrderedMetricSortBy, RiskCorrBaseline, to_polars_frame
 from mars.reporting import MarsBinningReport
 from mars.utils.logger import logger
 
@@ -27,7 +26,7 @@ _ProfileRiskMonotonicTrend = Literal[
     "auto_asc_desc",
 ]
 
-_FORBIDDEN_ADVANCED_PARAM_KEYS: frozenset[str] = frozenset(
+_FORBIDDEN_BINNER_PARAM_KEYS: frozenset[str] = frozenset(
     {
         "method",
         "prebinning_method",
@@ -40,7 +39,7 @@ _FORBIDDEN_ADVANCED_PARAM_KEYS: frozenset[str] = frozenset(
     }
 )
 
-_ALLOWED_ADVANCED_PARAM_KEYS: dict[_ProfileRiskBinningType, tuple[str, ...]] = {
+_ALLOWED_BINNER_PARAM_KEYS: dict[_ProfileRiskBinningType, tuple[str, ...]] = {
     "native": (
         "merge_small_bins",
         "cart_params",
@@ -69,6 +68,8 @@ _ALLOWED_MONOTONIC_TREND_VALUES: dict[_ProfileRiskBinningType, tuple[str, ...]] 
     "optimal": (
         "ascending",
         "descending",
+        "peak",
+        "valley",
         "auto",
         "auto_asc_desc",
     ),
@@ -93,12 +94,17 @@ _PUBLIC_BINNER_ARG_NAMES: tuple[str, ...] = (
 )
 
 _PROFILE_RISK_DEFAULT_MONOTONIC_TREND = "auto_asc_desc"
+_ALL_RECOGNIZED_BINNER_PARAM_KEYS: frozenset[str] = frozenset(
+    key
+    for allowed_keys in _ALLOWED_BINNER_PARAM_KEYS.values()
+    for key in allowed_keys
+)
 
 
 def _normalize_profile_risk_binning_type(binning_type: str) -> _ProfileRiskBinningType:
     """校验并规范化 `profile_risk` 使用的 `binning_type`。"""
     normalized = binning_type.strip().lower()
-    valid_binning_types = tuple(_ALLOWED_ADVANCED_PARAM_KEYS)
+    valid_binning_types = tuple(_ALLOWED_BINNER_PARAM_KEYS)
     if normalized not in valid_binning_types:
         valid_text = ", ".join(f"`{item}`" for item in valid_binning_types)
         raise ValueError(
@@ -114,43 +120,29 @@ def _resolve_method_param_key(binning_type: _ProfileRiskBinningType) -> str:
     return "prebinning_method"
 
 
-def _format_allowed_advanced_param_text(binning_type: _ProfileRiskBinningType) -> str:
-    """生成当前 `binning_type` 可接受的高级分箱参数文本。"""
-    allowed_keys = _ALLOWED_ADVANCED_PARAM_KEYS[binning_type]
+def _format_param_names(param_names: tuple[str, ...] | frozenset[str]) -> str:
+    """生成参数名列表文本。"""
+    return ", ".join(f"`{key}`" for key in sorted(param_names))
+
+
+def _format_allowed_binner_param_text(binning_type: _ProfileRiskBinningType) -> str:
+    """生成当前 `binning_type` 可接受的高级分箱器参数文本。"""
+    allowed_keys = _ALLOWED_BINNER_PARAM_KEYS[binning_type]
     return ", ".join(f"`{key}`" for key in allowed_keys)
 
 
-def _normalize_advanced_binning_params(
-    advanced_binning_params: dict[str, dict[str, Any]] | None,
-) -> dict[_ProfileRiskBinningType, dict[str, Any]]:
-    """标准化 `advanced_binning_params` 的顶层结构。"""
-    if advanced_binning_params is None:
+def _normalize_binner_params(
+    binner_params: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """标准化 `profile_risk` 的单层分箱器参数。"""
+    if binner_params is None:
         return {}
 
-    valid_bucket_names = set(_ALLOWED_ADVANCED_PARAM_KEYS)
-    invalid_bucket_names = sorted(
-        bucket_name
-        for bucket_name in advanced_binning_params
-        if bucket_name not in valid_bucket_names
-    )
-    if invalid_bucket_names:
-        invalid_text = ", ".join(f"`{bucket_name}`" for bucket_name in invalid_bucket_names)
-        valid_text = ", ".join(f"`{bucket_name}`" for bucket_name in _ALLOWED_ADVANCED_PARAM_KEYS)
+    if not isinstance(binner_params, dict):
         raise ValueError(
-            "`advanced_binning_params` only supports these buckets: "
-            f"{valid_text}. Received: {invalid_text}."
+            f"`binner_params` must be a dict, got {type(binner_params).__name__}."
         )
-
-    normalized: dict[_ProfileRiskBinningType, dict[str, Any]] = {}
-    for bucket_name, bucket_params in advanced_binning_params.items():
-        if not isinstance(bucket_params, dict):
-            raise ValueError(
-                f"`advanced_binning_params[{bucket_name!r}]` must be a dict, "
-                f"got {type(bucket_params).__name__}."
-            )
-        normalized[cast(_ProfileRiskBinningType, bucket_name)] = dict(bucket_params)
-
-    return normalized
+    return dict(binner_params)
 
 
 def _resolve_monotonic_trend(
@@ -186,7 +178,7 @@ def _resolve_monotonic_trend(
 def _build_effective_binner_params(
     *,
     binning_type: _ProfileRiskBinningType,
-    advanced_binning_params: dict[str, dict[str, Any]] | None,
+    binner_params: dict[str, Any] | None,
     method: Literal["quantile", "uniform", "cart"] | None,
     n_bins: int | None,
     min_bin_size: float | int | None,
@@ -195,33 +187,37 @@ def _build_effective_binner_params(
     special_values: list[Any] | None,
     n_jobs: int | None,
 ) -> dict[str, Any]:
-    """合并 `profile_risk` 公开分箱参数并校验高级参数契约。"""
-    normalized_advanced_params = _normalize_advanced_binning_params(advanced_binning_params)
-    effective_binner_params: dict[str, Any] = dict(
-        normalized_advanced_params.get(binning_type, {})
-    )
-    allowed_keys = set(_ALLOWED_ADVANCED_PARAM_KEYS[binning_type])
+    """合并 `profile_risk` 公开分箱参数并校验分箱器参数契约。"""
+    normalized_binner_params = _normalize_binner_params(binner_params)
+    allowed_keys = set(_ALLOWED_BINNER_PARAM_KEYS[binning_type])
+    effective_binner_params: dict[str, Any] = {
+        key: value
+        for key, value in normalized_binner_params.items()
+        if key in allowed_keys
+    }
     forbidden_keys = sorted(
-        key for key in effective_binner_params if key in _FORBIDDEN_ADVANCED_PARAM_KEYS
+        key for key in normalized_binner_params if key in _FORBIDDEN_BINNER_PARAM_KEYS
     )
     unknown_keys = sorted(
         key
-        for key in effective_binner_params
-        if key not in allowed_keys and key not in _FORBIDDEN_ADVANCED_PARAM_KEYS
+        for key in normalized_binner_params
+        if key not in _ALL_RECOGNIZED_BINNER_PARAM_KEYS
+        and key not in _FORBIDDEN_BINNER_PARAM_KEYS
     )
 
-    # 这里明确区分“应该走公开参数”的键和“当前 binner 根本不支持”的键，
-    # 统一报错并提示当前 `binning_type` 还能传哪些高级参数。
     if forbidden_keys or unknown_keys:
         invalid_keys = forbidden_keys + unknown_keys
         invalid_text = ", ".join(f"`{key}`" for key in invalid_keys)
-        allowed_text = _format_allowed_advanced_param_text(binning_type)
-        public_text = ", ".join(f"`{name}`" for name in _PUBLIC_BINNER_ARG_NAMES)
+        allowed_text = _format_allowed_binner_param_text(binning_type)
+        recognized_text = _format_param_names(_ALL_RECOGNIZED_BINNER_PARAM_KEYS)
+        public_text = _format_param_names(_PUBLIC_BINNER_ARG_NAMES)
         raise ValueError(
-            f"`advanced_binning_params[{binning_type!r}]` received unsupported keys: "
-            f"{invalid_text}. Allowed keys are: {allowed_text}. Public binning "
-            f"arguments must be passed explicitly via {public_text}. The internal "
-            "`prebinning_method` alias is also not allowed here."
+            f"`binner_params` received unsupported keys for "
+            f"`binning_type={binning_type!r}`: {invalid_text}. Current "
+            f"`binning_type` accepts: {allowed_text}. All recognized binner-only "
+            f"keys are: {recognized_text}. Public binning arguments must be passed "
+            f"explicitly via {public_text}. The internal `prebinning_method` alias "
+            "is also not allowed here."
         )
 
     if method is not None:
@@ -256,10 +252,6 @@ def profile_risk(
     time_grain: str | None = None,
     weights_col: str | None = None,
     amount_col: str | None = None,
-    feature_start_aware_reference: bool = False,
-    risk_corr_baseline: RiskCorrBaseline = "total",
-    psi_include_missing: bool = False,
-    psi_include_special: bool = False,
     binning_type: Literal["native", "optimal", "lite_opt"] = "native",
     method: Literal["quantile", "uniform", "cart"] | None = None,
     n_bins: int | None = None,
@@ -274,11 +266,15 @@ def profile_risk(
     ] | None = None,
     missing_values: list[Any] | None = None,
     special_values: list[Any] | None = None,
-    n_jobs: int | None = None,
-    binner: MarsBinnerBase | None = None,
-    advanced_binning_params: dict[str, dict[str, Any]] | None = None,
+    psi_include_missing: bool = False,
+    psi_include_special: bool = False,
+    binner_params: dict[str, Any] | None = None,
     benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+    feature_start_aware_reference: bool = False,
+    risk_corr_baseline: RiskCorrBaseline = "total",
+    ordered_metric_sort_by: OrderedMetricSortBy = "woe",
     batch_size: int = 100,
+    n_jobs: int | None = None,
 ) -> MarsRiskProfile:
     """
     运行高层分箱风险评估工作流。
@@ -307,16 +303,8 @@ def profile_risk(
         样本权重列名。
     amount_col : str | None
         金额列名。
-    feature_start_aware_reference : bool
-        是否启用 feature-start aware reference，用于 PSI 基准重锚。
-    risk_corr_baseline : RiskCorrBaseline
-        RC 的基准选择方式。
-    psi_include_missing : bool
-        计算 PSI 时是否纳入缺失值箱。
-    psi_include_special : bool
-        计算 PSI 时是否纳入特殊值箱。
     binning_type : Literal["native", "optimal", "lite_opt"]
-        未显式传入 `binner` 时使用的分箱器类型。
+        自动构建分箱器时使用的分箱器类型。
     method : Literal["quantile", "uniform", "cart"] | None
         高层公开的分箱方法参数。`native` 下映射到底层 `method`，
         `optimal` 和 `lite_opt` 下映射到底层 `prebinning_method`。
@@ -335,16 +323,14 @@ def profile_risk(
         显式透传给分箱器的 `missing_values`。
     special_values : list[Any] | None
         显式透传给分箱器的 `special_values`。
-    n_jobs : int | None
-        显式透传给分箱器的 `n_jobs`。
-    binner : MarsBinnerBase | None
-        显式复用的分箱器。传入后不可再同时传 `advanced_binning_params`，
-        也不可再传 `method`、`n_bins`、`min_bin_size`、`monotonic_trend`、
-        `missing_values`、`special_values` 或 `n_jobs`。
-    advanced_binning_params : dict[str, dict[str, Any]] | None
-        按分箱器类型分仓的高级分箱参数入口。顶层只允许 `native`、`optimal`
-        和 `lite_opt` 三个仓；运行时只读取并校验当前 `binning_type` 对应仓。
-        当前激活仓不得包含任何已公开的高频参数。
+    psi_include_missing : bool
+        计算 PSI 时是否纳入缺失值箱。
+    psi_include_special : bool
+        计算 PSI 时是否纳入特殊值箱。
+    binner_params : dict[str, Any] | None
+        单层高级分箱器参数入口。同一份字典可以同时包含多种分箱器参数；
+        运行时只读取当前 `binning_type` 适用的键，其他已识别但不适用的键会被忽略。
+        该参数不得包含任何已公开的高频参数，也不得包含底层别名 `prebinning_method`。
 
         当前允许的高级参数如下：
 
@@ -355,19 +341,22 @@ def profile_risk(
         - `lite_opt`: `n_prebins`, `join_threshold`
     benchmark_df : pl.DataFrame | pd.DataFrame | None
         外部 benchmark 样本。
+    feature_start_aware_reference : bool
+        是否启用 feature-start aware reference，用于 PSI 基准重锚。
+    risk_corr_baseline : RiskCorrBaseline
+        RC 的基准选择方式。
+    ordered_metric_sort_by : OrderedMetricSortBy
+        KS/AUC 的排序口径。默认 `"woe"` 适合普通特征预测力评估；
+        评估概率、分数或强有序变量时建议传 `"bin_index"`。
     batch_size : int
         批量评估时的特征批大小。
+    n_jobs : int | None
+        显式透传给分箱器的 `n_jobs`。
 
     Returns
     -------
     MarsRiskProfile
         单次风险评估结果，包含 `MarsBinningReport`、分箱器、目标列列表和元数据。
-
-    Raises
-    ------
-    ValueError
-        当 `binner` 与 `advanced_binning_params` 同时传入、当前激活高级参数仓包含
-        非法键，或显式复用 `binner` 时继续传入公开分箱参数时抛出。
 
     Examples
     --------
@@ -387,29 +376,6 @@ def profile_risk(
     from mars.analysis.evaluator import MarsBinEvaluator, MarsRiskProfile
 
     input_is_pandas = isinstance(df, pd.DataFrame)
-    if binner is not None and advanced_binning_params is not None:
-        raise ValueError(
-            "`binner` and `advanced_binning_params` cannot be provided together."
-        )
-
-    if binner is not None and any(
-        value is not None
-        for value in (
-            method,
-            n_bins,
-            min_bin_size,
-            monotonic_trend,
-            missing_values,
-            special_values,
-            n_jobs,
-        )
-    ):
-        raise ValueError(
-            "`method`, `n_bins`, `min_bin_size`, `monotonic_trend`, "
-            "`missing_values`, `special_values`, and `n_jobs` cannot be "
-            "provided together with `binner`."
-        )
-
     if target is None or target == []:
         target_list: list[str] = []
         primary_target: str | None = None
@@ -423,8 +389,7 @@ def profile_risk(
     effective_binning_type = normalized_binning_type
     effective_method = method
 
-    # 无标签场景无法运行监督式分箱，所以这里统一回退到 `native + quantile`，
-    # 并且同步切换到 `advanced_binning_params["native"]` 这一仓。
+    # 无标签场景无法运行监督式分箱，所以这里统一回退到 `native + quantile`。
     if not target_list and (
         normalized_binning_type in {"optimal", "lite_opt"} or method == "cart"
     ):
@@ -436,7 +401,7 @@ def profile_risk(
 
     effective_binner_params = _build_effective_binner_params(
         binning_type=effective_binning_type,
-        advanced_binning_params=advanced_binning_params,
+        binner_params=binner_params,
         method=effective_method,
         n_bins=n_bins,
         min_bin_size=min_bin_size,
@@ -451,23 +416,24 @@ def profile_risk(
         binner_params=effective_binner_params,
         feature_start_aware_reference=feature_start_aware_reference,
         risk_corr_baseline=risk_corr_baseline,
+        ordered_metric_sort_by=ordered_metric_sort_by,
     )
     primary_run = primary_evaluator.evaluate(
         df=df,
         target=primary_target,
         features=features,
-        binner=binner,
-        feature_data_source=feature_data_source,
         group_col=group_col,
         time_col=time_col,
         time_grain=time_grain,
-        feature_start_aware_reference=feature_start_aware_reference,
-        risk_corr_baseline=risk_corr_baseline,
-        psi_include_missing=psi_include_missing,
-        psi_include_special=psi_include_special,
-        benchmark_df=benchmark_df,
+        feature_data_source=feature_data_source,
         weights_col=weights_col,
         amount_col=amount_col,
+        benchmark_df=benchmark_df,
+        psi_include_missing=psi_include_missing,
+        psi_include_special=psi_include_special,
+        feature_start_aware_reference=feature_start_aware_reference,
+        risk_corr_baseline=risk_corr_baseline,
+        ordered_metric_sort_by=ordered_metric_sort_by,
         batch_size=batch_size,
     )
     primary_report = primary_run.report
@@ -491,22 +457,24 @@ def profile_risk(
                 binning_type=effective_binning_type,
                 feature_start_aware_reference=feature_start_aware_reference,
                 risk_corr_baseline=risk_corr_baseline,
+                ordered_metric_sort_by=ordered_metric_sort_by,
             ).evaluate(
                 df=df,
                 target=sec_target,
                 features=features,
-                binner=trained_binner,
-                feature_data_source=feature_data_source,
                 group_col=group_col,
                 time_col=time_col,
                 time_grain=time_grain,
-                feature_start_aware_reference=feature_start_aware_reference,
-                risk_corr_baseline=risk_corr_baseline,
-                psi_include_missing=psi_include_missing,
-                psi_include_special=psi_include_special,
-                benchmark_df=benchmark_df,
+                feature_data_source=feature_data_source,
                 weights_col=weights_col,
                 amount_col=amount_col,
+                binner=trained_binner,
+                benchmark_df=benchmark_df,
+                psi_include_missing=psi_include_missing,
+                psi_include_special=psi_include_special,
+                feature_start_aware_reference=feature_start_aware_reference,
+                risk_corr_baseline=risk_corr_baseline,
+                ordered_metric_sort_by=ordered_metric_sort_by,
                 batch_size=batch_size,
             )
             all_details.append(to_polars_frame(sec_run.report.detail_table))
@@ -517,12 +485,12 @@ def profile_risk(
             )
             all_references.append(to_polars_frame(sec_run.report.risk_corr_reference_table))
 
-        final_detail: pl.DataFrame | pd.DataFrame = pl.concat(all_details, how="vertical_relaxed")
-        final_summary: pl.DataFrame | pd.DataFrame = pl.concat(
+        final_detail: pl.DataFrame = pl.concat(all_details, how="vertical_relaxed")
+        final_summary: pl.DataFrame = pl.concat(
             all_summaries,
             how="vertical_relaxed",
         )
-        final_reference: pl.DataFrame | pd.DataFrame = pl.concat(
+        final_reference: pl.DataFrame = pl.concat(
             all_references,
             how="vertical_relaxed",
         )
@@ -531,7 +499,6 @@ def profile_risk(
             final_summary = final_summary.to_pandas()
             final_reference = final_reference.to_pandas()
 
-        logger.info("`trend_tables` in the merged report contains primary-target data only.")
         merged_meta = dict(primary_report.report_meta or {})
         meta_df = cast(pl.DataFrame, primary_evaluator._ensure_polars_dataframe(df))
         merged_meta["targets"] = [str(t) for t in target_list]

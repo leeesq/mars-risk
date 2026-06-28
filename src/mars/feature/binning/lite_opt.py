@@ -183,8 +183,8 @@ class MarsLiteOptBinner(MarsBinnerBase):
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any],
         *,
-        features: List[str] | None = None,
-        cat_features: List[str] | None = None,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
     ) -> MarsLiteOptBinner:
         """
         拟合轻量级最优分箱规则。
@@ -195,9 +195,9 @@ class MarsLiteOptBinner(MarsBinnerBase):
             输入特征矩阵。
         y : pl.Series | pd.Series | np.ndarray | list[Any]
             二分类目标变量，必须为 0/1 或布尔值，且不允许为空。
-        features : List[str] | None
+        features : list[str] | None
             本次拟合的特征列；不传时使用全部候选列。
-        cat_features : List[str] | None
+        cat_features : list[str] | None
             明确指定为类别型的特征列。
 
         Returns
@@ -213,9 +213,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
         if y is None:
             raise ValueError("MarsLiteOptBinner.fit requires y.")
 
-        self.features = list(features or [])
-        self.cat_features = list(cat_features or [])
-        super().fit(X, y)
+        super().fit(X, y, features=features, cat_features=cat_features)
         return self
 
     def to_dict(self) -> Dict[str, Any]:

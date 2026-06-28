@@ -105,8 +105,8 @@ class MarsNativeBinner(MarsBinnerBase):
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
         *,
-        features: List[str] | None = None,
-        cat_features: List[str] | None = None,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
     ) -> "MarsNativeBinner":
         """
         拟合原生分箱器。
@@ -117,9 +117,9 @@ class MarsNativeBinner(MarsBinnerBase):
             输入特征矩阵。
         y : pl.Series | pd.Series | np.ndarray | list[Any] | None
             目标变量。仅当 ``method="cart"`` 时必填。
-        features : List[str] | None
+        features : list[str] | None
             本次拟合的特征列；不传时使用全部候选列。
-        cat_features : List[str] | None
+        cat_features : list[str] | None
             明确指定的类别特征列。
 
         Returns
@@ -142,9 +142,7 @@ class MarsNativeBinner(MarsBinnerBase):
         if self.method == "cart" and y is None:
             raise ValueError("Decision Tree Binning ('cart') requires y.")
 
-        self.features = list(features or [])
-        self.cat_features = list(cat_features or [])
-        super().fit(X, y)
+        super().fit(X, y, features=features, cat_features=cat_features)
         return self
 
     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:

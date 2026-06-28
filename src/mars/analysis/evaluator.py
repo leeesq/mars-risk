@@ -31,6 +31,7 @@ from mars.analysis._evaluation.references import (
 )
 from mars.analysis._evaluation.report_parts import build_binning_trend_tables
 from mars.compute import (
+    OrderedMetricSortBy,
     RiskCorrBaseline,
     amount_distribution_exprs,
     amount_metric_exprs,
@@ -38,6 +39,7 @@ from mars.compute import (
     bin_missing_rate_expr,
     distribution_rate_expr,
     global_distribution_expr,
+    normalize_ordered_metric_sort_by,
     normalize_risk_corr_baseline,
     normalized_auc_expr,
     observed_auc_agg_expr,
@@ -46,7 +48,6 @@ from mars.compute import (
     observed_lift_max_agg_expr,
     observed_lift_min_agg_expr,
     ordered_count_metric_exprs,
-    risk_corr_expr,
 )
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
@@ -125,6 +126,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         binner_params: Dict[str, Any] | None = None,
         feature_start_aware_reference: bool = False,
         risk_corr_baseline: RiskCorrBaseline = "total",
+        ordered_metric_sort_by: OrderedMetricSortBy = "woe",
     ) -> None:
         """
         初始化分箱评估器。
@@ -139,6 +141,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
         risk_corr_baseline : RiskCorrBaseline
             RC 的默认基准选择方式。
+        ordered_metric_sort_by : OrderedMetricSortBy
+            KS/AUC 的默认排序口径。`"woe"` 适合普通特征预测力评估；
+            `"bin_index"` 适合概率、分数和强有序变量。
 
         Raises
         ------
@@ -160,26 +165,28 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self.binner_params = dict(binner_params or {})
         self.feature_start_aware_reference = bool(feature_start_aware_reference)
         self.risk_corr_baseline = normalize_risk_corr_baseline(risk_corr_baseline)
+        self.ordered_metric_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
 
     @time_it
     def evaluate(
         self,
-        df: Union[pl.DataFrame, pd.DataFrame],
+        df: pl.DataFrame | pd.DataFrame,
         *,
         target: str | None = None,
-        features: List[str] | None = None,
-        binner: MarsBinnerBase | None = None,
-        feature_data_source: Dict[str, List[str]] | None = None,
+        features: list[str] | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
-        feature_start_aware_reference: bool | None = None,
-        risk_corr_baseline: RiskCorrBaseline | None = None,
-        psi_include_missing: bool = False,
-        psi_include_special: bool = False,
-        benchmark_df: Union[pl.DataFrame, pd.DataFrame, None] = None,
+        feature_data_source: dict[str, list[str]] | None = None,
         weights_col: str | None = None,
         amount_col: str | None = None,
+        binner: MarsBinnerBase | None = None,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        psi_include_missing: bool = False,
+        psi_include_special: bool = False,
+        feature_start_aware_reference: bool | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+        ordered_metric_sort_by: OrderedMetricSortBy | None = None,
         batch_size: int = 100,
     ) -> MarsRiskProfile:
         """
@@ -187,18 +194,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         Parameters
         ----------
-        df : Union[pl.DataFrame, pd.DataFrame]
+        df : pl.DataFrame | pd.DataFrame
             待评估样本表。
         target : str | None
             二分类目标列名。为 `None` 或列不存在时会进入无标签模式，只计算分布类指标
             和 PSI，不计算 IV、KS、AUC 等依赖标签的指标。
-        features : List[str] | None
+        features : list[str] | None
             本次评估的特征列；不传时自动排除目标列和分组列后选择候选特征。
-        binner : MarsBinnerBase | None
-            显式复用的分箱器；传入后不会再根据 `binning_type` 和 `binner_params`
-            构造新分箱器。
-        feature_data_source : Dict[str, List[str]] | None
-            特征来源映射，只对本次 active features 生效，用于报告中保留来源分层。
         group_col : str | None
             已存在的分组列名，例如月份、客群或样本切片。
         time_col : str | None
@@ -206,20 +208,27 @@ class MarsBinEvaluator(MarsBaseEstimator):
         time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
             仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
-        feature_start_aware_reference : bool | None
-            是否按特征首次出现的分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
-        risk_corr_baseline : RiskCorrBaseline | None
-            本次评估使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
-        psi_include_missing : bool
-            计算 PSI 时是否单独保留缺失值分布。
-        psi_include_special : bool
-            计算 PSI 时是否单独保留特殊值分布。
-        benchmark_df : Union[pl.DataFrame, pd.DataFrame, None]
-            外部 benchmark 样本；传入后分布稳定性可与该样本进行对比。
+        feature_data_source : dict[str, list[str]] | None
+            特征来源映射，只对本次 active features 生效，用于报告中保留来源分层。
         weights_col : str | None
             样本权重列名。
         amount_col : str | None
             金额列名；传入后会在 `detail_table` 中额外产出金额视角指标。
+        binner : MarsBinnerBase | None
+            显式复用的分箱器；传入后不会再根据 `binning_type` 和 `binner_params`
+            构造新分箱器。
+        benchmark_df : pl.DataFrame | pd.DataFrame | None
+            外部 benchmark 样本；传入后分布稳定性可与该样本进行对比。
+        psi_include_missing : bool
+            计算 PSI 时是否单独保留缺失值分布。
+        psi_include_special : bool
+            计算 PSI 时是否单独保留特殊值分布。
+        feature_start_aware_reference : bool | None
+            是否按特征首次出现的分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
+        risk_corr_baseline : RiskCorrBaseline | None
+            本次评估使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
+        ordered_metric_sort_by : OrderedMetricSortBy | None
+            本次评估使用的 KS/AUC 排序口径；传入 `None` 时沿用实例初始化时保存的默认值。
         batch_size : int
             批量评估时的特征批大小。
 
@@ -233,7 +242,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ValueError
             当必要列缺失、分箱器配置冲突或输入数据无法评估时抛出。
         """
-        # 上下文准备
+        # 先把输入统一成内部 Polars 表，并解析本次画像的分组口径。
         working_df = self._ensure_polars_dataframe(df)
         if benchmark_df is not None:
             benchmark_df = self._ensure_polars_dataframe(benchmark_df)
@@ -253,19 +262,23 @@ class MarsBinEvaluator(MarsBaseEstimator):
         effective_risk_corr_baseline = normalize_risk_corr_baseline(
             risk_corr_baseline or self.risk_corr_baseline,
         )
+        effective_ordered_metric_sort_by = normalize_ordered_metric_sort_by(
+            ordered_metric_sort_by or self.ordered_metric_sort_by,
+        )
 
-        # 允许 target 为空，或数据集中本就不存在目标列。
+        # 允许无标签画像：此时只保留 PSI、缺失率等分布类指标。
         has_target = target is not None and target in working_df.columns
 
         if not has_target:
-            logger.info(
-                f"Label-free mode enabled: target '{target}' was not found. "
-                "A dummy target will be injected and only distribution metrics plus PSI will be evaluated."
-            )
-            # 临时注入常量标签，保持下游统计链路可复用。
+            if target is not None:
+                logger.warning(
+                    "Target column '%s' was not found. Falling back to label-free mode.",
+                    target,
+                )
+            # 注入常量标签可以复用同一套聚合链路，后续再擦除标签依赖指标。
             working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
 
-        # 检查 Target 有效性，并把未到表现期的空值保留为 null。
+        # 有标签场景只校验已表现样本；未到表现期的空值保留为 null。
         if has_target:
             working_df = normalize_binary_target_column(working_df, effective_target)
             n_unique = (
@@ -289,8 +302,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if amount_col is not None and amount_col not in working_df.columns:
             raise ValueError(f"Amount column '{amount_col}' was not found in dataframe.")
 
-        # 自动识别特征列
-        # 排除 target, weights, 和刚刚生成的统一 mars_group 列
+        # 未显式传 features 时，从分析上下文列之外自动推断候选特征。
         exclude_cols = {effective_target, group_col}
         if weights_col:
             exclude_cols.add(weights_col)
@@ -319,8 +331,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 features=target_features,
             )
 
-        # 将原始特征映射为分箱索引列 `{feature}_bin`。
-        logger.debug("Transforming features to bin indices.")
+        # 后续评估只消费分箱索引列，原始特征取值不再参与指标计算。
         df_binned = active_binner.transform(working_df, return_type="index")
         missing_values = getattr(active_binner, "missing_values", None)
         if missing_values is None:
@@ -333,8 +344,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             missing_values=missing_values,
         )
 
-        # 流式扫描并聚合到最细粒度统计表。
-        logger.debug("Step 1: scanning grouped bin statistics.")
+        # 先聚合到 feature/group/bin 粒度，所有后续指标都从这张长表派生。
         group_stats_raw = aggregate_basic_stats(
             df_binned,
             group_col=group_col,
@@ -347,7 +357,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         ensure_woe_info(active_binner, group_stats_raw)
 
-        # 获取 PSI 基准分布。若无外部基准，默认取最早一组。
+        # PSI expected distribution 独立于 RC 基准：无 benchmark 时沿用最早分组。
         expected_dist = get_benchmark_dist(
             binner=active_binner,
             group_stats_raw=group_stats_raw,
@@ -368,9 +378,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     "falling back to the default reference logic."
                 )
             else:
+                # 对接入较晚的特征，按其上线后的首个稳定分组重锚 PSI 与 benchmark RC 参考。
                 feature_start_reference = self._build_feature_start_reference(
                     df_binned=df_binned,
-                    missing_by_day_table=missing_by_day_table,
                     features=target_features,
                     dt_col=dt_col,
                     profile_by=profile_by,
@@ -387,15 +397,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
         monitor_metrics_groups = None
         monitor_metrics_total = None
 
-        # 汇总 total 统计量，得到全量样本的分布表现。
-        logger.debug("Step 2: rolling up total statistics.")
+        # Total 统计用于全局预测力、默认 RC 基准和报告最右侧 Total 面板。
         total_stats_raw = rollup_total_stats(
             group_stats_raw,
             group_col=group_col,
         )
-        logger.debug("Step 3: calculating metrics.")
-
-        # 计算 Trend 数据
+        # 分组指标保留跨期趋势，用于 trend_tables、RC 和图表面板。
         metrics_groups = (
             calculate_metrics_from_stats(
                 binner=active_binner,
@@ -404,11 +411,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 group_col=group_col,
                 include_missing=psi_include_missing,
                 include_special=psi_include_special,
+                ordered_metric_sort_by=effective_ordered_metric_sort_by,
             )
             .with_columns(pl.col(group_col).cast(pl.String))
         )
 
-        # 计算 total 数据
+        # Total 指标与分组指标保持同列结构，便于后续拼接和统一报表装配。
         metrics_total = calculate_metrics_from_stats(
             binner=active_binner,
             stats_df=total_stats_raw,
@@ -416,12 +424,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
             group_col=group_col,
             include_missing=psi_include_missing,
             include_special=psi_include_special,
+            ordered_metric_sort_by=effective_ordered_metric_sort_by,
         )
 
-        # 合并分组与总体结果
         if feature_start_reference is not None:
             monitor_group_stats_raw = feature_start_reference.get("monitor_group_stats_raw")
             if monitor_group_stats_raw is not None and not monitor_group_stats_raw.is_empty():
+                # feature-start 特征只用上线后的有效窗口参与趋势监控，避免上线前全缺失拖低稳定性。
                 monitor_total_stats_raw = rollup_total_stats(
                     monitor_group_stats_raw,
                     group_col=group_col,
@@ -434,6 +443,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                         group_col=group_col,
                         include_missing=psi_include_missing,
                         include_special=psi_include_special,
+                        ordered_metric_sort_by=effective_ordered_metric_sort_by,
                     )
                     .with_columns(pl.col(group_col).cast(pl.String))
                 )
@@ -444,9 +454,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     group_col=group_col,
                     include_missing=psi_include_missing,
                     include_special=psi_include_special,
+                    ordered_metric_sort_by=effective_ordered_metric_sort_by,
                 ).select(monitor_metrics_groups.columns)
 
         metrics_total = metrics_total.select(metrics_groups.columns)
+        # RC reference 在这里一次性确定，报告和绘图后续都复用同一份参考表。
         risk_corr_reference_table, risk_corr_reference_source = (
             build_risk_corr_reference_table(
                 target_name=effective_target,
@@ -464,20 +476,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
         )
 
-        # 单点评估时避免重复拼接一份语义相同的 Total 结果。
+        # 单点评估只有 Total 一个分组，避免重复拼接语义相同的全量行。
         is_single_snapshot = (
             metrics_groups.select(pl.col(group_col).n_unique()).item() == 1 and
             metrics_groups.select(pl.col(group_col).first()).item() == "Total"
         )
 
         if is_single_snapshot:
-            logger.debug("Single snapshot detected. Skipping total concatenation.")
             stats_long = metrics_groups
         else:
             stats_long = pl.concat([metrics_total, metrics_groups])
 
-        # 单调性检查 (Monotonicity Check)
-        logger.debug("Step 4: checking monotonicity.")
+        # 单调性只看 Total 正常箱，避免跨期波动、Missing 和 Special 影响趋势方向判断。
         if has_target:
             monotonicity_df = (
                 stats_long
@@ -486,9 +496,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 .agg(pl.corr("bin_index", "bad_rate", method="spearman").fill_nan(1.0).alias("mono"))
             )
         else:
-            # 无标签时直接赋予默认单调性
+            # 无标签模式没有坏率序列，单调性只保留中性占位值。
             monotonicity_df = pl.DataFrame({"feature": target_features, "mono": [1.0] * len(target_features)})
 
+        # 报告对象只做结构化承载；各类导出和绘图入口在 reporting 层继续消费这些表。
         report = self._format_report(
             stats_long,
             metrics_groups,
@@ -502,7 +513,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
             risk_corr_reference_table=risk_corr_reference_table,
-            feature_valid_groups_df=feature_start_reference["valid_groups"] if feature_start_reference else None,
             monitor_metrics_groups=monitor_metrics_groups,
             monitor_metrics_total=monitor_metrics_total,
         )
@@ -544,7 +554,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             report._report_meta["event_rate_by_target"] = {str(original_target): event_rate}
         targets = [str(original_target)] if has_target and original_target else []
 
-        # 无标签模式下擦除依赖真实坏样本标签的指标，保留分布类结果。
+        # 无标签模式下擦除所有标签依赖指标，防止 dummy_target 产生误导性坏率。
         if not has_target:
             null_cols = [
                 "observed_count",
@@ -567,7 +577,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 "lift_amt",
             ]
 
-            # detail_table 擦除
+            # detail 保留样本分布和 PSI，坏率、Lift、KS、AUC、IV 等统一置空。
             dt_cols = [c for c in null_cols if c in report._detail.columns]
             if isinstance(report._detail, pd.DataFrame):
                 for c in dt_cols:
@@ -577,7 +587,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     pl.lit(None).cast(pl.Float64).alias(c) for c in dt_cols
                 ])
 
-            # summary_table 擦除
+            # summary 只保留可解释的分布稳定性字段。
             sum_cols = ["iv", "ks", "auc", "rc_min", "lift_min", "lift_max", "mono"]
             sum_cols = [c for c in sum_cols if c in report._summary.columns]
             if isinstance(report._summary, pd.DataFrame):
@@ -588,13 +598,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     pl.lit(None).cast(pl.Float64).alias(c) for c in sum_cols
                 ])
 
-            # 无标签模式仅保留 PSI 趋势表。
+            # trend_tables 中也只保留不依赖标签的 PSI 趋势。
             if "psi" in report._trend_dict:
                 report._trend_dict = {"psi": report._trend_dict["psi"]}
             else:
                 report._trend_dict = {}
 
-        logger.info(f"Evaluation complete. [Features: {len(target_features)} | Groups: {stats_long[group_col].n_unique() - 1}]")
         run = MarsRiskProfile(
             report=report,
             binner=active_binner,
@@ -606,191 +615,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
     def _build_feature_start_reference(self, **kwargs: Any) -> dict[str, Any] | None:
         """复用既有 feature-start 参考构造逻辑，并对外统一新命名。"""
         return self._build_feature_start_baseline_reference(**kwargs)
-
-    @staticmethod
-    def _empty_risk_corr_reference_table(target_name: str | None) -> pl.DataFrame:
-        """构造空的 RC 参考表。"""
-        _ = target_name
-        return pl.DataFrame(
-            schema={
-                "y": pl.String,
-                "feature": pl.String,
-                "bin_index": pl.Int16,
-                "base_br": pl.Float64,
-                "source": pl.String,
-            }
-        )
-
-    def _attach_risk_corr_reference_context(
-        self,
-        reference_df: pl.DataFrame,
-        *,
-        target_name: str | None,
-        source: str,
-    ) -> pl.DataFrame:
-        """把参考坏率表补齐为统一 schema。"""
-        if reference_df.is_empty():
-            return self._empty_risk_corr_reference_table(target_name)
-        return (
-            reference_df
-            .filter(pl.col("bin_index") >= 0)
-            .select(
-                [
-                    pl.lit(str(target_name or "dummy_target")).alias("y"),
-                    pl.col("feature").cast(pl.String).alias("feature"),
-                    pl.col("bin_index").cast(pl.Int16).alias("bin_index"),
-                    pl.col("base_br").cast(pl.Float64).alias("base_br"),
-                    pl.lit(source).alias("source"),
-                ]
-            )
-        )
-
-    def _build_benchmark_risk_corr_reference(
-        self,
-        benchmark_df: pl.DataFrame,
-        *,
-        binner: MarsBinnerBase,
-        has_target: bool,
-        features: List[str],
-        weights_col: str | None,
-        target_name: str | None,
-    ) -> pl.DataFrame:
-        """基于 benchmark 样本构造 RC 参考表。"""
-        if not has_target or target_name is None:
-            return self._empty_risk_corr_reference_table(target_name)
-
-        benchmark_prepared = normalize_binary_target_column(
-            benchmark_df,
-            target_name,
-        )
-        benchmark_binned = binner.transform(benchmark_prepared, return_type="index")
-        benchmark_binned = benchmark_binned.with_columns(pl.lit("Benchmark").alias(self.MARS_GROUP_COL))
-        benchmark_stats = aggregate_basic_stats(
-            benchmark_binned,
-            group_col=self.MARS_GROUP_COL,
-            features=features,
-            target_col=target_name,
-            weights_col=weights_col,
-        )
-        reference_df = (
-            benchmark_stats
-            .group_by(["feature", "bin_index"])
-            .agg(
-                [
-                    pl.col("count").sum().alias("count"),
-                    pl.col("observed_count").sum().alias("observed_count"),
-                    pl.col("bad").sum().alias("bad"),
-                ]
-            )
-            .with_columns(bad_rate_expr(output_col="base_br"))
-        )
-        return self._attach_risk_corr_reference_context(
-            reference_df,
-            target_name=target_name,
-            source="benchmark_df",
-        )
-
-    def _build_risk_corr_reference_table(
-        self,
-        *,
-        target_name: str | None,
-        metrics_groups: pl.DataFrame,
-        metrics_total: pl.DataFrame,
-        group_col: str,
-        risk_corr_baseline: RiskCorrBaseline,
-        benchmark_df: pl.DataFrame | None,
-        benchmark_features: List[str],
-        benchmark_weights_col: str | None,
-        feature_start_reference: dict[str, Any] | None,
-        binner: MarsBinnerBase,
-        has_target: bool,
-    ) -> tuple[pl.DataFrame, str]:
-        """按统一语义选择 RC 参考表。"""
-        if not has_target:
-            return self._empty_risk_corr_reference_table(target_name), "total"
-
-        if risk_corr_baseline == "total":
-            reference_df = metrics_total.select(
-                [
-                    "feature",
-                    "bin_index",
-                    pl.col("bad_rate").alias("base_br"),
-                ]
-            )
-            return (
-                self._attach_risk_corr_reference_context(
-                    reference_df,
-                    target_name=target_name,
-                    source="total",
-                ),
-                "total",
-            )
-
-        if risk_corr_baseline == "first_group":
-            first_group = metrics_groups.select(pl.col(group_col).min()).item()
-            reference_df = (
-                metrics_groups
-                .filter(pl.col(group_col) == first_group)
-                .select(
-                    [
-                        "feature",
-                        "bin_index",
-                        pl.col("bad_rate").alias("base_br"),
-                    ]
-                )
-            )
-            return (
-                self._attach_risk_corr_reference_context(
-                    reference_df,
-                    target_name=target_name,
-                    source="first_group",
-                ),
-                "first_group",
-            )
-
-        if benchmark_df is not None:
-            reference_df = self._build_benchmark_risk_corr_reference(
-                benchmark_df,
-                binner=binner,
-                has_target=has_target,
-                features=benchmark_features,
-                weights_col=benchmark_weights_col,
-                target_name=target_name,
-            )
-            return reference_df, "benchmark_df"
-
-        if feature_start_reference is not None:
-            baseline_df = feature_start_reference.get("baseline_bad_rate")
-            if baseline_df is not None and not baseline_df.is_empty():
-                return (
-                    self._attach_risk_corr_reference_context(
-                        baseline_df,
-                        target_name=target_name,
-                        source="feature_start_reference",
-                    ),
-                    "feature_start_reference",
-                )
-
-        raise ValueError(
-            "`risk_corr_baseline='benchmark'` requires `benchmark_df` or "
-            "`feature_start_aware_reference=True` with a valid feature-start reference.",
-        )
-
-    def _build_risk_corr_long(
-        self,
-        metrics_df: pl.DataFrame,
-        baseline_df: pl.DataFrame,
-        *,
-        group_col: str,
-    ) -> pl.DataFrame:
-        """基于参考坏率表计算分组级 RC 长表。"""
-        return (
-            metrics_df
-            .filter(pl.col("bin_index") >= 0)
-            .join(baseline_df, on=["feature", "bin_index"], how="left")
-            .group_by(["feature", group_col])
-            .agg(risk_corr_expr())
-        )
 
     @staticmethod
     def _detect_feature_start_index(
@@ -861,7 +685,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self,
         *,
         df_binned: pl.DataFrame,
-        missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None,
         features: List[str],
         dt_col: str,
         profile_by: str | None,
@@ -877,8 +700,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         相关特征构造独立的 expected distribution 与 bad rate 基准。
         若时间列不可解析或没有可用起始点，则返回 ``None``。
         """
-        _ = missing_by_day_table
-
         if dt_col not in df_binned.columns:
             return None
 
@@ -893,6 +714,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         except Exception:
             missing_idx = -1
 
+        # 每个特征的上线时间不同，参考分布和坏率基准必须逐特征构造。
         expected_frames: List[pl.DataFrame] = []
         baseline_bad_rate_frames: List[pl.DataFrame] = []
         valid_group_frames: List[pl.DataFrame] = []
@@ -918,6 +740,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if feature_df.is_empty():
                 continue
 
+            # 先按自然日识别长期全缺失到持续活跃的切换点。
             daily_missing = (
                 feature_df
                 .group_by(dt_alias)
@@ -944,11 +767,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if start_idx is None:
                 continue
 
+            # 起点之后才视为该特征的有效监控窗口，上线前全缺失不参与稳定性口径。
             start_dt = daily_missing.get_column(dt_alias).to_list()[start_idx]
             post_start_df = feature_df.filter(pl.col(dt_alias) >= pl.lit(start_dt))
             if post_start_df.is_empty():
                 continue
 
+            # feature-start 的 PSI 基准取上线后的首个分组，而不是全局最早分组。
             baseline_group = (
                 post_start_df
                 .sort(dt_alias)
@@ -963,6 +788,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if baseline_rows.is_empty():
                 continue
 
+            # 监控覆盖表保留上线后的真实分组序列，用来覆盖默认全量趋势表。
             if weights_col and weights_col in post_start_df.columns:
                 monitor_count_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("count")
             else:
@@ -1004,6 +830,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if not monitor_group_stats_df.is_empty():
                 monitor_group_stats_frames.append(monitor_group_stats_df)
 
+            # PSI expected distribution 使用上线首期分箱分布，避免上线前缺失期污染基准。
             if weights_col and weights_col in baseline_rows.columns:
                 expected_count_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("expected_count")
             else:
@@ -1035,6 +862,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 valid_group_frames.append(valid_groups_df)
             feature_start_dates[feature] = str(start_dt)
 
+            # benchmark RC 模式可复用同一份 feature-start 首期坏率参考。
             if has_target and target in baseline_rows.columns:
                 if weights_col and weights_col in baseline_rows.columns:
                     bad_expr = (
@@ -1160,7 +988,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         dt_col: str | None = None,
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
         risk_corr_reference_table: pl.DataFrame | None = None,
-        feature_valid_groups_df: pl.DataFrame | None = None,
         monitor_metrics_groups: pl.DataFrame | None = None,
         monitor_metrics_total: pl.DataFrame | None = None,
     ) -> "MarsBinningReport":
@@ -1194,8 +1021,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
             已计算好的按日缺失率附表。
         risk_corr_reference_table : pl.DataFrame | None
             RiskCorr 基准分布表。
-        feature_valid_groups_df : pl.DataFrame | None
-            特征有效分组数量表。
         monitor_metrics_groups : pl.DataFrame | None
             分组粒度监控指标表。
         monitor_metrics_total : pl.DataFrame | None
@@ -1208,7 +1033,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         """
         map_df = self._build_bin_label_map(stats_long, binner=binner)
 
-        # 此时 stats_long 和 map_df 都是 Int16，Join 安全，不会发生类型提升
+        # 分箱标签只在报告层补齐，指标计算阶段始终只依赖稳定的 bin_index。
         detail_base = (
             stats_long
             .join(map_df, on=["feature", "bin_index"], how="left")
@@ -1220,16 +1045,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
             else []
         )
 
-        # 提取 WOE 序列
+        # 趋势方向只基于 Total 正常箱 WOE 判断，避免跨期噪音影响展示标签。
         trend_source = (
-            metrics_total  # 使用 total 数据
+            metrics_total
             .lazy()
             .filter(pl.col("bin_index") >= 0)
             .sort(["feature", "bin_index"])
             .select(["feature", "woe"])
         )
 
-        # 调用 Binner 中的静态方法进行判断
         from mars.feature.binning.base import MarsBinnerBase
 
         trend_shape_df = MarsBinnerBase._build_trend_shape_frame(
@@ -1238,28 +1062,27 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
         detail_base = detail_base.join(trend_shape_df, on="feature", how="left")
 
-        #  构建自定义排序键 (Sort Key)
-        # 显式 cast(pl.Int32) 解决 SchemaError
+        # 报告展示顺序需要稳定：正常箱按分箱序，Missing/Other/Special 放在正常箱之后。
         detail_table = (
             detail_base
             .with_columns([
-                # 构建排序辅助列 (0:Normal, 1:Special/Missing, 2:Total)
+                # 显式 cast 为 Int32，避免 normal/special/total 拼接后排序键类型漂移。
                 pl.when(pl.col("bin_index") >= 0).then(0).otherwise(1).cast(pl.Int32).alias("_sort_group"),
 
-                # 针对非正常箱的内部排序：
+                # 非正常箱使用固定大偏移，保证展示顺序不受真实 bin_index 正负混排影响。
                 # -1（Missing）映射到 10000。
                 # -2（Other）映射到 10001。
                 # 小于 -2（Special）映射到 20000 + abs。
-                pl.when(pl.col("bin_index") >= 0).then(pl.col("bin_index").cast(pl.Int32)) # 显式转 Int32
+                pl.when(pl.col("bin_index") >= 0).then(pl.col("bin_index").cast(pl.Int32))
                   .when(pl.col("bin_index") == -1).then(10000)
                   .when(pl.col("bin_index") == -2).then(10001)
                   .otherwise(20000 + pl.col("bin_index").abs().cast(pl.Int32))
                   .alias("_sort_idx")
             ])
-            .sort(["feature", group_col, "_sort_group", "_sort_idx"]) # 执行物理排序
+            .sort(["feature", group_col, "_sort_group", "_sort_idx"])
         )
 
-        #  计算累积指标
+        # 明细表的累积指标按 feature/group 内排序后的箱序计算，用于复核 KS/AUC 过程。
         detail_table = detail_table.with_columns([
             *ordered_count_metric_exprs(["feature", group_col]),
             (pl.col("observed_count") - pl.col("bad")).cum_sum().over(["feature", group_col]).alias("cum_good"),
@@ -1291,13 +1114,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         ])
 
-        # 构造 total 汇总行 )
-        # 对每个 (feature, group) 生成一行汇总数据，包含计算后的综合指标
+        # 每个 feature/group 额外生成一行 Total，供 Excel、HTML 和图表展示全量分布。
         total_rows = (
             stats_long
             .group_by(["feature", group_col])
             .agg([
-                # 基础统计量汇总
                 pl.col("count").sum().alias("count"),
                 pl.col("observed_count").sum().alias("observed_count"),
                 pl.col("bad").sum().alias("bad"),
@@ -1309,34 +1130,33 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 pl.col("count").sum().alias("total_count")
             ])
             .with_columns([
-                # 衍生列
                 (pl.col("observed_count") - pl.col("bad")).alias("good"),
                 bad_rate_expr(),
 
-                # total 行代表全量样本，占比固定为 1.0。
+                # Total 行代表当前 feature/group 的完整样本，占比固定为 1.0。
                 pl.lit(1.0).alias("pct"),
 
-                # 累积列 (对于 total 行，累积值等于自身)
+                # Total 行的累积列等于自身，保持和普通明细行同 schema。
                 pl.col("count").alias("cum_count"),
                 pl.col("observed_count").alias("cum_observed_count"),
                 pl.col("bad").alias("cum_bad"),
                 bad_rate_expr(output_col="cum_bad_rate"),
 
-                # AUC 方向修正
+                # Total 行也做 AUC 方向修正，避免报告层出现小于 0.5 的反向值。
                 normalized_auc_expr(auc_col="auc_bin", output_col="auc_bin"),
 
-                # 标识列与排序键 (确保排在最后)
+                # Total 行使用固定排序键，确保永远排在普通箱和特殊箱之后。
                 pl.lit(9999).cast(pl.Int16).alias("bin_index"),
                 pl.lit("Total").alias("bin_label"),
 
                 pl.lit("汇总组").alias("bin_type"),
 
-                pl.lit(2).cast(pl.Int32).alias("_sort_group"), # 明确为 Int32，避免排序键类型漂移。
-                pl.lit(0).cast(pl.Int32).alias("_sort_idx")    # 明确为 Int32，避免排序键类型漂移。
+                pl.lit(2).cast(pl.Int32).alias("_sort_group"),
+                pl.lit(0).cast(pl.Int32).alias("_sort_idx"),
             ])
         )
 
-        # total 行也要 join trend 列
+        # 金额口径只进入 detail 内部表，不扩散到 summary/trend 默认列集。
         if amount_detail_cols:
             amount_totals = (
                 stats_long
@@ -1368,6 +1188,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if amount_detail_cols:
             targets.extend(amount_detail_cols)
 
+        # 拼接普通箱和 Total 行后再排序，保证所有输出路径看到同一份明细顺序。
         detail_table = (
             pl.concat([
                 detail_table.select(targets),
@@ -1383,9 +1204,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
             "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
             "bin_type"
-        ] + amount_detail_cols)
+            ] + amount_detail_cols)
 
         if feature_source_map:
+            # 数据源字段只作为报告解释维度，不参与任何指标计算。
             source_df = pl.DataFrame({
                 "feature": list(feature_source_map.keys()),
                 "data_source": [feature_source_map[feature] for feature in feature_source_map],
@@ -1394,9 +1216,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 pl.col("data_source").fill_null("UNMAPPED")
             )
 
-        # 中间指标计算
-        # RiskCorr (RC) 跨期稳定性逻辑
-        # 确定基准序列 (选取时间最早的一组)
+        # RiskCorr 基准表由上游按 risk_corr_baseline 构造：
+        # 默认 Total；只有显式 first_group 时才使用最早分组。
         baseline_df = (
             risk_corr_reference_table
             if risk_corr_reference_table is not None
@@ -1412,52 +1233,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
         baseline_df = baseline_df.select(["feature", "bin_index", "base_br"])
 
-        _ = feature_valid_groups_df
         monitoring_groups = self._merge_feature_frame(metrics_groups, monitor_metrics_groups)
         monitoring_total = self._merge_feature_frame(metrics_total, monitor_metrics_total)
 
-        valid_group_lookup = None
-        valid_group_feature_flags = None
-        if feature_valid_groups_df is not None and not feature_valid_groups_df.is_empty():
-            valid_group_lookup = (
-                feature_valid_groups_df
-                .select(["feature", group_col])
-                .unique()
-                .with_columns(pl.lit(True).alias("_mars_valid_group"))
-            )
-            valid_group_feature_flags = (
-                feature_valid_groups_df
-                .select(["feature"])
-                .unique()
-                .with_columns(pl.lit(True).alias("_mars_feature_start_override"))
-            )
-
-        def _null_metric_for_invalid_groups(df: pl.DataFrame, metric_col: str) -> pl.DataFrame:
-            """对特征启用前的无效分组置空指定趋势指标。"""
-            if (
-                df.is_empty()
-                or metric_col not in df.columns
-                or valid_group_lookup is None
-                or valid_group_feature_flags is None
-            ):
-                return df
-            return (
-                df
-                .join(valid_group_feature_flags, on="feature", how="left")
-                .join(valid_group_lookup, on=["feature", group_col], how="left")
-                .with_columns(
-                    pl.when(
-                        pl.col("_mars_feature_start_override").fill_null(False)
-                        & pl.col("_mars_valid_group").is_null()
-                    )
-                    .then(pl.lit(None).cast(pl.Float64))
-                    .otherwise(pl.col(metric_col))
-                    .alias(metric_col)
-                )
-                .drop(["_mars_feature_start_override", "_mars_valid_group"])
-            )
-
-        # 构造用于计算相关性的全量数据流
+        # RC 需要同时覆盖普通分组和 Total 面板，保证汇总表与图表标题口径一致。
         all_metrics_for_corr = pl.concat([
             monitoring_groups.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"]),
             monitoring_total.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"])
@@ -1468,10 +1247,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             baseline_df,
             group_col=group_col,
         )
-        _ = _null_metric_for_invalid_groups
 
-        # 分组指标聚合
-        # 将分箱粒度聚合为分组粒度 (如: Month Level)
+        # summary 的稳定性审计来自分组粒度，保留跨期 PSI、RC、缺失率极值。
         group_level_metrics = (
             metrics_groups
             .group_by(["feature", group_col])
@@ -1481,7 +1258,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 bin_missing_rate_expr(missing_bin_index=MarsBinnerBase.IDX_MISSING),
                 observed_lift_max_agg_expr(),
             ])
-            # 确保 AUC 方向正确 (>= 0.5)
             .with_columns(normalized_auc_expr())
         )
         monitor_group_level_metrics = (
@@ -1511,7 +1287,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             ])
         )
 
-        # 第三阶段：汇总表
+        # summary 的预测力指标来自 Total 口径，避免跨期样本量变化影响全局排序。
         total_metrics_agg = (
             metrics_total.group_by("feature")
             .agg([
@@ -1536,7 +1312,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ])
             )
         else:
-            # 单点评估模式兜底
+            # 单点评估没有跨期稳定性审计，使用中性默认值保持 summary schema 稳定。
             summary_audit = pl.DataFrame({
                 "feature": total_metrics_agg["feature"],
                 "psi_max": [0.0] * len(total_metrics_agg),
@@ -1552,7 +1328,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             .join(total_real_bin_lift_metrics, on="feature", how="left")
             .join(monotonicity_df, on="feature", how="left")
             .with_columns([
-                # 空值兜底，防备部分单点评估或无数据的极端情况
+                # 极端空表或单点评估下缺失的审计列统一兜底，避免导出层再做分支。
                 pl.col("psi_max").fill_null(0.0),
                 pl.col("rc_min").fill_null(1.0),
                 pl.col("missing").fill_null(0.0),
@@ -1560,7 +1336,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 pl.col("missing_max").fill_null(0.0),
                 pl.col("mono").fill_null(1.0)
             ])
-            .sort(["iv", "rc_min"], descending=[True, True]) # 按预测力和稳定性双重降序
+            .sort(["iv", "rc_min"], descending=[True, True])
             .select([
                 "feature", "iv", "ks", "auc",
                 "psi_max", "rc_min",
@@ -1571,6 +1347,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         if feature_source_map:
+            # summary 中把 data_source 提到 feature 后，便于按来源快速复核筛选结果。
             source_df = pl.DataFrame({
                 "feature": list(feature_source_map.keys()),
                 "data_source": [feature_source_map[feature] for feature in feature_source_map],
@@ -1582,6 +1359,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 ["feature", "data_source"] + [col for col in summary_df.columns if col not in {"feature", "data_source"}]
             )
 
+        # trend_tables 只负责对外展示的趋势矩阵，底层明细仍保留在 detail_table。
         trend_tables = {
             metric: self._format_output(table)
             for metric, table in build_binning_trend_tables(
@@ -1609,5 +1387,3 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 else empty_risk_corr_reference_table(target_name),
             ),
         )
-
-from mars.analysis._risk_profile import profile_risk as profile_risk  # noqa: E402

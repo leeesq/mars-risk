@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from mars.analysis import MarsMissingShiftResult, MarsMissingShiftScanner
+from mars.analysis.missing_shift import MarsMissingShiftResult, MarsMissingShiftScanner
 
 
 def _daily_missing_frame(
@@ -128,4 +128,3 @@ def test_missing_shift_result_writes_excel(tmp_path) -> None:
     result.write_excel(output_path)
 
     assert output_path.exists()
-

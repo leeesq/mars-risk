@@ -247,8 +247,8 @@ class MarsOptimalBinner(MarsBinnerBase):
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any],
         *,
-        features: List[str] | None = None,
-        cat_features: List[str] | None = None,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
     ) -> "MarsOptimalBinner":
         """
         拟合最优分箱器。
@@ -259,9 +259,9 @@ class MarsOptimalBinner(MarsBinnerBase):
             输入特征矩阵。
         y : pl.Series | pd.Series | np.ndarray | list[Any]
             目标变量。最优分箱依赖监督信息，必须提供。
-        features : List[str] | None
+        features : list[str] | None
             本次拟合的特征列；不传时使用全部候选列。
-        cat_features : List[str] | None
+        cat_features : list[str] | None
             明确指定的类别特征列。
 
         Returns
@@ -285,9 +285,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         if y is None:
             raise ValueError("MarsOptimalBinner.fit requires y.")
 
-        self.features = list(features or [])
-        self.cat_features = list(cat_features or [])
-        super().fit(X, y)
+        super().fit(X, y, features=features, cat_features=cat_features)
         return self
 
     def _fit_impl(self, X: pl.DataFrame, y: pl.Series = None) -> None:

@@ -17,6 +17,7 @@ import mars
 import mars.analysis
 import mars.reporting
 from mars.analysis import MarsBinEvaluator, MarsRiskProfile, profile_risk
+from mars.analysis._evaluation.metrics import calculate_metrics_from_stats
 from mars.feature import MarsLiteOptBinner, MarsNativeBinner, MarsOptimalBinner
 from mars.reporting import MarsBinningReport
 from mars.reporting._binning_excel import _BinningExcelWriter
@@ -606,40 +607,101 @@ def test_evaluator_reuses_only_explicit_binner(sample_credit_df):
         sample_credit_df,
         target="target",
         features=["income"],
-        binner=binner,
         group_col="month",
+        binner=binner,
     )
 
     assert run.binner is binner
 
 
-def test_profile_risk_no_longer_accepts_legacy_binner_params(sample_credit_df):
-    with pytest.raises(TypeError, match="binner_params"):
-        profile_risk(
-            sample_credit_df,
-            target="target",
-            features=["income"],
-            binner_params={"method": "quantile"},
-        )
+def test_profile_risk_accepts_single_layer_binner_params(sample_credit_df):
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        binning_type="native",
+        method="quantile",
+        n_bins=3,
+        binner_params={
+            "merge_small_bins": True,
+            "n_prebins": 12,
+            "join_threshold": 80,
+        },
+    )
+
+    assert isinstance(run.binner, MarsNativeBinner)
+    assert run.binner.merge_small_bins is True
 
 
-def test_profile_risk_rejects_binner_and_advanced_binning_params_together(sample_credit_df):
+def test_profile_risk_no_longer_accepts_binner(sample_credit_df):
     binner = MarsNativeBinner(method="quantile", n_bins=3)
 
-    with pytest.raises(ValueError, match="advanced_binning_params"):
+    with pytest.raises(TypeError, match="binner"):
         profile_risk(
             sample_credit_df,
             target="target",
             features=["income"],
             binner=binner,
-            advanced_binning_params={"native": {"merge_small_bins": True}},
         )
 
 
+def test_ordered_metric_bin_index_excludes_non_normal_bins() -> None:
+    stats_df = pl.DataFrame(
+        {
+            "mars_group": ["202401"] * 4,
+            "feature": ["prob"] * 4,
+            "bin_index": [-1, 0, 1, 2],
+            "count": [100.0, 100.0, 100.0, 100.0],
+            "observed_count": [100.0, 100.0, 100.0, 100.0],
+            "bad": [100.0, 10.0, 80.0, 20.0],
+        }
+    )
+    expected_dist = pl.DataFrame(
+        {
+            "feature": ["prob"] * 4,
+            "bin_index": [-1, 0, 1, 2],
+            "expected_dist": [0.25, 0.25, 0.25, 0.25],
+        }
+    )
+    binner = MarsNativeBinner(method="quantile", n_bins=3)
+    binner.bin_woes_ = {
+        "prob": {
+            -1: 3.0,
+            0: -1.6,
+            1: 1.9,
+            2: -0.8,
+        }
+    }
+
+    woe_metrics = calculate_metrics_from_stats(
+        binner=binner,
+        stats_df=stats_df,
+        expected_dist=expected_dist,
+        group_col="mars_group",
+        ordered_metric_sort_by="woe",
+    )
+    index_metrics = calculate_metrics_from_stats(
+        binner=binner,
+        stats_df=stats_df,
+        expected_dist=expected_dist,
+        group_col="mars_group",
+        ordered_metric_sort_by="bin_index",
+    )
+
+    index_rows = index_metrics.sort("bin_index").to_dicts()
+    assert index_rows[0]["ks_bin"] is None
+    assert max(row["ks_bin"] for row in index_rows[1:] if row["ks_bin"] is not None) == pytest.approx(
+        38.2775,
+        rel=1e-4,
+    )
+    assert woe_metrics["ks_bin"].max() != pytest.approx(index_metrics["ks_bin"].max())
+
+
 @pytest.mark.parametrize(
-    ("explicit_kwargs", "message"),
+    ("binner_params", "message"),
     [
         ({"method": "quantile"}, "method"),
+        ({"prebinning_method": "cart"}, "prebinning_method"),
         ({"n_bins": 3}, "n_bins"),
         ({"min_bin_size": 0.1}, "min_bin_size"),
         ({"monotonic_trend": "auto_asc_desc"}, "monotonic_trend"),
@@ -648,39 +710,9 @@ def test_profile_risk_rejects_binner_and_advanced_binning_params_together(sample
         ({"n_jobs": 1}, "n_jobs"),
     ],
 )
-def test_profile_risk_rejects_explicit_binner_passthrough_with_binner(
+def test_profile_risk_rejects_public_keys_inside_binner_params(
     sample_credit_df: pl.DataFrame,
-    explicit_kwargs: dict[str, Any],
-    message: str,
-) -> None:
-    binner = MarsNativeBinner(method="quantile", n_bins=3)
-
-    with pytest.raises(ValueError, match=message):
-        profile_risk(
-            sample_credit_df,
-            target="target",
-            features=["income"],
-            binner=binner,
-            **explicit_kwargs,
-        )
-
-
-@pytest.mark.parametrize(
-    ("advanced_binning_params", "message"),
-    [
-        ({"native": {"method": "quantile"}}, "method"),
-        ({"native": {"prebinning_method": "cart"}}, "prebinning_method"),
-        ({"native": {"n_bins": 3}}, "n_bins"),
-        ({"native": {"min_bin_size": 0.1}}, "min_bin_size"),
-        ({"native": {"monotonic_trend": "auto_asc_desc"}}, "monotonic_trend"),
-        ({"native": {"missing_values": [-999]}}, "missing_values"),
-        ({"native": {"special_values": [-999]}}, "special_values"),
-        ({"native": {"n_jobs": 1}}, "n_jobs"),
-    ],
-)
-def test_profile_risk_rejects_public_keys_inside_active_advanced_binning_bucket(
-    sample_credit_df: pl.DataFrame,
-    advanced_binning_params: dict[str, dict[str, Any]],
+    binner_params: dict[str, Any],
     message: str,
 ) -> None:
     with pytest.raises(ValueError) as exc_info:
@@ -688,11 +720,11 @@ def test_profile_risk_rejects_public_keys_inside_active_advanced_binning_bucket(
             sample_credit_df,
             target="target",
             features=["income"],
-            advanced_binning_params=advanced_binning_params,
+            binner_params=binner_params,
         )
     error_message = str(exc_info.value)
     assert message in error_message
-    assert "Allowed keys are" in error_message
+    assert "Current `binning_type` accepts" in error_message
     assert "`merge_small_bins`" in error_message
     assert "`cart_params`" in error_message
     assert "`remove_empty_bins`" in error_message
@@ -701,7 +733,7 @@ def test_profile_risk_rejects_public_keys_inside_active_advanced_binning_bucket(
     assert "`monotonic_trend`" in error_message
 
 
-def test_profile_risk_rejects_unknown_advanced_binning_param_with_current_allowlist(
+def test_profile_risk_rejects_unknown_binner_param_with_current_allowlist(
     sample_credit_df: pl.DataFrame,
 ) -> None:
     with pytest.raises(ValueError) as exc_info:
@@ -710,30 +742,18 @@ def test_profile_risk_rejects_unknown_advanced_binning_param_with_current_allowl
             target="target",
             features=["income"],
             binning_type="lite_opt",
-            advanced_binning_params={"lite_opt": {"solver": "cp"}},
+            binner_params={"unexpected_param": 1},
         )
 
     error_message = str(exc_info.value)
-    assert "`solver`" in error_message
-    assert "Allowed keys are" in error_message
+    assert "`unexpected_param`" in error_message
+    assert "Current `binning_type` accepts" in error_message
     assert "`n_prebins`" in error_message
     assert "`join_threshold`" in error_message
     assert "`monotonic_trend`" in error_message
 
 
-def test_profile_risk_rejects_unknown_advanced_binning_bucket(
-    sample_credit_df: pl.DataFrame,
-) -> None:
-    with pytest.raises(ValueError, match="only supports these buckets"):
-        profile_risk(
-            sample_credit_df,
-            target="target",
-            features=["income"],
-            advanced_binning_params={"unexpected": {"foo": 1}},
-        )
-
-
-def test_profile_risk_only_validates_current_advanced_binning_bucket(
+def test_profile_risk_ignores_inactive_known_binner_params(
     sample_credit_df: pl.DataFrame,
 ) -> None:
     run = profile_risk(
@@ -743,10 +763,7 @@ def test_profile_risk_only_validates_current_advanced_binning_bucket(
         binning_type="native",
         method="quantile",
         n_bins=3,
-        advanced_binning_params={
-            "native": {"merge_small_bins": True},
-            "lite_opt": {"solver": "cp"},
-        },
+        binner_params={"merge_small_bins": True, "solver": "cp", "n_prebins": 12},
     )
 
     assert run.binner.merge_small_bins is True
@@ -1208,8 +1225,8 @@ def test_feature_data_source_rejects_features_outside_active_feature_set(sample_
             sample_credit_df,
             target="target",
             features=["income", "utilization"],
-            feature_data_source={"BAD": ["age"]},
             group_col="month",
+            feature_data_source={"BAD": ["age"]},
         )
 
 
@@ -1454,8 +1471,8 @@ def test_feature_start_aware_reference_exact_monthly_cutover_keeps_feb_psi_zero(
         features=["EXT_SOURCE_1"],
         time_col="dt",
         time_grain="month",
-        feature_start_aware_reference=True,
         psi_include_missing=include_missing,
+        feature_start_aware_reference=True,
     )
     report = run.report
 
@@ -1558,16 +1575,16 @@ def test_profile_risk_exposes_public_native_binner_args_as_direct_parameters(
 
 
 @pytest.mark.parametrize(
-    ("binning_type", "advanced_binning_params", "expected_class"),
+    ("binning_type", "binner_params", "expected_class"),
     [
         (
             "optimal",
-            {"optimal": {"min_bin_n_event": 1, "n_prebins": 12, "time_limit": 1}},
+            {"min_bin_n_event": 1, "n_prebins": 12, "time_limit": 1},
             MarsOptimalBinner,
         ),
         (
             "lite_opt",
-            {"lite_opt": {"n_prebins": 12, "join_threshold": 80}},
+            {"n_prebins": 12, "join_threshold": 80},
             MarsLiteOptBinner,
         ),
     ],
@@ -1575,7 +1592,7 @@ def test_profile_risk_exposes_public_native_binner_args_as_direct_parameters(
 def test_profile_risk_maps_method_and_default_monotonic_trend_for_non_native_binners(
     sample_credit_df: pl.DataFrame,
     binning_type: str,
-    advanced_binning_params: dict[str, dict[str, Any]],
+    binner_params: dict[str, Any],
     expected_class: type,
 ) -> None:
     run = profile_risk(
@@ -1586,7 +1603,7 @@ def test_profile_risk_maps_method_and_default_monotonic_trend_for_non_native_bin
         binning_type=binning_type,  # type: ignore[arg-type]
         method="uniform",
         n_bins=3,
-        advanced_binning_params=advanced_binning_params,
+        binner_params=binner_params,
     )
 
     assert isinstance(run.binner, expected_class)
@@ -1606,27 +1623,28 @@ def test_profile_risk_exposes_public_monotonic_trend_for_lite_opt(
         method="quantile",
         n_bins=3,
         monotonic_trend="peak",
-        advanced_binning_params={"lite_opt": {"n_prebins": 12}},
+        binner_params={"n_prebins": 12},
     )
 
     assert isinstance(run.binner, MarsLiteOptBinner)
     assert run.binner.monotonic_trend == "peak"
 
 
-def test_profile_risk_rejects_peak_monotonic_trend_for_optimal(
+def test_profile_risk_accepts_peak_monotonic_trend_for_optimal(
     sample_credit_df: pl.DataFrame,
 ) -> None:
-    with pytest.raises(ValueError, match="Allowed values are"):
-        profile_risk(
-            sample_credit_df,
-            target="target",
-            features=["income"],
-            group_col="month",
-            binning_type="optimal",
-            n_bins=3,
-            monotonic_trend="peak",
-            advanced_binning_params={"optimal": {"n_prebins": 12}},
-        )
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        binning_type="optimal",
+        n_bins=3,
+        monotonic_trend="peak",
+        binner_params={"n_prebins": 12},
+    )
+
+    assert run.binner.monotonic_trend == "peak"
 
 
 def test_profile_risk_warns_and_ignores_monotonic_trend_for_native(
@@ -1667,7 +1685,7 @@ def test_profile_risk_default_native_path_does_not_warn_for_monotonic_trend(
     assert not [item for item in caught if "monotonic_trend" in str(item.message)]
 
 
-def test_profile_risk_without_target_uses_native_advanced_binning_bucket(
+def test_profile_risk_without_target_uses_native_binner_params(
     sample_credit_df: pl.DataFrame,
 ) -> None:
     run = profile_risk(
@@ -1676,10 +1694,7 @@ def test_profile_risk_without_target_uses_native_advanced_binning_bucket(
         features=["income"],
         binning_type="lite_opt",
         n_bins=3,
-        advanced_binning_params={
-            "native": {"merge_small_bins": True},
-            "lite_opt": {"n_prebins": 12},
-        },
+        binner_params={"merge_small_bins": True, "n_prebins": 12},
     )
 
     assert isinstance(run.binner, MarsNativeBinner)

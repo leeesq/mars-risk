@@ -203,7 +203,6 @@ class _BinningExcelWriter:
                 workbook.save(path)
                 logger.info("Exported binning report via xlwings: %s", path)
             except Exception as exc:
-                logger.exception("xlwings 导出过程中发生错误。")
                 raise RuntimeError(f"xlwings 导出过程中发生错误: {exc}") from exc
             finally:
                 if workbook is not None:

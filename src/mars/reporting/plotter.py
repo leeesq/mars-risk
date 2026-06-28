@@ -23,7 +23,6 @@ from mars.reporting._plotter_support import (
     show_scrollable,
     summarize_binning_metrics,
 )
-from mars.utils.logger import logger
 
 
 class MarsPlotter:
@@ -215,11 +214,9 @@ class MarsPlotter:
 
         df_feat: pd.DataFrame = df_detail[df_detail["feature"] == feature].copy()
         if df_feat.empty:
-            logger.error("Feature '%s' not found in detail table.", feature)
             return None
 
         if group_col not in df_feat.columns:
-            logger.error("Group column '%s' not found in detail table.", group_col)
             return None
 
         group_values = df_feat[group_col].astype(str)
@@ -717,7 +714,6 @@ class MarsPlotter:
 
         # 计算全局排序得分
         if sort_by and sort_by.lower() in ['iv', 'ks', 'auc']:
-            logger.info(f"Calculating {sort_by.upper()} scores for plotting order.")
             feature_stats = []
             sort_metric = sort_by.lower()
             for feat in features:
@@ -750,17 +746,9 @@ class MarsPlotter:
         else:
             sorted_features = features
 
-        logger.info(f"Starting batch plot for {len(sorted_features)} features.")
 
         # 循环生成每个特征的图表
-        for i, feat in enumerate(sorted_features):
-            score_info = ""
-            if sort_by and 'df_stats' in locals() and not df_stats[df_stats['feature'] == feat].empty:
-                score = df_stats[df_stats['feature'] == feat]['score'].iloc[0]
-                score_info = f" ({sort_by.upper()}={score:.4f})"
-
-            logger.info(f"[{i+1}/{len(sorted_features)}] Plotting {feat}{score_info}...")
-
+        for feat in sorted_features:
             MarsPlotter.plot_feature_binning_risk_trend(
                 df_detail=df_detail,
                 feature=feat,
@@ -770,4 +758,3 @@ class MarsPlotter:
                 show_risk=show_risk,
                 dpi=dpi
             )
-        logger.info("Batch plotting completed.")

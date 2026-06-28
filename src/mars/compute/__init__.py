@@ -1,6 +1,7 @@
 """共享计算底座的公共导出入口。"""
 
 from .binning import (
+    OrderedMetricSortBy,
     actual_dist_expr,
     amount_bad_rate_expr,
     amount_distribution_exprs,
@@ -36,6 +37,7 @@ from .binning import (
     iv_bin_expr,
     ks_bin_expr,
     lift_expr,
+    normalize_ordered_metric_sort_by,
     normalized_auc_expr,
     observed_amount_expr,
     observed_auc_agg_expr,
@@ -93,6 +95,7 @@ from .stability import (
 
 __all__ = [
     "FrameLike",
+    "OrderedMetricSortBy",
     "RiskCorrBaseline",
     "RiskCorrMethod",
     "actual_dist_expr",
@@ -136,6 +139,7 @@ __all__ = [
     "lift_expr",
     "missing_condition_expr",
     "missing_rate_expr",
+    "normalize_ordered_metric_sort_by",
     "normalize_risk_corr_baseline",
     "normalized_auc_expr",
     "observed_amount_expr",

@@ -64,8 +64,6 @@ class _ProfileExcelWriter:
         ...     report.write_excel(str(Path(tmp) / "profile.xlsx")) is None
         True
         """
-        logger.info(f"Exporting report to: {path}...")
-
         # 1. 依赖检查
         if importlib.util.find_spec("xlsxwriter") is None:
             logger.error(

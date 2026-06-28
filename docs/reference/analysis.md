@@ -8,12 +8,6 @@
 
 ::: mars.analysis.profile_stats
 
-## 缺失率异常扫描
-
-::: mars.analysis.MarsMissingShiftScanner
-
-::: mars.analysis.MarsMissingShiftResult
-
 ## 分箱评估
 
 ::: mars.analysis.MarsBinEvaluator

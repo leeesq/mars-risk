@@ -28,7 +28,7 @@ def get_psi_trend(
 
     n_groups = context.working_df.select(pl.col(context.group_col).n_unique()).item()
     if n_groups > MAX_PSI_GROUPS:
-        logger.error(
+        logger.warning(
             "PSI calculation aborted: column '%s' has %s unique values. "
             "Threshold is %s; check whether an ID column was passed as group_col.",
             context.group_col,

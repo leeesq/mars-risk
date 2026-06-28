@@ -2,8 +2,11 @@
 
 from pathlib import Path
 
+import pytest
+
+import mars.analysis as analysis_package
 from mars.analysis import profile_risk as package_profile_risk
-from mars.analysis.evaluator import profile_risk as evaluator_profile_risk
+from mars.analysis._risk_profile import profile_risk as workflow_profile_risk
 from mars.core.constants import (
     DIVISION_EPSILON,
     FLOAT_TOLERANCE,
@@ -50,6 +53,20 @@ def test_feature_module_does_not_depend_on_modeling_optional_imports() -> None:
     assert "from mars.utils.imports import require_optional_module" in selection_sources
 
 
-def test_profile_risk_keeps_original_public_import_path() -> None:
-    """profile_risk 拆到内部模块后仍保留原 public 导入路径。"""
-    assert package_profile_risk is evaluator_profile_risk
+def test_profile_risk_uses_analysis_package_as_public_entry() -> None:
+    """profile_risk 只通过 analysis 聚合入口承诺 public 导入。"""
+    assert package_profile_risk is workflow_profile_risk
+
+
+def test_profile_risk_is_not_exported_from_evaluator_module() -> None:
+    """evaluator 模块不再反向导出高层 profile_risk workflow。"""
+    with pytest.raises(ImportError):
+        exec("from mars.analysis.evaluator import profile_risk")
+
+
+def test_missing_shift_scanner_is_not_stable_analysis_export() -> None:
+    """缺失率异常扫描仍处于实验状态，不进入 analysis 稳定导出面。"""
+    assert "MarsMissingShiftScanner" not in analysis_package.__all__
+    assert "MarsMissingShiftResult" not in analysis_package.__all__
+    assert not hasattr(analysis_package, "MarsMissingShiftScanner")
+    assert not hasattr(analysis_package, "MarsMissingShiftResult")

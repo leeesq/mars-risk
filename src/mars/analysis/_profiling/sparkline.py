@@ -63,7 +63,7 @@ def _sparkline_for_column(
         else:
             distribution = _histogram_distribution(series, options.sparkline_bins, bars)
     except (pl.exceptions.PolarsError, ValueError, TypeError) as exc:
-        logger.error("Sparkline calculation failed for feature '%s': %s", col, exc)
+        logger.warning("Sparkline calculation failed for feature '%s': %s", col, exc)
         distribution = "ERR"
 
     return {"feature": col, "distribution": distribution}
@@ -95,4 +95,3 @@ def _histogram_distribution(series: pl.Series, n_bins: int, bars: list[str]) -> 
             idx = int(count / max_count * (len(bars) - 2)) + 1
             chars.append(bars[min(idx, len(bars) - 1)])
     return "".join(chars)
-

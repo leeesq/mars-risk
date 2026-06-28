@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Protocol, cast
+from typing import Any
 
 import polars as pl
 
@@ -13,20 +13,6 @@ from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.binning.optimal import MarsOptimalBinner
 from mars.utils.date import MarsDate
 from mars.utils.logger import logger
-
-
-class _FittableBinner(Protocol):
-    """评估器内部需要的分箱器拟合协议。"""
-
-    def fit(
-        self,
-        X: pl.DataFrame,
-        y: pl.Series | None = None,
-        *,
-        features: list[str] | None = None,
-    ) -> MarsBinnerBase:
-        """拟合分箱器并返回自身。"""
-        ...
 
 
 def normalize_binary_target_column(df: pl.DataFrame, target: str) -> pl.DataFrame:
@@ -134,7 +120,6 @@ def prepare_group_context(
 ) -> tuple[pl.DataFrame, str]:
     """构造内部趋势分组上下文。"""
     if dt_col and not profile_by:
-        logger.info("`dt_col` was provided without `profile_by`; defaulting trend grouping to 'month'.")
         profile_by = "month"
 
     if dt_col and profile_by is not None and MarsDate.is_time_grain(profile_by):
@@ -185,7 +170,7 @@ def build_binner(
     features: list[str],
 ) -> MarsBinnerBase:
     """按 evaluator 默认策略构造并拟合分箱器。"""
-    binner_factory = {
+    binner_factory: dict[str, type[MarsBinnerBase]] = {
         "native": MarsNativeBinner,
         "optimal": MarsOptimalBinner,
         "lite_opt": MarsLiteOptBinner,
@@ -209,8 +194,7 @@ def build_binner(
             logger.warning("No target provided. Forcing native method='quantile'.")
             clean_kwargs["method"] = "quantile"
 
-    logger.info("Auto-fitting %s internally with params: %s.", binner_cls.__name__, clean_kwargs)
-    binner = cast(MarsBinnerBase, binner_cls(**clean_kwargs))
+    binner = binner_cls(**clean_kwargs)
     fit_df = working_df
     y_series = None
     if has_target:
@@ -222,5 +206,5 @@ def build_binner(
         if is_supervised_binner:
             fit_df = working_df.filter(pl.col(target).is_not_null())
             y_series = fit_df.get_column(target)
-    cast(_FittableBinner, binner).fit(fit_df, y_series, features=features)
+    binner.fit(fit_df, y_series, features=features)
     return binner

@@ -103,7 +103,7 @@ class MarsMissingShiftResult:
     Examples
     --------
     >>> import polars as pl
-    >>> from mars.analysis import MarsMissingShiftScanner
+    >>> from mars.analysis.missing_shift import MarsMissingShiftScanner
     >>> df = pl.DataFrame({"dt": ["2026-01-01"], "x": [None]})
     >>> result = MarsMissingShiftScanner().scan(df, date_col="dt", features=["x"])
     >>> result.detail_table.is_empty()
@@ -171,7 +171,7 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
     Examples
     --------
     >>> import polars as pl
-    >>> from mars.analysis import MarsMissingShiftScanner
+    >>> from mars.analysis.missing_shift import MarsMissingShiftScanner
     >>> df = pl.DataFrame({"dt": ["2026-01-01", "2026-01-02"], "x": [1, None]})
     >>> result = MarsMissingShiftScanner().scan(df, date_col="dt", features=["x"])
     >>> "x" in result.missing_rate_table.get_column("feature").to_list()

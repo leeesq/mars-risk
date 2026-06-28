@@ -447,3 +447,36 @@ def test_profile_bin_performance_preserves_feature_names_with_bin_text() -> None
 
     assert {"foo_bin_bin", "foo_bin_score_bin"}.issubset(transformed.columns)
     assert set(stats["feature"].unique().to_list()) == {"foo_bin", "foo_bin_score"}
+
+
+def test_profile_bin_performance_supports_bin_index_ordered_metrics() -> None:
+    prob = [0.1] * 100 + [0.5] * 100 + [0.9] * 100 + [-999.0] * 20
+    target = [1] * 10 + [0] * 90
+    target += [1] * 80 + [0] * 20
+    target += [1] * 20 + [0] * 80
+    target += [1] * 20
+    df = pl.DataFrame({"prob": prob})
+    y = pl.Series("target", target)
+    binner = MarsNativeBinner(
+        method="uniform",
+        n_bins=3,
+        special_values=[-999.0],
+    )
+    binner.fit(df, y, features=["prob"])
+
+    woe_stats = binner.profile_bin_performance(
+        df,
+        y,
+        include_bin_index=True,
+        ordered_metric_sort_by="woe",
+    )
+    index_stats = binner.profile_bin_performance(
+        df,
+        y,
+        include_bin_index=True,
+        ordered_metric_sort_by="bin_index",
+    )
+
+    special_row = index_stats.filter(pl.col("bin_index") < 0).row(0, named=True)
+    assert special_row["bin_ks"] is None
+    assert index_stats["KS"].max() != pytest.approx(woe_stats["KS"].max())

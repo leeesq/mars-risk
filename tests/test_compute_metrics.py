@@ -14,6 +14,7 @@ from mars.compute import (
     binary_distribution_exprs,
     binary_metric_exprs,
     expected_dist_expr,
+    normalize_ordered_metric_sort_by,
     normalized_auc_expr,
     observed_auc_agg_expr,
     observed_iv_agg_expr,
@@ -57,6 +58,14 @@ def test_binary_metric_bundle_matches_manual_values() -> None:
     assert row0["woe"] == pytest.approx(math.log(0.2 / 0.6), abs=1e-5)
     assert row1["ks_bin"] == pytest.approx(0.0, abs=1e-5)
     assert result["auc_bin"].sum() == pytest.approx(0.3, abs=1e-5)
+
+
+def test_ordered_metric_sort_by_normalization() -> None:
+    assert normalize_ordered_metric_sort_by(None) == "woe"
+    assert normalize_ordered_metric_sort_by("bin_index") == "bin_index"
+
+    with pytest.raises(ValueError, match="ordered_metric_sort_by"):
+        normalize_ordered_metric_sort_by("auto")
 
 
 def test_amount_metric_bundle_matches_manual_values() -> None:
