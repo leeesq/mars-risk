@@ -11,8 +11,7 @@ from IPython.display import HTML, display
 from matplotlib.ticker import FuncFormatter
 
 from mars.compute import RiskCorrBaseline
-from mars.core.constants import DIVISION_EPSILON
-from mars.reporting._plotter_support import (
+from mars.reporting._plotting.support import (
     as_pandas_detail_frame,
     build_image_html,
     build_rollup_row_mask,
@@ -20,7 +19,15 @@ from mars.reporting._plotter_support import (
     figure_to_base64,
     has_amount_risk_columns,
     normalize_show_risk,
+    resolve_feature_reference,
+    resolve_feature_trend,
+    resolve_global_axis_limits,
+    resolve_missing_summary,
+    resolve_panel_groups,
+    resolve_total_count,
     show_scrollable,
+    sort_batch_features,
+    split_feature_plot_frames,
     summarize_binning_metrics,
 )
 
@@ -212,35 +219,17 @@ class MarsPlotter:
             else None
         )
 
-        df_feat: pd.DataFrame = df_detail[df_detail["feature"] == feature].copy()
-        if df_feat.empty:
+        plot_df, total_metric_df, total_rollup_df, has_total_panel = (
+            split_feature_plot_frames(
+                df_detail,
+                feature=feature,
+                group_col=group_col,
+            )
+        )
+        if plot_df.empty and total_metric_df.empty and total_rollup_df.empty:
             return None
 
-        if group_col not in df_feat.columns:
-            return None
-
-        group_values = df_feat[group_col].astype(str)
-        has_total_panel = "Total" in group_values.values
-
-        # 绘图时剔除汇总行，但保留 `Total` 分组下的正常分箱。
-        rollup_mask = MarsPlotter._build_rollup_row_mask(df_feat)
-        plot_df = df_feat.loc[~rollup_mask].copy()
-
-        if has_total_panel:
-            total_metric_df = plot_df[plot_df[group_col].astype(str) == "Total"].copy()
-            total_rollup_df = df_feat[
-                (df_feat[group_col].astype(str) == "Total") & rollup_mask
-            ].copy()
-        else:
-            total_metric_df = plot_df.copy()
-            total_rollup_df = df_feat.loc[rollup_mask].copy()
-
-        if not total_rollup_df.empty and "total_count" in total_rollup_df.columns:
-            total_count = int(total_rollup_df["total_count"].iloc[0])
-        elif "total_count" in total_metric_df.columns and not total_metric_df.empty:
-            total_count = int(total_metric_df["total_count"].iloc[0])
-        else:
-            total_count = int(total_metric_df["count"].sum()) if not total_metric_df.empty else 0
+        total_count = resolve_total_count(total_metric_df, total_rollup_df)
 
         has_target_global = (
             "bad_rate" in total_metric_df.columns
@@ -252,51 +241,21 @@ class MarsPlotter:
                 total_metric_df,
             )
 
-        trend_str = "n.a."
-        if has_target_global:
-            trend_source_df = total_rollup_df if not total_rollup_df.empty else total_metric_df
-            if "trend" in trend_source_df.columns:
-                raw_trend = trend_source_df["trend"].iloc[0]
-                if pd.notna(raw_trend) and str(raw_trend).lower() != "undefined":
-                    trend_str = str(raw_trend)
-
-            if trend_str == "n.a.":
-                df_trend_calc = total_metric_df[
-                    total_metric_df["bin_index"] >= 0
-                ].sort_values("bin_index")
-                if len(df_trend_calc) > 1:
-                    x_arr = df_trend_calc["bin_index"].values
-                    y_arr = df_trend_calc["bad_rate"].values
-                    if np.std(y_arr) > DIVISION_EPSILON:
-                        corr = np.corrcoef(x_arr, y_arr)[0, 1]
-                        if corr >= 0.5:
-                            trend_str = f"asc({corr:.2f})"
-                        elif corr <= -0.5:
-                            trend_str = f"desc({corr:.2f})"
-                        else:
-                            trend_str = f"n.a.({corr:.2f})"
-                    else:
-                        trend_str = "flat"
-
-        missing_row = total_metric_df[total_metric_df["bin_index"] == -1]
-        if not missing_row.empty and total_count > 0:
-            miss_count = missing_row["count"].sum()
-            miss_rate = miss_count / total_count
-            miss_str = f"{miss_rate:.2%}"
-        else:
-            miss_str = "nan%"
-
-        groups = [g for g in plot_df[group_col].astype(str).unique() if g != "Total"]
-        groups = sorted(groups)
-        time_range = f"[{groups[0]} ~ {groups[-1]}]" if groups else ""
-
-        feature_reference_pd: pd.DataFrame | None = None
-        if reference_pd is not None and not reference_pd.empty:
-            feature_reference_pd = reference_pd[
-                reference_pd["feature"].astype(str) == feature
-            ].copy()
-
-        all_groups = groups + (["Total"] if has_total_panel else [])
+        trend_str = (
+            resolve_feature_trend(total_metric_df, total_rollup_df)
+            if has_target_global
+            else "n.a."
+        )
+        miss_str = resolve_missing_summary(total_metric_df, total_count)
+        _, all_groups, time_range = resolve_panel_groups(
+            plot_df,
+            group_col=group_col,
+            has_total_panel=has_total_panel,
+        )
+        feature_reference_pd = resolve_feature_reference(
+            reference_pd,
+            feature=feature,
+        )
 
         n_panels = len(all_groups)
         if n_panels == 0:
@@ -331,26 +290,15 @@ class MarsPlotter:
             bbox=dict(boxstyle="round,pad=0.4", fc="#f0f0f0", ec="#cccccc", alpha=0.8),
         )
 
-        global_max_count = 0.0
-        global_max_bad = 0.0
-        global_max_amt_bad = 0.0
-        for group in all_groups:
-            tmp_df = plot_df[plot_df[group_col] == group]
-            if tmp_df.empty:
-                continue
-
-            tmp_counts = tmp_df["count"] / tmp_df["count"].sum() if "count_dist" not in tmp_df.columns else tmp_df["count_dist"]
-            if len(tmp_counts) > 0:
-                global_max_count = max(global_max_count, tmp_counts.max())
-
-            if has_target_global and "bad_rate" in tmp_df.columns:
-                tmp_bads = tmp_df["bad_rate"]
-                if len(tmp_bads) > 0:
-                    global_max_bad = max(global_max_bad, tmp_bads.max())
-            if amount_risk_available and "amt_bad_rate" in tmp_df.columns:
-                tmp_amt_bads = tmp_df["amt_bad_rate"].dropna()
-                if len(tmp_amt_bads) > 0:
-                    global_max_amt_bad = max(global_max_amt_bad, tmp_amt_bads.max())
+        global_max_count, global_max_bad, global_max_amt_bad = (
+            resolve_global_axis_limits(
+                plot_df,
+                group_col=group_col,
+                all_groups=all_groups,
+                has_target_global=has_target_global,
+                amount_risk_available=amount_risk_available,
+            )
+        )
 
         to_percent = FuncFormatter(lambda y, _: f"{y:.0%}")
 
@@ -712,42 +660,15 @@ class MarsPlotter:
         # 重置交互式容器的显示标记
         display(HTML("<script>window.MARS_PLOTTER_HINT_SHOWN = undefined;</script>"))
 
-        # 计算全局排序得分
-        if sort_by and sort_by.lower() in ['iv', 'ks', 'auc']:
-            feature_stats = []
-            sort_metric = sort_by.lower()
-            for feat in features:
-                df_feat = df_detail[df_detail["feature"] == feat]
-                if df_feat.empty:
-                    continue
-                df_calc = (
-                    df_feat[df_feat[group_col] == "Total"]
-                    if "Total" in df_feat[group_col].values
-                    else df_feat
-                )
+        sorted_features = sort_batch_features(
+            df_detail,
+            features=features,
+            group_col=group_col,
+            sort_by=sort_by,
+            ascending=ascending,
+        )
 
-                val = 0
-                if sort_metric == 'iv':
-                    val = df_calc['iv_bin'].sum()
-                elif sort_metric == 'ks':
-                    val = df_calc['ks_bin'].max() * 100
-                elif sort_metric == 'auc':
-                    val = df_calc['auc_bin'].sum()
-                    if val < 0.5:
-                        val = 1 - val
-                feature_stats.append({'feature': feat, 'score': val})
-
-            df_stats = pd.DataFrame(feature_stats)
-            if not df_stats.empty:
-                df_stats = df_stats.sort_values(by='score', ascending=ascending)
-                sorted_features = df_stats['feature'].tolist()
-            else:
-                sorted_features = features
-        else:
-            sorted_features = features
-
-
-        # 循环生成每个特征的图表
+        # 批量入口只负责顺序调度，单图渲染继续复用同一个公开入口。
         for feat in sorted_features:
             MarsPlotter.plot_feature_binning_risk_trend(
                 df_detail=df_detail,

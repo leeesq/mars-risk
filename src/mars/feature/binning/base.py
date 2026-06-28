@@ -17,6 +17,11 @@ from mars.compute import (
     ordered_binary_metric_exprs,
 )
 from mars.core.base import MarsTransformer
+from mars.feature.binning._performance import (
+    _finalize_bin_performance_table,
+    _update_woe_cache_from_stats,
+)
+from mars.feature.binning._transform import _build_transform_output_expr
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -767,28 +772,14 @@ class MarsBinnerBase(MarsTransformer):
             else:
                 continue
 
-            # 输出分发
-            if return_type == "index":
-                exprs.append(final_idx_expr.alias(f"{col}_bin"))
-            elif return_type == "woe":
-                woe_map = self.bin_woes_.get(col, {})
-                if woe_map:
-                    # 对旧模型或外部加载映射做一次键类型清洗，避免脏键污染 replace。
-                    clean_woe_map = {
-                        int(k): float(v) for k, v in woe_map.items()
-                        if k is not None and not (isinstance(k, float) and np.isnan(k))
-                    }
-
-                    # 未命中的索引统一记为 0.0，避免原始分箱索引泄露到 WOE 输出。
-                    expr = final_idx_expr.replace_strict(clean_woe_map, default=0.0).cast(pl.Float32)
-                else:
-                    # 如果压根没映射表, 保持原样的全列 0.0
-                    expr = pl.lit(0.0)
-                    logger.warning(f"WOE mapping for column '{col}' not found. Defaulting to 0.0.")
-                exprs.append(expr.alias(f"{col}_woe"))
-            else:
-                str_map = {str(k): v for k, v in self.bin_mappings_.get(col, {}).items()}
-                exprs.append(final_idx_expr.cast(pl.Utf8).replace(str_map).alias(f"{col}_bin"))
+            exprs.append(
+                _build_transform_output_expr(
+                    self,
+                    col=col,
+                    final_idx_expr=final_idx_expr,
+                    return_type=return_type,
+                )
+            )
 
         return X.with_columns(exprs).drop(temp_join_cols).lazy() if lazy else X.with_columns(exprs).drop(temp_join_cols)
 
@@ -1001,81 +992,13 @@ class MarsBinnerBase(MarsTransformer):
         )
 
         if update_woe:
-            woe_data = stats_df.select(["feature", "bin_index", "woe"]).to_dict(
-                as_series=False,
-            )
-            from collections import defaultdict
+            _update_woe_cache_from_stats(self, stats_df)
 
-            temp_woe_map = defaultdict(dict)
-            for f, b, w in zip(
-                woe_data["feature"],
-                woe_data["bin_index"],
-                woe_data["woe"],
-                strict=False,
-            ):
-                if b is not None and not (isinstance(b, float) and np.isnan(b)):
-                    temp_woe_map[f][int(b)] = w
-            self.bin_woes_.update(temp_woe_map)
-
-        mapping_rows = []
-        for col, map_dict in self.bin_mappings_.items():
-            for idx, label in map_dict.items():
-                mapping_rows.append(
-                    {"feature": col, "bin_index": idx, "bin_label": label},
-                )
-
-        if not mapping_rows:
-            return self._format_output(stats_df)
-
-        mapping_df = pl.DataFrame(
-            mapping_rows,
-            schema={
-                "feature": pl.Utf8,
-                "bin_index": pl.Int16,
-                "bin_label": pl.Utf8,
-            },
+        out_df = _finalize_bin_performance_table(
+            self,
+            stats_df,
+            include_bin_index=include_bin_index,
         )
-
-        final_df = (
-            stats_df
-            .join(mapping_df, on=["feature", "bin_index"], how="left")
-            .with_columns((pl.col("bin_index") < 0).alias("_is_special"))
-            .sort(["feature", "_is_special", "bin_index"])
-            .drop("_is_special")
-            .select(
-                [
-                    pl.col("feature"),
-                    *([pl.col("bin_index")] if include_bin_index else []),
-                    pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)),
-                    pl.all().exclude(["feature", "bin_index", "bin_label"]),
-                ]
-            )
-        )
-
-        trend_df = self._build_trend_shape_frame(
-            stats_df.lazy()
-            .filter(pl.col("bin_index") >= 0)
-            .sort(["feature", "bin_index"])
-            .group_by("feature")
-            .agg(pl.col("woe"))
-            .collect(),
-            trend_col_name="trend_shape",
-        )
-
-        final_df = (
-            final_df
-            .join(trend_df, on="feature", how="left")
-            .with_columns(pl.col("trend_shape").fill_null("undefined"))
-        )
-
-        base_cols = ["feature"]
-        if include_bin_index:
-            base_cols.append("bin_index")
-        base_cols.extend(["bin_label", "trend_shape"])
-        other_cols = [c for c in final_df.columns if c not in base_cols]
-
-        out_df = final_df.select(base_cols + other_cols)
-
         return self._format_output(out_df)
 
 

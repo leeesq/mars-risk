@@ -25,29 +25,16 @@ from mars.analysis._evaluation.metrics import (
     ensure_woe_info,
 )
 from mars.analysis._evaluation.references import (
-    build_risk_corr_long,
     build_risk_corr_reference_table,
     empty_risk_corr_reference_table,
 )
-from mars.analysis._evaluation.report_parts import build_binning_trend_tables
+from mars.analysis._evaluation.report_parts import build_binning_report_parts
 from mars.compute import (
     OrderedMetricSortBy,
     RiskCorrBaseline,
-    amount_distribution_exprs,
-    amount_metric_exprs,
-    bad_rate_expr,
-    bin_missing_rate_expr,
-    distribution_rate_expr,
     global_distribution_expr,
     normalize_ordered_metric_sort_by,
     normalize_risk_corr_baseline,
-    normalized_auc_expr,
-    observed_auc_agg_expr,
-    observed_iv_agg_expr,
-    observed_ks_agg_expr,
-    observed_lift_max_agg_expr,
-    observed_lift_min_agg_expr,
-    ordered_count_metric_exprs,
 )
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
@@ -666,21 +653,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
         return pl.concat([retained_default, feature_expected_dist], how="vertical_relaxed")
 
-    @staticmethod
-    def _merge_feature_frame(
-        default_df: pl.DataFrame,
-        override_df: pl.DataFrame | None,
-    ) -> pl.DataFrame:
-        """按 feature 维度用覆盖表替换默认表中的同名特征记录。"""
-        if override_df is None or override_df.is_empty():
-            return default_df
-
-        override_features = override_df.get_column("feature").unique().to_list()
-        retained_default = default_df.filter(
-            ~pl.col("feature").is_in(pl.Series(override_features).implode())
-        )
-        return pl.concat([retained_default, override_df], how="vertical_relaxed")
-
     def _build_feature_start_baseline_reference(
         self,
         *,
@@ -938,41 +910,6 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "feature_start_dates": feature_start_dates,
         }
 
-    def _build_bin_label_map(
-        self,
-        stats_long: pl.DataFrame,
-        *,
-        binner: MarsBinnerBase,
-    ) -> pl.DataFrame:
-        """构建明细报告使用的特征和分箱索引到标签的映射。"""
-        map_rows: list[dict[str, Any]] = []
-        features = set(stats_long["feature"].unique().to_list())
-
-        for feature, mapping in binner.bin_mappings_.items():
-            if feature not in features:
-                continue
-
-            for bin_index, label in mapping.items():
-                try:
-                    map_rows.append(
-                        {
-                            "feature": feature,
-                            "bin_index": int(bin_index),
-                            "bin_label": str(label),
-                        }
-                    )
-                except (ValueError, TypeError):
-                    continue
-
-        map_schema = {
-            "feature": pl.String,
-            "bin_index": pl.Int16,
-            "bin_label": pl.String,
-        }
-        if not map_rows:
-            return pl.DataFrame([], schema=map_schema)
-        return pl.DataFrame(map_rows, schema=map_schema)
-
     def _format_report(
         self,
         stats_long: pl.DataFrame,
@@ -1031,359 +968,38 @@ class MarsBinEvaluator(MarsBaseEstimator):
         MarsBinningReport
             报告容器实例。包含 Summary, Trend, Detail 三张重塑后的报表。
         """
-        map_df = self._build_bin_label_map(stats_long, binner=binner)
-
-        # 分箱标签只在报告层补齐，指标计算阶段始终只依赖稳定的 bin_index。
-        detail_base = (
-            stats_long
-            .join(map_df, on=["feature", "bin_index"], how="left")
-            .with_columns(pl.col("bin_label").fill_null(pl.col("bin_index").cast(pl.Utf8)))
-        )
-        amount_detail_cols = (
-            ["tot_amt", "good_amt", "bad_amt", "avg_amt", "amt_bad_rate", "lift_amt"]
-            if {"tot_amt", "good_amt", "bad_amt"}.issubset(detail_base.columns)
-            else []
-        )
-
-        # 趋势方向只基于 Total 正常箱 WOE 判断，避免跨期噪音影响展示标签。
-        trend_source = (
-            metrics_total
-            .lazy()
-            .filter(pl.col("bin_index") >= 0)
-            .sort(["feature", "bin_index"])
-            .select(["feature", "woe"])
-        )
-
-        from mars.feature.binning.base import MarsBinnerBase
-
-        trend_shape_df = MarsBinnerBase._build_trend_shape_frame(
-            trend_source.group_by("feature").agg(pl.col("woe")).collect(),
-            trend_col_name="trend",
-        )
-        detail_base = detail_base.join(trend_shape_df, on="feature", how="left")
-
-        # 报告展示顺序需要稳定：正常箱按分箱序，Missing/Other/Special 放在正常箱之后。
-        detail_table = (
-            detail_base
-            .with_columns([
-                # 显式 cast 为 Int32，避免 normal/special/total 拼接后排序键类型漂移。
-                pl.when(pl.col("bin_index") >= 0).then(0).otherwise(1).cast(pl.Int32).alias("_sort_group"),
-
-                # 非正常箱使用固定大偏移，保证展示顺序不受真实 bin_index 正负混排影响。
-                # -1（Missing）映射到 10000。
-                # -2（Other）映射到 10001。
-                # 小于 -2（Special）映射到 20000 + abs。
-                pl.when(pl.col("bin_index") >= 0).then(pl.col("bin_index").cast(pl.Int32))
-                  .when(pl.col("bin_index") == -1).then(10000)
-                  .when(pl.col("bin_index") == -2).then(10001)
-                  .otherwise(20000 + pl.col("bin_index").abs().cast(pl.Int32))
-                  .alias("_sort_idx")
-            ])
-            .sort(["feature", group_col, "_sort_group", "_sort_idx"])
-        )
-
-        # 明细表的累积指标按 feature/group 内排序后的箱序计算，用于复核 KS/AUC 过程。
-        detail_table = detail_table.with_columns([
-            *ordered_count_metric_exprs(["feature", group_col]),
-            (pl.col("observed_count") - pl.col("bad")).cum_sum().over(["feature", group_col]).alias("cum_good"),
-            distribution_rate_expr(
-                numerator_col="count",
-                denominator_col="total_count",
-                output_col="pct",
-            ),
-            pl.col("bin_index").max().over(["feature", group_col]).alias("bin_index_max"),
-        ]).with_columns([
-            pl.when(
-                (pl.col("bin_index") == pl.col("bin_index_max")) | (pl.col("bin_index") == 0)
-            )
-            .then(pl.lit("首尾组"))
-            .when(
-                pl.col("bin_index") == -1
-            )
-            .then(pl.lit("空值组"))
-            .when(
-                pl.col("bin_index") == -2
-            )
-            .then(pl.lit("其他组"))
-            .when(
-                pl.col("bin_index") <= -3
-            )
-            .then(pl.lit("特殊组"))
-            .otherwise(pl.lit("正常组"))
-            .alias("bin_type")
-
-        ])
-
-        # 每个 feature/group 额外生成一行 Total，供 Excel、HTML 和图表展示全量分布。
-        total_rows = (
-            stats_long
-            .group_by(["feature", group_col])
-            .agg([
-                pl.col("count").sum().alias("count"),
-                pl.col("observed_count").sum().alias("observed_count"),
-                pl.col("bad").sum().alias("bad"),
-                pl.col("iv_bin").sum().alias("iv_bin"),
-                pl.col("psi_bin").sum().alias("psi_bin"),
-                pl.col("auc_bin").sum().alias("auc_bin"),
-                pl.col("ks_bin").max().alias("ks_bin"),
-                pl.col("lift").max().alias("lift"),
-                pl.col("count").sum().alias("total_count")
-            ])
-            .with_columns([
-                (pl.col("observed_count") - pl.col("bad")).alias("good"),
-                bad_rate_expr(),
-
-                # Total 行代表当前 feature/group 的完整样本，占比固定为 1.0。
-                pl.lit(1.0).alias("pct"),
-
-                # Total 行的累积列等于自身，保持和普通明细行同 schema。
-                pl.col("count").alias("cum_count"),
-                pl.col("observed_count").alias("cum_observed_count"),
-                pl.col("bad").alias("cum_bad"),
-                bad_rate_expr(output_col="cum_bad_rate"),
-
-                # Total 行也做 AUC 方向修正，避免报告层出现小于 0.5 的反向值。
-                normalized_auc_expr(auc_col="auc_bin", output_col="auc_bin"),
-
-                # Total 行使用固定排序键，确保永远排在普通箱和特殊箱之后。
-                pl.lit(9999).cast(pl.Int16).alias("bin_index"),
-                pl.lit("Total").alias("bin_label"),
-
-                pl.lit("汇总组").alias("bin_type"),
-
-                pl.lit(2).cast(pl.Int32).alias("_sort_group"),
-                pl.lit(0).cast(pl.Int32).alias("_sort_idx"),
-            ])
-        )
-
-        # 金额口径只进入 detail 内部表，不扩散到 summary/trend 默认列集。
-        if amount_detail_cols:
-            amount_totals = (
-                stats_long
-                .group_by(["feature", group_col])
-                .agg([
-                    pl.col("count").sum().alias("count"),
-                    pl.col("tot_amt").sum().alias("tot_amt"),
-                    pl.col("good_amt").sum().alias("good_amt"),
-                    pl.col("bad_amt").sum().alias("bad_amt"),
-                ])
-                .with_columns(amount_distribution_exprs(["feature", group_col]))
-                .with_columns(amount_metric_exprs())
-                .select(["feature", group_col] + amount_detail_cols)
-            )
-            total_rows = total_rows.join(
-                amount_totals,
-                on=["feature", group_col],
-                how="left",
-            )
-        total_rows = total_rows.join(trend_shape_df, on="feature", how="left")
-
-        targets = [
-            "feature", group_col, "bin_index", "bin_label", "_sort_group", "_sort_idx",
-            "count", "observed_count", "pct", "bad", "good", "bad_rate", "lift", "trend",
-            "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
-            "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
-            "bin_type"
-        ]
-        if amount_detail_cols:
-            targets.extend(amount_detail_cols)
-
-        # 拼接普通箱和 Total 行后再排序，保证所有输出路径看到同一份明细顺序。
-        detail_table = (
-            pl.concat([
-                detail_table.select(targets),
-                total_rows.select(targets)
-            ])
-            .sort(["feature", group_col, "_sort_group", "_sort_idx"])
-        )
-
-        detail_table = detail_table.select([
-            pl.lit(target_name).alias("y"),
-            "feature", "trend", group_col, "bin_index", "bin_label",
-            "count", "observed_count", "bad", "good", "pct", "bad_rate", "lift",
-            "cum_count", "cum_observed_count", "cum_bad", "cum_bad_rate",
-            "psi_bin", "ks_bin", "auc_bin", "iv_bin", "total_count",
-            "bin_type"
-            ] + amount_detail_cols)
-
-        if feature_source_map:
-            # 数据源字段只作为报告解释维度，不参与任何指标计算。
-            source_df = pl.DataFrame({
-                "feature": list(feature_source_map.keys()),
-                "data_source": [feature_source_map[feature] for feature in feature_source_map],
-            })
-            detail_table = detail_table.join(source_df, on="feature", how="left").with_columns(
-                pl.col("data_source").fill_null("UNMAPPED")
-            )
-
-        # RiskCorr 基准表由上游按 risk_corr_baseline 构造：
-        # 默认 Total；只有显式 first_group 时才使用最早分组。
-        baseline_df = (
+        # 表构造全部下沉到 _evaluation.report_parts，evaluator 只负责输出格式和 report 对象装配。
+        reference_table = (
             risk_corr_reference_table
             if risk_corr_reference_table is not None
-            else pl.DataFrame(
-                schema={
-                    "y": pl.String,
-                    "feature": pl.String,
-                    "bin_index": pl.Int16,
-                    "base_br": pl.Float64,
-                    "source": pl.String,
-                }
-            )
+            else empty_risk_corr_reference_table(target_name)
         )
-        baseline_df = baseline_df.select(["feature", "bin_index", "base_br"])
-
-        monitoring_groups = self._merge_feature_frame(metrics_groups, monitor_metrics_groups)
-        monitoring_total = self._merge_feature_frame(metrics_total, monitor_metrics_total)
-
-        # RC 需要同时覆盖普通分组和 Total 面板，保证汇总表与图表标题口径一致。
-        all_metrics_for_corr = pl.concat([
-            monitoring_groups.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"]),
-            monitoring_total.select(["feature", group_col, "bin_index", "bad_rate", "observed_count"])
-        ])
-
-        risk_corr_long = build_risk_corr_long(
-            all_metrics_for_corr,
-            baseline_df,
+        report_parts = build_binning_report_parts(
+            stats_long=stats_long,
+            metrics_groups=metrics_groups,
+            metrics_total=metrics_total,
             group_col=group_col,
+            monotonicity_df=monotonicity_df,
+            binner=binner,
+            target_name=target_name,
+            feature_source_map=feature_source_map,
+            risk_corr_reference_table=reference_table,
+            monitor_metrics_groups=monitor_metrics_groups,
+            monitor_metrics_total=monitor_metrics_total,
         )
-
-        # summary 的稳定性审计来自分组粒度，保留跨期 PSI、RC、缺失率极值。
-        group_level_metrics = (
-            metrics_groups
-            .group_by(["feature", group_col])
-            .agg([
-                observed_iv_agg_expr(),
-                observed_auc_agg_expr(),
-                bin_missing_rate_expr(missing_bin_index=MarsBinnerBase.IDX_MISSING),
-                observed_lift_max_agg_expr(),
-            ])
-            .with_columns(normalized_auc_expr())
-        )
-        monitor_group_level_metrics = (
-            monitoring_groups
-            .group_by(["feature", group_col])
-            .agg(pl.col("psi_bin").sum().alias("psi"))
-        )
-        group_level_metrics = (
-            group_level_metrics
-            .join(monitor_group_level_metrics, on=["feature", group_col], how="left")
-            .join(risk_corr_long, on=["feature", group_col], how="left")
-        )
-
-        total_missing_metrics = (
-            stats_long
-            .group_by("feature")
-            .agg(bin_missing_rate_expr(missing_bin_index=MarsBinnerBase.IDX_MISSING))
-        )
-
-        total_real_bin_lift_metrics = (
-            metrics_total
-            .filter(pl.col("bin_index") >= 0)
-            .group_by("feature")
-            .agg([
-                observed_lift_min_agg_expr(output_col="lift_min"),
-                observed_lift_max_agg_expr(output_col="lift_max"),
-            ])
-        )
-
-        # summary 的预测力指标来自 Total 口径，避免跨期样本量变化影响全局排序。
-        total_metrics_agg = (
-            metrics_total.group_by("feature")
-            .agg([
-                observed_iv_agg_expr(),
-                observed_ks_agg_expr(),
-                observed_auc_agg_expr(),
-            ])
-            .with_columns(
-                normalized_auc_expr()
-            )
-        )
-
-        if not group_level_metrics.is_empty():
-            summary_audit = (
-                group_level_metrics
-                .group_by("feature")
-                .agg([
-                    pl.col("psi").max().fill_null(0.0).alias("psi_max"),
-                    pl.col("risk_corr").min().fill_null(1.0).alias("rc_min"),
-                    pl.col("missing").min().alias("missing_min"),
-                    pl.col("missing").max().alias("missing_max"),
-                ])
-            )
-        else:
-            # 单点评估没有跨期稳定性审计，使用中性默认值保持 summary schema 稳定。
-            summary_audit = pl.DataFrame({
-                "feature": total_metrics_agg["feature"],
-                "psi_max": [0.0] * len(total_metrics_agg),
-                "rc_min": [1.0] * len(total_metrics_agg),
-                "missing_min": [0.0] * len(total_metrics_agg),
-                "missing_max": [0.0] * len(total_metrics_agg),
-            })
-
-        summary_df = (
-            total_metrics_agg
-            .join(summary_audit, on="feature", how="left")
-            .join(total_missing_metrics, on="feature", how="left")
-            .join(total_real_bin_lift_metrics, on="feature", how="left")
-            .join(monotonicity_df, on="feature", how="left")
-            .with_columns([
-                # 极端空表或单点评估下缺失的审计列统一兜底，避免导出层再做分支。
-                pl.col("psi_max").fill_null(0.0),
-                pl.col("rc_min").fill_null(1.0),
-                pl.col("missing").fill_null(0.0),
-                pl.col("missing_min").fill_null(0.0),
-                pl.col("missing_max").fill_null(0.0),
-                pl.col("mono").fill_null(1.0)
-            ])
-            .sort(["iv", "rc_min"], descending=[True, True])
-            .select([
-                "feature", "iv", "ks", "auc",
-                "psi_max", "rc_min",
-                "lift_min", "lift_max",
-                "missing", "missing_min", "missing_max",
-                "mono"
-            ])
-        )
-
-        if feature_source_map:
-            # summary 中把 data_source 提到 feature 后，便于按来源快速复核筛选结果。
-            source_df = pl.DataFrame({
-                "feature": list(feature_source_map.keys()),
-                "data_source": [feature_source_map[feature] for feature in feature_source_map],
-            })
-            summary_df = summary_df.join(source_df, on="feature", how="left").with_columns(
-                pl.col("data_source").fill_null("UNMAPPED")
-            )
-            summary_df = summary_df.select(
-                ["feature", "data_source"] + [col for col in summary_df.columns if col not in {"feature", "data_source"}]
-            )
-
-        # trend_tables 只负责对外展示的趋势矩阵，底层明细仍保留在 detail_table。
         trend_tables = {
             metric: self._format_output(table)
-            for metric, table in build_binning_trend_tables(
-                stats_long=stats_long,
-                risk_corr_long=risk_corr_long,
-                monitor_group_level_metrics=monitor_group_level_metrics,
-                monitoring_total=monitoring_total,
-                group_col=group_col,
-                missing_bin_index=MarsBinnerBase.IDX_MISSING,
-            ).items()
+            for metric, table in report_parts.trend_tables.items()
         }
 
         return MarsBinningReport(
-            summary_table=self._format_output(summary_df),
+            summary_table=self._format_output(report_parts.summary_table),
             trend_tables=trend_tables,
-            detail_table=self._format_output(detail_table),
+            detail_table=self._format_output(report_parts.detail_table),
             group_col=display_group_col,
             detail_group_col=group_col,
             feature_data_source=feature_source_map or {},
             dt_col=dt_col,
             missing_by_day_table=missing_by_day_table,
-            risk_corr_reference_table=self._format_output(
-                risk_corr_reference_table
-                if risk_corr_reference_table is not None
-                else empty_risk_corr_reference_table(target_name),
-            ),
+            risk_corr_reference_table=self._format_output(report_parts.risk_corr_reference_table),
         )

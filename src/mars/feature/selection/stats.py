@@ -12,6 +12,10 @@ import polars as pl
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
+from mars.feature.selection._stats_fit import (
+    _force_white_list_features,
+    _prepare_fit_context,
+)
 from mars.feature.selection.base import MarsBaseSelector
 from mars.reporting import MarsBinningReport
 from mars.utils.decorators import time_it
@@ -253,46 +257,23 @@ class MarsStatsSelector(MarsBaseSelector):
         if self.skip_rough_scan and self.skip_fine_scan:
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
 
-        self.target = target
-        self.features = features
-        self.feature_data_source = feature_data_source or {}
-        self.time_col = time_col
-        self.profile_by = (time_grain or "month") if time_col else group_col
-        self.white_list = white_list if white_list else []
-        self.black_list = black_list if black_list else []
-        self.max_samples = max_samples
-        self.feature_start_aware_reference = (
-            self.feature_start_aware_reference
-            if feature_start_aware_reference is None
-            else bool(feature_start_aware_reference)
+        fit_context = _prepare_fit_context(
+            self,
+            df,
+            target=target,
+            features=features,
+            feature_data_source=feature_data_source,
+            group_col=group_col,
+            time_col=time_col,
+            time_grain=time_grain,
+            white_list=white_list,
+            black_list=black_list,
+            max_samples=max_samples,
+            feature_start_aware_reference=feature_start_aware_reference,
+            risk_corr_baseline=risk_corr_baseline,
         )
-        self.risk_corr_baseline = normalize_risk_corr_baseline(
-            risk_corr_baseline or self.risk_corr_baseline,
-        )
-
-        X = self._ensure_polars_dataframe(df)
-        self._funnel_stats = []
-        self._feature_iv_dict = {}
-
-        # 初始化候选特征空间，剥离非特征维度
-        exclude_cols = {self.target}
-        if self.time_col:
-            exclude_cols.add(self.time_col)
-        if self.profile_by:
-            exclude_cols.add(self.profile_by)
-
-        candidate_features = [c for c in (self.features if self.features else X.columns)
-                              if c in X.columns and c not in exclude_cols]
-        self._feature_source_map = self._normalize_feature_data_source(candidate_features)
-
-        # 校准白名单，剔除数据集中不存在的幽灵声明
-        valid_white_list = [f for f in self.white_list if f in candidate_features]
-
-        # 应用静态黑名单约束
-        current_features = [c for c in candidate_features if c not in self.black_list]
-        self._record_funnel("Init", "Blacklist & Exclusions",
-                            {"black_list_len": len(self.black_list)},
-                            len(candidate_features), len(current_features))
+        X = fit_context.frame
+        current_features = fit_context.current_features
 
         # 执行数据质量探查
         if current_features:
@@ -376,15 +357,13 @@ class MarsStatsSelector(MarsBaseSelector):
                                 prev_count, len(current_features))
 
         # 执行特征集终态覆盖映射
-        selected_features = list(current_features)
-        selected_set = set(selected_features)
-        for feature in valid_white_list:
-            if feature not in selected_set:
-                selected_features.append(feature)
-                selected_set.add(feature)
+        selected_features = _force_white_list_features(
+            current_features,
+            valid_white_list=fit_context.valid_white_list,
+        )
         self.selected_features_ = selected_features
         self._record_funnel("Final", "White List Forcing",
-                            {"white_list_len": len(valid_white_list)},
+                            {"white_list_len": len(fit_context.valid_white_list)},
                             len(current_features), len(self.selected_features_))
 
         # 触发底层引擎缓存销毁与空间压缩
