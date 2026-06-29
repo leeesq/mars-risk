@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
 import pandas as pd
@@ -17,101 +16,6 @@ from mars.feature.selection.base import MarsBaseSelector
 from mars.reporting import MarsBinningReport
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
-
-
-@dataclass(frozen=True)
-class _StatsSelectorFitContext:
-    """保存统计筛选单次 fit 的初始化结果。"""
-
-    frame: pl.DataFrame
-    candidate_features: list[str]
-    current_features: list[str]
-    valid_white_list: list[str]
-
-
-def _prepare_fit_context(
-    selector: MarsStatsSelector,
-    df: pl.DataFrame | pd.DataFrame,
-    *,
-    target: str,
-    features: list[str] | None,
-    feature_data_source: dict[str, list[str]] | None,
-    group_col: str | None,
-    time_col: str | None,
-    time_grain: str | None,
-    white_list: list[str] | None,
-    black_list: list[str] | None,
-    max_samples: int | None,
-    feature_start_aware_reference: bool | None,
-    risk_corr_baseline: RiskCorrBaseline | None,
-) -> _StatsSelectorFitContext:
-    """初始化单次筛选运行状态并应用静态黑名单。"""
-    selector.target = target
-    selector.features = features
-    selector.feature_data_source = feature_data_source or {}
-    selector.time_col = time_col
-    selector.profile_by = (time_grain or "month") if time_col else group_col
-    selector.white_list = white_list if white_list else []
-    selector.black_list = black_list if black_list else []
-    selector.max_samples = max_samples
-    selector.feature_start_aware_reference = (
-        selector.feature_start_aware_reference
-        if feature_start_aware_reference is None
-        else bool(feature_start_aware_reference)
-    )
-    selector.risk_corr_baseline = normalize_risk_corr_baseline(
-        risk_corr_baseline or selector.risk_corr_baseline,
-    )
-
-    frame = selector._ensure_polars_dataframe(df)
-    selector._funnel_stats = []
-    selector._feature_iv_dict = {}
-
-    exclude_cols = {selector.target}
-    if selector.time_col:
-        exclude_cols.add(selector.time_col)
-    if selector.profile_by:
-        exclude_cols.add(selector.profile_by)
-
-    source_features = selector.features if selector.features else frame.columns
-    candidate_features = [
-        col for col in source_features if col in frame.columns and col not in exclude_cols
-    ]
-    selector._feature_source_map = selector._normalize_feature_data_source(candidate_features)
-    valid_white_list = [
-        feature for feature in selector.white_list if feature in candidate_features
-    ]
-    current_features = [
-        feature for feature in candidate_features if feature not in selector.black_list
-    ]
-    selector._record_funnel(
-        "Init",
-        "Blacklist & Exclusions",
-        {"black_list_len": len(selector.black_list)},
-        len(candidate_features),
-        len(current_features),
-    )
-    return _StatsSelectorFitContext(
-        frame=frame,
-        candidate_features=candidate_features,
-        current_features=current_features,
-        valid_white_list=valid_white_list,
-    )
-
-
-def _force_white_list_features(
-    current_features: list[str],
-    *,
-    valid_white_list: list[str],
-) -> list[str]:
-    """把仍存在于候选空间的白名单特征强制并入最终结果。"""
-    selected_features = list(current_features)
-    selected_set = set(selected_features)
-    for feature in valid_white_list:
-        if feature not in selected_set:
-            selected_features.append(feature)
-            selected_set.add(feature)
-    return selected_features
 
 
 class MarsStatsSelector(MarsBaseSelector):
@@ -349,23 +253,51 @@ class MarsStatsSelector(MarsBaseSelector):
         if self.skip_rough_scan and self.skip_fine_scan:
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
 
-        fit_context = _prepare_fit_context(
-            self,
-            df,
-            target=target,
-            features=features,
-            feature_data_source=feature_data_source,
-            group_col=group_col,
-            time_col=time_col,
-            time_grain=time_grain,
-            white_list=white_list,
-            black_list=black_list,
-            max_samples=max_samples,
-            feature_start_aware_reference=feature_start_aware_reference,
-            risk_corr_baseline=risk_corr_baseline,
+        self.target = target
+        self.features = features
+        self.feature_data_source = feature_data_source or {}
+        self.time_col = time_col
+        self.profile_by = (time_grain or "month") if time_col else group_col
+        self.white_list = white_list if white_list else []
+        self.black_list = black_list if black_list else []
+        self.max_samples = max_samples
+        self.feature_start_aware_reference = (
+            self.feature_start_aware_reference
+            if feature_start_aware_reference is None
+            else bool(feature_start_aware_reference)
         )
-        X = fit_context.frame
-        current_features = fit_context.current_features
+        self.risk_corr_baseline = normalize_risk_corr_baseline(
+            risk_corr_baseline or self.risk_corr_baseline,
+        )
+
+        X = self._ensure_polars_dataframe(df)
+        self._funnel_stats = []
+        self._feature_iv_dict = {}
+
+        exclude_cols = {self.target}
+        if self.time_col:
+            exclude_cols.add(self.time_col)
+        if self.profile_by:
+            exclude_cols.add(self.profile_by)
+
+        source_features = self.features if self.features else X.columns
+        candidate_features = [
+            col for col in source_features if col in X.columns and col not in exclude_cols
+        ]
+        self._feature_source_map = self._normalize_feature_data_source(candidate_features)
+        valid_white_list = [
+            feature for feature in self.white_list if feature in candidate_features
+        ]
+        current_features = [
+            feature for feature in candidate_features if feature not in self.black_list
+        ]
+        self._record_funnel(
+            "Init",
+            "Blacklist & Exclusions",
+            {"black_list_len": len(self.black_list)},
+            len(candidate_features),
+            len(current_features),
+        )
 
         # 执行数据质量探查
         if current_features:
@@ -449,13 +381,15 @@ class MarsStatsSelector(MarsBaseSelector):
                                 prev_count, len(current_features))
 
         # 执行特征集终态覆盖映射
-        selected_features = _force_white_list_features(
-            current_features,
-            valid_white_list=fit_context.valid_white_list,
-        )
+        selected_features = list(current_features)
+        selected_set = set(selected_features)
+        for feature in valid_white_list:
+            if feature not in selected_set:
+                selected_features.append(feature)
+                selected_set.add(feature)
         self.selected_features_ = selected_features
         self._record_funnel("Final", "White List Forcing",
-                            {"white_list_len": len(fit_context.valid_white_list)},
+                            {"white_list_len": len(valid_white_list)},
                             len(current_features), len(self.selected_features_))
 
         # 触发底层引擎缓存销毁与空间压缩

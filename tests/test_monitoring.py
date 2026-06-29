@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 import polars as pl
 import pytest
@@ -12,6 +14,12 @@ from mars.monitoring import (
     MarsMonitoringReport,
     generate_monitoring_alert,
 )
+
+
+def _daily_datetimes(start: str, periods: int) -> list[datetime]:
+    """生成测试用的日频时间，避免 CI 上 pandas date_range 的 C 扩展段错误。"""
+    start_dt = datetime.fromisoformat(start)
+    return [start_dt + timedelta(days=idx) for idx in range(periods)]
 
 
 def _trend_value_columns(table: pl.DataFrame | pd.DataFrame) -> list[str]:
@@ -114,11 +122,11 @@ def test_monitor_supports_lite_opt_binning_with_observed_target_subset() -> None
 
 
 def test_monitor_supports_month_grain_alias_without_group_warning(caplog) -> None:
-    dates = pd.date_range("2024-01-01", periods=40, freq="D")
+    dates = _daily_datetimes("2024-01-01", periods=40)
     score = [idx / 40 for idx in range(40)]
     df = pl.DataFrame(
         {
-            "apply_dt": dates.strftime("%Y-%m-%d").to_list(),
+            "apply_dt": [date.strftime("%Y-%m-%d") for date in dates],
             "score": score,
             "target": [int(value > 0.5) for value in score],
         }

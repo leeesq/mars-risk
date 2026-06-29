@@ -1,5 +1,6 @@
 import importlib
 import warnings
+from datetime import datetime, timedelta
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,12 @@ def _as_pandas(df):
     return df.to_pandas() if isinstance(df, pl.DataFrame) else df.copy()
 
 
+def _daily_datetimes(start: str, periods: int) -> list[datetime]:
+    """生成测试用的日频时间，避免 CI 上 pandas date_range 的 C 扩展段错误。"""
+    start_dt = datetime.fromisoformat(start)
+    return [start_dt + timedelta(days=idx) for idx in range(periods)]
+
+
 def test_reporting_public_exports_are_the_only_report_class_surface() -> None:
     """报告类只通过 reporting 与顶层包导出。"""
     assert mars.reporting.__all__ == [
@@ -50,8 +57,8 @@ def _profile_risk_report(*args, **kwargs):
 
 def _make_exact_start_aware_monthly_df() -> pl.DataFrame:
     rows = []
-    for day in pd.date_range("2018-01-01", periods=100, freq="D"):
-        if day < pd.Timestamp("2018-02-15"):
+    for day in _daily_datetimes("2018-01-01", periods=100):
+        if day < datetime(2018, 2, 15):
             for _ in range(40):
                 rows.append({"dt": day, "EXT_SOURCE_1": None, "target": 0})
         else:
@@ -443,11 +450,11 @@ def test_binning_type_opt_alias_is_removed(sample_credit_df):
 
 @pytest.mark.parametrize("time_grain", ["1d", "1w", "2w", "1m", "2m"])
 def test_profile_risk_time_grain_aliases_do_not_warn(time_grain, caplog):
-    dates = pd.date_range("2024-01-01", periods=90, freq="D")
+    dates = _daily_datetimes("2024-01-01", periods=90)
     x = np.linspace(0.0, 1.0, len(dates))
     df = pl.DataFrame(
         {
-            "apply_dt": dates.strftime("%Y-%m-%d").to_list(),
+            "apply_dt": [date.strftime("%Y-%m-%d") for date in dates],
             "x": x,
             "target": (x > 0.5).astype(int),
         }
@@ -1232,7 +1239,7 @@ def test_feature_data_source_rejects_features_outside_active_feature_set(sample_
 
 def test_evaluator_generates_missing_by_day_table_when_dt_col_is_provided(sample_credit_df):
     df = sample_credit_df.with_columns(
-        pl.Series("biz_dt", pd.date_range("2024-01-01", periods=sample_credit_df.height, freq="D"))
+        pl.Series("biz_dt", _daily_datetimes("2024-01-01", periods=sample_credit_df.height))
     )
 
     report, _ = _profile_risk_report(
@@ -1279,7 +1286,7 @@ def test_summary_table_includes_missing_and_lift_monitor_columns(sample_credit_d
 
 def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(sample_credit_df, caplog):
     df = sample_credit_df.with_columns(
-        pl.Series("biz_dt", pd.date_range("2024-01-01", periods=sample_credit_df.height, freq="D"))
+        pl.Series("biz_dt", _daily_datetimes("2024-01-01", periods=sample_credit_df.height))
     )
 
     report, _ = _profile_risk_report(

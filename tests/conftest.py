@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+
+def _daily_datetimes(start: str, periods: int) -> list[datetime]:
+    """生成测试用的日频时间，避免 CI 上 pandas date_range 的 C 扩展段错误。"""
+    start_dt = datetime.fromisoformat(start)
+    return [start_dt + timedelta(days=idx) for idx in range(periods)]
 
 
 @pytest.fixture
@@ -58,18 +65,18 @@ def sample_credit_pd(sample_credit_df: pl.DataFrame) -> pd.DataFrame:
 def feature_start_aware_df() -> pl.DataFrame:
     rows = []
 
-    for day in pd.date_range("2024-01-01", periods=3, freq="D"):
+    for day in _daily_datetimes("2024-01-01", periods=3):
         for _ in range(99):
             rows.append({"biz_dt": day, "segment": "PRE", "x": None, "target": 0})
         rows.append({"biz_dt": day, "segment": "PRE", "x": 0.0, "target": 0})
 
-    for day in pd.date_range("2024-02-15", periods=3, freq="D"):
+    for day in _daily_datetimes("2024-02-15", periods=3):
         for _ in range(10):
             rows.append({"biz_dt": day, "segment": "ACTIVE_A", "x": 0.0, "target": 0})
         for _ in range(10):
             rows.append({"biz_dt": day, "segment": "ACTIVE_A", "x": 1.0, "target": 1})
 
-    for day in pd.date_range("2024-03-15", periods=3, freq="D"):
+    for day in _daily_datetimes("2024-03-15", periods=3):
         for _ in range(10):
             rows.append({"biz_dt": day, "segment": "ACTIVE_B", "x": 0.0, "target": 0})
         for _ in range(10):
@@ -89,7 +96,7 @@ def sample_modeling_pd() -> pd.DataFrame:
     ]
 
     for split_name, size, start_date, drift in split_specs:
-        dates = pd.date_range(start_date, periods=size, freq="D")
+        dates = _daily_datetimes(start_date, periods=size)
         for idx in range(size):
             x1 = rng.normal(loc=drift, scale=1.0)
             x2 = rng.normal(loc=0.0, scale=1.1)
