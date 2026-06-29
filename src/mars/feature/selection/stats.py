@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 
 import pandas as pd
@@ -12,14 +13,105 @@ import polars as pl
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
-from mars.feature.selection._stats_fit import (
-    _force_white_list_features,
-    _prepare_fit_context,
-)
 from mars.feature.selection.base import MarsBaseSelector
 from mars.reporting import MarsBinningReport
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
+
+
+@dataclass(frozen=True)
+class _StatsSelectorFitContext:
+    """保存统计筛选单次 fit 的初始化结果。"""
+
+    frame: pl.DataFrame
+    candidate_features: list[str]
+    current_features: list[str]
+    valid_white_list: list[str]
+
+
+def _prepare_fit_context(
+    selector: MarsStatsSelector,
+    df: pl.DataFrame | pd.DataFrame,
+    *,
+    target: str,
+    features: list[str] | None,
+    feature_data_source: dict[str, list[str]] | None,
+    group_col: str | None,
+    time_col: str | None,
+    time_grain: str | None,
+    white_list: list[str] | None,
+    black_list: list[str] | None,
+    max_samples: int | None,
+    feature_start_aware_reference: bool | None,
+    risk_corr_baseline: RiskCorrBaseline | None,
+) -> _StatsSelectorFitContext:
+    """初始化单次筛选运行状态并应用静态黑名单。"""
+    selector.target = target
+    selector.features = features
+    selector.feature_data_source = feature_data_source or {}
+    selector.time_col = time_col
+    selector.profile_by = (time_grain or "month") if time_col else group_col
+    selector.white_list = white_list if white_list else []
+    selector.black_list = black_list if black_list else []
+    selector.max_samples = max_samples
+    selector.feature_start_aware_reference = (
+        selector.feature_start_aware_reference
+        if feature_start_aware_reference is None
+        else bool(feature_start_aware_reference)
+    )
+    selector.risk_corr_baseline = normalize_risk_corr_baseline(
+        risk_corr_baseline or selector.risk_corr_baseline,
+    )
+
+    frame = selector._ensure_polars_dataframe(df)
+    selector._funnel_stats = []
+    selector._feature_iv_dict = {}
+
+    exclude_cols = {selector.target}
+    if selector.time_col:
+        exclude_cols.add(selector.time_col)
+    if selector.profile_by:
+        exclude_cols.add(selector.profile_by)
+
+    source_features = selector.features if selector.features else frame.columns
+    candidate_features = [
+        col for col in source_features if col in frame.columns and col not in exclude_cols
+    ]
+    selector._feature_source_map = selector._normalize_feature_data_source(candidate_features)
+    valid_white_list = [
+        feature for feature in selector.white_list if feature in candidate_features
+    ]
+    current_features = [
+        feature for feature in candidate_features if feature not in selector.black_list
+    ]
+    selector._record_funnel(
+        "Init",
+        "Blacklist & Exclusions",
+        {"black_list_len": len(selector.black_list)},
+        len(candidate_features),
+        len(current_features),
+    )
+    return _StatsSelectorFitContext(
+        frame=frame,
+        candidate_features=candidate_features,
+        current_features=current_features,
+        valid_white_list=valid_white_list,
+    )
+
+
+def _force_white_list_features(
+    current_features: list[str],
+    *,
+    valid_white_list: list[str],
+) -> list[str]:
+    """把仍存在于候选空间的白名单特征强制并入最终结果。"""
+    selected_features = list(current_features)
+    selected_set = set(selected_features)
+    for feature in valid_white_list:
+        if feature not in selected_set:
+            selected_features.append(feature)
+            selected_set.add(feature)
+    return selected_features
 
 
 class MarsStatsSelector(MarsBaseSelector):
