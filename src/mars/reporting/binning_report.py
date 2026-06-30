@@ -1,6 +1,7 @@
 """分箱评估报告对象。"""
 
-from typing import Any, Dict, List, Literal, Tuple, Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,10 @@ from mars.compute import RiskCorrBaseline, to_pandas_frame
 from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
+from mars.reporting._types import MarsHtmlRenderResult
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 
 class MarsBinningReport:
@@ -369,6 +374,257 @@ class MarsBinningReport:
             include_charts=include_charts,
         )
 
+    def build_risk_trend_figures(
+        self,
+        features: str | List[str] | None = None,
+        *,
+        target: str | List[str] | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
+        sort_by: str = "iv",
+        ascending: bool = False,
+        max_plots: int = 20,
+        dpi: int = 150,
+    ) -> list["Figure"]:
+        """
+        构建风险趋势图对象。
+
+        Parameters
+        ----------
+        features : str | List[str] | None
+            需要绘图的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
+        target : str | List[str] | None
+            多目标报告下需要生成的目标列名。传入 ``None`` 时生成全部目标。
+        risk_corr_baseline : RiskCorrBaseline | None
+            绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        sort_by : str
+            未显式指定 ``features`` 时的特征排序字段。
+        ascending : bool
+            是否按 ``sort_by`` 升序选择特征。
+        max_plots : int
+            未显式指定 ``features`` 时最多生成的特征数量。
+        dpi : int
+            设置到返回 figure 上的图像分辨率。
+
+        Returns
+        -------
+        list[Figure]
+            Matplotlib 图对象列表。调用方负责在不再使用后关闭 figure。
+
+        Raises
+        ------
+        ValueError
+            当报告明细为空、分组列缺失、目标不存在或风险线模式无效时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> report = MarsBinningReport(pl.DataFrame({"feature": ["age"], "iv": [0.1]}), {}, pl.DataFrame())
+        >>> callable(report.build_risk_trend_figures)
+        True
+        """
+        try:
+            return _BinningPlotRenderer(self).build_risk_trend_figures(
+                features=features,
+                target=target,
+                risk_corr_baseline=risk_corr_baseline,
+                show_risk=show_risk,
+                sort_by=sort_by,
+                ascending=ascending,
+                max_plots=max_plots,
+                dpi=dpi,
+            )
+        except ValueError:
+            raise
+
+    def save_risk_trend_images(
+        self,
+        output_dir: str | Path,
+        features: str | List[str] | None = None,
+        *,
+        target: str | List[str] | None = None,
+        image_format: Literal["svg", "png"] = "svg",
+        filename_prefix: str = "risk_trend",
+        overwrite: bool = True,
+        dpi: int = 150,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
+        sort_by: str = "iv",
+        ascending: bool = False,
+        max_plots: int = 20,
+    ) -> list[Path]:
+        """
+        保存风险趋势图为图片文件。
+
+        Parameters
+        ----------
+        output_dir : str | Path
+            图片输出目录；目录不存在时会自动创建。
+        features : str | List[str] | None
+            需要绘图的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
+        target : str | List[str] | None
+            多目标报告下需要保存的目标列名。传入 ``None`` 时保存全部目标。
+        image_format : Literal["svg", "png"]
+            输出图片格式。
+        filename_prefix : str
+            输出文件名前缀。
+        overwrite : bool
+            当目标文件已存在时是否覆盖。为 ``False`` 时抛出 ``FileExistsError``。
+        dpi : int
+            PNG 输出分辨率。
+        risk_corr_baseline : RiskCorrBaseline | None
+            绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        sort_by : str
+            未显式指定 ``features`` 时的特征排序字段。
+        ascending : bool
+            是否按 ``sort_by`` 升序选择特征。
+        max_plots : int
+            未显式指定 ``features`` 时最多保存的特征数量。
+
+        Returns
+        -------
+        list[Path]
+            已写出的图片路径列表。
+
+        Raises
+        ------
+        FileExistsError
+            当 ``overwrite=False`` 且目标文件已存在时抛出。
+        ValueError
+            当图像格式、报告明细、分组列或目标参数无效时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> report = MarsBinningReport(pl.DataFrame({"feature": ["age"], "iv": [0.1]}), {}, pl.DataFrame())
+        >>> callable(report.save_risk_trend_images)
+        True
+        """
+        try:
+            return _BinningPlotRenderer(self).save_risk_trend_images(
+                output_dir=output_dir,
+                features=features,
+                target=target,
+                image_format=image_format,
+                filename_prefix=filename_prefix,
+                overwrite=overwrite,
+                dpi=dpi,
+                risk_corr_baseline=risk_corr_baseline,
+                show_risk=show_risk,
+                sort_by=sort_by,
+                ascending=ascending,
+                max_plots=max_plots,
+            )
+        except (FileExistsError, ValueError):
+            raise
+
+    def render_risk_trends_html(
+        self,
+        features: str | List[str] | None = None,
+        *,
+        target: str | List[str] | None = None,
+        image_format: Literal["svg", "png"] = "svg",
+        embed_mode: Literal["inline", "asset"] = "inline",
+        output_dir: str | Path | None = None,
+        relative_to: str | Path | None = None,
+        include_title: bool = True,
+        include_caption: bool = True,
+        return_figures: bool = False,
+        dpi: int = 150,
+        filename_prefix: str = "risk_trend",
+        overwrite: bool = True,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+        show_risk: Literal["count", "amt", "both"] = "both",
+        sort_by: str = "iv",
+        ascending: bool = False,
+        max_plots: int = 20,
+    ) -> MarsHtmlRenderResult:
+        """
+        渲染可嵌入外部 HTML 报告的风险趋势图片段。
+
+        Parameters
+        ----------
+        features : str | List[str] | None
+            需要渲染的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
+        target : str | List[str] | None
+            多目标报告下需要渲染的目标列名。传入 ``None`` 时渲染全部目标。
+        image_format : Literal["svg", "png"]
+            图片格式。``"svg"`` 可直接内嵌 XML，``"png"`` 可生成 data URI 或资产文件。
+        embed_mode : Literal["inline", "asset"]
+            HTML 嵌入模式。``"inline"`` 生成单文件片段，``"asset"`` 写出图片并引用路径。
+        output_dir : str | Path | None
+            ``embed_mode="asset"`` 时的图片输出目录。
+        relative_to : str | Path | None
+            asset 模式下计算 ``img src`` 相对路径的基准目录。
+        include_title : bool
+            是否在片段中包含标题。
+        include_caption : bool
+            是否为每张图包含 target 和 feature 说明。
+        return_figures : bool
+            是否在结果中返回 Matplotlib figure。为 ``True`` 时调用方负责关闭 figure。
+        dpi : int
+            PNG 输出分辨率。
+        filename_prefix : str
+            asset 模式下的输出文件名前缀。
+        overwrite : bool
+            asset 模式下目标文件已存在时是否覆盖。
+        risk_corr_baseline : RiskCorrBaseline | None
+            绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
+        show_risk : Literal["count", "amt", "both"]
+            风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        sort_by : str
+            未显式指定 ``features`` 时的特征排序字段。
+        ascending : bool
+            是否按 ``sort_by`` 升序选择特征。
+        max_plots : int
+            未显式指定 ``features`` 时最多渲染的特征数量。
+
+        Returns
+        -------
+        MarsHtmlRenderResult
+            HTML 片段、写出的资产路径和可选 figure 列表。
+
+        Raises
+        ------
+        FileExistsError
+            当 asset 模式下 ``overwrite=False`` 且目标文件已存在时抛出。
+        ValueError
+            当嵌入模式、图像格式、报告明细、分组列或目标参数无效时抛出。
+
+        Examples
+        --------
+        >>> import polars as pl
+        >>> report = MarsBinningReport(pl.DataFrame({"feature": ["age"], "iv": [0.1]}), {}, pl.DataFrame())
+        >>> callable(report.render_risk_trends_html)
+        True
+        """
+        try:
+            return _BinningPlotRenderer(self).render_risk_trends_html(
+                features=features,
+                target=target,
+                image_format=image_format,
+                embed_mode=embed_mode,
+                output_dir=output_dir,
+                relative_to=relative_to,
+                include_title=include_title,
+                include_caption=include_caption,
+                return_figures=return_figures,
+                dpi=dpi,
+                filename_prefix=filename_prefix,
+                overwrite=overwrite,
+                risk_corr_baseline=risk_corr_baseline,
+                show_risk=show_risk,
+                sort_by=sort_by,
+                ascending=ascending,
+                max_plots=max_plots,
+            )
+        except (FileExistsError, ValueError):
+            raise
+
     def plot_risk_trends(
         self,
         features: str | List[str] | None = None,
@@ -380,7 +636,8 @@ class MarsBinningReport:
         ascending: bool = False,
         max_plots: int = 20,
         dpi: int = 150,
-    ) -> None:
+        return_figures: bool = False,
+    ) -> list["Figure"] | None:
         """
         直接展示分箱风险趋势图。
 
@@ -402,11 +659,13 @@ class MarsBinningReport:
             未显式指定 ``features`` 时最多展示的特征数量。
         dpi : int
             图像显示分辨率。
+        return_figures : bool
+            是否返回 Matplotlib figure。为 ``True`` 时调用方负责关闭 figure。
 
         Returns
         -------
-        None
-            图像会直接显示在当前交互环境中。
+        list[Figure] or None
+            默认返回 ``None`` 并关闭展示用图像；``return_figures=True`` 时返回 figure 列表。
 
         Raises
         ------
@@ -421,7 +680,7 @@ class MarsBinningReport:
         True
         """
         try:
-            _BinningPlotRenderer(self).plot_risk_trends(
+            return _BinningPlotRenderer(self).plot_risk_trends(
                 features=features,
                 target=target,
                 risk_corr_baseline=risk_corr_baseline,
@@ -430,6 +689,7 @@ class MarsBinningReport:
                 ascending=ascending,
                 max_plots=max_plots,
                 dpi=dpi,
+                return_figures=return_figures,
             )
         except ValueError:
             raise

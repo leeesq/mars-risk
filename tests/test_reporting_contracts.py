@@ -8,10 +8,11 @@ import polars as pl
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
 
-from mars.reporting import MarsBinningReport, MarsProfileReport
+from mars.reporting import MarsBinningReport, MarsHtmlRenderResult, MarsProfileReport
 from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
+from mars.reporting._matplotlib import ensure_matplotlib_environment, require_pyplot
 from mars.reporting._profile_excel import _ProfileExcelWriter
 
 
@@ -114,6 +115,9 @@ def test_report_objects_delegate_to_internal_renderers() -> None:
 
     assert callable(binning_report.write_excel)
     assert callable(binning_report.write_html)
+    assert callable(binning_report.build_risk_trend_figures)
+    assert callable(binning_report.save_risk_trend_images)
+    assert callable(binning_report.render_risk_trends_html)
     assert callable(binning_report.plot_risk_trends)
     assert callable(profile_report.write_excel)
 
@@ -153,20 +157,173 @@ def test_binning_report_excel_uses_template_columns_only(tmp_path) -> None:
         output_workbook.close()
 
 
-def test_binning_report_plot_entry_uses_reporting_plotter(monkeypatch) -> None:
-    """绘图公开入口必须继续由 report 对象统一转调。"""
+def test_binning_report_plot_entry_uses_shared_figure_builder(monkeypatch) -> None:
+    """绘图公开入口必须复用共享 figure builder。"""
     report = _sample_binning_report()
     captured: dict[str, object] = {}
+    pyplot = require_pyplot(feature_name="test")
+    fig = pyplot.figure()
 
-    def fake_plot_feature_binning_risk_trend_batch(**kwargs: object) -> None:
+    def fake_build_feature_binning_risk_figure(**kwargs: object):
         captured.update(kwargs)
+        return fig
+
+    def fake_display_figure(figure, *, dpi: int, close: bool) -> None:
+        captured["displayed_figure"] = figure
+        captured["dpi"] = dpi
+        captured["close"] = close
 
     monkeypatch.setattr(
-        "mars.reporting._binning_plot.MarsPlotter.plot_feature_binning_risk_trend_batch",
-        fake_plot_feature_binning_risk_trend_batch,
+        "mars.reporting._binning_plot.MarsPlotter._build_feature_binning_risk_figure",
+        staticmethod(fake_build_feature_binning_risk_figure),
+    )
+    monkeypatch.setattr(_BinningPlotRenderer, "_display_figure", staticmethod(fake_display_figure))
+
+    result = report.plot_risk_trends(features="income", show_risk="both", max_plots=1, dpi=90)
+
+    assert result is None
+    assert captured["feature"] == "income"
+    assert captured["group_col"] == "mars_group"
+    assert captured["target_name"] == "target"
+    assert captured["show_risk"] == "both"
+    assert captured["displayed_figure"] is fig
+    assert captured["dpi"] == 90
+    assert captured["close"] is True
+    pyplot.close(fig)
+
+
+def test_binning_report_build_save_and_render_risk_trends(tmp_path) -> None:
+    """风险趋势图 public API 支持 build、save 和 HTML fragment 渲染。"""
+    report = _sample_binning_report()
+    pyplot = require_pyplot(feature_name="test")
+
+    figures = report.build_risk_trend_figures(features="income", dpi=90)
+    try:
+        assert len(figures) == 1
+        assert figures[0].dpi == 90
+    finally:
+        for figure in figures:
+            pyplot.close(figure)
+
+    asset_dir = tmp_path / "report" / "assets"
+    svg_assets = report.save_risk_trend_images(
+        asset_dir,
+        features="income",
+        image_format="svg",
+        filename_prefix="risk",
+    )
+    png_assets = report.save_risk_trend_images(
+        asset_dir,
+        features="income",
+        image_format="png",
+        filename_prefix="risk_png",
     )
 
-    report.plot_risk_trends(features="income", show_risk="both", max_plots=1)
+    assert svg_assets[0].name == "risk_001_target_income.svg"
+    assert svg_assets[0].read_text(encoding="utf-8").lstrip().startswith("<?xml")
+    assert png_assets[0].suffix == ".png"
 
-    assert captured["features"] == ["income"]
-    assert captured["show_risk"] == "both"
+    try:
+        report.save_risk_trend_images(
+            asset_dir,
+            features="income",
+            image_format="svg",
+            filename_prefix="risk",
+            overwrite=False,
+        )
+    except FileExistsError as exc:
+        assert "risk_001_target_income.svg" in str(exc)
+    else:
+        raise AssertionError("overwrite=False should reject an existing asset")
+
+    inline_svg = report.render_risk_trends_html(
+        features="income",
+        image_format="svg",
+        embed_mode="inline",
+    )
+    assert isinstance(inline_svg, MarsHtmlRenderResult)
+    assert '<div class="mars-risk-trends">' in inline_svg.html
+    assert "<svg" in inline_svg.html
+    assert "<html" not in inline_svg.html.lower()
+    assert "<body" not in inline_svg.html.lower()
+    assert inline_svg.assets == []
+    assert inline_svg.figures is None
+
+    inline_png = report.render_risk_trends_html(
+        features="income",
+        image_format="png",
+        embed_mode="inline",
+        include_title=False,
+        include_caption=False,
+    )
+    assert "data:image/png;base64," in inline_png.html
+
+    asset_result = report.render_risk_trends_html(
+        features="income",
+        image_format="svg",
+        embed_mode="asset",
+        output_dir=asset_dir,
+        relative_to=tmp_path / "report",
+        filename_prefix="asset",
+    )
+    assert asset_result.assets[0].name == "asset_001_target_income.svg"
+    assert 'src="assets/asset_001_target_income.svg"' in asset_result.html
+
+
+def test_binning_report_render_can_return_figures() -> None:
+    """HTML 渲染可选返回未关闭的 figure，供调用方继续加工。"""
+    report = _sample_binning_report()
+    pyplot = require_pyplot(feature_name="test")
+
+    result = report.render_risk_trends_html(
+        features="income",
+        image_format="png",
+        embed_mode="inline",
+        return_figures=True,
+    )
+    try:
+        assert result.figures is not None
+        assert len(result.figures) == 1
+        assert result.figures[0].number in pyplot.get_fignums()
+    finally:
+        for figure in result.figures or []:
+            pyplot.close(figure)
+
+
+def test_binning_report_plot_can_return_figures(monkeypatch) -> None:
+    """plot_risk_trends 兼容旧返回值，并可选返回未关闭 figure。"""
+    report = _sample_binning_report()
+    pyplot = require_pyplot(feature_name="test")
+    captured: dict[str, object] = {}
+
+    def fake_display_figure(figure, *, dpi: int, close: bool) -> None:
+        captured["figure"] = figure
+        captured["dpi"] = dpi
+        captured["close"] = close
+
+    monkeypatch.setattr(_BinningPlotRenderer, "_display_figure", staticmethod(fake_display_figure))
+
+    figures = report.plot_risk_trends(features="income", return_figures=True, dpi=120)
+    try:
+        assert figures is not None
+        assert len(figures) == 1
+        assert captured["figure"] is figures[0]
+        assert captured["dpi"] == 120
+        assert captured["close"] is False
+    finally:
+        for figure in figures or []:
+            pyplot.close(figure)
+
+
+def test_matplotlib_environment_prepares_config_dir(monkeypatch, tmp_path) -> None:
+    """Matplotlib 初始化 helper 会准备可写配置目录。"""
+    monkeypatch.delenv("MPLCONFIGDIR", raising=False)
+    monkeypatch.delenv("MPLBACKEND", raising=False)
+
+    resolved = ensure_matplotlib_environment()
+    probe = resolved / "probe.txt"
+    probe.write_text("ok", encoding="utf-8")
+
+    assert resolved.exists()
+    assert resolved.name == "mars-risk-matplotlib"
+    assert probe.read_text(encoding="utf-8") == "ok"

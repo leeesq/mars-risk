@@ -44,6 +44,30 @@ eval_report.write_html("mars_evaluation.html")
 
 基础安装已经包含 Excel/HTML 报表导出和绘图报告依赖。
 
+## 风险趋势图组件
+
+`MarsBinningReport` 支持把风险趋势图单独作为组件取出，供 Notebook、外部模型报告或多文件 HTML 报告复用：
+
+```python
+figures = eval_report.build_risk_trend_figures(features=["income"])
+
+fragment = eval_report.render_risk_trends_html(
+    features=["income"],
+    image_format="svg",
+    embed_mode="inline",
+)
+
+asset_fragment = eval_report.render_risk_trends_html(
+    features=["income"],
+    image_format="svg",
+    embed_mode="asset",
+    output_dir="report/assets",
+    relative_to="report",
+)
+```
+
+`fragment.html` 是 HTML 片段，不包含完整的 `html` 或 `body` 标签；asset 模式会在 `asset_fragment.assets` 中返回写出的图片路径。
+
 ## 评分卡与 SQL
 
 评分卡链路支持从逻辑回归模型和 WOE 分箱结果生成分数映射，并导出 SQL 规则。

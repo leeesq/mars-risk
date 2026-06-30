@@ -158,6 +158,26 @@ risk_profile.report.write_excel("risk_report.xlsx", engine="openpyxl")
 risk_profile.report.write_html("risk_report.html")
 ```
 
+风险趋势图不必只能通过完整报告查看，也可以单独生成 figure、图片或 HTML fragment：
+
+```python
+figures = risk_profile.report.build_risk_trend_figures(features=["income"])
+
+fragment = risk_profile.report.render_risk_trends_html(
+    features=["income"],
+    image_format="svg",
+    embed_mode="inline",
+)
+
+asset_fragment = risk_profile.report.render_risk_trends_html(
+    features=["income"],
+    image_format="svg",
+    embed_mode="asset",
+    output_dir="report/assets",
+    relative_to="report",
+)
+```
+
 | 表 | 用途 |
 | --- | --- |
 | `summary_table` | 特征级指标汇总，用于排序、筛选和报告首页 |

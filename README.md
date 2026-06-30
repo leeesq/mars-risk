@@ -451,6 +451,26 @@ eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
 eval_report.write_html("mars_evaluation.html")
 ```
 
+`MarsBinningReport` 也可以作为报告组件库使用，单独生成风险趋势图对象、图片资产或可嵌入外部 HTML 的 fragment：
+
+```python
+fragment = eval_report.render_risk_trends_html(
+    features=["income", "utilization"],
+    image_format="svg",
+    embed_mode="inline",
+)
+
+model_report_html = f"<section>{fragment.html}</section>"
+
+asset_fragment = eval_report.render_risk_trends_html(
+    features=["income"],
+    image_format="svg",
+    embed_mode="asset",
+    output_dir="report/assets",
+    relative_to="report",
+)
+```
+
 评分卡链路支持从逻辑回归模型和 WOE 分箱结果生成分数映射，并导出 SQL 规则。
 
 ## 公开 API 概览

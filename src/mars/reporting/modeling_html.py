@@ -12,12 +12,12 @@ import pandas as pd
 
 from mars.compute import to_pandas_table
 from mars.modeling.contracts.report import MarsModelingReport
+from mars.reporting._matplotlib import require_pyplot
 from mars.utils.html import (
     escape_html_value,
     flatten_columns,
     format_html_value,
 )
-from mars.utils.imports import optional_import as _optional_import
 
 
 class _ModelReportHtmlRenderer:
@@ -172,24 +172,14 @@ class _ModelReportHtmlRenderer:
         fig.savefig(buffer, format="png", bbox_inches="tight", dpi=dpi)
         buffer.seek(0)
         encoded = base64.b64encode(buffer.read()).decode("ascii")
-        matplotlib = _optional_import("matplotlib.pyplot")
-        if matplotlib is not None:
-            matplotlib.close(fig)
+        pyplot = require_pyplot(feature_name="MarsModelingReport.to_html()")
+        pyplot.close(fig)
         return f'<img class="mars-chart-img" src="data:image/png;base64,{encoded}" alt="MARS model chart" />'
 
     @staticmethod
     def _require_pyplot() -> Any:
         """加载 Matplotlib pyplot，缺失基础依赖时抛出可行动错误。"""
-        matplotlib = _optional_import("matplotlib")
-        if matplotlib is not None:
-            matplotlib.use("Agg", force=True)
-        plt = _optional_import("matplotlib.pyplot")
-        if plt is None:
-            raise ImportError(
-                "matplotlib is required for MarsModelingReport.to_html(). "
-                "It is included in the base mars-risk installation; reinstall mars-risk if missing."
-            )
-        return plt
+        return require_pyplot(feature_name="MarsModelingReport.to_html()")
 
     def _line_chart(
         self,

@@ -40,12 +40,14 @@ def test_reporting_public_exports_are_the_only_report_class_surface() -> None:
     assert mars.reporting.__all__ == [
         "MarsProfileReport",
         "MarsBinningReport",
+        "MarsHtmlRenderResult",
         "ProfileData",
     ]
     assert "MarsBinningReport" not in mars.analysis.__all__
     assert "MarsProfileReport" not in mars.analysis.__all__
     assert "MarsBinningReport" in mars.__all__
     assert "MarsProfileReport" in mars.__all__
+    assert "MarsHtmlRenderResult" not in mars.__all__
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("mars.analysis.report")
 
@@ -155,50 +157,30 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
 
     captured: dict[str, Any] = {}
 
-    def _fake_batch(
-        df_detail: pd.DataFrame | pl.DataFrame,
-        features: list[str],
-        group_col: str = "month",
-        target_name: str = "Target",
-        target_key: str | None = None,
-        dpi: int = 150,
-        show_risk: str = "both",
-        sort_by: str = "iv",
-        ascending: bool = False,
-        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
-        risk_corr_baseline: str = "total",
-    ) -> None:
-        captured["df_detail"] = df_detail
-        captured["features"] = features
-        captured["group_col"] = group_col
-        captured["target_name"] = target_name
-        captured["target_key"] = target_key
-        captured["dpi"] = dpi
-        captured["show_risk"] = show_risk
-        captured["sort_by"] = sort_by
-        captured["ascending"] = ascending
-        captured["risk_corr_reference_df"] = risk_corr_reference_df
-        captured["risk_corr_baseline"] = risk_corr_baseline
+    fig = plt.figure()
+
+    def _fake_build_feature_binning_risk_figure(**kwargs: Any):
+        captured.update(kwargs)
+        return fig
 
     monkeypatch.setattr(
         MarsPlotter,
-        "plot_feature_binning_risk_trend_batch",
-        staticmethod(_fake_batch),
+        "_build_feature_binning_risk_figure",
+        staticmethod(_fake_build_feature_binning_risk_figure),
     )
 
-    run.report.plot_risk_trends(features="income", dpi=90)
+    figures = run.report.build_risk_trend_figures(features="income", dpi=90)
 
     assert run.report.group_col == "month"
     assert run.report.detail_group_col == "mars_group"
-    assert captured["features"] == ["income"]
+    assert figures == [fig]
+    assert figures[0].dpi == 90
+    assert captured["feature"] == "income"
     assert captured["group_col"] == "mars_group"
     assert captured["target_name"] == "target"
-    assert captured["target_key"] == "target"
-    assert captured["dpi"] == 90
     assert captured["show_risk"] == "both"
-    assert captured["sort_by"] == ""
-    assert captured["risk_corr_baseline"] == "total"
     assert captured["risk_corr_reference_df"] is not None
+    plt.close(fig)
 
 
 def test_binning_report_plot_risk_trends_supports_multi_target_filter(
@@ -219,55 +201,34 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
 
     calls: list[dict[str, Any]] = []
 
-    def _fake_batch(
-        df_detail: pd.DataFrame | pl.DataFrame,
-        features: list[str],
-        group_col: str = "month",
-        target_name: str = "Target",
-        target_key: str | None = None,
-        dpi: int = 150,
-        show_risk: str = "both",
-        sort_by: str = "iv",
-        ascending: bool = False,
-        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
-        risk_corr_baseline: str = "total",
-    ) -> None:
+    def _fake_build_feature_binning_risk_figure(**kwargs: Any):
         calls.append(
             {
-                "df_detail": df_detail,
-                "features": features,
-                "group_col": group_col,
-                "target_name": target_name,
-                "target_key": target_key,
-                "dpi": dpi,
-                "show_risk": show_risk,
-                "sort_by": sort_by,
-                "ascending": ascending,
-                "risk_corr_reference_df": risk_corr_reference_df,
-                "risk_corr_baseline": risk_corr_baseline,
+                **kwargs,
+                "figure": plt.figure(),
             }
         )
+        return calls[-1]["figure"]
 
     monkeypatch.setattr(
         MarsPlotter,
-        "plot_feature_binning_risk_trend_batch",
-        staticmethod(_fake_batch),
+        "_build_feature_binning_risk_figure",
+        staticmethod(_fake_build_feature_binning_risk_figure),
     )
 
-    run.report.plot_risk_trends(target="target_alt", max_plots=1)
+    figures = run.report.build_risk_trend_figures(target="target_alt", max_plots=1)
 
     assert run.report.group_col == "month"
     assert run.report.detail_group_col == "mars_group"
     assert len(calls) == 1
     assert calls[0]["target_name"] == "target_alt"
-    assert calls[0]["target_key"] == "target_alt"
     assert calls[0]["group_col"] == "mars_group"
     assert calls[0]["show_risk"] == "both"
-    assert calls[0]["sort_by"] == ""
-    assert calls[0]["risk_corr_baseline"] == "total"
     assert calls[0]["risk_corr_reference_df"] is not None
-    assert len(calls[0]["features"]) == 1
     assert set(calls[0]["df_detail"]["y"].astype(str).tolist()) == {"target_alt"}
+    assert figures == [calls[0]["figure"]]
+    for figure in figures:
+        plt.close(figure)
 
 
 def test_profile_risk_amount_metrics_only_enter_detail_table(
@@ -340,32 +301,24 @@ def test_binning_report_plot_risk_trends_accepts_amount_show_risk(
 
     captured: dict[str, Any] = {}
 
-    def _fake_batch(
-        df_detail: pd.DataFrame | pl.DataFrame,
-        features: list[str],
-        group_col: str = "month",
-        target_name: str = "Target",
-        target_key: str | None = None,
-        dpi: int = 150,
-        show_risk: str = "both",
-        sort_by: str = "iv",
-        ascending: bool = False,
-        risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
-        risk_corr_baseline: str = "total",
-    ) -> None:
-        captured["show_risk"] = show_risk
-        captured["features"] = features
+    fig = plt.figure()
+
+    def _fake_build_feature_binning_risk_figure(**kwargs: Any):
+        captured.update(kwargs)
+        return fig
 
     monkeypatch.setattr(
         MarsPlotter,
-        "plot_feature_binning_risk_trend_batch",
-        staticmethod(_fake_batch),
+        "_build_feature_binning_risk_figure",
+        staticmethod(_fake_build_feature_binning_risk_figure),
     )
 
-    run.report.plot_risk_trends(features="income", show_risk="amt")
+    figures = run.report.build_risk_trend_figures(features="income", show_risk="amt")
 
     assert captured["show_risk"] == "amt"
-    assert captured["features"] == ["income"]
+    assert captured["feature"] == "income"
+    assert figures == [fig]
+    plt.close(fig)
 
     with pytest.raises(ValueError, match="show_risk"):
         run.report.plot_risk_trends(features="income", show_risk="cum_risk")  # type: ignore[arg-type]

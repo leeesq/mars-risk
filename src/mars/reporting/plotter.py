@@ -5,16 +5,20 @@ import uuid
 from io import BytesIO
 from typing import Literal, Union, cast
 
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
 from IPython.display import HTML, display
-from matplotlib.ticker import FuncFormatter
 
 from mars.compute import RiskCorrBaseline
 from mars.core.constants import DIVISION_EPSILON
+from mars.reporting._matplotlib import ensure_matplotlib_environment
+
+ensure_matplotlib_environment()
+
+import matplotlib.gridspec as gridspec  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 
 class MarsPlotter:
