@@ -32,6 +32,10 @@ detail = eval_report.detail_table
 trends = eval_report.trend_tables
 ```
 
+风险趋势图的绘图契约要求评估时传入 `time_col`。`group_col` 仍然优先控制面板分组，但图中左上角时间范围只使用 `time_col` 的有效最小值和最大值；没有 `group_col` 时才使用 `time_grain` 生成时间分组。
+
+HTML 风险报告默认按每个 target 最多绘制 500 个特征，超过 50 张图时自动使用同级图片资产和懒加载。报告页面可通过导航按钮切换，且全局特征搜索可以直接打开对应趋势图。
+
 这些结构化表适合继续做特征复盘、监控规则定制、内部看板接入，也可以交给 Agent 基于明细表进行摘要、筛选、解释和报告重排。
 
 ## Excel/HTML 导出

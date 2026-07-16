@@ -87,12 +87,20 @@ def _with_amount_col(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns(pl.Series("loan_amt", amount_values, dtype=pl.Float64))
 
 
+def _with_biz_dt(df: pl.DataFrame) -> pl.DataFrame:
+    """为绘图回归测试补充原始时间列。"""
+    return df.with_columns(
+        pl.Series("biz_dt", _daily_datetimes("2024-01-01", periods=df.height))
+    )
+
+
 def test_profile_risk_returns_structured_run(sample_credit_df):
     run = profile_risk(
-        sample_credit_df,
+        _with_biz_dt(sample_credit_df),
         target="target",
         features=["income", "utilization"],
         group_col="month",
+        time_col="biz_dt",
         method="quantile",
         n_bins=3,
     )
@@ -147,10 +155,11 @@ def test_binning_report_plot_risk_trends_uses_report_as_public_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = profile_risk(
-        sample_credit_df,
+        _with_biz_dt(sample_credit_df),
         target="target",
         features=["income", "utilization"],
         group_col="month",
+        time_col="biz_dt",
         method="quantile",
         n_bins=3,
     )
@@ -187,7 +196,7 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
     sample_credit_df: pl.DataFrame,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    df = sample_credit_df.with_columns(
+    df = _with_biz_dt(sample_credit_df).with_columns(
         (pl.col("utilization") >= 0.45).cast(pl.Int8).alias("target_alt")
     )
     run = profile_risk(
@@ -195,6 +204,7 @@ def test_binning_report_plot_risk_trends_supports_multi_target_filter(
         target=["target", "target_alt"],
         features=["income", "utilization"],
         group_col="month",
+        time_col="biz_dt",
         method="quantile",
         n_bins=3,
     )
@@ -290,10 +300,11 @@ def test_binning_report_plot_risk_trends_accepts_amount_show_risk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = profile_risk(
-        _with_amount_col(sample_credit_df),
+        _with_biz_dt(_with_amount_col(sample_credit_df)),
         target="target",
         features=["income"],
         group_col="month",
+        time_col="biz_dt",
         amount_col="loan_amt",
         method="quantile",
         n_bins=3,
@@ -324,6 +335,93 @@ def test_binning_report_plot_risk_trends_accepts_amount_show_risk(
         run.report.plot_risk_trends(features="income", show_risk="cum_risk")  # type: ignore[arg-type]
 
 
+def test_risk_trend_summary_uses_time_col_when_group_col_is_non_temporal(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        _with_biz_dt(sample_credit_df),
+        target="target",
+        features=["income"],
+        group_col="segment",
+        time_col="biz_dt",
+        time_grain="week",
+        method="quantile",
+        n_bins=3,
+    )
+
+    figures = run.report.build_risk_trend_figures(features="income")
+    try:
+        assert len(figures) == 1
+        summary_text = "\n".join(text.get_text() for text in figures[0].texts)
+        assert "[2024-01-01 00:00:00 ~ 2024-01-24 00:00:00]" in summary_text
+        assert "[new ~ vip]" not in summary_text
+        titles = [axis.get_title() for axis in figures[0].axes]
+        assert any(title.startswith("new") for title in titles)
+    finally:
+        for figure in figures:
+            plt.close(figure)
+
+
+def test_risk_trend_uses_time_grain_when_group_col_is_not_provided(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        _with_biz_dt(sample_credit_df),
+        target="target",
+        features=["income"],
+        time_col="biz_dt",
+        time_grain="month",
+        method="quantile",
+        n_bins=3,
+    )
+
+    assert run.report.report_meta["dt_col"] == "biz_dt"
+    figures = run.report.build_risk_trend_figures(features="income")
+    try:
+        assert len(figures) == 1
+        titles = [axis.get_title() for axis in figures[0].axes]
+        assert any(title.startswith("202401") for title in titles)
+    finally:
+        for figure in figures:
+            plt.close(figure)
+
+
+def test_risk_trend_requires_time_col_when_only_group_col_is_provided(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    run = profile_risk(
+        sample_credit_df,
+        target="target",
+        features=["income"],
+        group_col="segment",
+        method="quantile",
+        n_bins=3,
+    )
+
+    with pytest.raises(ValueError, match="time_col"):
+        run.report.build_risk_trend_figures(features="income")
+
+
+def test_risk_trend_rejects_all_null_time_col(sample_credit_df: pl.DataFrame) -> None:
+    df = sample_credit_df.with_columns(
+        pl.lit(None).cast(pl.Date).alias("biz_dt")
+    )
+    run = profile_risk(
+        df,
+        target="target",
+        features=["income"],
+        group_col="segment",
+        time_col="biz_dt",
+        method="quantile",
+        n_bins=3,
+    )
+
+    assert run.report.report_meta["start_dt"] is None
+    assert run.report.report_meta["end_dt"] is None
+    with pytest.raises(ValueError, match="time_col"):
+        run.report.build_risk_trend_figures(features="income")
+
+
 def test_binning_plot_figure_keeps_total_panel_on_the_right(
     sample_credit_df: pl.DataFrame,
 ) -> None:
@@ -341,6 +439,7 @@ def test_binning_plot_figure_keeps_total_panel_on_the_right(
         feature="income",
         group_col="mars_group",
         target_name="target",
+        time_range=("2024-01-01 00:00:00", "2024-01-24 00:00:00"),
     )
 
     assert fig is not None
@@ -367,6 +466,7 @@ def test_binning_plot_summary_header_uses_total_panel_metric_scope(
         feature="income",
         group_col="mars_group",
         target_name="target",
+        time_range=("2024-01-01", "2024-03-31"),
     )
 
     assert fig is not None
@@ -943,10 +1043,11 @@ def test_evaluation_report_excel_hides_amount_detail_columns(
 
 def test_evaluation_report_can_write_html(sample_credit_df, caplog):
     report, _ = _profile_risk_report(
-        sample_credit_df,
+        _with_biz_dt(sample_credit_df),
         target="target",
         features=["income", "utilization"],
         group_col="month",
+        time_col="biz_dt",
         binning_type="native",
         method="quantile",
         n_bins=3,
@@ -1050,7 +1151,7 @@ def test_evaluation_report_can_write_html(sample_credit_df, caplog):
         assert "activeTableId" not in html_text
         assert "detail-section" not in html_text
         assert "mars-trend-bad-rate" not in html_text
-        assert 'id="missing-day-section"' not in html_text
+        assert 'id="missing-day-section"' in html_text
         assert "Bin Type" not in html_text
         assert "Threshold Filter (Total)" not in html_text
         assert ">mono<" not in html_text
@@ -1098,7 +1199,7 @@ def test_evaluation_report_produces_missing_and_lift_trend_tables(sample_credit_
 
 
 def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
-    df = sample_credit_df.with_columns(
+    df = _with_biz_dt(sample_credit_df).with_columns(
         (pl.col("utilization") >= 0.45).cast(pl.Int8).alias("target_alt")
     )
 
@@ -1107,6 +1208,7 @@ def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
         target=["target", "target_alt"],
         features=["income", "utilization"],
         group_col="month",
+        time_col="biz_dt",
         binning_type="native",
         method="quantile",
         n_bins=3,

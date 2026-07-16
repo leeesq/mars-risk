@@ -51,6 +51,9 @@ def build_html_styles() -> str:
             .mars-export-block { display:grid; gap:6px; align-content:start; }
             .mars-export-helper { font-size:12px; line-height:1.35; }
             .mars-nav { margin:14px 0 18px 0; }
+            .mars-nav a.is-active { background:#3b87ad; border-color:#3b87ad; color:#fff; }
+            .mars-page-view { display:none; }
+            .mars-page-view.is-active { display:block; }
             .mars-overview-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; }
             .mars-kpi-card { border:1px solid var(--line-soft); border-radius:14px; background:linear-gradient(180deg,#fbfdff 0%,#f7fbff 100%); padding:14px; }
             .mars-kpi-label { font-size:12px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
@@ -69,6 +72,10 @@ def build_html_styles() -> str:
             .mars-table-toolbar { display:grid; grid-template-columns:minmax(240px,360px); gap:6px; margin-bottom:10px; }
             .mars-chart-controls { display:grid; grid-template-columns:minmax(240px,360px) auto; gap:10px; align-items:start; }
             .mars-chart-search { min-width:240px; }
+            .mars-chart-card .mars-risk-trend-image[data-src] { min-height:180px; background:linear-gradient(135deg,#f7fbff,#eef6fb); }
+            .mars-chart-card.is-highlighted { outline:3px solid rgba(59,135,173,.38); outline-offset:3px; }
+            .mars-jump-results { display:grid; gap:6px; margin-top:8px; }
+            .mars-jump-result { border:1px solid var(--line); border-radius:10px; background:#fff; color:#355b74; padding:7px 10px; cursor:pointer; text-align:left; }
             .mars-summary-filter { border:1px solid var(--line-soft); border-radius:14px; background:#fbfdff; padding:12px; margin-bottom:10px; }
             .mars-summary-filter-label { display:block; margin-bottom:8px; font-size:13px; font-weight:600; color:#355b74; }
             .mars-result-status { min-height:16px; font-size:12px; margin:6px 0 10px 0; }
@@ -188,11 +195,39 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                 jumpHighlightTimerId:null,
                 jumpHighlightArmTimerId:null,
                 jumpHighlightNode:null,
-                jumpHighlightCell:null
+                jumpHighlightCell:null,
+                chartCandidates:[],
+                activePage:"overview",
+                chartImageObserver:null
             };
             function marsBuildMatcher(query) { const q=(query||"").trim(); if(!q) return {ok:true,match:()=>true}; if(marsState.regexMode) { try { const regex=new RegExp(q,"i"); return {ok:true,match:(text)=>regex.test(text||"")}; } catch(err) { return {ok:false,error:err.message}; } } const terms=q.toLowerCase().split(/\\s+/).filter(Boolean); return {ok:true,match:(text)=>terms.every((term)=>(text||"").toLowerCase().includes(term))}; }
             function marsSetError(id, message) { const node=document.getElementById(id); if(node) node.textContent=message||""; }
             function marsNormalizeFeatureValue(value) { return (value||"").trim().toLowerCase(); }
+            function marsAvailablePages() { return Array.from(document.querySelectorAll("[data-mars-view]")); }
+            function marsNormalizePage(value) {
+                const aliases={"overview-section":"overview","summary-section":"summary","missing-day-section":"missing-day","trend-section":"trends","pivot-section":"pivot","chart-section":"charts"};
+                const candidate=(value||"").replace(/^#/,"").trim().toLowerCase();
+                const normalized=aliases[candidate]||candidate;
+                return marsAvailablePages().some((node)=>node.dataset.marsView===normalized) ? normalized : null;
+            }
+            function marsFirstPage() { return marsAvailablePages()[0]?.dataset.marsView||"overview"; }
+            function marsNavigateTo(page, replace=false) {
+                const normalized=marsNormalizePage(page)||marsFirstPage();
+                if(location.hash!==`#${normalized}`) {
+                    if(replace) history.replaceState(null,"",`#${normalized}`);
+                    else history.pushState(null,"",`#${normalized}`);
+                }
+                marsState.activePage=normalized;
+                marsAvailablePages().forEach((node)=>node.classList.toggle("is-active", node.dataset.marsView===normalized));
+                document.querySelectorAll(".mars-page-nav").forEach((node)=>node.classList.toggle("is-active", node.dataset.page===normalized));
+                if(normalized==="charts") {
+                    marsObserveChartImages();
+                    marsUpdateChartViews();
+                }
+                marsQueueLayoutSync("all");
+                marsScheduleViewportRefresh();
+            }
+            function marsApplyPageFromHash() { marsNavigateTo(location.hash||marsFirstPage(), true); }
             function marsResolveLocalScope(scopeId) { return scopeId==="mars-chart-cards" ? "charts" : `table:${scopeId}`; }
             function marsMergeRefreshToken(scopeToken) {
                 const token=(scopeToken||"all").trim() || "all";
@@ -430,6 +465,35 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                     view.style.display=sameTarget?"":"none";
                 });
             }
+            function marsLoadChartImage(image) {
+                if(!image || image.src || !image.dataset.src) return;
+                image.src=image.dataset.src;
+                image.removeAttribute("data-src");
+                image.addEventListener("error",()=>{ image.alt=`Unable to load ${image.alt||"risk trend image"}`; }, {once:true});
+            }
+            function marsObserveChartImages() {
+                if(!window.IntersectionObserver) {
+                    document.querySelectorAll(".mars-page-view.is-active .mars-chart-card[style=''] img[data-src]").forEach(marsLoadChartImage);
+                    return;
+                }
+                if(!marsState.chartImageObserver) {
+                    marsState.chartImageObserver=new IntersectionObserver((entries)=>{
+                        entries.forEach((entry)=>{
+                            if(entry.isIntersecting) {
+                                marsLoadChartImage(entry.target);
+                                marsState.chartImageObserver?.unobserve(entry.target);
+                            }
+                        });
+                    }, {rootMargin:"500px 0px"});
+                }
+                document.querySelectorAll(".mars-page-view.is-active .mars-chart-card img[data-src]").forEach((image)=>{
+                    marsState.chartImageObserver.observe(image);
+                });
+            }
+            function marsLoadChartCardImages(card) {
+                if(!card) return;
+                card.querySelectorAll("img[data-src]").forEach(marsLoadChartImage);
+            }
             function marsUpdateChartViews() {
                 const targetValue=document.getElementById("mars-chart-target")?.value||null;
                 const globalMatcher=marsBuildMatcher(marsState.globalQuery);
@@ -457,6 +521,7 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                 });
                 marsSetScopeStatus("mars-chart-cards", visibleCards, totalCards, "charts");
                 marsToggleScopeEmpty("mars-chart-cards", visibleCards===0);
+                if(marsState.activePage==="charts") marsObserveChartImages();
             }
             function marsBuildExportFeatureMap() {
                 const table=document.getElementById("mars-summary-table");
@@ -855,22 +920,76 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                     }, 140);
                 });
             }
+            function marsFindChartCandidates(value) {
+                const normalized=marsNormalizeFeatureValue(value);
+                const cards=Array.from(document.querySelectorAll(".mars-chart-card[data-feature]"));
+                const exact=cards.filter((card)=>marsNormalizeFeatureValue(card.dataset.feature)===normalized);
+                if(exact.length) return exact;
+                return cards.filter((card)=>marsNormalizeFeatureValue(card.dataset.feature).includes(normalized));
+            }
+            function marsShowChartCandidates(cards) {
+                const result=document.getElementById("mars-feature-jump-results");
+                if(!result) return;
+                marsState.chartCandidates=cards;
+                result.innerHTML=cards.slice(0,20).map((card,index)=>{
+                    const feature=card.dataset.feature||"";
+                    const target=card.closest(".mars-chart-view")?.dataset.yValue||"Target";
+                    return `<button type="button" class="mars-jump-result" onclick="marsChooseChartCandidate(${index})">${feature} / ${target}</button>`;
+                }).join("");
+            }
+            function marsChooseChartCandidate(index) {
+                const card=marsState.chartCandidates[index];
+                const result=document.getElementById("mars-feature-jump-results");
+                if(result) result.innerHTML="";
+                if(!card) return;
+                const target=card.closest(".mars-chart-view")?.dataset.yValue||"";
+                const selector=document.getElementById("mars-chart-target");
+                if(selector && target) selector.value=target;
+                marsNavigateTo("charts");
+                marsUpdateChartViews();
+                card.style.display="";
+                marsLoadChartCardImages(card);
+                card.classList.add("is-highlighted");
+                card.scrollIntoView({behavior:"smooth", block:"center"});
+                window.setTimeout(()=>card.classList.remove("is-highlighted"), 3000);
+            }
+            function marsJumpToGlobalSearch() {
+                const globalInput=document.getElementById("mars-global-search");
+                const featureInput=document.getElementById("mars-feature-jump-input");
+                if(!globalInput || !featureInput) return;
+                featureInput.value=globalInput.value||"";
+                marsJumpToFeature();
+            }
             function marsJumpToFeature() {
                 const input=document.getElementById("mars-feature-jump-input");
                 const value=(input?.value||"").trim();
+                const result=document.getElementById("mars-feature-jump-results");
+                if(result) result.innerHTML="";
                 if(!value) {
                     marsSetError("mars-feature-jump-error", "Enter a feature name to jump.");
+                    return;
+                }
+                const chartCandidates=marsFindChartCandidates(value);
+                if(chartCandidates.length) {
+                    marsSetError("mars-feature-jump-error", "");
+                    marsState.chartCandidates=chartCandidates;
+                    if(chartCandidates.length===1) {
+                        marsChooseChartCandidate(0);
+                    } else {
+                        marsShowChartCandidates(chartCandidates);
+                    }
                     return;
                 }
                 let node=marsFindSummaryFeatureNode(value, true);
                 if(node) {
                     marsSetError("mars-feature-jump-error", "");
+                    marsNavigateTo("summary");
                     marsFocusSummaryFeature(node);
                     return;
                 }
                 node=marsFindSummaryFeatureNode(value, false);
                 if(!node) {
-                    marsSetError("mars-feature-jump-error", `Feature "${value}" does not exist in Summary.`);
+                    marsSetError("mars-feature-jump-error", `Feature "${value}" does not exist in Summary. Charts also do not contain a matching feature.`);
                     return;
                 }
                 const globalMatcher=marsBuildMatcher(marsState.globalQuery);
@@ -882,6 +1001,7 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                         window.requestAnimationFrame(() => {
                             const refreshedNode=marsFindSummaryFeatureNode(value, true) || marsFindSummaryFeatureNode(value, false);
                             marsSetError("mars-feature-jump-error", "");
+                            marsNavigateTo("summary");
                             marsFocusSummaryFeature(refreshedNode);
                         });
                     });
@@ -973,8 +1093,10 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
             window.addEventListener("mouseup", marsStopColumnResize);
             window.addEventListener("resize", () => { marsQueueLayoutSync("all"); marsScheduleViewportRefresh(); });
             window.addEventListener("scroll", marsScheduleViewportRefresh, {passive:true});
+            window.addEventListener("hashchange", marsApplyPageFromHash);
             document.addEventListener("toggle", () => { marsHideFloatingHeader(); marsQueueLayoutSync("all"); marsScheduleViewportRefresh(); }, true);
             window.addEventListener("DOMContentLoaded", () => {
+                marsApplyPageFromHash();
                 marsRegisterTableScrollListeners();
                 marsSetDataSources();
                 marsQueueLayoutSync("all");

@@ -14,6 +14,7 @@ import pandas as pd
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline, to_pandas_frame
 from mars.reporting._binning_html_helpers import slugify
 from mars.reporting._matplotlib import require_pyplot
+from mars.reporting._time_range import TimeRange, resolve_report_time_range
 from mars.reporting._types import MarsHtmlRenderResult
 from mars.reporting.plotter import MarsPlotter
 from mars.utils.logger import logger
@@ -33,6 +34,7 @@ class _RiskTrendPlotContext:
     target_key: str | None
     risk_corr_reference: pd.DataFrame
     risk_corr_baseline: RiskCorrBaseline
+    time_range: TimeRange
 
 
 class _BinningPlotRenderer:
@@ -77,6 +79,13 @@ class _BinningPlotRenderer:
         """解析绘图阶段生效的 RC 基准。"""
         meta_baseline = self.report_meta.get("risk_corr_baseline")
         return normalize_risk_corr_baseline(risk_corr_baseline or meta_baseline or "total")
+
+    def _resolve_risk_trend_time_range(self: Any) -> TimeRange:
+        """解析报告风险趋势图使用的原始时间范围。"""
+        return resolve_report_time_range(
+            report_meta=self.report_meta,
+            dt_col=self.dt_col,
+        )
 
     @staticmethod
     def _build_plot_risk_corr_reference(
@@ -182,6 +191,7 @@ class _BinningPlotRenderer:
         max_plots: int = 20,
     ) -> tuple[list[_RiskTrendPlotContext], Literal["count", "amt", "both"]]:
         """解析多 target 报告的绘图上下文。"""
+        time_range = self._resolve_risk_trend_time_range()
         detail_pd = to_pandas_frame(self.detail_table).copy()
         if detail_pd.empty:
             raise ValueError("detail_table is empty. Cannot plot risk trends.")
@@ -268,6 +278,7 @@ class _BinningPlotRenderer:
                     target_key=current_target,
                     risk_corr_reference=current_reference,
                     risk_corr_baseline=effective_risk_corr_baseline,
+                    time_range=time_range,
                 )
             )
         return contexts, normalized_show_risk
@@ -304,6 +315,7 @@ class _BinningPlotRenderer:
                     target_name=context.target_name,
                     risk_corr_reference_df=context.risk_corr_reference,
                     show_risk=normalized_show_risk,
+                    time_range=context.time_range,
                 )
                 if figure is not None:
                     figure.set_dpi(dpi)
@@ -435,6 +447,7 @@ class _BinningPlotRenderer:
                     target_name=context.target_name,
                     risk_corr_reference_df=context.risk_corr_reference,
                     show_risk=normalized_show_risk,
+                    time_range=context.time_range,
                 )
                 if figure is None:
                     continue
@@ -513,6 +526,7 @@ class _BinningPlotRenderer:
                     target_name=context.target_name,
                     risk_corr_reference_df=context.risk_corr_reference,
                     show_risk=normalized_show_risk,
+                    time_range=context.time_range,
                 )
                 if figure is None:
                     continue

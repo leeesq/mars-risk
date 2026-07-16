@@ -13,6 +13,7 @@ from IPython.display import HTML, display
 from mars.compute import RiskCorrBaseline
 from mars.core.constants import DIVISION_EPSILON
 from mars.reporting._matplotlib import ensure_matplotlib_environment
+from mars.reporting._time_range import TimeRange, normalize_time_range
 
 ensure_matplotlib_environment()
 
@@ -226,6 +227,7 @@ class MarsPlotter:
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
+        time_range: tuple[str, str] | None = None,
     ) -> str:
         """
         将单个特征的分箱风险趋势图渲染为可嵌入 HTML 片段。
@@ -247,6 +249,9 @@ class MarsPlotter:
             `both` 同时展示两条风险线。
         dpi : int | None
             输出 PNG 的渲染分辨率。为 ``None`` 时使用默认值 ``150``。
+
+        time_range : tuple[str, str] | None
+            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
 
         Returns
         -------
@@ -270,7 +275,9 @@ class MarsPlotter:
         ...     "auc_bin": [0.31, 0.30, 0.32, 0.31],
         ...     "psi_bin": [0.0, 0.0, 0.01, 0.02],
         ... })
-        >>> html = MarsPlotter.render_feature_binning_risk_trend_html(df_detail, "age", dpi=80)
+        >>> html = MarsPlotter.render_feature_binning_risk_trend_html(
+        ...     df_detail, "age", dpi=80, time_range=("202601", "202602")
+        ... )
         >>> isinstance(html, str)
         True
         """
@@ -281,6 +288,7 @@ class MarsPlotter:
             target_name=target_name,
             risk_corr_reference_df=risk_corr_reference_df,
             show_risk=show_risk,
+            time_range=time_range,
         )
         if fig is None:
             return ""
@@ -296,8 +304,10 @@ class MarsPlotter:
         target_name: str = "Target",
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        time_range: tuple[str, str] | None = None,
     ) -> plt.Figure | None:
         """构建风险趋势图对象但不直接展示。"""
+        normalized_time_range: TimeRange = normalize_time_range(time_range)
         df_detail = MarsPlotter._as_pandas_detail_frame(df_detail)
         show_risk = MarsPlotter._normalize_show_risk(show_risk)
         amount_risk_available = MarsPlotter._has_amount_risk_columns(df_detail)
@@ -381,7 +391,7 @@ class MarsPlotter:
         groups = [group for group in plot_df[group_col].astype(str).unique() if group != "Total"]
         groups = sorted(groups)
         all_groups = groups + (["Total"] if has_total_panel else [])
-        time_range = f"[{groups[0]} ~ {groups[-1]}]" if groups else ""
+        time_range_label = f"[{normalized_time_range[0]} ~ {normalized_time_range[1]}]"
 
         feature_reference_pd: pd.DataFrame | None = None
         if reference_pd is not None and not reference_pd.empty:
@@ -410,10 +420,10 @@ class MarsPlotter:
         )
 
         if has_target_global:
-            summary_str_1 = f"{feature},  {target_name},  Total: {int(total_count)},  {time_range}"
+            summary_str_1 = f"{feature},  {target_name},  Total: {int(total_count)},  {time_range_label}"
             summary_str_2 = f"IV: {global_iv:.3f},  KS: {global_ks:.1f},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
         else:
-            summary_str_1 = f"{feature}  (Label-Free Mode),  Total: {int(total_count)},  {time_range}"
+            summary_str_1 = f"{feature}  (Label-Free Mode),  Total: {int(total_count)},  {time_range_label}"
             summary_str_2 = f"Missing: {miss_str},  PSI Check Only"
 
         fig.text(
@@ -675,6 +685,7 @@ class MarsPlotter:
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
+        time_range: tuple[str, str] | None = None,
     ) -> None:
         """
         绘制特征分箱风险趋势图 (支持有标签/无标签模式自适应)。
@@ -703,6 +714,9 @@ class MarsPlotter:
         dpi : int | None
             绘图分辨率。
 
+        time_range : tuple[str, str] | None
+            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+
         Returns
         -------
         None
@@ -718,7 +732,9 @@ class MarsPlotter:
         ...     "count": [100, 120],
         ...     "psi_bin": [0.0, 0.01],
         ... })
-        >>> MarsPlotter.plot_feature_binning_risk_trend(df_detail, "age", dpi=80) is None
+        >>> MarsPlotter.plot_feature_binning_risk_trend(
+        ...     df_detail, "age", dpi=80, time_range=("202601", "202602")
+        ... ) is None
         True
         """
         fig: plt.Figure | None = MarsPlotter._build_feature_binning_risk_figure(
@@ -728,6 +744,7 @@ class MarsPlotter:
             target_name=target_name,
             risk_corr_reference_df=risk_corr_reference_df,
             show_risk=show_risk,
+            time_range=time_range,
         )
         if fig is None:
             return
@@ -747,6 +764,7 @@ class MarsPlotter:
         ascending: bool = False,
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         risk_corr_baseline: RiskCorrBaseline = "total",
+        time_range: tuple[str, str] | None = None,
     ) -> None:
         """
         批量绘制多个特征的分箱风险趋势图。
@@ -778,6 +796,8 @@ class MarsPlotter:
             批量绘图时共用的 RC 参考坏率表。
         risk_corr_baseline : RiskCorrBaseline
             批量绘图阶段默认生效的 RC 基准。
+        time_range : tuple[str, str] | None
+            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
 
         Returns
         -------
@@ -799,6 +819,7 @@ class MarsPlotter:
         ...     ["age", "income"],
         ...     dpi=80,
         ...     sort_by="",
+        ...     time_range=("202601", "202601"),
         ... ) is None
         True
         """
@@ -857,4 +878,5 @@ class MarsPlotter:
                 risk_corr_reference_df=risk_corr_reference_df,
                 show_risk=show_risk,
                 dpi=dpi,
+                time_range=time_range,
             )

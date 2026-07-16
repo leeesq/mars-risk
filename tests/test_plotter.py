@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import pytest
 
 from mars.reporting.plotter import MarsPlotter
 
@@ -16,12 +17,14 @@ def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch)
         target_name,
         risk_corr_reference_df=None,
         show_risk="both",
+        time_range=None,
     ):
         captured["feature"] = feature
         captured["group_col"] = group_col
         captured["target_name"] = target_name
         captured["risk_corr_reference_df"] = risk_corr_reference_df
         captured["show_risk"] = show_risk
+        captured["time_range"] = time_range
         return fig
 
     def fake_show_scrollable(passed_fig, dpi=150):
@@ -45,6 +48,7 @@ def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch)
         group_col="month",
         target_name="target",
         dpi=180,
+        time_range=("2024-01-01", "2024-03-31"),
     )
 
     assert captured["feature"] == "income"
@@ -52,6 +56,7 @@ def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(monkeypatch)
     assert captured["target_name"] == "target"
     assert captured["risk_corr_reference_df"] is None
     assert captured["show_risk"] == "both"
+    assert captured["time_range"] == ("2024-01-01", "2024-03-31")
     assert captured["fig"] is fig
     assert captured["dpi"] == 180
 
@@ -84,6 +89,7 @@ def test_shared_figure_builder_excludes_total_bin_rows():
         feature="income",
         group_col="month",
         target_name="target",
+        time_range=("2024-01-01", "2024-03-31"),
     )
 
     labels = []
@@ -92,6 +98,51 @@ def test_shared_figure_builder_excludes_total_bin_rows():
 
     assert "Total" not in labels
     plt.close(fig)
+
+
+def test_shared_figure_builder_uses_explicit_time_range_for_summary() -> None:
+    df = pd.DataFrame(
+        {
+            "feature": ["income"] * 4,
+            "month": ["segment_a", "segment_a", "segment_b", "Total"],
+            "bin_index": [0, 1, 0, 9999],
+            "bin_label": ["bin0", "bin1", "bin0", "Total"],
+            "bin_type": ["normal", "normal", "normal", "汇总组"],
+            "count": [40, 30, 30, 100],
+            "bad": [8, 6, 3, 17],
+            "bad_rate": [0.20, 0.20, 0.10, 0.17],
+            "lift": [1.2, 1.0, 0.8, 1.0],
+            "psi_bin": [0.01, 0.02, 0.01, 0.03],
+            "ks_bin": [0.1, 0.2, 0.1, 0.2],
+            "auc_bin": [0.55, 0.55, 0.55, 0.55],
+            "iv_bin": [0.03, 0.02, 0.01, 0.06],
+            "trend": ["asc"] * 4,
+            "total_count": [100] * 4,
+        }
+    )
+
+    fig = MarsPlotter._build_feature_binning_risk_figure(
+        df_detail=df,
+        feature="income",
+        group_col="month",
+        target_name="target",
+        time_range=("2024-01-03", "2024-03-31"),
+    )
+
+    assert fig is not None
+    summary_text = "\n".join(text.get_text() for text in fig.texts)
+    assert "[2024-01-03 ~ 2024-03-31]" in summary_text
+    assert "[segment_a ~ segment_b]" not in summary_text
+    plt.close(fig)
+
+
+def test_shared_figure_builder_requires_time_range() -> None:
+    with pytest.raises(ValueError, match="time_range"):
+        MarsPlotter._build_feature_binning_risk_figure(
+            df_detail=pd.DataFrame({"feature": []}),
+            feature="income",
+            group_col="month",
+        )
 
 
 def test_shared_figure_builder_uses_amount_color_semantics() -> None:
@@ -125,6 +176,7 @@ def test_shared_figure_builder_uses_amount_color_semantics() -> None:
         group_col="month",
         target_name="target",
         show_risk="both",
+        time_range=("2024-01-01", "2024-03-31"),
     )
 
     text_colors = {}

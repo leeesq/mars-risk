@@ -528,8 +528,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         }
         if dt_col and dt_col in working_df.columns:
             try:
-                report._report_meta["start_dt"] = str(working_df.select(pl.col(dt_col).min()).item())
-                report._report_meta["end_dt"] = str(working_df.select(pl.col(dt_col).max()).item())
+                start_dt = working_df.select(pl.col(dt_col).min()).item()
+                end_dt = working_df.select(pl.col(dt_col).max()).item()
+                report._report_meta["start_dt"] = None if start_dt is None else str(start_dt)
+                report._report_meta["end_dt"] = None if end_dt is None else str(end_dt)
             except Exception:
                 report._report_meta["start_dt"] = None
                 report._report_meta["end_dt"] = None

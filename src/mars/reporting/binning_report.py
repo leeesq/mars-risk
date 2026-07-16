@@ -313,7 +313,8 @@ class MarsBinningReport:
         path: str = "mars_bin_report.html",
         *,
         report_name: str = "MARS Evaluation Report",
-        max_plots: int = 20,
+        max_plots: int = 500,
+        chart_embed_mode: Literal["auto", "inline", "asset"] = "auto",
         sort_by: str = "iv",
         ascending: bool = False,
         include_summary: bool = True,
@@ -322,7 +323,7 @@ class MarsBinningReport:
         include_charts: bool = True,
     ) -> None:
         """
-        导出自包含的交互式 HTML 报告。
+        导出支持页面切换和大规模图表懒加载的交互式 HTML 报告。
 
         Parameters
         ----------
@@ -331,7 +332,10 @@ class MarsBinningReport:
         report_name : str
             HTML 页面标题和报告名称。
         max_plots : int
-            图表区域最多展示的特征数量。
+            每个 target 的图表区域最多展示的特征数量，默认 500。
+        chart_embed_mode : Literal["auto", "inline", "asset"]
+            图表图片嵌入模式。``auto`` 在图表数量超过 50 张时写入旁路资产并懒加载；
+            ``inline`` 强制内嵌；``asset`` 强制写入资产目录。
         sort_by : str
             图表和汇总视图使用的排序指标。
         ascending : bool
@@ -366,6 +370,7 @@ class MarsBinningReport:
             path=path,
             report_name=report_name,
             max_plots=max_plots,
+            chart_embed_mode=chart_embed_mode,
             sort_by=sort_by,
             ascending=ascending,
             include_summary=include_summary,

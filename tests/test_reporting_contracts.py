@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib import resources
 
 import polars as pl
+import pytest
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
 
@@ -14,6 +15,7 @@ from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
 from mars.reporting._matplotlib import ensure_matplotlib_environment, require_pyplot
 from mars.reporting._profile_excel import _ProfileExcelWriter
+from mars.reporting.plotter import MarsPlotter
 
 
 def _sample_binning_report() -> MarsBinningReport:
@@ -76,6 +78,9 @@ def _sample_binning_report() -> MarsBinningReport:
             "feature_count": 1,
             "profile_by_input": "mars_group",
             "group_count": 1,
+            "dt_col": "biz_dt",
+            "start_dt": "2024-01-01",
+            "end_dt": "2024-01-31",
             "event_rate_by_target": {"target": 0.14},
         },
     )
@@ -97,6 +102,113 @@ def test_binning_report_html_exports_public_sections(tmp_path) -> None:
     assert "Charts" in html_text
     assert "Global search across tables and charts" in html_text
     assert "marsQueueRefresh" in html_text
+
+
+def test_write_html_supports_spa_views_and_asset_chart_mode(tmp_path) -> None:
+    report = _sample_binning_report()
+
+    inline_path = tmp_path / "inline.html"
+    report.write_html(
+        str(inline_path),
+        max_plots=1,
+        chart_embed_mode="inline",
+    )
+    inline_html = inline_path.read_text(encoding="utf-8")
+    assert 'data-mars-view="overview"' in inline_html
+    assert 'data-mars-view="charts"' in inline_html
+    assert 'href="#overview"' in inline_html
+    assert 'href="#charts"' in inline_html
+    assert "marsApplyPageFromHash" in inline_html
+    assert "marsJumpToGlobalSearch" in inline_html
+    assert "marsShowChartCandidates" in inline_html
+    assert "marsChooseChartCandidate" in inline_html
+    assert 'data-target="target"' in inline_html
+
+    asset_path = tmp_path / "asset.html"
+    report.write_html(
+        str(asset_path),
+        max_plots=1,
+        chart_embed_mode="asset",
+    )
+    asset_html = asset_path.read_text(encoding="utf-8")
+    asset_dir = tmp_path / "asset_assets"
+    assert list(asset_dir.glob("*.png"))
+    assert 'data-src="asset_assets/' in asset_html
+    assert "data:image/png;base64" not in asset_html
+
+
+def test_write_html_defaults_to_500_plots_and_preserves_trend_switch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    report = _sample_binning_report()
+    captured: dict[str, object] = {}
+
+    def fake_chart_section(renderer: object, **kwargs: object) -> str:
+        _ = renderer
+        captured.update(kwargs)
+        return '<details id="chart-section" class="mars-section"><summary>Charts</summary></details>'
+
+    monkeypatch.setattr(_BinningHtmlRenderer, "_build_chart_section_html", fake_chart_section)
+    report.write_html(str(tmp_path / "default.html"))
+
+    assert captured["max_plots"] == 500
+    assert captured["chart_embed_mode"] == "auto"
+
+    report.write_html(
+        str(tmp_path / "without_trends.html"),
+        include_trends=False,
+        include_charts=False,
+    )
+    without_trends_html = (tmp_path / "without_trends.html").read_text(encoding="utf-8")
+    assert 'id="missing-day-section"' not in without_trends_html
+
+
+def test_chart_embed_mode_auto_uses_the_large_report_threshold() -> None:
+    assert _BinningHtmlRenderer._resolve_chart_embed_mode("auto", 50) == "inline"
+    assert _BinningHtmlRenderer._resolve_chart_embed_mode("auto", 51) == "asset"
+    with pytest.raises(ValueError, match="chart_embed_mode"):
+        _BinningHtmlRenderer._resolve_chart_embed_mode("invalid", 1)
+
+
+def test_write_html_auto_assetizes_more_than_50_chart_candidates(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    source = _sample_binning_report()
+    summary = pl.concat(
+        [
+            source.summary_table.with_columns(pl.lit(f"feature_{index}").alias("feature"))
+            for index in range(51)
+        ]
+    )
+    report = MarsBinningReport(
+        summary_table=summary,
+        trend_tables=source.trend_tables,
+        detail_table=source.detail_table,
+        feature_data_source={f"feature_{index}": "base" for index in range(51)},
+        report_meta=source.report_meta,
+    )
+    pyplot = require_pyplot(feature_name="test")
+
+    def fake_build_feature_binning_risk_figure(**kwargs: object):
+        _ = kwargs
+        return pyplot.figure()
+
+    monkeypatch.setattr(
+        MarsPlotter,
+        "_build_feature_binning_risk_figure",
+        staticmethod(fake_build_feature_binning_risk_figure),
+    )
+
+    output_path = tmp_path / "large.html"
+    report.write_html(str(output_path), max_plots=500)
+
+    asset_dir = tmp_path / "large_assets"
+    assert len(list(asset_dir.glob("*.png"))) == 51
+    html_text = output_path.read_text(encoding="utf-8")
+    assert 'data-src="large_assets/' in html_text
+    assert "data:image/png;base64" not in html_text
 
 
 def test_report_objects_delegate_to_internal_renderers() -> None:
@@ -186,10 +298,32 @@ def test_binning_report_plot_entry_uses_shared_figure_builder(monkeypatch) -> No
     assert captured["group_col"] == "mars_group"
     assert captured["target_name"] == "target"
     assert captured["show_risk"] == "both"
+    assert captured["time_range"] == ("2024-01-01", "2024-01-31")
     assert captured["displayed_figure"] is fig
     assert captured["dpi"] == 90
     assert captured["close"] is True
     pyplot.close(fig)
+
+
+def test_risk_trend_report_entries_require_time_range(tmp_path) -> None:
+    source = _sample_binning_report()
+    report = MarsBinningReport(
+        summary_table=source.summary_table,
+        trend_tables=source.trend_tables,
+        detail_table=source.detail_table,
+        detail_group_col=source.detail_group_col,
+    )
+
+    with pytest.raises(ValueError, match="time_col"):
+        report.build_risk_trend_figures(features="income")
+    with pytest.raises(ValueError, match="time_col"):
+        report.plot_risk_trends(features="income")
+    with pytest.raises(ValueError, match="time_col"):
+        report.render_risk_trends_html(features="income")
+    with pytest.raises(ValueError, match="time_col"):
+        report.save_risk_trend_images(tmp_path, features="income")
+    with pytest.raises(ValueError, match="time_col"):
+        report.write_html(tmp_path / "missing_time.html", max_plots=1)
 
 
 def test_binning_report_build_save_and_render_risk_trends(tmp_path) -> None:

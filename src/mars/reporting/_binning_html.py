@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import html
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,12 +34,17 @@ from mars.reporting._binning_html_helpers import (
     trend_style_rule,
     wrap_html_section,
 )
+from mars.reporting._matplotlib import require_pyplot
+from mars.reporting._time_range import TimeRange, resolve_report_time_range
 from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
 from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:
     pass
+
+
+_CHART_ASSET_THRESHOLD = 50
 
 
 class _BinningHtmlRenderer:
@@ -303,7 +309,8 @@ class _BinningHtmlRenderer:
             '</datalist>'
             '<button type="button" class="mars-mini-button" onclick="marsJumpToFeature()">Go</button>'
             '</div>'
-            '<div class="mars-footnote">Jumps to the matching row in Summary.</div>'
+            '<div class="mars-footnote">Jumps to the matching row in Summary. Charts are also searchable.</div>'
+            '<div id="mars-feature-jump-results" class="mars-jump-results"></div>'
             '<div id="mars-feature-jump-error" class="mars-search-error"></div>'
             '</div>'
         )
@@ -362,7 +369,9 @@ class _BinningHtmlRenderer:
         return (
             '<div class="mars-global-tools">'
             '<div class="mars-search-cluster">'
-            '<input id="mars-global-search" class="mars-filter-input" type="search" placeholder="Global search across tables and charts..." oninput="marsSetGlobalQuery(this.value)" />'
+            '<input id="mars-global-search" class="mars-filter-input" type="search" placeholder="Global search across tables and charts..." '
+            'oninput="marsSetGlobalQuery(this.value)" '
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();marsJumpToGlobalSearch();}" />'
             '<button type="button" class="mars-clear-button" onclick="marsClearGlobalSearch()">Clear Search</button>'
             '</div>'
             '<label class="mars-toggle"><input id="mars-regex-mode" type="checkbox" onchange="marsSetRegexMode(this.checked)" /> Regex Mode</label>'
@@ -470,10 +479,18 @@ class _BinningHtmlRenderer:
         sections: List[Tuple[str, str, str]] = []
 
         if missing_by_day_pd is not None and not missing_by_day_pd.empty:
-            missing_day_df = self._reorder_group_columns(missing_by_day_pd.copy(), ["feature", "dtype"])
-            missing_day_semantics = {col: "risk_high" for col in missing_day_df.columns if col not in {"feature", "dtype"}}
+            missing_day_df = self._reorder_group_columns(
+                missing_by_day_pd.copy(),
+                ["feature", "dtype"],
+            )
+            missing_day_semantics = {
+                col: "risk_high"
+                for col in missing_day_df.columns
+                if col not in {"feature", "dtype"}
+            }
             missing_day_percent_cols = [
-                col for col in missing_day_df.columns
+                col
+                for col in missing_day_df.columns
                 if self._is_percent_column(col, metric_name="missing")
             ]
             missing_day_style_rules = {
@@ -490,16 +507,29 @@ class _BinningHtmlRenderer:
                 percent_cols=missing_day_percent_cols,
                 style_rule_map=missing_day_style_rules,
             )
-            sections.append((
+            missing_day_subtitle = (
+                f"Daily missing-rate trend derived from dt_col={self.dt_col}."
+            )
+        else:
+            missing_day_html = (
+                '<div class="mars-empty">No daily missing-rate table is available. '
+                "Evaluate with a valid time_col to generate Missing By Day data.</div>"
+            )
+            missing_day_subtitle = (
+                "No daily missing-rate data was generated for this report."
+            )
+        sections.append(
+            (
                 "missing-day-section",
                 "Missing By Day",
                 self._wrap_html_section(
                     "Missing Trend By Day",
                     missing_day_html,
                     "missing-day-section",
-                    subtitle=f"Daily missing-rate trend derived from dt_col={self.dt_col}.",
+                    subtitle=missing_day_subtitle,
                 ),
-            ))
+            )
+        )
 
         trend_blocks: List[str] = []
         trend_legend_html = self._build_threshold_legend_html(
@@ -554,6 +584,62 @@ class _BinningHtmlRenderer:
 
         return sections
 
+    @staticmethod
+    def _resolve_chart_embed_mode(
+        chart_embed_mode: str,
+        chart_count: int,
+    ) -> Literal["inline", "asset"]:
+        """根据图表数量解析 HTML 图像嵌入模式。"""
+        if chart_embed_mode not in {"auto", "inline", "asset"}:
+            raise ValueError(
+                "chart_embed_mode must be one of 'auto', 'inline', or 'asset'."
+            )
+        if chart_embed_mode == "asset":
+            return "asset"
+        if chart_embed_mode == "inline":
+            return "inline"
+        return "asset" if chart_count > _CHART_ASSET_THRESHOLD else "inline"
+
+    @staticmethod
+    def _build_chart_asset_filename(
+        *,
+        index: int,
+        target_name: str,
+        feature: str,
+    ) -> str:
+        """为风险趋势图生成稳定且可读的图片资产文件名。"""
+        return (
+            f"risk_trend_{index:04d}_{slugify(target_name)}_"
+            f"{slugify(feature)}.png"
+        )
+
+    @staticmethod
+    def _write_chart_asset(figure: Any, asset_path: Path) -> None:
+        """将单个风险趋势图写为 PNG 资产并释放 Matplotlib 对象。"""
+        asset_path.parent.mkdir(parents=True, exist_ok=True)
+        pyplot = require_pyplot(feature_name="HTML risk trend asset rendering")
+        try:
+            figure.savefig(asset_path, format="png", dpi=150, bbox_inches="tight")
+        finally:
+            pyplot.close(figure)
+
+    @staticmethod
+    def _mark_page_view(section_html: str, page_key: str) -> str:
+        """为已有 HTML section 添加 SPA 页面视图标记。"""
+        return section_html.replace(
+            'class="mars-section"',
+            f'class="mars-section mars-page-view" data-mars-view="{page_key}"',
+            1,
+        )
+
+    @staticmethod
+    def _page_key_for_section(section_id: str) -> str:
+        """将报告 section id 映射为 SPA 页面 key。"""
+        return {
+            "trend-section": "trends",
+            "chart-section": "charts",
+        }.get(section_id, section_id.removesuffix("-section"))
+
     def _build_chart_section_html(
         self: Any,
         *,
@@ -563,6 +649,8 @@ class _BinningHtmlRenderer:
         max_plots: int,
         sort_by: str,
         ascending: bool,
+        chart_embed_mode: str,
+        chart_asset_dir: Path | None,
     ) -> str | None:
         """
         构建特征分箱风险趋势图 section。
@@ -570,6 +658,10 @@ class _BinningHtmlRenderer:
         方法会复用 ``MarsPlotter`` 的绘图路径，并按目标变量和排序配置生成
         可筛选的图表卡片；无明细数据时返回 ``None``。
         """
+        time_range: TimeRange = resolve_report_time_range(
+            report_meta=self.report_meta,
+            dt_col=self.dt_col,
+        )
         if detail_pd.empty:
             return None
 
@@ -599,32 +691,52 @@ class _BinningHtmlRenderer:
             )
         chart_controls += "</div>"
 
+        chart_candidates: list[tuple[str, pd.DataFrame, str, str]] = []
+        for y_val in chart_y_values:
+            if "y" in detail_pd.columns:
+                chart_detail_pd = detail_pd[detail_pd["y"].astype(str) == y_val].copy()
+            else:
+                chart_detail_pd = detail_pd.copy()
+
+            if "target" in summary_pd.columns:
+                chart_summary_pd = summary_pd[
+                    summary_pd["target"].astype(str) == y_val
+                ].copy()
+            else:
+                chart_summary_pd = summary_pd.copy()
+            chart_sort_col = self._resolve_chart_sort_column(chart_summary_pd, sort_by)
+            if not chart_summary_pd.empty and chart_sort_col:
+                chart_summary_pd = chart_summary_pd.sort_values(
+                    chart_sort_col,
+                    ascending=ascending,
+                )
+            if not chart_summary_pd.empty and "feature" in chart_summary_pd.columns:
+                chart_features = chart_summary_pd["feature"].drop_duplicates().tolist()[:max_plots]
+            else:
+                chart_features = chart_detail_pd["feature"].drop_duplicates().tolist()[:max_plots]
+            for feature in chart_features:
+                data_source = feature_sources.get(str(feature), "UNMAPPED")
+                chart_candidates.append(
+                    (y_val, chart_detail_pd, str(feature), str(data_source))
+                )
+
+        effective_embed_mode = self._resolve_chart_embed_mode(
+            chart_embed_mode,
+            len(chart_candidates),
+        )
+        if effective_embed_mode == "asset" and chart_asset_dir is None:
+            raise ValueError("chart_asset_dir is required for asset chart embedding.")
+
         chart_views: List[str] = []
+        chart_cards_by_target: Dict[str, List[str]] = {y_val: [] for y_val in chart_y_values}
         try:
             from mars.reporting.plotter import MarsPlotter
 
-            for y_val in chart_y_values:
-                if "y" in detail_pd.columns:
-                    chart_detail_pd = detail_pd[detail_pd["y"].astype(str) == y_val].copy()
-                else:
-                    chart_detail_pd = detail_pd.copy()
-
-                if "target" in summary_pd.columns:
-                    chart_summary_pd = summary_pd[
-                        summary_pd["target"].astype(str) == y_val
-                    ].copy()
-                else:
-                    chart_summary_pd = summary_pd.copy()
-                chart_sort_col = self._resolve_chart_sort_column(chart_summary_pd, sort_by)
-                if not chart_summary_pd.empty and chart_sort_col:
-                    chart_summary_pd = chart_summary_pd.sort_values(chart_sort_col, ascending=ascending)
-                if not chart_summary_pd.empty and "feature" in chart_summary_pd.columns:
-                    chart_features = chart_summary_pd["feature"].drop_duplicates().tolist()[:max_plots]
-                else:
-                    chart_features = chart_detail_pd["feature"].drop_duplicates().tolist()[:max_plots]
-
-                chart_cards: List[str] = []
-                for feature in chart_features:
+            for index, (y_val, chart_detail_pd, feature, data_source) in enumerate(
+                chart_candidates,
+                start=1,
+            ):
+                if effective_embed_mode == "inline":
                     block_html = MarsPlotter.render_feature_binning_risk_trend_html(
                         df_detail=chart_detail_pd,
                         feature=feature,
@@ -632,19 +744,54 @@ class _BinningHtmlRenderer:
                         target_name=y_val,
                         show_risk="both",
                         dpi=150,
+                        time_range=time_range,
                     )
                     if not block_html:
                         continue
-                    data_source = feature_sources.get(str(feature), "UNMAPPED")
-                    chart_cards.append(
-                        f'<article class="mars-chart-card" data-feature="{self._escape_attr(feature)}" data-data-source="{self._escape_attr(data_source)}" '
-                        f'data-search-text="{self._escape_attr(self._normalize_search_text(feature, y_val, data_source))}"><h4>{html.escape(str(feature))}</h4>{block_html}</article>'
+                    image_html = block_html
+                else:
+                    assert chart_asset_dir is not None
+                    figure = MarsPlotter._build_feature_binning_risk_figure(
+                        df_detail=chart_detail_pd,
+                        feature=feature,
+                        group_col=self.detail_group_col or "mars_group",
+                        target_name=y_val,
+                        show_risk="both",
+                        time_range=time_range,
                     )
-                if not chart_cards:
-                    chart_cards.append('<div class="mars-empty">No chart data available for this target.</div>')
-                chart_views.append(f'<div class="mars-chart-view" data-y-value="{self._escape_attr(y_val)}">{"".join(chart_cards)}</div>')
+                    if figure is None:
+                        continue
+                    filename = self._build_chart_asset_filename(
+                        index=index,
+                        target_name=y_val,
+                        feature=feature,
+                    )
+                    asset_path = chart_asset_dir / filename
+                    self._write_chart_asset(figure, asset_path)
+                    asset_src = f"{chart_asset_dir.name}/{filename}"
+                    image_html = (
+                        f'<img class="mars-risk-trend-image" loading="lazy" '
+                        f'data-src="{self._escape_attr(asset_src)}" '
+                        f'alt="{html.escape(feature)} risk trend" />'
+                    )
+                chart_cards_by_target[y_val].append(
+                    f'<article class="mars-chart-card" data-feature="{self._escape_attr(feature)}" '
+                    f'data-target="{self._escape_attr(y_val)}" '
+                    f'data-data-source="{self._escape_attr(data_source)}" '
+                    f'data-search-text="{self._escape_attr(self._normalize_search_text(feature, y_val, data_source))}">'
+                    f'<h4>{html.escape(feature)}</h4>{image_html}</article>'
+                )
         except Exception as exc:
             logger.warning("HTML chart rendering skipped due to error: %s", exc)
+
+        for y_val in chart_y_values:
+            chart_cards = chart_cards_by_target[y_val]
+            if not chart_cards:
+                chart_cards.append('<div class="mars-empty">No chart data available for this target.</div>')
+            chart_views.append(
+                f'<div class="mars-chart-view" data-y-value="{self._escape_attr(y_val)}">'
+                f'{"".join(chart_cards)}</div>'
+            )
 
         if not chart_views:
             for y_val in chart_y_values:
@@ -1173,7 +1320,8 @@ class _BinningHtmlRenderer:
         path: str = "mars_bin_report.html",
         *,
         report_name: str = "MARS Evaluation Report",
-        max_plots: int = 20,
+        max_plots: int = 500,
+        chart_embed_mode: Literal["auto", "inline", "asset"] = "auto",
         sort_by: str = "iv",
         ascending: bool = False,
         include_summary: bool = True,
@@ -1182,7 +1330,7 @@ class _BinningHtmlRenderer:
         include_charts: bool = True,
     ) -> None:
         """
-        导出自包含的交互式 HTML 报告。
+        导出支持页面切换和大规模图表懒加载的交互式 HTML 报告。
 
         Parameters
         ----------
@@ -1191,7 +1339,10 @@ class _BinningHtmlRenderer:
         report_name : str
             HTML 页面标题与报告名称。
         max_plots : int
-            图表区域最多展示的特征数量。
+            每个 target 的图表区域最多展示的特征数量，默认 500。
+        chart_embed_mode : Literal["auto", "inline", "asset"]
+            图表图片的嵌入模式。``auto`` 在图表数量超过 50 张时写入旁路资产并懒加载；
+            ``inline`` 强制内嵌；``asset`` 强制写入与 HTML 同级的资产目录。
         sort_by : str
             图表和汇总视图默认使用的排序指标。
         ascending : bool
@@ -1207,7 +1358,8 @@ class _BinningHtmlRenderer:
 
         Notes
         -----
-        导出的 HTML 为单文件报告，适合脱离 Notebook 独立分享或归档。
+        ``inline`` 模式为单文件报告；大规模图表的 ``auto`` / ``asset`` 模式会在
+        HTML 同级生成图片资产目录，适合脱离 Notebook 独立分享或归档。
 
         Examples
         --------
@@ -1227,6 +1379,7 @@ class _BinningHtmlRenderer:
             path=path,
             report_name=report_name,
             max_plots=max_plots,
+            chart_embed_mode=chart_embed_mode,
             sort_by=sort_by,
             ascending=ascending,
             include_summary=include_summary,
@@ -1241,6 +1394,7 @@ class _BinningHtmlRenderer:
         path: str,
         report_name: str,
         max_plots: int,
+        chart_embed_mode: Literal["auto", "inline", "asset"],
         sort_by: str,
         ascending: bool,
         include_summary: bool,
@@ -1249,7 +1403,7 @@ class _BinningHtmlRenderer:
         include_charts: bool,
     ) -> None:
         """
-        写入新版自包含 HTML 评估报告。
+        写入新版页面化 HTML 评估报告及可选图表资产。
 
         方法负责收集汇总表、明细表、趋势表、图表和数据源筛选配置，随后
         组装导航、概览、各业务 section 与运行脚本并写入目标路径。
@@ -1305,7 +1459,17 @@ class _BinningHtmlRenderer:
 
         overview_html = self._build_dataset_overview_html(self.report_meta)
         if overview_html:
-            html_parts.append(self._wrap_html_section("Dataset Overview", overview_html, "overview-section", subtitle="Dataset context, grouping setup, and target-level baseline stats."))
+            html_parts.append(
+                self._mark_page_view(
+                    self._wrap_html_section(
+                        "Dataset Overview",
+                        overview_html,
+                        "overview-section",
+                        subtitle="Dataset context, grouping setup, and target-level baseline stats.",
+                    ),
+                    "overview",
+                )
+            )
             nav_items.append(("overview-section", "Overview"))
 
         if include_summary:
@@ -1316,7 +1480,7 @@ class _BinningHtmlRenderer:
                 ascending=ascending,
             )
             if summary_html:
-                html_parts.append(summary_html)
+                html_parts.append(self._mark_page_view(summary_html, "summary"))
                 nav_items.append(("summary-section", "Summary"))
 
         if include_trends:
@@ -1325,7 +1489,8 @@ class _BinningHtmlRenderer:
                 missing_by_day_pd=missing_by_day_pd,
                 feature_sources=feature_sources,
             ):
-                html_parts.append(section_html)
+                page_key = self._page_key_for_section(section_id)
+                html_parts.append(self._mark_page_view(section_html, page_key))
                 nav_items.append((section_id, label))
 
         if not detail_pd.empty:
@@ -1335,17 +1500,23 @@ class _BinningHtmlRenderer:
                 feature_sources=feature_sources,
             )
             html_parts.append(
-                self._wrap_html_section(
-                    "Grouped Pivot",
-                    pivot_body,
-                    "pivot-section",
-                    subtitle="Binned distribution and risk comparison across groups.",
-                    open_by_default=False,
+                self._mark_page_view(
+                    self._wrap_html_section(
+                        "Grouped Pivot",
+                        pivot_body,
+                        "pivot-section",
+                        subtitle="Binned distribution and risk comparison across groups.",
+                        open_by_default=False,
+                    ),
+                    "pivot",
                 )
             )
             nav_items.append(("pivot-section", "Grouped Pivot"))
 
         if include_charts:
+            chart_asset_dir = Path(path).with_suffix("").with_name(
+                f"{Path(path).stem}_assets"
+            )
             chart_html = self._build_chart_section_html(
                 detail_pd=detail_pd,
                 summary_pd=summary_pd,
@@ -1353,13 +1524,17 @@ class _BinningHtmlRenderer:
                 max_plots=max_plots,
                 sort_by=sort_by,
                 ascending=ascending,
+                chart_embed_mode=chart_embed_mode,
+                chart_asset_dir=chart_asset_dir,
             )
             if chart_html:
-                html_parts.append(chart_html)
+                html_parts.append(self._mark_page_view(chart_html, "charts"))
                 nav_items.append(("chart-section", "Charts"))
 
         nav_html = "".join(
-            f'<a href="#{html.escape(section_id)}">{html.escape(label)}</a>'
+            f'<a class="mars-page-nav" data-page="{html.escape(self._page_key_for_section(section_id))}" '
+            f'href="#{html.escape(self._page_key_for_section(section_id))}" '
+            f'onclick="marsNavigateTo(this.dataset.page); return false;">{html.escape(label)}</a>'
             for section_id, label in nav_items
         )
         source_options = "".join(

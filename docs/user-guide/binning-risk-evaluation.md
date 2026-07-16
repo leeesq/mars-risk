@@ -12,6 +12,7 @@ risk_profile = profile_risk(
     target="target",
     features=["income", "utilization", "segment"],
     group_col="month",
+    time_col="apply_dt",
     binning_type="native",
     method="quantile",
     n_bins=5,
@@ -23,6 +24,10 @@ risk_profile = profile_risk(
 report = risk_profile.report
 report.plot_risk_trends(max_plots=5)
 ```
+
+风险趋势图必须提供 `time_col`。`group_col` 优先决定图表面板分组，但左上角范围始终来自 `time_col` 的原始最小值和最大值；仅在没有 `group_col` 时，`time_grain` 才用于生成时间分组。
+
+`write_html()` 默认按每个 target 最多输出 500 个特征趋势图。大报告会自动生成同级资产目录并懒加载图片，报告内部按页面切换；需要时可用 `chart_embed_mode="inline"` 或 `chart_embed_mode="asset"` 覆盖自动模式。
 
 返回值是 `MarsRiskProfile(report, binner, targets, metadata)`：
 

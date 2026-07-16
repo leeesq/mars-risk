@@ -199,6 +199,7 @@ risk_profile = profile_risk(
     target="target",
     features=["income", "utilization", "segment"],
     group_col="month",
+    time_col="apply_dt",
     binning_type="native",
     method="quantile",
     n_bins=4,
@@ -214,6 +215,10 @@ binner = risk_profile.binner
 summary = eval_report.summary_table
 eval_report.plot_risk_trends(max_plots=5)
 ```
+
+风险趋势图要求提供 `time_col`。`group_col` 优先决定图表面板分组，左上角时间范围始终来自 `time_col` 的有效最小值和最大值；只有未传 `group_col` 时，`time_grain` 才用于生成时间分组。
+
+`write_html()` 默认最多为每个 target 绘制 500 个特征。图表数量较多时会自动写入同级的 `<报告名>_assets/` 目录并在 Charts 页面懒加载；可通过 `chart_embed_mode="inline"` 或 `chart_embed_mode="asset"` 强制选择嵌入方式。HTML 报告按 Overview、Summary、Missing By Day、Trend Tables、Grouped Pivot 和 Charts 页面切换，支持全局特征检索直达趋势图。
 
 `profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看和导出分箱评估报表，`binner` 是本次自动拟合出的分箱器，可用于后续复用分箱规则。
 
