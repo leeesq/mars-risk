@@ -1,79 +1,70 @@
+---
+description: MARS 高层工作流、分箱规则来源、时间分组和 report 对象的核心 API 契约。
+---
+
 # 核心 API 约定
 
-MARS 的 API 设计遵循一个核心原则：构造函数保存稳定策略，方法入参保存本次运行上下文。这样同一个对象可以复用到不同数据集、不同特征范围和不同分组切片。
+MARS 把稳定策略放在构造函数，把本次运行的数据与列名放在方法参数中。高层工作流使用
+`df, target`；底层分箱器和选择器使用更接近 sklearn 的 `X, y`。
 
-## 高层工作流：`df, target`
+## 入口怎么选
 
-高层风控工作流处理完整业务表，目标变量是表中的列名，所以使用 `df, target`：
+| 目标 | 推荐入口 | 规则来源 |
+| --- | --- | --- |
+| 一次性风险评估 | `profile_risk(df, ...)` | 自动按高层参数构建 |
+| 复用或传入已有分箱器 | `MarsBinEvaluator.evaluate(df, binner=...)` | 显式 `binner` |
+| 特征/模型监控 | `MarsMonitor.monitor(df, ...)` | 显式 `binner`、benchmark 或当前期 |
+| 底层分箱转换 | `Mars*Binner.fit(X, y)` / `transform(X)` | 调用方自行管理 |
 
-```python
-from mars.analysis import profile_risk
+`profile_risk()` 是便捷编排入口，**不接受** `binner` 参数。需要固定规则时，使用
+`MarsBinEvaluator.evaluate()`；多 target 的 `profile_risk()` 会按首个 target 拟合一次，并复用
+该规则处理后续 target。
 
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income", "utilization"],
-    group_col="month",
-)
-```
-
-适用对象包括：
-
-- `MarsDataProfiler.generate_profile(df, ...)`
-- `MarsBinEvaluator.evaluate(df, target=..., ...)`
-- `profile_risk(df, target=..., ...)`
-- `MarsStatsSelector.fit(df, target=..., ...)`
-- `MarsMonitor.monitor(df, target=..., ...)`
-
-## 底层算法对象：`X, y`
-
-底层算法对象接近 sklearn 风格，处理特征矩阵和标签向量，所以使用 `X, y`：
-
-```python
-from mars.feature import MarsNativeBinner
-
-binner = MarsNativeBinner(method="quantile", n_bins=5)
-binner.fit(X, y, cat_features=["segment"])
-X_woe = binner.transform(X, return_type="woe")
-```
-
-适用对象包括：
-
-- `MarsNativeBinner.fit(X, y=None, ...)`
-- `MarsLiteOptBinner.fit(X, y, ...)`
-- `MarsOptimalBinner.fit(X, y, ...)`
-- `MarsLinearSelector.fit(X, y, ...)`
-- `MarsImportanceSelector.fit(X, y=None, ...)`
-
-## 构造函数与方法入参
+## 构造函数与方法参数
 
 | 位置 | 放什么 | 示例 |
 | --- | --- | --- |
 | 构造函数 | 稳定策略、阈值、模型规格 | `missing_thr`、`iv_thr`、`model_type`、`seed` |
-| 方法入参 | 数据、列名、特征范围、分组、时间、输出路径 | `df`、`target`、`features`、`group_col`、`time_col` |
+| 方法参数 | 数据、列名、特征范围、分组、日期和输出路径 | `df`、`target`、`features`、`group_col`、`time_col` |
 
-不要把本次数据集、特征范围或目标列放在构造函数里。这样可以避免对象状态和方法入参冲突。
+这样同一个对象可复用于不同月份、客群或样本切片，而不会把上一轮数据上下文保存在实例状态中。
 
-## 分组、时间和样本切片命名
+## 分组、日期与趋势图
 
-| 参数 | 语义 |
+| 参数 | 职责 | 何时生效 |
+| --- | --- | --- |
+| `group_col` | 已有分组，例如 `month`、`channel`、`segment` | 最高优先级，决定报表与图表面板分组 |
+| `time_col` | 原始日期，例如 `apply_dt` | 风险趋势图的唯一时间范围来源；也可配合粒度生成分组 |
+| `time_grain` | `"day"`、`"week"`、`"month"`、`"7d"` 等时间聚合粒度 | 仅未传 `group_col` 时根据 `time_col` 生成时间分组 |
+| `dataset_flag_col` | train/val/oot 等建模样本切片 | 只服务 Modeling，不等同于趋势分组 |
+
+例如已有 `month` 时传 `group_col="month", time_col="apply_dt"`。趋势图按 `month` 展开，
+但左上角始终显示 `apply_dt` 的真实最小/最大日期，精确到日。只有日期没有现成分组时，才传
+`time_col="apply_dt", time_grain="month"`。
+
+## `benchmark_df` 与分箱规则
+
+`benchmark_df` 是基准期样本，不是会被并入当前期明细或 Total 的额外数据。它会提供 PSI 的
+expected distribution，并可在当前期未表现时提供监督分箱标签。
+
+| API | 规则来源优先级 |
 | --- | --- |
-| `group_col` | 已经存在的分组列，例如 `month`、`channel`、`product` |
-| `time_col` | 原始日期列，例如 `apply_dt` |
-| `time_grain` | 时间聚合粒度，例如 `"day"`、`"week"`、`"month"`、`"7d"` |
-| `dataset_flag_col` | 建模样本切片列，例如 train/val/oot |
+| `MarsBinEvaluator.evaluate` | 显式 `binner` → `benchmark_df` → 当前 `df` |
+| `MarsMonitor.monitor` | 显式 `binner` → `benchmark_df` → 当前 `df` |
+| `profile_risk` | `benchmark_df` → 当前 `df`；该入口没有 `binner` 参数 |
 
-如果已经有 `month` 这样的分组列，直接传 `group_col="month"`。如果只有原始日期列，传 `time_col="apply_dt"` 和 `time_grain="month"`。
+监督分箱需要拟合期至少有两个有效 target 类别。若当前期 target 缺列或全空，但 benchmark 有效，
+仍可用 benchmark 监督建箱，当前期输出保持无标签模式。默认 RC 基准仍是当前期 Total；只有
+`risk_corr_baseline="benchmark"` 才使用 benchmark 坏率。
 
-## report 对象
+## report 是结构化结果，不只是文件
 
-各模块 report 不只是导出文件，也保存多粒度结构化数据。
+| 字段 | 用途 |
+| --- | --- |
+| `summary_table` | 特征或模型级汇总、排序和首页摘要 |
+| `detail_table` / `detail_tables` | 分箱、指标和分组明细 |
+| `trend_tables` | 按时间或分组展开的宽表趋势 |
+| `metadata` / `report_meta` | 运行上下文、指标口径和输出元数据 |
 
-常见字段包括：
-
-- `summary_table`：特征级或模型级汇总。
-- `detail_table` / `detail_tables`：分箱、指标或切片明细。
-- `trend_tables`：按时间或分组展开的趋势宽表。
-- `metadata` / `report_meta`：运行上下文、参数和产出元数据。
-
-这些表可以继续用于特征复盘、监控规则定制、内部看板接入，或借助 Agent 做定制化摘要和报告重排。
+查看[Report 对象](../reference/report-objects.md)了解各类 report 的具体字段；查看
+[报告导出与二次加工](../user-guide/reports-and-exports.md)了解 HTML、Excel 和图表资产的交付方式。

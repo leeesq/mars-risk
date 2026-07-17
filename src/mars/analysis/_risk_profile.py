@@ -340,7 +340,9 @@ def profile_risk(
           `min_cat_fraction`, `cart_params`, `join_threshold`
         - `lite_opt`: `n_prebins`, `join_threshold`
     benchmark_df : pl.DataFrame | pd.DataFrame | None
-        外部 benchmark 样本。
+        基准期样本。未传显式 ``binner`` 时用于拟合分箱规则和构造 PSI 基准；
+        监督分箱时必须包含当前首个 target 的至少两个有效类别。多 target 场景只用
+        首个 target 拟合一次，后续 target 复用同一分箱规则。
     feature_start_aware_reference : bool
         是否启用 feature-start aware reference，用于 PSI 基准重锚。
     risk_corr_baseline : RiskCorrBaseline

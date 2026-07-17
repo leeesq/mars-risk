@@ -1,8 +1,16 @@
-# 快速开始
+---
+description: 用一条可运行的风险评估和 HTML 报告链路快速开始使用 MARS。
+---
 
-本页用一个小样本串起数据画像、分箱评估、分箱器、特征筛选、特征/模型监控、Modeling 建模和 Pipeline 编排。
+# 10 分钟 Quickstart
 
-## 准备样本
+本页只走一条高频链路：准备带日期和标签的样本，完成风险评估，再导出可检索 HTML。
+画像、分箱器细节、特征筛选、建模和监控分别进入对应的用户指南。
+
+## 1. 准备数据
+
+`time_col` 保留原始日期；`month` 是已有分组列。两者同时存在时，`month` 用于面板分组，
+`apply_dt` 用于趋势图左上角的真实时间范围。
 
 ```python
 import polars as pl
@@ -19,46 +27,22 @@ df = pl.DataFrame(
             "2024-02", "2024-02", "2024-02", "2024-02",
             "2024-03", "2024-03", "2024-03", "2024-03",
         ],
-        "income": [3200, 3600, -999, None, 3300, 4200, -999, 5800, 3400, 4300, None, 6100],
-        "utilization": [0.12, 0.18, 0.52, 0.61, 0.14, 0.29, 0.54, 0.58, 0.16, 0.31, 0.56, 0.63],
-        "segment": ["new", "repeat", "vip", "vip", "new", "repeat", "vip", "vip", "new", "repeat", "vip", "vip"],
+        "income": [
+            3200, 3600, -999, None, 3300, 4200, -999, 5800, 3400, 4300, None, 6100,
+        ],
+        "utilization": [
+            0.12, 0.18, 0.52, 0.61, 0.14, 0.29, 0.54, 0.58, 0.16, 0.31, 0.56, 0.63,
+        ],
+        "segment": [
+            "new", "repeat", "vip", "vip", "new", "repeat",
+            "vip", "vip", "new", "repeat", "vip", "vip",
+        ],
         "target": [0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1],
     }
 )
 ```
 
-## 数据画像
-
-```python
-from mars.analysis import MarsDataProfiler, profile_stats
-
-profile_report = MarsDataProfiler(missing_values=[-999]).generate_profile(
-    df,
-    group_col="month",
-    psi_include_missing=False,
-    psi_include_special=False,
-    metrics=["missing", "zeros", "mean", "psi"],
-    enable_sparkline=False,
-)
-
-quick_report = profile_stats(
-    df,
-    metrics=["missing", "mean"],
-    features=["income", "utilization"],
-    group_col="month",
-    missing_values=[-999],
-)
-```
-
-常用结果：
-
-```python
-profile_report.overview_table
-profile_report.dq_tables
-profile_report.stats_tables
-```
-
-## 分箱评估
+## 2. 评估风险并保留分箱规则
 
 ```python
 from mars.analysis import profile_risk
@@ -68,185 +52,48 @@ risk_profile = profile_risk(
     target="target",
     features=["income", "utilization", "segment"],
     group_col="month",
+    time_col="apply_dt",
     binning_type="native",
     method="quantile",
     n_bins=4,
     missing_values=[-999],
     special_values=[-999],
-    n_jobs=4,
     psi_include_missing=False,
     psi_include_special=False,
 )
 
-eval_report = risk_profile.report
+report = risk_profile.report
 binner = risk_profile.binner
-summary = eval_report.summary_table
-eval_report.plot_risk_trends(max_plots=5)
+summary = report.summary_table
 ```
 
-`profile_risk()` 返回 `MarsRiskProfile(report, binner, targets, metadata)`。`report` 用于查看指标和导出报表，`binner` 是本次自动拟合出的分箱器，可用于后续复用分箱规则。
+`report` 保存汇总、分箱明细、趋势表和导出方法；`binner` 可以在后续流程中复用相同分箱规则。
 
-如果需要在不同分箱器之间反复切换底层高级参数，优先使用
-`binner_params={"merge_small_bins": True, "n_prebins": 30, "join_threshold": 80}`
-这种单层自动识别写法；当前 `binning_type` 不适用但已识别的键会被忽略。
-
-当 `profile_risk()` 使用 `optimal` 或 `lite_opt` 且未显式传 `monotonic_trend`
-时，高层默认会补成 `auto_asc_desc`。这与直接构造 `MarsLiteOptBinner()` 时
-底层默认的 `auto` 不同。
-
-## 分箱器
+## 3. 查看趋势并导出 HTML
 
 ```python
-from mars.feature import MarsLiteOptBinner, MarsNativeBinner
+report.plot_risk_trends(max_plots=5)
 
-X = df.select(["income", "utilization", "segment"])
-y = df.get_column("target")
-
-binner = MarsNativeBinner(method="quantile", n_bins=4, special_values=[-999])
-binner.fit(X, y, cat_features=["segment"])
-
-lite_binner = MarsLiteOptBinner(n_bins=4, n_prebins=30, monotonic_trend="auto")
-lite_binner.fit(X, y, cat_features=["segment"])
-
-X_bin = binner.transform(X, return_type="index")
-X_woe = binner.transform(X, return_type="woe")
-income_mapping = binner.get_bin_mapping("income")
-```
-
-底层分箱器采用 `X, y` 风格。`method="cart"` 和 `MarsLiteOptBinner` 需要传入 `y`，`method="quantile"` 和 `method="uniform"` 可以无标签运行。
-
-## 特征筛选
-
-```python
-from mars.feature import MarsStatsSelector
-
-selector = MarsStatsSelector(
-    missing_thr=0.9,
-    iv_thr=0.01,
-    psi_thr=0.25,
-    psi_include_missing=False,
-    psi_include_special=False,
-    skip_fine_scan=True,
-)
-
-selector.fit(
-    df,
-    target="target",
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    feature_data_source={
-        "user_profile": ["income"],
-        "credit_usage": ["utilization"],
-        "application": ["segment"],
-    },
-)
-
-selected_features = selector.selected_features_
-selection_report = selector.get_binning_report(df)
-selection_report.plot_risk_trends(max_plots=5)
-```
-
-## 特征/模型监控
-
-```python
-from mars.monitoring import MarsMonitor, generate_monitoring_alert
-
-monitor_df = df.with_columns((pl.col("utilization") * 100).alias("model_score"))
-
-monitor_report = MarsMonitor(
-    binner_params={"method": "quantile", "n_bins": 4},
-).monitor(
-    monitor_df,
-    features=["model_score", "income", "utilization"],
-    target="target",
-    group_col="month",
-    psi_include_missing=False,
-    psi_include_special=False,
-    trend_column_order="desc",
-)
-
-alert_text = generate_monitoring_alert(
-    monitor_report,
-    score_key="model_score",
-    model_features=["income", "utilization"],
+report.write_html(
+    "risk_report.html",
+    report_name="March risk review",
+    max_plots=500,
+    chart_embed_mode="auto",
 )
 ```
 
-`MarsMonitor` 是特征/模型监控的通用指标计算层。`trend_column_order="desc"` 可以让最新时间列展示在趋势宽表最前面，报警摘要会按 report 记录的顺序识别基准期和最新期。
+`write_html()` 每个 target 最多绘制 500 个特征。图表超过 50 张时，`auto` 会在 HTML 同级
+生成 `<报告名>_assets/` 图片目录，并在 Charts 视图中懒加载；小报告仍是单文件。全局搜索可从
+Summary 或 Charts 直达特征趋势图。
 
-分箱评估、画像、筛选和监控都支持控制 PSI 是否包含缺失箱和特殊值箱。建模评估复用分箱评估器计算 `Score PSI` 和 `feature_psi`，只暴露 `psi_include_missing`，因为建模评估本身没有业务特殊值上下文。
+!!! note "趋势图契约"
 
-## Modeling / Pipeline
+    `plot_risk_trends()` 和 HTML 内的图表都需要有效 `time_col`。左上角范围仅使用原始日期的
+    最小/最大有效值，显示为 `YYYY-MM-DD`；`group_col` 不能代替日期来源。
 
-Modeling 建模和 Pipeline 编排仍在快速迭代中，接口约定、结果对象和调参参数后续可能发生较大变化。当前 Modeling 支持 XGBoost、LightGBM、CatBoost 和 Logistic Regression。
+## 接下来读什么
 
-如果希望把筛选、可选 WOE 和建模串成一条链路，可以使用 `mars.pipeline`。树模型通常走“筛选 -> 建模”：
-
-```python
-from mars.feature import MarsStatsSelector
-from mars.pipeline import MarsModelingPipeline, MarsModelingStep, MarsSelectionStep
-
-pipeline = MarsModelingPipeline(
-    target="target",
-    features=["income", "utilization", "segment"],
-    steps=[
-        MarsSelectionStep(
-            name="stats_filter",
-            selector=MarsStatsSelector(iv_thr=0.02),
-        ),
-        MarsModelingStep(
-            name="modeling",
-            model_type="lgb",
-            time_col="apply_dt",
-            split_ratios={"train": 0.6, "val": 0.2, "oot": 0.2},
-            tune_params={"n_trials": 20, "artifact_dir": None},
-        ),
-    ],
-)
-
-pipeline_result = pipeline.fit(df)
-```
-
-LR / 评分卡链路可以在中间显式加入 `MarsWOEBinningStep`，让后续步骤消费 `*_woe` 特征。也可以直接使用 `mars.modeling` 做单次建模会话：
-
-```python
-from mars.modeling import MarsModelReplayRunner, MarsModelingSession
-
-session = MarsModelingSession(
-    model_type="lgb",
-    features=["income", "utilization", "segment"],
-    target="target",
-    categorical_features=["segment"],
-    optimize_metric="ks",
-    seed=1206,
-)
-
-modeling_df = session.slice(
-    df,
-    time_col="apply_dt",
-    split_ratios={"train": 0.6, "val": 0.2, "oot": 0.2},
-)
-
-tuning_result = session.tune(
-    modeling_df,
-    n_trials=20,
-    artifact_dir=None,
-)
-
-replay_result = MarsModelReplayRunner().replay(
-    tuning_result,
-    modeling_df,
-    top_k=3,
-    sort_metric="ks",
-)
-```
-
-## 报表导出
-
-```python
-profile_report.write_excel("mars_profile.xlsx")
-eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
-eval_report.write_html("mars_evaluation.html")
-```
-
-各模块 report 也可以直接读取结构化表，接入内部看板或交给 Agent 做二次加工。
+- 需要五月建箱、六月评估或显式复用分箱器：读[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
+- 当前期没有成熟标签：读[特征/模型监控](../user-guide/monitoring.md)。
+- 需要画像、筛选、建模或 Pipeline：从[首页任务导航](../index.md)选择对应路径。
+- 需要精确参数、默认值和异常：查看[API Reference](../reference/index.md)。

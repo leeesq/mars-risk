@@ -64,6 +64,24 @@ distribution_report = MarsMonitor().monitor(
 
 有 target 的监控可以设置 `binning_type="lite_opt"` 使用轻量监督式最优分箱；无标签分布监控建议保持默认 `native`。
 
+当当前期尚未到表现期、没有 target 列或 target 全为空时，仍可传入 target 名称和带标签的
+`benchmark_df`。MARS 会用 benchmark 拟合监督分箱规则，并把当前期报告作为无标签监控输出：
+
+```python
+report = MarsMonitor(
+    binner_params={"method": "cart", "n_bins": 5},
+).monitor(
+    june_df,
+    features=["model_score", "income"],
+    target="target",
+    benchmark_df=may_labeled_df,
+    group_col="month",
+)
+```
+
+benchmark 必须包含全部监控特征；指定 `weights_col` 时也必须包含对应权重列。传入已拟合
+`binner` 时，该 binner 优先，benchmark 只提供 PSI 基准和可选的 RC 基准。
+
 ## PSI 与缺失值
 
 监控默认不把缺失箱和特殊值箱纳入 PSI：

@@ -96,6 +96,36 @@ def test_monitor_handles_unobserved_latest_target_values() -> None:
     assert latest_observation.select(pl.col("bad_rate_observed").is_null()).item()
 
 
+def test_monitor_uses_labeled_benchmark_for_unlabeled_evaluation_df() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "score": [0.1, 0.2, 0.8, 0.9],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 4,
+            "score": [0.15, 0.25, 0.75, 0.95],
+        }
+    )
+
+    report = MarsMonitor(
+        binner_params={"method": "cart", "n_bins": 2},
+    ).monitor(
+        evaluation_df,
+        features=["score"],
+        target="target",
+        benchmark_df=benchmark_df,
+        group_col="month",
+    )
+
+    assert report.target is None
+    assert report.target_observation_table is None
+    assert report.metadata["binning_fit_source"] == "benchmark_df"
+    assert report.summary_table.select(pl.col("iv").is_null().all()).item()
+
+
 def test_monitor_supports_lite_opt_binning_with_observed_target_subset() -> None:
     df = _make_partial_target_df()
 

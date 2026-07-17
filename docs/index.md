@@ -1,58 +1,100 @@
+---
+description: 面向信贷风控宽表分析、分箱评估、建模和监控的 Polars-first 工具库。
+---
+
 # MARS
 
 <div class="mars-home-hero">
   <img class="mars-home-logo" src="assets/mars-logo.svg" alt="MARS">
   <img class="mars-home-wordmark" src="assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE">
   <img class="mars-home-tagline" src="assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库">
-  <img class="mars-home-pipeline" src="assets/mars-workflow.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report">
+  <img class="mars-home-pipeline" src="assets/mars-workflow.svg" alt="Profile to Bin and Evaluate to Analyze to Select to Modeling to Pipeline to Monitor to Report">
 </div>
 
-MARS 覆盖数据画像、分箱评估、特征分析、特征筛选、Modeling 建模、Pipeline 编排、特征/模型监控和 Excel/HTML 报表导出。它以宽表特征为主线，串联训练前分析、建模期调参与评估、流程编排、监控指标计算和报表导出，让日常风控建模流程更容易复用、审计和交付。
+MARS 是面向信贷风控宽表的 Polars-first 分析与建模工具库。它把数据质量、分箱规则、
+特征筛选、建模评估、监控指标和结构化报告串成可复用的工作流；既可直接导出 Excel/HTML，
+也可把 report 表接入内部看板或二次分析。
 
-## 适用场景
+## 从你的任务开始
 
-- 信贷风控宽表数据探索、特征质量检查和稳定性分析。
-- 连续特征、类别特征和业务特殊值的分箱评估。
-- 基于 IV、KS、AUC、PSI、缺失率、相关性和模型重要性的特征筛选。
-- XGBoost、LightGBM、CatBoost 和 Logistic Regression 的建模调参、replay 和建模评估。
-- 通过 Pipeline 编排串联多层筛选、可选 WOE 分箱和最终建模。
-- 计算特征/模型监控指标，覆盖分布漂移、缺失趋势、分箱占比、target 表现覆盖率和报警摘要。
-- 将画像、分箱评估和建模评估结果导出为 Excel/HTML，或读取 report 对象做二次加工。
+<div class="mars-task-grid" markdown>
 
-## 推荐阅读路径
+<a class="mars-task-card" href="user-guide/data-profiling/">
+  <strong>检查数据质量</strong>
+  <span>缺失、零值、分布、PSI 与数据源维度</span>
+  <em>MarsDataProfiler</em>
+</a>
 
-1. [安装](getting-started/installation.md)
-2. [快速开始](getting-started/quickstart.md)
-3. [核心 API 约定](getting-started/api-conventions.md)
-4. [数据画像与特征分析](user-guide/data-profiling.md)
-5. [分箱与风险评估](user-guide/binning-risk-evaluation.md)
-6. [特征筛选](user-guide/feature-selection.md)
-7. [Modeling / Pipeline](user-guide/modeling-pipeline.md)
-8. [特征/模型监控](user-guide/monitoring.md)
-9. [报表导出与二次加工](user-guide/reports-and-exports.md)
-10. [性能对比](performance/benchmark.md)
-11. [FAQ](faq.md)
+<a class="mars-task-card" href="user-guide/binning-risk-evaluation/">
+  <strong>评估特征风险</strong>
+  <span>分箱、IV、KS、AUC、Lift、PSI 与风险趋势</span>
+  <em>profile_risk / MarsBinEvaluator</em>
+</a>
 
-## 模块地图
+<a class="mars-task-card" href="user-guide/feature-selection/">
+  <strong>筛选候选特征</strong>
+  <span>质量、稳定性、相关性与模型重要性</span>
+  <em>MarsStatsSelector</em>
+</a>
 
-| 模块 | 主要 API | 主要产出 |
+<a class="mars-task-card" href="user-guide/modeling-pipeline/">
+  <strong>训练与复现实验</strong>
+  <span>样本切分、调参、replay、WOE 与 Pipeline</span>
+  <em>MarsModelingSession</em>
+</a>
+
+<a class="mars-task-card" href="user-guide/monitoring/">
+  <strong>监控特征或模型</strong>
+  <span>分布漂移、缺失趋势、表现覆盖率与报警摘要</span>
+  <em>MarsMonitor</em>
+</a>
+
+<a class="mars-task-card" href="user-guide/reports-and-exports/">
+  <strong>交付或检索报告</strong>
+  <span>Excel、可检索 HTML、趋势图资产与结构化表</span>
+  <em>write_html / write_excel</em>
+</a>
+
+</div>
+
+## 推荐路径
+
+| 你的起点 | 先读 | 再读 |
+| --- | --- | --- |
+| 第一次使用 MARS | [安装](getting-started/installation.md) → [10 分钟 Quickstart](getting-started/quickstart.md) | [核心 API 约定](getting-started/api-conventions.md) |
+| 五月建箱、六月评估或监控 | [分箱与风险评估](user-guide/binning-risk-evaluation.md) | [特征/模型监控](user-guide/monitoring.md) |
+| 需要生成或分享大报告 | [报告导出与二次加工](user-guide/reports-and-exports.md) | [Report 对象](reference/report-objects.md) |
+| 需要精确签名和默认值 | [API Reference](reference/index.md) | 对应用户指南的场景说明 |
+
+## 三个常用契约
+
+<div class="mars-callout" markdown>
+
+**趋势图需要真实日期。** 风险趋势图必须有有效 `time_col`；`group_col` 决定面板分组，
+时间范围只来自 `time_col`，并显示为 `YYYY-MM-DD`。仅未传 `group_col` 时，
+`time_grain` 才用于生成时间分组。
+
+**benchmark 是基准期样本。** 在 `MarsBinEvaluator.evaluate()` 和 `MarsMonitor.monitor()`
+中，规则来源优先级为显式 `binner`、`benchmark_df`、当前 `df`。`benchmark_df` 同时是
+PSI 的 expected distribution；`profile_risk()` 不接收显式 `binner`。
+
+**report 是可继续使用的数据对象。** `summary_table`、`detail_table`、`trend_tables` 和
+`metadata` 不只是导出中间产物，可用于看板、复盘和定制化报告。
+
+</div>
+
+## 能力地图
+
+| 模块 | 主要入口 | 常见产出 |
 | --- | --- | --- |
 | 数据画像 | `MarsDataProfiler`、`profile_stats` | `MarsProfileReport` |
-| 分箱评估 | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner`、`MarsBinEvaluator`、`profile_risk` | `MarsRiskProfile`、`MarsBinningReport` |
+| 分箱评估 | `profile_risk`、`MarsBinEvaluator` | `MarsRiskProfile`、`MarsBinningReport` |
 | 特征筛选 | `MarsStatsSelector`、`MarsLinearSelector`、`MarsImportanceSelector` | `selected_features_`、筛选报告 |
-| Modeling 建模 | `MarsModelingSession`、`MarsModelTuner`、`MarsModelReplayRunner`、`MarsModelEvaluator` | `MarsModelTuningResult`、`MarsModelReplayResult`、`MarsModelingReport` |
-| Pipeline 编排 | `MarsModelingPipeline`、`MarsSelectionStep`、`MarsWOEBinningStep`、`MarsModelingStep` | `MarsPipelineResult` |
-| 特征/模型监控 | `MarsMonitor`、`generate_monitoring_alert` | `MarsMonitoringReport`、报警摘要 |
-| 报表与评分卡 | `write_excel`、`write_html`、`build_scorecard` | Excel、HTML、`MarsScorecard` |
+| 建模与编排 | `MarsModelingSession`、`MarsModelingPipeline` | 调参、replay、评估和 Pipeline 结果 |
+| 监控 | `MarsMonitor`、`generate_monitoring_alert` | `MarsMonitoringReport`、报警摘要 |
+| 报告与评分卡 | `write_excel`、`write_html`、`build_scorecard` | Excel、HTML、`MarsScorecard` |
 
-## 设计理念
+## 边界
 
-- **性能优先**：核心计算优先使用 Polars，面向宽表、大样本、多特征风控场景优化。
-- **sklearn 风格**：底层算法对象保持 `fit` / `transform` / `evaluate` 等熟悉范式。
-- **风控全链路**：围绕数据画像、分箱评估、特征筛选、Modeling 建模、Pipeline 编排、特征监控、模型监控和报表导出组织能力。
-- **Pandas/Polars 兼容**：支持 Pandas 和 Polars 输入输出，核心计算尽量走 Polars。
-- **report 可复盘**：各模块 report 保留汇总、明细、趋势、元数据等多粒度结构化数据。
-
-## 项目边界
-
-MARS 不是完整线上监控平台，也不是模型注册、调度、审批和看板系统。MARS 提供可复用的风控计算、结构化 report 和默认摘要工具，监控窗口、模型版本、调度方式、业务阈值和处置流程由使用者结合内部系统定义。
+MARS 提供风险计算、结构化 report 和默认摘要；它不是完整的线上监控平台、模型注册中心、
+调度系统或审批系统。监控窗口、模型版本、阈值策略、看板和处置流程由使用者结合内部系统定义。

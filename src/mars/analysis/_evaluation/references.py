@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import polars as pl
 
 from mars.analysis._evaluation.aggregation import aggregate_basic_stats
-from mars.analysis._evaluation.context import normalize_binary_target_column
 from mars.compute import RiskCorrBaseline, bad_rate_expr, risk_corr_expr
-from mars.feature.binning.base import MarsBinnerBase
 
 
 def empty_risk_corr_reference_table(target_name: str | None) -> pl.DataFrame:
@@ -78,9 +76,8 @@ def attach_risk_corr_reference_context(
 
 
 def build_benchmark_risk_corr_reference(
-    benchmark_df: pl.DataFrame,
+    benchmark_binned: pl.DataFrame,
     *,
-    binner: MarsBinnerBase,
     has_target: bool,
     features: list[str],
     weights_col: str | None,
@@ -91,10 +88,8 @@ def build_benchmark_risk_corr_reference(
 
     Parameters
     ----------
-    benchmark_df : pl.DataFrame
-        benchmark 样本。
-    binner : MarsBinnerBase
-        当前评估使用的分箱器。
+    benchmark_binned : pl.DataFrame
+        已按当前分箱规则转换的 benchmark 样本。
     has_target : bool
         当前评估是否存在目标列。
     features : list[str]
@@ -114,14 +109,6 @@ def build_benchmark_risk_corr_reference(
     if not has_target or target_name is None:
         return empty_risk_corr_reference_table(target_name)
 
-    benchmark_prepared: pl.DataFrame = normalize_binary_target_column(
-        benchmark_df,
-        target_name,
-    )
-    benchmark_binned: pl.DataFrame = cast(
-        pl.DataFrame,
-        binner.transform(benchmark_prepared, return_type="index"),
-    )
     benchmark_binned = benchmark_binned.with_columns(pl.lit("Benchmark").alias(mars_group_col))
     benchmark_stats: pl.DataFrame = aggregate_basic_stats(
         benchmark_binned,
@@ -156,11 +143,10 @@ def build_risk_corr_reference_table(
     metrics_total: pl.DataFrame,
     group_col: str,
     risk_corr_baseline: RiskCorrBaseline,
-    benchmark_df: pl.DataFrame | None,
+    benchmark_binned: pl.DataFrame | None,
     benchmark_features: list[str],
     benchmark_weights_col: str | None,
     feature_start_reference: dict[str, Any] | None,
-    binner: MarsBinnerBase,
     has_target: bool,
     mars_group_col: str,
 ) -> tuple[pl.DataFrame, str]:
@@ -178,16 +164,14 @@ def build_risk_corr_reference_table(
         分组列名称。
     risk_corr_baseline : RiskCorrBaseline
         RC 参考策略。
-    benchmark_df : pl.DataFrame | None
-        benchmark 样本。
+    benchmark_binned : pl.DataFrame | None
+        已按当前分箱规则转换的 benchmark 样本。
     benchmark_features : list[str]
         benchmark 需要使用的特征。
     benchmark_weights_col : str | None
         benchmark 权重列。
     feature_start_reference : dict[str, Any] | None
         feature-start 参考上下文。
-    binner : MarsBinnerBase
-        当前分箱器。
     has_target : bool
         当前评估是否存在目标列。
     mars_group_col : str
@@ -245,10 +229,9 @@ def build_risk_corr_reference_table(
             "first_group",
         )
 
-    if benchmark_df is not None:
+    if benchmark_binned is not None:
         reference_df = build_benchmark_risk_corr_reference(
-            benchmark_df,
-            binner=binner,
+            benchmark_binned,
             has_target=has_target,
             features=benchmark_features,
             weights_col=benchmark_weights_col,

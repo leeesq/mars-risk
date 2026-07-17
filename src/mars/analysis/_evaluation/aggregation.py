@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import pandas as pd
 import polars as pl
 
@@ -13,7 +11,6 @@ from mars.compute import (
     build_missing_by_period_stats,
     expected_dist_expr,
 )
-from mars.feature.binning.base import MarsBinnerBase
 from mars.utils.date import MarsDate
 from mars.utils.logger import logger
 
@@ -100,21 +97,23 @@ def rollup_total_stats(stats_df: pl.DataFrame, *, group_col: str) -> pl.DataFram
 
 def get_benchmark_dist(
     *,
-    binner: MarsBinnerBase,
     group_stats_raw: pl.DataFrame,
-    benchmark_df: pl.DataFrame | None,
+    benchmark_binned: pl.DataFrame | None,
     group_col: str,
     features: list[str],
     weights_col: str | None,
 ) -> pl.DataFrame:
     """构造 PSI expected distribution。"""
-    if benchmark_df is not None:
-        bench_binned = cast(pl.DataFrame, binner.transform(benchmark_df, return_type="index"))
-        bin_cols = [f"{feature}_bin" for feature in features if f"{feature}_bin" in bench_binned.columns]
+    if benchmark_binned is not None:
+        bin_cols = [
+            f"{feature}_bin"
+            for feature in features
+            if f"{feature}_bin" in benchmark_binned.columns
+        ]
         if not bin_cols:
             return pl.DataFrame(schema={"feature": pl.String, "bin_index": pl.Int16, "expected_dist": pl.Float64})
 
-        if weights_col and weights_col in bench_binned.columns:
+        if weights_col and weights_col in benchmark_binned.columns:
             idx_cols = [weights_col]
             agg_expr = pl.col(weights_col).cast(pl.Float64).sum().alias("expected_count")
         else:
@@ -122,7 +121,7 @@ def get_benchmark_dist(
             agg_expr = pl.len().cast(pl.Float64).alias("expected_count")
 
         return (
-            bench_binned
+            benchmark_binned
             .select(bin_cols + idx_cols)
             .unpivot(index=idx_cols, on=bin_cols, variable_name="feat_bin", value_name="bin_index")
             .with_columns(pl.col("feat_bin").str.replace(r"_bin$", "").alias("feature"))

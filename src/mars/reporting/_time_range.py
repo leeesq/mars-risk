@@ -3,11 +3,39 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date, datetime
 from typing import Any, TypeAlias
 
 TimeRange: TypeAlias = tuple[str, str]
 
 _INVALID_TIME_VALUES = frozenset({"", "<na>", "nan", "nat", "none"})
+
+
+def _normalize_time_value(value: object) -> str:
+    """将可解析的时间值截断为日，保留旧式非日期标签。"""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+
+    raw_value = str(value).strip()
+    if raw_value.lower() in _INVALID_TIME_VALUES:
+        raise ValueError(
+            "Risk trend plotting requires a valid time_range derived from `time_col`."
+        )
+
+    iso_value = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
+    try:
+        return datetime.fromisoformat(iso_value).date().isoformat()
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(raw_value, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return raw_value
 
 
 def normalize_time_range(values: tuple[object, object] | None) -> TimeRange:
@@ -17,13 +45,7 @@ def normalize_time_range(values: tuple[object, object] | None) -> TimeRange:
             "Risk trend plotting requires a valid time_range derived from `time_col`."
         )
 
-    normalized_values = tuple(str(value).strip() for value in values)
-    if any(value.lower() in _INVALID_TIME_VALUES for value in normalized_values):
-        raise ValueError(
-            "Risk trend plotting requires a valid time_range derived from `time_col`."
-        )
-
-    return normalized_values[0], normalized_values[1]
+    return _normalize_time_value(values[0]), _normalize_time_value(values[1])
 
 
 def resolve_report_time_range(

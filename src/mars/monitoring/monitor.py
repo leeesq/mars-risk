@@ -264,7 +264,8 @@ class MarsMonitor(MarsBaseEstimator):
         binner : MarsBinnerBase | None
             显式复用的分箱器。
         benchmark_df : FrameLike | None
-            外部 benchmark 样本。
+            基准期样本。未传 ``binner`` 时用于拟合分箱规则和 PSI 基准；评估期
+            target 缺列或全空时，可用其中的有效 target 执行监督分箱。
         feature_data_source : Dict[str, List[str]] | None
             特征来源映射。
         group_col : str | None
@@ -310,8 +311,11 @@ class MarsMonitor(MarsBaseEstimator):
         missing_features = [feature for feature in features if feature not in working_df.columns]
         if missing_features:
             raise ValueError(f"features contain columns not found in df: {missing_features}")
-        if target is not None and target not in working_df.columns:
-            raise ValueError(f"target column '{target}' was not found in df. Use target=None for label-free monitoring.")
+        if target is not None and target not in working_df.columns and benchmark_df is None:
+            raise ValueError(
+                f"target column '{target}' was not found in df. Use target=None for label-free "
+                "monitoring or provide `benchmark_df` for benchmark-fitted binning."
+            )
 
         evaluator = MarsBinEvaluator(
             binning_type=self.binning_type,
@@ -339,8 +343,10 @@ class MarsMonitor(MarsBaseEstimator):
             time_col=time_col,
             time_grain=time_grain,
         )
-        if target is not None:
-            prepared_df = normalize_binary_target_column(prepared_df, target)
+        evaluation_has_target = bool(risk_profile.targets)
+        report_target = target if evaluation_has_target else None
+        if report_target is not None:
+            prepared_df = normalize_binary_target_column(prepared_df, report_target)
 
         detail_result = self._ensure_polars_dataframe(risk_profile.report.detail_table)
         detail_table = detail_result.collect() if isinstance(detail_result, pl.LazyFrame) else detail_result
@@ -357,13 +363,13 @@ class MarsMonitor(MarsBaseEstimator):
         )
         target_observation_table = self._build_target_observation_table(
             df=prepared_df,
-            target=target,
+            target=report_target,
             group_col=resolved_group_col,
         )
         summary_table = self._build_summary_table(
             summary_table_result=self._ensure_polars_dataframe(risk_profile.report.summary_table),
             target_observation_table=target_observation_table,
-            target=target,
+            target=report_target,
             group_col=resolved_group_col,
         )
         bin_stat_table = self._build_bin_stat_table(
@@ -380,7 +386,7 @@ class MarsMonitor(MarsBaseEstimator):
         metadata.update(
             {
                 "monitoring_feature_count": len(features),
-                "target": target,
+                "target": report_target,
                 "psi_include_missing": effective_psi_include_missing,
                 "psi_include_special": effective_psi_include_special,
                 "trend_column_order": trend_column_order,
@@ -433,7 +439,7 @@ class MarsMonitor(MarsBaseEstimator):
             target_observation_table=self._format_output(target_observation_table),
             binner=risk_profile.binner,
             features=list(features),
-            target=target,
+            target=report_target,
             metadata=metadata,
         )
 

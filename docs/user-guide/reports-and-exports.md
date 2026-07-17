@@ -1,30 +1,24 @@
-# 报表导出与二次加工
+---
+description: 导出 MARS 的 Excel、可检索 HTML、风险趋势图和结构化 report 数据。
+---
+
+# 报告导出与二次加工
 
 <div align="center">
-  <img src="../assets/mars-report-flow.svg" alt="Report 对象输出 summary、detail、trend 和 metadata，并支持 Excel/HTML、看板和 Agent 二次加工" width="920">
+  <img src="../assets/mars-report-flow.svg" alt="Report 对象输出 summary、detail、trend 和 metadata，并支持 Excel、HTML、看板和 Agent 二次加工" width="920">
 </div>
 
-MARS 的 report 对象同时承担两类职责：一是导出 Excel/HTML 报表，二是保存多粒度结构化数据，方便继续加工。
+MARS 的 report 同时承担两件事：导出交付物，以及保存可继续使用的结构化数据。优先读取表对象
+做看板或复盘；需要面向业务分享时，再导出 Excel 或 HTML。
 
-## 常见 report
+## 常用 report 与表
 
-| report | 来源 |
-| --- | --- |
-| `MarsProfileReport` | 数据画像 |
-| `MarsBinningReport` | 分箱评估 |
-| `MarsModelingReport` | 建模评估 |
-| `MarsMonitoringReport` | 特征/模型监控 |
-
-## 结构化数据
-
-不同 report 的字段略有差异，常见字段包括：
-
-- `overview_table`：画像总览表，主要出现在 `MarsProfileReport`。
-- `summary_table`：汇总表。
-- `detail_table` / `detail_tables`：明细表。
-- `trend_tables`：趋势宽表。
-- `dq_tables` / `stats_tables`：画像的数据质量和统计趋势表。
-- `metadata` / `report_meta`：运行上下文。
+| report | 来源 | 高价值字段 |
+| --- | --- | --- |
+| `MarsProfileReport` | 数据画像 | `overview_table`、`dq_tables`、`stats_tables` |
+| `MarsBinningReport` | 分箱评估 | `summary_table`、`detail_table`、`trend_tables`、`missing_by_day_table` |
+| `MarsMonitoringReport` | 监控 | 监控汇总、分箱统计、表现覆盖率和报警元数据 |
+| `MarsModelingReport` | 建模评估 | 多样本切片的汇总、明细、趋势和元数据 |
 
 ```python
 summary = eval_report.summary_table
@@ -32,25 +26,53 @@ detail = eval_report.detail_table
 trends = eval_report.trend_tables
 ```
 
-风险趋势图的绘图契约要求评估时传入 `time_col`。`group_col` 仍然优先控制面板分组，但图中左上角时间范围只使用 `time_col` 的有效最小值和最大值；没有 `group_col` 时才使用 `time_grain` 生成时间分组。
-
-HTML 风险报告默认按每个 target 最多绘制 500 个特征，超过 50 张图时自动使用同级图片资产和懒加载。报告页面可通过导航按钮切换，且全局特征搜索可以直接打开对应趋势图。
-
-这些结构化表适合继续做特征复盘、监控规则定制、内部看板接入，也可以交给 Agent 基于明细表进行摘要、筛选、解释和报告重排。
-
-## Excel/HTML 导出
+## Excel
 
 ```python
 profile_report.write_excel("mars_profile.xlsx")
 eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
-eval_report.write_html("mars_evaluation.html")
 ```
 
-基础安装已经包含 Excel/HTML 报表导出和绘图报告依赖。
+Excel 适合归档、人工筛选和固定格式交付；需要针对大量特征即时检索时，优先使用 HTML。
 
-## 风险趋势图组件
+## 可检索 HTML
 
-`MarsBinningReport` 支持把风险趋势图单独作为组件取出，供 Notebook、外部模型报告或多文件 HTML 报告复用：
+```python
+eval_report.write_html(
+    "mars_evaluation.html",
+    report_name="June feature review",
+    max_plots=500,
+    chart_embed_mode="auto",
+)
+```
+
+HTML 是单文件入口，内部通过按钮和 URL hash 切换以下视图：Overview、Summary、Missing By Day、
+Trend Tables、Grouped Pivot 和 Charts。刷新、前进和后退会保留当前视图；全局搜索会检索 Summary
+和 Charts，并可直接打开对应 target 的特征趋势图。
+
+### 图表数量与资产模式
+
+| 模式 | 行为 | 适用场景 |
+| --- | --- | --- |
+| `chart_embed_mode="auto"` | 不超过 50 张图时内嵌；超过时写入同级 `<html_stem>_assets/` 并懒加载 | 默认推荐 |
+| `chart_embed_mode="inline"` | 所有图 Base64 内嵌为单文件 | 少量图、单文件必须可离线转发 |
+| `chart_embed_mode="asset"` | 强制生成图片资产目录并用相对路径引用 | 大报告、长期归档或快速打开 |
+
+`max_plots=500` 的上限按每个 target 单独计算。资产模式下，图片初始保存在 `data-src`，只有进入
+Charts 视图或滚动到可见区域才会解码，避免浏览器同时加载数百张图片。
+
+### Missing By Day
+
+当评估期传入有效 `time_col` 且生成了按日缺失率表时，HTML 会显示独立的 Missing By Day 视图。
+没有有效日期或该表为空时，页面会说明原因；不会把 `group_col` 误当成日期来源。设置
+`include_trends=False` 会关闭整体趋势区域及该视图。
+
+!!! warning "风险趋势图需要日期"
+
+    `group_col` 决定面板分组，不能提供趋势图的时间范围。调用风险趋势图或包含 Charts 的 HTML
+    前，必须在评估时传入有效 `time_col`。日期时间值会截断显示为 `YYYY-MM-DD`。
+
+## 单独复用风险趋势图
 
 ```python
 figures = eval_report.build_risk_trend_figures(features=["income"])
@@ -70,11 +92,10 @@ asset_fragment = eval_report.render_risk_trends_html(
 )
 ```
 
-`fragment.html` 是 HTML 片段，不包含完整的 `html` 或 `body` 标签；asset 模式会在 `asset_fragment.assets` 中返回写出的图片路径。
+这些接口适用于 Notebook、外部 HTML 模板或多个报告组合。`fragment.html` 只包含 HTML 片段；
+资产模式会在 `asset_fragment.assets` 中返回已写出的图片路径。
 
 ## 评分卡与 SQL
-
-评分卡链路支持从逻辑回归模型和 WOE 分箱结果生成分数映射，并导出 SQL 规则。
 
 ```python
 from mars.scoring import build_scorecard

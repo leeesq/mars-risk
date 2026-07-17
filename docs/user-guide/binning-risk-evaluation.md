@@ -25,7 +25,32 @@ report = risk_profile.report
 report.plot_risk_trends(max_plots=5)
 ```
 
-风险趋势图必须提供 `time_col`。`group_col` 优先决定图表面板分组，但左上角范围始终来自 `time_col` 的原始最小值和最大值；仅在没有 `group_col` 时，`time_grain` 才用于生成时间分组。
+风险趋势图必须提供 `time_col`。`group_col` 优先决定图表面板分组，但左上角范围始终来自 `time_col` 的有效最小值和最大值，并显示为 `YYYY-MM-DD`；仅在没有 `group_col` 时，`time_grain` 才用于生成时间分组。
+
+## benchmark 基准期分箱
+
+`benchmark_df` 是基准期样本，而不只是额外的 PSI 对比表。未显式传入已拟合
+`binner` 时，MARS 用 benchmark 拟合分箱规则，再转换当前 `df`；benchmark 同时是
+PSI 的 expected distribution。显式 `binner` 优先，MARS 不会修改它。
+
+```python
+may_profile = profile_risk(
+    june_df,
+    target="target",
+    features=["income", "utilization"],
+    group_col="month",
+    benchmark_df=may_df,
+    binning_type="native",
+    method="quantile",
+    n_bins=5,
+)
+```
+
+benchmark 必须包含所有 active features；指定 `weights_col` 时也必须包含同名权重列。
+监督分箱要求 benchmark 的 target 至少有两个有效类别。当前评估期 target 缺列或全空时，
+只要仍显式传入 target 名称且 benchmark 有有效标签，就会用 benchmark 完成监督建箱，
+当前期报告保持无标签模式。RC 默认仍以当前期 Total 为基准；只有
+`risk_corr_baseline="benchmark"` 才使用 benchmark 坏率。
 
 `write_html()` 默认按每个 target 最多输出 500 个特征趋势图。大报告会自动生成同级资产目录并懒加载图片，报告内部按页面切换；需要时可用 `chart_embed_mode="inline"` 或 `chart_embed_mode="asset"` 覆盖自动模式。
 

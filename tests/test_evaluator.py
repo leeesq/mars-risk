@@ -353,7 +353,7 @@ def test_risk_trend_summary_uses_time_col_when_group_col_is_non_temporal(
     try:
         assert len(figures) == 1
         summary_text = "\n".join(text.get_text() for text in figures[0].texts)
-        assert "[2024-01-01 00:00:00 ~ 2024-01-24 00:00:00]" in summary_text
+        assert "[2024-01-01 ~ 2024-01-24]" in summary_text
         assert "[new ~ vip]" not in summary_text
         titles = [axis.get_title() for axis in figures[0].axes]
         assert any(title.startswith("new") for title in titles)
@@ -384,6 +384,71 @@ def test_risk_trend_uses_time_grain_when_group_col_is_not_provided(
     finally:
         for figure in figures:
             plt.close(figure)
+
+
+def test_risk_trend_time_range_truncates_timestamp_precision(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    df = sample_credit_df.with_columns(
+        pl.Series(
+            "biz_dt",
+            [
+                datetime(2024, 1, 1, 8, 30, 15, 123456) + timedelta(days=index)
+                for index in range(sample_credit_df.height)
+            ],
+        )
+    )
+    run = profile_risk(
+        df,
+        target="target",
+        features=["income"],
+        group_col="segment",
+        time_col="biz_dt",
+        method="quantile",
+        n_bins=3,
+    )
+
+    assert run.report.report_meta["start_dt"] == "2024-01-01"
+    assert run.report.report_meta["end_dt"] == "2024-01-24"
+    figures = run.report.build_risk_trend_figures(features="income")
+    try:
+        summary_text = "\n".join(text.get_text() for text in figures[0].texts)
+        assert "[2024-01-01 ~ 2024-01-24]" in summary_text
+        assert "00:00:00" not in summary_text
+    finally:
+        for figure in figures:
+            plt.close(figure)
+
+
+def test_html_overview_formats_time_range_to_day(
+    sample_credit_df: pl.DataFrame,
+    tmp_path: Path,
+) -> None:
+    df = sample_credit_df.with_columns(
+        pl.Series(
+            "biz_dt",
+            [
+                datetime(2024, 1, 1, 9, 15, 1, 123456) + timedelta(days=index)
+                for index in range(sample_credit_df.height)
+            ],
+        )
+    )
+    report, _ = _profile_risk_report(
+        df,
+        target="target",
+        features=["income"],
+        group_col="segment",
+        time_col="biz_dt",
+        method="quantile",
+        n_bins=3,
+    )
+    output_path = tmp_path / "daily_range.html"
+
+    report.write_html(output_path, max_plots=0)
+
+    html_text = output_path.read_text(encoding="utf-8")
+    assert "2024-01-01 ~ 2024-01-24" in html_text
+    assert "00:00:00" not in html_text
 
 
 def test_risk_trend_requires_time_col_when_only_group_col_is_provided(
@@ -829,21 +894,226 @@ def test_profile_risk_ignores_inactive_known_binner_params(
     assert run.binner.merge_small_bins is True
 
 
-def test_evaluator_external_benchmark_skips_missing_benchmark_columns(sample_credit_df):
+def test_evaluator_rejects_benchmark_missing_active_features(
+    sample_credit_df: pl.DataFrame,
+) -> None:
     benchmark_df = sample_credit_df.select(["month", "income", "target"])
 
-    report, _ = _profile_risk_report(
-        sample_credit_df,
+    with pytest.raises(ValueError, match="missing active feature columns"):
+        _profile_risk_report(
+            sample_credit_df,
+            target="target",
+            features=["income", "utilization"],
+            group_col="month",
+            benchmark_df=benchmark_df,
+            binning_type="native",
+            method="quantile",
+            n_bins=3,
+        )
+
+
+def test_benchmark_df_fits_bins_and_provides_psi_reference() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "month": ["2024-05"] * 8,
+            "x": list(range(8)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 8,
+            "x": list(range(100, 108)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+
+    run = profile_risk(
+        evaluation_df,
         target="target",
-        features=["income", "utilization"],
+        features=["x"],
+        group_col="month",
+        benchmark_df=benchmark_df,
+        method="quantile",
+        n_bins=2,
+    )
+
+    finite_cuts = [cut for cut in run.binner.bin_cuts_["x"] if np.isfinite(cut)]
+    assert max(finite_cuts) < 10
+    assert run.report.summary_table.select("psi_max").item() > 0.0
+    assert run.report.report_meta["binning_fit_source"] == "benchmark_df"
+    assert run.report.report_meta["benchmark_row_count"] == 8
+    assert run.report.report_meta["row_count"] == 8
+    assert run.report.report_meta["risk_corr_reference_source"] == "total"
+    assert "Benchmark" not in run.report.detail_table.get_column("mars_group").to_list()
+
+    benchmark_rc_run = profile_risk(
+        evaluation_df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        benchmark_df=benchmark_df,
+        method="quantile",
+        n_bins=2,
+        risk_corr_baseline="benchmark",
+    )
+    assert benchmark_rc_run.report.report_meta["risk_corr_reference_source"] == "benchmark_df"
+
+
+def test_explicit_binner_takes_precedence_over_benchmark_df() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(8)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 8,
+            "x": list(range(100, 108)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    binner = MarsNativeBinner(method="quantile", n_bins=2).fit(
+        evaluation_df,
+        evaluation_df.get_column("target"),
+        features=["x"],
+    )
+    original_cuts = list(binner.bin_cuts_["x"])
+
+    run = MarsBinEvaluator().evaluate(
+        evaluation_df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        binner=binner,
+        benchmark_df=benchmark_df,
+    )
+
+    assert run.binner is binner
+    assert binner.bin_cuts_["x"] == original_cuts
+    assert run.report.report_meta["binning_fit_source"] == "explicit_binner"
+
+
+def test_benchmark_supports_supervised_fit_for_unlabeled_evaluation_df() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(8)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 8,
+            "x": list(range(100, 108)),
+            "target": [None] * 8,
+        }
+    )
+
+    run = profile_risk(
+        evaluation_df,
+        target="target",
+        features=["x"],
         group_col="month",
         benchmark_df=benchmark_df,
         binning_type="native",
-        method="quantile",
-        n_bins=3,
+        method="cart",
+        n_bins=2,
     )
 
-    assert set(report.summary_table["feature"].to_list()) == {"income", "utilization"}
+    assert run.binner.method == "cart"
+    assert run.targets == []
+    assert run.report.summary_table.select(pl.col("iv").is_null().all()).item()
+
+
+def test_benchmark_requires_matching_weights_and_supervised_target() -> None:
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 4,
+            "x": [10.0, 11.0, 12.0, 13.0],
+            "target": [0, 0, 1, 1],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    missing_weight_benchmark = evaluation_df.drop("weight")
+    missing_target_benchmark = evaluation_df.drop(["target", "weight"])
+
+    with pytest.raises(ValueError, match="missing weights_col"):
+        profile_risk(
+            evaluation_df,
+            target="target",
+            features=["x"],
+            group_col="month",
+            weights_col="weight",
+            benchmark_df=missing_weight_benchmark,
+        )
+
+    with pytest.raises(ValueError, match="must contain the requested target"):
+        profile_risk(
+            evaluation_df,
+            target="target",
+            features=["x"],
+            group_col="month",
+            benchmark_df=missing_target_benchmark,
+            binning_type="native",
+            method="cart",
+        )
+
+
+@pytest.mark.parametrize(
+    "benchmark_target",
+    [
+        [None, None, None, None],
+        [0, 0, 0, 0],
+    ],
+)
+def test_supervised_benchmark_requires_two_observed_target_classes(
+    benchmark_target: list[int | None],
+) -> None:
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 4,
+            "x": [10.0, 11.0, 12.0, 13.0],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    benchmark_df = pl.DataFrame(
+        {
+            "x": [0.0, 1.0, 2.0, 3.0],
+            "target": benchmark_target,
+        }
+    )
+
+    with pytest.raises(ValueError, match="at least 2 observed classes"):
+        profile_risk(
+            evaluation_df,
+            target="target",
+            features=["x"],
+            group_col="month",
+            benchmark_df=benchmark_df,
+            binning_type="native",
+            method="cart",
+        )
+
+
+def test_evaluator_rejects_empty_benchmark_df() -> None:
+    evaluation_df = pl.DataFrame(
+        {
+            "month": ["2024-06"] * 4,
+            "x": [10.0, 11.0, 12.0, 13.0],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    empty_benchmark_df = evaluation_df.select(["x", "target"]).head(0)
+
+    with pytest.raises(ValueError, match="must contain at least one row"):
+        profile_risk(
+            evaluation_df,
+            target="target",
+            features=["x"],
+            group_col="month",
+            benchmark_df=empty_benchmark_df,
+        )
 
 
 def test_evaluation_report_can_write_excel(sample_credit_df, caplog):

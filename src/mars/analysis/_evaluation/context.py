@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -97,6 +98,100 @@ def normalize_binary_target_column(df: pl.DataFrame, target: str) -> pl.DataFram
     return df.with_columns(pl.lit(None).cast(pl.Int8).alias(target))
 
 
+def count_observed_target_classes(df: pl.DataFrame, target: str) -> int:
+    """统计二分类 target 的有效类别数。"""
+    return int(
+        df
+        .filter(pl.col(target).is_not_null())
+        .select(pl.col(target).n_unique())
+        .item()
+    )
+
+
+def binning_requires_target(
+    *,
+    binning_type: str,
+    binner_params: dict[str, Any],
+) -> bool:
+    """判断自动构建的分箱器是否需要监督标签。"""
+    if binning_type in {"optimal", "lite_opt"}:
+        return True
+    return binning_type == "native" and binner_params.get("method") == "cart"
+
+
+def prepare_benchmark_frame(
+    benchmark_df: pl.DataFrame,
+    *,
+    features: list[str],
+    weights_col: str | None,
+    target: str | None,
+    require_binary_target: bool,
+) -> pl.DataFrame:
+    """校验 benchmark schema，并按需归一化监督标签。"""
+    if benchmark_df.is_empty():
+        raise ValueError("`benchmark_df` must contain at least one row.")
+
+    missing_features = sorted(set(features) - set(benchmark_df.columns))
+    if missing_features:
+        raise ValueError(
+            "`benchmark_df` is missing active feature columns: "
+            f"{missing_features}. All evaluated features must be fitted on the same benchmark."
+        )
+
+    if weights_col and weights_col not in benchmark_df.columns:
+        raise ValueError(
+            f"`benchmark_df` is missing weights_col={weights_col!r}; "
+            "benchmark and evaluation distributions must use the same weighting scope."
+        )
+
+    if not require_binary_target:
+        return benchmark_df
+    if target is None or target not in benchmark_df.columns:
+        raise ValueError(
+            "`benchmark_df` must contain the requested target column when it is used "
+            "for supervised binning or benchmark risk correlation."
+        )
+
+    normalized_df = normalize_binary_target_column(benchmark_df, target)
+    observed_classes = count_observed_target_classes(normalized_df, target)
+    if observed_classes < 2:
+        raise ValueError(
+            f"Target column {target!r} in `benchmark_df` must have at least 2 observed "
+            "classes after excluding null / NaN values."
+        )
+    return normalized_df
+
+
+def resolve_date_bounds(
+    df: pl.DataFrame,
+    time_col: str | None,
+) -> tuple[str | None, str | None]:
+    """解析有效日期并返回精确到日的最小值和最大值。"""
+    if not time_col or time_col not in df.columns:
+        return None, None
+
+    parsed_col = "__mars_report_date"
+    try:
+        bounds = (
+            df
+            .select(MarsDate.smart_parse_expr(time_col).alias(parsed_col))
+            .select(
+                pl.col(parsed_col).min().alias("start_dt"),
+                pl.col(parsed_col).max().alias("end_dt"),
+            )
+            .row(0, named=True)
+        )
+    except (pl.exceptions.PolarsError, ValueError, TypeError):
+        return None, None
+
+    start_dt = bounds["start_dt"]
+    end_dt = bounds["end_dt"]
+    return (
+        start_dt.isoformat() if isinstance(start_dt, date) else None,
+        end_dt.isoformat() if isinstance(end_dt, date) else None,
+    )
+
+
 def resolve_profile_by(
     *,
     group_col: str | None,
@@ -164,8 +259,8 @@ def build_binner(
     *,
     binning_type: str,
     binner_params: dict[str, Any],
-    has_target: bool,
-    working_df: pl.DataFrame,
+    fit_has_target: bool,
+    fit_df: pl.DataFrame,
     target: str,
     features: list[str],
 ) -> MarsBinnerBase:
@@ -185,7 +280,7 @@ def build_binner(
     if ignored_keys:
         logger.debug("Auto-cleaned kwargs for %s. Ignored: %s", binner_cls.__name__, ignored_keys)
 
-    if not has_target:
+    if not fit_has_target:
         if binner_cls in {MarsOptimalBinner, MarsLiteOptBinner}:
             logger.warning("No target provided. Falling back to native quantile binning.")
             binner_cls = MarsNativeBinner
@@ -195,16 +290,16 @@ def build_binner(
             clean_kwargs["method"] = "quantile"
 
     binner = binner_cls(**clean_kwargs)
-    fit_df = working_df
+    effective_fit_df = fit_df
     y_series = None
-    if has_target:
+    if fit_has_target:
         is_supervised_binner = (
             binner_cls is MarsOptimalBinner
             or binner_cls is MarsLiteOptBinner
             or clean_kwargs.get("method") == "cart"
         )
         if is_supervised_binner:
-            fit_df = working_df.filter(pl.col(target).is_not_null())
-            y_series = fit_df.get_column(target)
-    binner.fit(fit_df, y_series, features=features)
+            effective_fit_df = fit_df.filter(pl.col(target).is_not_null())
+            y_series = effective_fit_df.get_column(target)
+    binner.fit(effective_fit_df, y_series, features=features)
     return binner

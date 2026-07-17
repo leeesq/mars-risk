@@ -32,3 +32,70 @@
   width: min(820px, 100%);
   margin: 0 auto;
 }
+
+.mars-task-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 1.25rem 0 1.8rem;
+}
+
+.mars-task-card {
+  display: flex;
+  min-height: 8.4rem;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1.1rem 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--md-default-fg-color) 17%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--md-code-bg-color) 68%, transparent);
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+  transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+
+.mars-task-card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0.4rem 1rem color-mix(in srgb, var(--md-default-fg-color) 14%, transparent);
+  transform: translateY(-2px);
+}
+
+.mars-task-card strong {
+  color: var(--md-primary-fg-color);
+  font-size: 1.05rem;
+}
+
+.mars-task-card span {
+  line-height: 1.45;
+}
+
+.mars-task-card em {
+  margin-top: auto;
+  color: var(--md-code-fg-color);
+  font-family: var(--md-code-font-family);
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.mars-callout {
+  margin: 1.25rem 0;
+  padding: 0.15rem 1.1rem;
+  border-left: 0.2rem solid var(--md-accent-fg-color);
+  border-radius: 0.15rem;
+  background: color-mix(in srgb, var(--md-accent-fg-color) 8%, transparent);
+}
+
+.md-typeset table:not([class]) {
+  display: table;
+  width: 100%;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .mars-task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mars-task-card {
+    min-height: 0;
+  }
+}

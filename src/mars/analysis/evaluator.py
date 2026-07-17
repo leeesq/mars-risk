@@ -14,10 +14,14 @@ from mars.analysis._evaluation.aggregation import (
     rollup_total_stats,
 )
 from mars.analysis._evaluation.context import (
+    binning_requires_target,
     build_binner,
+    count_observed_target_classes,
     normalize_binary_target_column,
     normalize_feature_data_source,
+    prepare_benchmark_frame,
     prepare_group_context,
+    resolve_date_bounds,
     resolve_profile_by,
 )
 from mars.analysis._evaluation.metrics import (
@@ -205,7 +209,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             显式复用的分箱器；传入后不会再根据 `binning_type` 和 `binner_params`
             构造新分箱器。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
-            外部 benchmark 样本；传入后分布稳定性可与该样本进行对比。
+            基准期样本。未传入 ``binner`` 时用其拟合分箱规则，并始终作为 PSI
+            expected distribution；已传入 ``binner`` 时只按该固定规则构造基准分布。
+            active features 与 ``weights_col`` 必须存在。监督分箱或
+            ``risk_corr_baseline="benchmark"`` 时还必须包含至少两个有效类别的 target。
         psi_include_missing : bool
             计算 PSI 时是否单独保留缺失值分布。
         psi_include_special : bool
@@ -231,8 +238,11 @@ class MarsBinEvaluator(MarsBaseEstimator):
         """
         # 先把输入统一成内部 Polars 表，并解析本次画像的分组口径。
         working_df = self._ensure_polars_dataframe(df)
-        if benchmark_df is not None:
-            benchmark_df = self._ensure_polars_dataframe(benchmark_df)
+        benchmark_pl = (
+            self._ensure_polars_dataframe(benchmark_df)
+            if benchmark_df is not None
+            else None
+        )
         original_target = target
         effective_target = target if target else "dummy_target"
         profile_by = resolve_profile_by(
@@ -253,32 +263,31 @@ class MarsBinEvaluator(MarsBaseEstimator):
             ordered_metric_sort_by or self.ordered_metric_sort_by,
         )
 
-        # 允许无标签画像：此时只保留 PSI、缺失率等分布类指标。
+        # 评估标签与拟合标签独立：表现期未成熟时仍可复用 benchmark 的监督分箱规则。
         has_target = target is not None and target in working_df.columns
-
-        if not has_target:
-            if target is not None:
-                logger.warning(
-                    "Target column '%s' was not found. Falling back to label-free mode.",
-                    target,
-                )
-            # 注入常量标签可以复用同一套聚合链路，后续再擦除标签依赖指标。
-            working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
-
-        # 有标签场景只校验已表现样本；未到表现期的空值保留为 null。
         if has_target:
             working_df = normalize_binary_target_column(working_df, effective_target)
-            n_unique = (
-                working_df
-                .filter(pl.col(effective_target).is_not_null())
-                .select(pl.col(effective_target).n_unique())
-                .item()
-            )
-            if n_unique < 2:
+            observed_classes = count_observed_target_classes(working_df, effective_target)
+            if observed_classes == 0:
+                logger.warning(
+                    "Target column '%s' has no observed values. Falling back to label-free mode.",
+                    target,
+                )
+                has_target = False
+            elif observed_classes < 2:
                 raise ValueError(
                     f"Target column '{effective_target}' must have at least 2 observed classes "
                     "after excluding null / NaN values."
                 )
+        elif target is not None:
+            logger.warning(
+                "Target column '%s' was not found. Falling back to label-free mode.",
+                target,
+            )
+
+        if not has_target:
+            # 注入常量标签可以复用同一套聚合链路，后续再擦除标签依赖指标。
+            working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
 
         working_df, group_col = prepare_group_context(
             working_df,
@@ -307,19 +316,61 @@ class MarsBinEvaluator(MarsBaseEstimator):
         if binner is not None and self.binner_params:
             raise ValueError("`binner` and evaluator-level `binner_params` cannot be provided together.")
 
+        needs_supervised_fit = binning_requires_target(
+            binning_type=self.binning_type,
+            binner_params=self.binner_params,
+        )
+        needs_benchmark_risk_corr = (
+            has_target and effective_risk_corr_baseline == "benchmark"
+        )
+        benchmark_prepared = None
+        if benchmark_pl is not None:
+            benchmark_prepared = prepare_benchmark_frame(
+                benchmark_pl,
+                features=target_features,
+                weights_col=weights_col,
+                target=original_target,
+                require_binary_target=(
+                    (binner is None and needs_supervised_fit)
+                    or needs_benchmark_risk_corr
+                ),
+            )
+
         active_binner = binner
+        binning_fit_source = "explicit_binner" if active_binner is not None else "df"
         if active_binner is None:
+            fit_df = benchmark_prepared if benchmark_prepared is not None else working_df
+            fit_has_target = (
+                benchmark_prepared is not None and needs_supervised_fit
+            ) or (benchmark_prepared is None and has_target)
+            if benchmark_prepared is not None:
+                binning_fit_source = "benchmark_df"
             active_binner = build_binner(
                 binning_type=self.binning_type,
                 binner_params=dict(self.binner_params),
-                has_target=has_target,
-                working_df=working_df,
+                fit_has_target=fit_has_target,
+                fit_df=fit_df,
                 target=effective_target,
                 features=target_features,
             )
 
         # 后续评估只消费分箱索引列，原始特征取值不再参与指标计算。
         df_binned = active_binner.transform(working_df, return_type="index")
+        benchmark_binned = (
+            active_binner.transform(benchmark_prepared, return_type="index")
+            if benchmark_prepared is not None
+            else None
+        )
+        if benchmark_binned is not None:
+            expected_bin_cols = {f"{feature}_bin" for feature in target_features}
+            missing_bin_cols = sorted(expected_bin_cols - set(benchmark_binned.columns))
+            if missing_bin_cols:
+                failed_features = [col.removesuffix("_bin") for col in missing_bin_cols]
+                fit_failures = getattr(active_binner, "fit_failures_", {})
+                raise ValueError(
+                    "`benchmark_df` could not produce bins for active features "
+                    f"{failed_features}. Fit failures: {fit_failures}."
+                )
         missing_values = getattr(active_binner, "missing_values", None)
         if missing_values is None:
             missing_values = self.binner_params.get("missing_values")
@@ -346,16 +397,15 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # PSI expected distribution 独立于 RC 基准：无 benchmark 时沿用最早分组。
         expected_dist = get_benchmark_dist(
-            binner=active_binner,
             group_stats_raw=group_stats_raw,
-            benchmark_df=benchmark_df,
+            benchmark_binned=benchmark_binned,
             group_col=group_col,
             features=target_features,
             weights_col=weights_col,
         )
         feature_start_reference = None
         if effective_feature_start_reference:
-            if benchmark_df is not None:
+            if benchmark_prepared is not None:
                 logger.warning(
                     "`feature_start_aware_reference=True` was ignored because `benchmark_df` was provided."
                 )
@@ -453,11 +503,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 metrics_total=metrics_total,
                 group_col=group_col,
                 risk_corr_baseline=effective_risk_corr_baseline,
-                benchmark_df=benchmark_df,
+                benchmark_binned=benchmark_binned,
                 benchmark_features=target_features,
                 benchmark_weights_col=weights_col,
                 feature_start_reference=feature_start_reference,
-                binner=active_binner,
                 has_target=has_target,
                 mars_group_col=self.MARS_GROUP_COL,
             )
@@ -508,6 +557,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             profile_label = "month (auto)"
         report._report_meta = {
             "row_count": int(working_df.height),
+            "benchmark_row_count": (
+                int(benchmark_prepared.height) if benchmark_prepared is not None else None
+            ),
+            "binning_fit_source": binning_fit_source,
             "feature_count": len(target_features),
             "profile_by_input": profile_label,
             "group_col": group_col,
@@ -526,15 +579,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "feature_start_reference_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
             "feature_start_reference_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
         }
-        if dt_col and dt_col in working_df.columns:
-            try:
-                start_dt = working_df.select(pl.col(dt_col).min()).item()
-                end_dt = working_df.select(pl.col(dt_col).max()).item()
-                report._report_meta["start_dt"] = None if start_dt is None else str(start_dt)
-                report._report_meta["end_dt"] = None if end_dt is None else str(end_dt)
-            except Exception:
-                report._report_meta["start_dt"] = None
-                report._report_meta["end_dt"] = None
+        start_dt, end_dt = resolve_date_bounds(working_df, dt_col)
+        report._report_meta["start_dt"] = start_dt
+        report._report_meta["end_dt"] = end_dt
         if has_target and original_target and original_target in working_df.columns:
             try:
                 event_rate = float(working_df.select(pl.col(original_target).cast(pl.Float64).mean()).item())
