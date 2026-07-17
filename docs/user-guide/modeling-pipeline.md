@@ -3,7 +3,8 @@
 `mars.modeling` 负责样本切分、模型调参、按 trial 回放、建模评估和特征重要性输出。`mars.pipeline` 负责把多层特征筛选、可选 WOE 分箱和最终建模串成一条可复用链路。
 
 !!! warning "快速迭代模块"
-    Modeling 建模和 Pipeline 编排仍在快速迭代中，可能不稳定；后续接口约定、结果对象和调参参数都可能发生较大变动。生产流程建议固定版本，并在升级前检查返回对象和字段名称。
+    Modeling 建模和 Pipeline 编排的接口、结果对象和调参参数仍可能变化。生产流程请固定依赖版本；
+    升级前在测试环境核对所依赖的返回字段和产物路径。
 
 ## 支持模型
 
@@ -241,7 +242,8 @@ report = session.evaluate(
 
 ## 建模评估器
 
-`MarsModelEvaluator` 是建模评估器，不是完整模型监控平台。它用于对已打分样本构建 train/val/oot 或业务切片上的评估报告。
+`MarsModelEvaluator` 用于对已打分样本构建 train/val/oot 或业务切片上的评估报告。需要周期性
+特征或模型监控时，使用 `MarsMonitor`。
 
 模型输出稳定性可以通过 `Score PSI` 和 `score_psi` 观察，特征漂移可以通过 `feature_psi` 观察。建模评估复用分箱评估器计算 PSI 明细，因此 `score_psi` / `feature_psi` 会保留分箱标签、分箱 PSI 和趋势明细；该链路只提供 `psi_include_missing` 控制缺失箱是否纳入 PSI。业务特殊值需要在分箱评估或监控模块中显式配置，建模评估不会额外猜测特殊值。
 

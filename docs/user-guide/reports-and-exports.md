@@ -5,11 +5,11 @@ description: 导出 MARS 的 Excel、可检索 HTML、风险趋势图和结构�
 # 报告导出与二次加工
 
 <div align="center">
-  <img src="../assets/mars-report-flow.svg" alt="Report 对象输出 summary、detail、trend 和 metadata，并支持 Excel、HTML、看板和 Agent 二次加工" width="920">
+  <img src="../assets/mars-report-flow.svg" alt="Report 对象输出 summary、detail、trend 和 metadata，并支持 Excel、HTML 和 Agent 二次加工" width="920">
 </div>
 
-MARS 的 report 同时承担两件事：导出交付物，以及保存可继续使用的结构化数据。优先读取表对象
-做看板或复盘；需要面向业务分享时，再导出 Excel 或 HTML。
+report 保存用于导出和二次处理的结构化数据。先读取表对象完成筛选或复盘；需要分享时再导出
+Excel 或 HTML。
 
 ## 常用 report 与表
 
@@ -24,6 +24,7 @@ MARS 的 report 同时承担两件事：导出交付物，以及保存可继续�
 summary = eval_report.summary_table
 detail = eval_report.detail_table
 trends = eval_report.trend_tables
+metadata = eval_report.report_meta
 ```
 
 ## Excel
@@ -34,6 +35,9 @@ eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
 ```
 
 Excel 适合归档、人工筛选和固定格式交付；需要针对大量特征即时检索时，优先使用 HTML。
+
+需要由 Agent 生成摘要、筛选说明或重排报告时，可传入 `summary`、`detail`、`trends` 和 `metadata`。
+MARS 不会调用 Agent，也不会校验 Agent 输出；调用方负责选择模型、补充业务上下文和复核结果。
 
 ## 可检索 HTML
 

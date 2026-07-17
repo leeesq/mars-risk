@@ -38,30 +38,24 @@ class MarsProfileReport:
     """
     数据特征画像与质量评估报告容器。
 
-    作为数据探查（EDA）流水线的标准输出载体，该组件负责统一管理并呈现由
-    `MarsDataProfiler` 产出的高维特征统计指标与多维趋势矩阵。系统封装了对底层
-    数据帧的只读访问接口、面向 Jupyter 环境的交互式富文本渲染，以及携带高保真
-    条件格式的跨平台电子表格（Excel）持久化导出能力。
+    管理 `MarsDataProfiler` 产出的特征概览、数据质量趋势和统计分布趋势表，并提供表格读取、
+    富文本视图和 Excel 导出方法。
 
     Attributes
     ----------
     overview_table : DataFrame
-        内部持有的全量特征概览宽表上下文引用。
+        全量特征概览表。
 
     dq_tables : dict of str to DataFrame
-        内部持有的数据质量指标趋势字典上下文引用。
+        数据质量指标趋势表字典。
 
     stats_tables : dict of str to DataFrame
-        内部持有的统计分布指标趋势字典上下文引用。
+        统计分布指标趋势表字典。
 
     Notes
     -----
-    该容器提供了针对数据质量探查与时序追踪的统一交互层 API。
-    其内部暴露的 `show_overview` 与 `show_trend` 方法通过动态构建级联的样式渲染器
-    （Pandas Styler），支持在交互式计算环境中直接将统计梯度映射为色带（Colormaps）、
-    数据条（Data Bars）及微缩分布字符图（Sparklines）。
-    调用持久化导出时，底层引擎将在物理存储层面上严格还原交互式环境中的条件格式规则，
-    以确保离线监控报表与线上分析环境的视觉一致性。
+    `show_overview` 与 `show_trend` 使用 Pandas Styler 显示色带、数据条和 sparkline。
+    `write_excel()` 导出带条件格式的电子表格。
 
     Examples
     --------

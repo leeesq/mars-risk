@@ -11,9 +11,8 @@ description: 面向信贷风控宽表分析、分箱评估、建模和监控的 
   <img class="mars-home-pipeline" src="assets/mars-workflow.svg" alt="Profile to Bin and Evaluate to Analyze to Select to Modeling to Pipeline to Monitor to Report">
 </div>
 
-MARS 是面向信贷风控宽表的 Polars-first 分析与建模工具库。它把数据质量、分箱规则、
-特征筛选、建模评估、监控指标和结构化报告串成可复用的工作流；既可直接导出 Excel/HTML，
-也可把 report 表接入内部看板或二次分析。
+MARS 为 Pandas 或 Polars 宽表提供画像、分箱评估、特征筛选、建模、监控和报告入口。评估与监控
+工作流返回可读取的汇总、明细、趋势与元数据表，下面按任务选择入口。
 
 ## 从你的任务开始
 
@@ -78,8 +77,8 @@ MARS 是面向信贷风控宽表的 Polars-first 分析与建模工具库。它�
 中，规则来源优先级为显式 `binner`、`benchmark_df`、当前 `df`。`benchmark_df` 同时是
 PSI 的 expected distribution；`profile_risk()` 不接收显式 `binner`。
 
-**report 是可继续使用的数据对象。** `summary_table`、`detail_table`、`trend_tables` 和
-`metadata` 不只是导出中间产物，可用于看板、复盘和定制化报告。
+**report 提供结构化结果。** 读取 `summary_table`、`detail_table`、`trend_tables` 和
+`metadata`，可继续做筛选、复盘或定制化输出。
 
 </div>
 
@@ -93,8 +92,3 @@ PSI 的 expected distribution；`profile_risk()` 不接收显式 `binner`。
 | 建模与编排 | `MarsModelingSession`、`MarsModelingPipeline` | 调参、replay、评估和 Pipeline 结果 |
 | 监控 | `MarsMonitor`、`generate_monitoring_alert` | `MarsMonitoringReport`、报警摘要 |
 | 报告与评分卡 | `write_excel`、`write_html`、`build_scorecard` | Excel、HTML、`MarsScorecard` |
-
-## 边界
-
-MARS 提供风险计算、结构化 report 和默认摘要；它不是完整的线上监控平台、模型注册中心、
-调度系统或审批系统。监控窗口、模型版本、阈值策略、看板和处置流程由使用者结合内部系统定义。

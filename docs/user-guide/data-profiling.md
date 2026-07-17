@@ -91,4 +91,4 @@ risk_profile = profile_risk(
 
 - 画像阶段先关注缺失率、特殊值比例、稳定性和数据源分组。
 - 对宽表建议先用 `features` 缩小范围，确认指标口径后再扩展到全量字段。
-- 对上线监控或周期复盘，优先把 `dq_tables` 和 `stats_tables` 接入内部看板，而不是只看一次性 Excel。
+- 对上线监控或周期复盘，可读取 `dq_tables` 和 `stats_tables` 生成周期对比表，或导出 Excel 供人工查看。

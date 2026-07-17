@@ -1,6 +1,7 @@
 # 性能对比
 
-MARS 面向宽表分箱场景优化大样本、多特征下的分箱拟合、规则转换和报表链路衔接。下面结果来自 README 中记录的 benchmark。
+本页记录原生分箱与最优分箱脚本在固定宽表数据上的耗时和内存结果。结果只适用于列出的
+数据规模、参数和运行环境。
 
 ## 复现命令
 
@@ -39,7 +40,7 @@ conda run -n mars python benchmarks/benchmark_binning_speed.py optimal --rows 50
 
 ## 如何理解结果
 
-- MARS 的原生分箱在宽表场景下重点优化速度和峰值内存压力。
-- 最优分箱比直接 `optbinning.BinningProcess` 更快，但峰值内存更高，适合需要大批量特征快速评估的场景。
-- benchmark 是复现脚本结果，不代表所有业务数据。实际性能会受特征分布、缺失率、类别基数、CPU、内存和 Polars 版本影响。
-
+- 表中的原生分箱结果对应 `200,000 × 3,000` 个数值特征和 `method=quantile/uniform`。
+- 表中的最优分箱结果对应 `50,000 × 1,000` 个数值特征和单特征 `time_limit=1s`；该场景下
+  `MarsOptimalBinner` 耗时更低、峰值内存更高。
+- 使用自己的数据复现前，请同时记录特征分布、缺失率、类别基数、CPU、内存和 Polars 版本。

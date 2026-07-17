@@ -21,32 +21,27 @@ class MarsBinningReport:
     """
     特征效能与稳定性评估报告容器。
 
-    作为风控特征工程流水线的标准输出载体，该组件负责统一管理并呈现由 `MarsBinEvaluator`
-    产出的高维特征评估度量与多维趋势矩阵。系统封装了对底层评估数据帧的只读访问接口、
-    面向交互式分析环境的富文本视图渲染，以及跨平台的高保真电子表格持久化导出能力，
-    以支撑特征区分度审计与跨期分布漂移监控。
+    管理 `MarsBinEvaluator` 产出的特征级汇总、分箱明细和指标趋势表，并提供表格读取、
+    富文本视图、Excel 和 HTML 导出方法。
 
     Attributes
     ----------
     summary_table : DataFrame
-        内部持有的特征级汇总评估宽表引用。
+        特征级汇总评估表。
 
     trend_tables : dict of str to DataFrame
-        内部持有的核心评估指标趋势字典引用。
+        核心评估指标趋势表字典。
 
     detail_table : DataFrame
-        内部持有的细粒度分箱明细表引用。
+        分箱明细表。
 
     group_col : str
         内部挂载的分组维度标识。
 
     Notes
     -----
-    该容器提供了针对特征评估诊断的统一交互层 API。其暴露的 `show_summary` 与 `show_trend`
-    方法通过动态构建样式渲染器（Pandas Styler），支持直接将风控指标梯度映射为预警色带
-    与数据条，以加速区分度缺陷与单调性倒挂的物理识别。
-    执行持久化导出时，底层引擎严格还原交互式视图中的条件格式与业务阈值规则，确保离线
-    模型监控文档与线上审计视图的视觉连贯性。
+    `show_summary` 与 `show_trend` 使用 Pandas Styler 显示指标色带和数据条。`write_excel()`
+    和 `write_html()` 分别生成电子表格和交互式 HTML 报告。
 
     Examples
     --------

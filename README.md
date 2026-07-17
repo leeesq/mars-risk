@@ -10,6 +10,7 @@
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
   <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
   <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square&label=Python&color=364f6b"></a>
+  <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
@@ -24,16 +25,15 @@
 
 </div>
 
-MARS 是面向信贷风控宽表的 Polars-first 分析与建模工具库，覆盖数据画像、分箱评估、特征筛选、
-Modeling / Pipeline、特征与模型监控，以及 Excel/HTML 报告。它强调可复用的分箱规则和结构化
-report，而不是绑定某个看板、调度或模型注册系统。
+MARS 为 Pandas 或 Polars 宽表提供数据画像、分箱评估、特征筛选、Modeling / Pipeline、监控和
+Excel/HTML 报告入口。评估与监控工作流返回结构化 report，可继续读取汇总、明细、趋势和元数据。
 
 ## 安装
 
 MARS 支持 Python 3.10+。
 
 ```bash
-pip install mars-risk
+pip install mars-risk==0.0.23
 ```
 
 | 场景 | 安装命令 |

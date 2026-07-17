@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="260" viewBox="0 0 1120 260" role="img" aria-labelledby="title desc">
   <title id="title">MARS report 数据对象</title>
-  <desc id="desc">各模块 report 返回汇总、明细、趋势和元数据，支持导出、看板和 Agent 二次加工。</desc>
+  <desc id="desc">各模块 report 返回汇总、明细、趋势和元数据，可导出或作为 Agent 二次加工输入。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
       <path d="M0 0 L10 5 L0 10 Z" fill="#8b5cf6"/>
@@ -114,13 +114,13 @@
   </g>
   <g>
     <rect class="node" x="760" y="158" width="150" height="58" rx="14"/>
-    <text class="label" x="835" y="192" text-anchor="middle">看板接入</text>
-    <text class="hint" x="835" y="210" text-anchor="middle">内部分析</text>
+    <text class="label" x="835" y="192" text-anchor="middle">二次处理</text>
+    <text class="hint" x="835" y="210" text-anchor="middle">筛选与复盘</text>
   </g>
   <g>
     <rect class="node" x="930" y="101" width="130" height="58" rx="14"/>
     <text class="label" x="995" y="135" text-anchor="middle">Agent</text>
-    <text class="hint" x="995" y="153" text-anchor="middle">定制加工</text>
+    <text class="hint" x="995" y="153" text-anchor="middle">摘要与重排</text>
   </g>
 
   <path class="line" d="M260 73 C320 73 352 105 426 118"/>

@@ -3,7 +3,7 @@
 MARS 支持 `Python >= 3.10`，包名为 `mars-risk`。
 
 ```bash
-pip install mars-risk
+pip install mars-risk==0.0.23
 ```
 
 基础安装已经包含数据画像、分箱、筛选、Excel/HTML 报表导出和图表报告能力。
