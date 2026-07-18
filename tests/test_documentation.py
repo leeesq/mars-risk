@@ -215,6 +215,21 @@ def test_readme_restores_dynamic_python_and_download_badges() -> None:
     assert 'href="https://pepy.tech/project/mars-risk"' in readme
 
 
+def test_docs_workflow_deploys_pages_after_main_validation() -> None:
+    """Docs 工作流应在 main push 或手动触发验证通过后部署 Pages。"""
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "docs.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "github.event_name == 'push' || github.event_name == 'workflow_dispatch'" in workflow
+    assert "needs: build" in workflow
+    for action in [
+        "actions/configure-pages@v5",
+        "actions/upload-pages-artifact@v3",
+        "actions/deploy-pages@v4",
+    ]:
+        assert action in workflow
+
+
 @pytest.mark.parametrize(
     ("module_label", "module_name", "expected_status", "reference_name"),
     [
