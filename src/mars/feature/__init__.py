@@ -1,4 +1,4 @@
-"""MARS 特征分箱与特征筛选模块的公开导出入口。"""
+"""MARS Stable 特征分箱与特征筛选公开入口。"""
 
 from mars.feature.binning import (
     MarsBinnerBase,

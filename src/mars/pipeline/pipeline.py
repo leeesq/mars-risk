@@ -23,6 +23,11 @@ class MarsModelingPipeline:
     或建模。该类不是 sklearn ``Pipeline`` 的严格子类，但保留熟悉的 ``fit``、``transform`` 和
     ``predict`` 调用方式。
 
+    Notes
+    -----
+    本类属于 Experimental API。生产项目应固定 MARS 版本，并在升级后重新验证 step 拓扑、
+    结果字段和 artifact 路径。
+
     Examples
     --------
     >>> from mars.feature import MarsStatsSelector

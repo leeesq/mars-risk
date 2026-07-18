@@ -1,117 +1,59 @@
+---
+description: 使用统计、线性和重要性选择器缩小候选特征范围。
+---
+
 # 特征筛选
 
-特征筛选用于把宽表候选特征压缩到更适合建模和监控的特征集合。MARS 目前提供统计筛选、线性模型筛选和重要性筛选三类入口。
+## 适用场景
 
-## 统计筛选：`MarsStatsSelector`
+特征筛选用于将宽表候选特征压缩成可建模、可监控的集合。MARS 提供统计筛选、线性筛选和重要性
+筛选三类对象；它们可以独立使用，也可以进入 Pipeline。
 
-```python
-from mars.feature import MarsStatsSelector
-
-selector = MarsStatsSelector(
-    missing_thr=0.9,
-    iv_thr=0.01,
-    psi_thr=0.25,
-    corr_thr=0.85,
-    skip_fine_scan=True,
-)
-
-selector.fit(
-    df,
-    target="target",
-    benchmark_df=benchmark_df,
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    feature_data_source={
-        "user_profile": ["income"],
-        "credit_usage": ["utilization"],
-        "application": ["segment"],
-    },
-)
-```
-
-常用结果：
+## 统计筛选完整调用
 
 ```python
-selected_features = selector.selected_features_
-decision_table = selector.decision_table_
-report = selector.get_binning_report(df, benchmark_df=benchmark_df)
-report.plot_risk_trends(max_plots=5)
+--8<-- "docs/snippets/feature_selection.py"
 ```
 
-`feature_data_source` 表示本次候选特征全集的数据源配置。如果部分特征在筛选过程中被过滤，传给评估报告的数据源映射会自动裁剪到当前 `active features`；筛选决策表仍会保留被过滤特征的来源信息，方便复盘。
+示例关闭了 PSI 和 RC，因为它只做静态筛选。默认 `psi_thr` 和 `rc_thr` 已启用；使用默认值时必须
+提供 `group_col` 或 `time_col`。
 
-`benchmark_df` 用于拟合粗筛和精筛分箱规则，并提供 PSI expected distribution；它不会进入
-`df` 的 Total 或趋势分组。缺失率、IV、Lift、RC 和 WOE 相关性仍在 `df` 上计算，因此 `df`
-必须包含至少两个有效 target 类别。selector 不保存原始 benchmark，调用
-`get_binning_report()` 时需要重新传入。
+## 选择器职责
 
-默认 `psi_thr` 和 `rc_thr` 均已启用，必须提供 `group_col` 或 `time_col`。只做静态筛选时显式
-关闭两项稳定性检查：
+| 选择器 | 输入风格 | 主要用途 |
+| --- | --- | --- |
+| `MarsStatsSelector` | `fit(df, target=...)` | 质量、IV/Lift、PSI、RC、相关性和黑白名单 |
+| `MarsLinearSelector` | `fit(X, y)` | L1、相关性和线性模型筛选 |
+| `MarsImportanceSelector` | `fit(X, y)` 或重要性表 | 模型原生重要性、SHAP 或已有重要性结果 |
 
-```python
-selector = MarsStatsSelector(
-    psi_thr=None,
-    rc_thr=None,
-)
-selector.fit(df, target="target", features=features)
-```
+## 基准样本
 
-同时提供 `group_col`、`time_col` 和 `time_grain` 时，`group_col` 决定趋势分组，`time_col`
-保留日期上下文；只有未传 `group_col` 时才由 `time_col/time_grain` 生成时间分组。
+`MarsStatsSelector.fit(..., benchmark_df=...)` 使用基准数据拟合粗筛和精筛分箱，并构造 PSI expected
+distribution。缺失率、IV、Lift、RC 和相关性仍在当前 `df` 上计算，因此当前数据必须包含至少两个
+有效 target 类别。
 
-## 线性模型筛选：`MarsLinearSelector`
+Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时，需要再次传入同一
+`benchmark_df` 才能复现基准口径。
 
-`MarsLinearSelector` 使用 sklearn 风格，`fit(X, y, ...)` 中 `y` 必填。
+## 输出
 
-```python
-from mars.feature import MarsLinearSelector
+| 字段 | 用途 |
+| --- | --- |
+| `selected_features_` | 最终保留的特征名列表 |
+| `get_report()` | 每个特征的选择结果和指标记录 |
+| `get_binning_report()` | 对保留特征生成结构化分箱评估报告 |
 
-selector = MarsLinearSelector(
-    penalty="l1",
-    C=0.1,
-)
+`white_list` 保护必须保留的业务特征；`black_list` 排除泄漏、合规受限或线上不可用字段。黑名单优先
+于自动指标规则。
 
-selector.fit(X, y, features=["income", "utilization"])
-selected = selector.selected_features_
-```
+## 常见失败
 
-## 重要性筛选：`MarsImportanceSelector`
+- 静态筛选没有分组列却保留默认 PSI/RC：显式设置 `psi_thr=None, rc_thr=None`。
+- `importance_table` 未定义或列结构不明：先由 Modeling 结果读取受支持的重要性表，再传给选择器。
+- 筛选后没有特征：读取 `get_report()`，调整最早导致全量淘汰的阈值或名单规则。
 
-重要性筛选可以直接消费已有重要性表，也可以训练 estimator 或使用 SHAP。
+## 下一步
 
-```python
-from mars.feature import MarsImportanceSelector
-
-selector = MarsImportanceSelector(selection_threshold=50)
-
-selector.fit(
-    X,
-    importance_table=importance_table,
-    features=["income", "utilization"],
-)
-```
-
-如果直接传入 `importance_table`，可以不传 `y`。如果需要训练 estimator 或计算 SHAP，则必须传入 `y`。
-
-## 白名单与黑名单
-
-```python
-selector.fit(
-    df,
-    target="target",
-    features=features,
-    group_col="month",
-    white_list=["age"],
-    black_list=["debug_feature"],
-)
-```
-
-- `white_list` 用于保护必须保留的特征。
-- `black_list` 用于剔除不可用、合规受限或调试字段。
-
-## 使用建议
-
-- 先用质量、稳定性和单变量风险筛掉明显不可用特征。
-- 再用相关性或模型重要性减少重复信息。
-- 对业务强约束特征使用 `white_list`，对泄漏字段或上线不可用字段使用 `black_list`。
-- 对数据源分组做监控和复盘，避免某个来源特征被大规模过滤后仍在后续评估中误用。
+- 将筛选器组合进建模流程：[Modeling / Pipeline](modeling-pipeline.md)。
+- 对最终特征生成评估报告：[分箱与风险评估](binning-risk-evaluation.md)。
+- 查询完整参数：[Feature API](../reference/feature.md)。

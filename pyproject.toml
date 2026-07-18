@@ -87,6 +87,10 @@ docs = [
     "mkdocstrings[python]>=0.25.0",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
     "mkdocs-jupyter>=0.25.0",
+    "nbclient>=0.10.0",
+    "nbformat>=5.10.0",
+    "ipykernel>=6.29.0",
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 # 开发与测试环境
@@ -99,6 +103,10 @@ dev = [
     "mkdocstrings[python]>=0.25.0",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
     "mkdocs-jupyter>=0.25.0",
+    "nbclient>=0.10.0",
+    "nbformat>=5.10.0",
+    "ipykernel>=6.29.0",
+    "tomli>=2.0.0; python_version < '3.11'",
     "black>=23.0.0",
     "jupyterlab>=4.0.0",
     "tqdm>=4.66.0",        
@@ -188,6 +196,11 @@ show_error_codes = true
 pretty = true
 exclude = [
     "^examples/",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "docs_ml: requires the ml and tuning documentation dependencies",
 ]
 
 [[tool.mypy.overrides]]

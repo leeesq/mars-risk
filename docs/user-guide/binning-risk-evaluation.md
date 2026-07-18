@@ -1,231 +1,78 @@
+---
+description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift、PSI 和趋势结果。
+---
+
 # 分箱与风险评估
 
-分箱评估用于观察单个特征与 target 的关系，包括 IV、KS、AUC、Lift、坏账率、PSI、缺失率和分箱趋势等指标。MARS 支持原生分箱、轻量最优分箱和数学规划最优分箱，也支持将分箱规则继续复用到转换、监控和报表链路。
+## 适用场景
 
-## 高层入口：`profile_risk`
+使用本指南评估单个特征与二分类 target 的关系，或使用稳定的基准期分箱规则评估当前数据。常见
+输出包括 IV、KS、AUC、Lift、坏账率、PSI、缺失率和分箱趋势。
 
-```python
-from mars.analysis import profile_risk
+## 入口选择
 
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    time_col="apply_dt",
-    binning_type="native",
-    method="quantile",
-    n_bins=5,
-    missing_values=[-999],
-    special_values=[-999],
-    n_jobs=4,
-)
-
-report = risk_profile.report
-report.plot_risk_trends(max_plots=5)
-```
-
-风险趋势图必须提供 `time_col`。`group_col` 优先决定图表面板分组，但左上角范围始终来自 `time_col` 的有效最小值和最大值，并显示为 `YYYY-MM-DD`；仅在没有 `group_col` 时，`time_grain` 才用于生成时间分组。
-
-## benchmark 基准期分箱
-
-`benchmark_df` 是基准期样本，而不只是额外的 PSI 对比表。未显式传入已拟合
-`binner` 时，MARS 用 benchmark 拟合分箱规则，再转换当前 `df`；benchmark 同时是
-PSI 的 expected distribution。显式 `binner` 优先，MARS 不会修改它。
-
-```python
-may_profile = profile_risk(
-    june_df,
-    target="target",
-    features=["income", "utilization"],
-    group_col="month",
-    benchmark_df=may_df,
-    binning_type="native",
-    method="quantile",
-    n_bins=5,
-)
-```
-
-benchmark 必须包含所有 active features；指定 `weights_col` 时也必须包含同名权重列。
-监督分箱要求 benchmark 的 target 至少有两个有效类别。当前评估期 target 缺列或全空时，
-只要仍显式传入 target 名称且 benchmark 有有效标签，就会用 benchmark 完成监督建箱，
-当前期报告保持无标签模式。RC 默认仍以当前期 Total 为基准；只有
-`risk_corr_baseline="benchmark"` 才使用 benchmark 坏率。
-
-`write_html()` 默认按每个 target 最多输出 500 个特征趋势图。大报告会自动生成同级资产目录并懒加载图片，报告内部按页面切换；需要时可用 `chart_embed_mode="inline"` 或 `chart_embed_mode="asset"` 覆盖自动模式。
-
-返回值是 `MarsRiskProfile(report, binner, targets, metadata)`：
-
-- `report`：`MarsBinningReport`，保存汇总表、明细表、趋势表和导出能力。
-- `binner`：本次自动拟合出的分箱器，可用于后续复用分箱规则。
-- `targets`：本次评估的目标列列表。
-- `metadata`：运行上下文。
-
-如果你会在 `native`、`optimal` 和 `lite_opt` 之间来回切换，建议把各自的底层
-高级参数放在同一个 `binner_params` 里；当前 `binning_type` 不适用但已识别的键会被忽略：
-
-如果需要显式复用已有分箱器，请使用 `MarsBinEvaluator.evaluate(..., binner=...)`；
-`profile_risk` 只负责按高层分箱参数自动构建分箱器。
-
-```python
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income", "utilization"],
-    group_col="month",
-    binning_type="lite_opt",
-    method="quantile",
-    n_bins=6,
-    binner_params={
-        "merge_small_bins": True,
-        "n_prebins": 50,
-        "join_threshold": 100,
-    },
-)
-```
-
-`profile_risk()` 在 `optimal` 和 `lite_opt` 下如果未显式传 `monotonic_trend`，
-会默认补成 `auto_asc_desc`。这与直接构造 `MarsLiteOptBinner()` 时底层默认的
-`auto` 不同。
-
-## 评估器入口：`MarsBinEvaluator`
-
-```python
-from mars.analysis import MarsBinEvaluator
-
-evaluator = MarsBinEvaluator(
-    binning_type="native",
-    binner_params={"method": "quantile", "n_bins": 5},
-)
-
-risk_profile = evaluator.evaluate(
-    df,
-    target="target",
-    features=["income", "utilization"],
-    group_col="month",
-)
-```
-
-`MarsBinEvaluator` 不把 `target` 和 `features` 放进构造函数。每次 `evaluate()` 都可以传入新的数据、目标列和特征范围，避免复用对象时状态串扰。
-
-## 分箱器共享能力
-
-`MarsNativeBinner`、`MarsLiteOptBinner` 和 `MarsOptimalBinner` 都继承 `MarsBinnerBase`。子类只负责拟合各自的分箱规则；规则转换、WOE 转换、分箱效果评估、规则裁剪和序列化由基类统一提供。
-
-| 共享方法 | 用途 |
+| 目标 | 入口 |
 | --- | --- |
-| `fit_transform` / `transform` | 生成 index、label 或 WOE 形式的分箱结果 |
-| `profile_bin_performance` | 基于已拟合规则计算分箱明细、IV、WOE 和坏账率 |
-| `to_dict` / `from_dict` | 保存和恢复分箱规则 |
-| `prune` | 只保留指定特征的分箱规则 |
+| 按高层参数自动构建分箱器 | `profile_risk()` |
+| 传入或复用已拟合分箱器 | `MarsBinEvaluator.evaluate()` |
+| 只需要分箱和转换 | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner` |
 
-## 原生分箱：`MarsNativeBinner`
+`profile_risk()` 不接受显式 `binner`。需要固定规则时使用 evaluator。
 
-```python
-from mars.feature import MarsNativeBinner
+## 基准期规则评估当前期
 
-binner = MarsNativeBinner(
-    method="quantile",
-    n_bins=5,
-    special_values=[-999],
-    merge_small_bins=True,
-    remove_empty_bins=True,
-)
-
-binner.fit(X, y, cat_features=["segment"])
-X_bin = binner.transform(X, return_type="index")
-X_woe = binner.transform(X, return_type="woe")
-```
-
-常用 `method`：
-
-- `quantile`：等频分箱，默认方法，可无标签运行。
-- `uniform`：等宽分箱，可无标签运行。
-- `cart`：基于 target 的监督分箱，必须传入 `y`。
-
-## 轻量最优分箱：`MarsLiteOptBinner`
+下面的完整示例使用带标签的 `baseline_df` 拟合 CART 分箱，并评估 target 尚未表现的
+`current_df`：
 
 ```python
-from mars.feature import MarsLiteOptBinner
-
-lite_binner = MarsLiteOptBinner(
-    n_bins=6,
-    n_prebins=50,
-    monotonic_trend="auto",
-    prebinning_method="quantile",
-)
-
-lite_binner.fit(X, y, cat_features=["segment"])
+--8<-- "docs/snippets/baseline_evaluation.py"
 ```
 
-`MarsLiteOptBinner.fit(X, y, ...)` 要求 `y` 必填。它会先使用原生预分箱生成细箱，再在预分箱统计表上做趋势约束合并。
+规则来源优先级为显式 `binner`、`benchmark_df`、当前 `df`。基准样本不会进入当前期 Total，
+但会提供 PSI expected distribution。
 
-## 最优分箱：`MarsOptimalBinner`
+## 分箱器选择
 
-```python
-from mars.feature import MarsOptimalBinner
+| 类型 | 适用情况 | 标签要求 |
+| --- | --- | --- |
+| `native` + `quantile` | 快速等频分箱、宽表初筛 | 不要求 |
+| `native` + `uniform` | 需要固定宽度区间 | 不要求 |
+| `native` + `cart` | 使用 target 的轻量监督分箱 | 要求 |
+| `lite_opt` | 轻量单调监督分箱 | 要求 |
+| `optimal` | 数学规划最优分箱与类别合并 | 要求 |
 
-optimal_binner = MarsOptimalBinner(
-    max_n_bins=6,
-    min_bin_size=0.05,
-    time_limit=1,
-)
+三个分箱器都继承 `MarsBinnerBase`，共享 `transform()`、`profile_bin_performance()`、
+`to_dict()` / `from_dict()` 和 `prune()`。
 
-optimal_binner.fit(X, y, cat_features=["segment"])
-X_opt_woe = optimal_binner.transform(X, return_type="woe")
-```
+## 输出
 
-`MarsOptimalBinner.fit(X, y, ...)` 同样要求 `y` 必填。最优分箱支持类别合并，适合降低高基数类别带来的不稳定性。
+`MarsRiskProfile` 保存本次 `report`、`binner`、`targets` 和 `metadata`。常用 report 字段：
 
-## 分箱评估报告
-
-```python
-summary = risk_profile.report.summary_table
-detail = risk_profile.report.detail_table
-trends = risk_profile.report.trend_tables
-
-risk_profile.report.write_excel("risk_report.xlsx", engine="openpyxl")
-risk_profile.report.write_html("risk_report.html")
-```
-
-风险趋势图不必只能通过完整报告查看，也可以单独生成 figure、图片或 HTML fragment：
-
-```python
-figures = risk_profile.report.build_risk_trend_figures(features=["income"])
-
-fragment = risk_profile.report.render_risk_trends_html(
-    features=["income"],
-    image_format="svg",
-    embed_mode="inline",
-)
-
-asset_fragment = risk_profile.report.render_risk_trends_html(
-    features=["income"],
-    image_format="svg",
-    embed_mode="asset",
-    output_dir="report/assets",
-    relative_to="report",
-)
-```
-
-| 表 | 用途 |
+| 字段 | 用途 |
 | --- | --- |
-| `summary_table` | 特征级指标汇总，用于排序、筛选和报告首页 |
-| `detail_table` | 分箱明细，包含箱内样本数、坏账率、WOE、IV 等 |
-| `trend_tables` | 按时间或分组展开的 PSI、缺失率、坏账率等趋势 |
-| `missing_by_day_table` | 按日缺失率趋势，适合排查数据链路异常 |
+| `summary_table` | 特征级指标汇总和排序 |
+| `detail_table` | 分箱样本数、坏账率、WOE 和 IV 明细 |
+| `trend_tables` | PSI、缺失率和坏账率等分组趋势 |
+| `missing_by_day_table` | 使用 `time_col` 计算的按日缺失趋势 |
 
-## PSI 口径
+## 时间与 PSI
 
-分箱评估可以通过 `psi_include_missing` 和 `psi_include_special` 控制 PSI 是否纳入缺失箱和特殊值箱。监控场景通常建议默认不纳入缺失箱，因为缺失率会单独监控。
+风险趋势图必须有有效 `time_col`。`group_col` 决定面板分组，但不能替代真实日期范围。只有未传
+`group_col` 时，`time_grain` 才根据 `time_col` 生成分组。
 
-```python
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income"],
-    group_col="month",
-    psi_include_missing=False,
-    psi_include_special=False,
-)
-```
+`psi_include_missing` 和 `psi_include_special` 控制对应分箱是否进入 PSI；缺失率会单独报告，
+监控场景通常保持两者为 `False`。
+
+## 常见失败
+
+- 监督分箱数据只有一个有效 target 类别：改用带完整标签的基准样本，或选择无监督分箱。
+- `benchmark_df` 缺少 active feature 或权重列：基准数据必须包含拟合规则所需的全部列。
+- 复用规则时仍调用 `profile_risk()`：改用 `MarsBinEvaluator.evaluate(..., binner=...)`。
+- 生成图表时没有 `time_col`：重新评估并提供原始日期列。
+
+## 下一步
+
+- 将筛选规则应用到宽表：[特征筛选](feature-selection.md)。
+- 周期性监控固定规则：[特征与模型监控](monitoring.md)。
+- 查询分箱器和 evaluator 的精确签名：[Feature API](../reference/feature.md) 与
+  [Analysis API](../reference/analysis.md)。

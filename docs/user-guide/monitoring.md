@@ -1,136 +1,69 @@
-# 特征/模型监控
+---
+description: 使用固定或基准期分箱规则监控特征分布、模型分、表现覆盖率和报警摘要。
+---
 
-调用 `MarsMonitor.monitor()` 可得到特征/模型的 PSI、缺失率、分箱占比、表现覆盖率和默认报警摘要。
-调用方按监控周期传入样本与基准期，保存返回的 report，并在自身运行环境中配置触发频率和报警处置。
+# 特征与模型监控
 
-## 支持场景
+!!! warning "Experimental"
 
-- **前端监控**：例如申请入口、渠道、产品、地区等在进入模型前的特征分布、缺失率和分箱占比变化。
-- **后端监控**：例如模型输出分布、表现期 target 覆盖率和已表现样本风险指标。
+    Monitoring 的 report 字段、target 校验和报警结果仍可能调整。受控生产使用应固定
+    `mars-risk==0.0.23`，并为依赖的 report 字段和报警结果增加契约测试。
 
-## 基本用法
+## 适用场景
 
-```python
-from mars.monitoring import MarsMonitor, generate_monitoring_alert
+- 前端监控：申请入口、渠道、产品或地区等模型前特征的分布和缺失变化。
+- 后端监控：模型输出分布、target 表现覆盖率和已表现样本风险指标。
 
-report = MarsMonitor(
-    binner_params={"method": "quantile", "n_bins": 5},
-    psi_include_missing=False,
-    psi_include_special=False,
-).monitor(
-    df,
-    features=["model_score", "income", "utilization"],
-    target="target",
-    group_col="month",
-    psi_include_missing=False,
-    psi_include_special=False,
-    trend_column_order="desc",
-)
+调用方负责按监控周期提供当前数据和基准数据，并保存 report；MARS 不负责调度任务或发送通知。
 
-alert_text = generate_monitoring_alert(
-    report,
-    score_key="model_score",
-    model_features=["income", "utilization"],
-)
-```
+## 完整调用
 
-## target 规则
-
-`target` 只接受 `0`、`1`、`True`、`False` 和空值：
-
-- `0` / `False`：好样本。
-- `1` / `True`：坏样本。
-- `null` / `NaN`：尚未到表现期。
-
-`"0"`、`"1"`、`"true"`、`"false"`、`-1`、`2`、`"pending"` 等非空异常值会直接抛出 `ValueError`。用户需要在进入监控模块前完成 target 清洗。
-
-## 有标签与无标签监控
+下面的示例使用带标签的 `baseline_df` 拟合规则，监控尚未表现的 `current_df`：
 
 ```python
-distribution_report = MarsMonitor().monitor(
-    df,
-    features=["income", "utilization"],
-    target=None,
-    group_col="month",
-)
+--8<-- "docs/snippets/monitoring.py"
 ```
 
-`target=None` 时只输出无标签分布监控。传入 target 时：
+## Target 规则
 
-- PSI、缺失率和分箱占比使用全量样本。
-- 坏账率、IV、KS、AUC、Lift 等标签指标只使用已表现样本。
-- 某个时间段 target 全为空时，该时间段仍保留 PSI、缺失率和分箱占比，标签类指标输出空值。
+target 的有效非空值只能是 `0`、`1`、`True` 或 `False`；空值表示尚未表现。字符串、`-1`、`2`
+或其他非空类别会抛出 `ValueError`，调用方应在监控前完成清洗。
 
-有 target 的监控可以设置 `binning_type="lite_opt"` 使用轻量监督式最优分箱；无标签分布监控建议保持默认 `native`。
+`target=None` 时只输出无标签分布监控。传入 target 时，PSI、缺失率和分箱占比使用全量样本；
+坏账率、IV、KS、AUC 和 Lift 只使用已表现样本。
 
-当当前期尚未到表现期、没有 target 列或 target 全为空时，仍可传入 target 名称和带标签的
-`benchmark_df`。MARS 会用 benchmark 拟合监督分箱规则，并把当前期报告作为无标签监控输出：
+## 规则与基准
 
-```python
-report = MarsMonitor(
-    binner_params={"method": "cart", "n_bins": 5},
-).monitor(
-    june_df,
-    features=["model_score", "income"],
-    target="target",
-    benchmark_df=may_labeled_df,
-    group_col="month",
-)
-```
+显式 `binner` 优先于 `benchmark_df`。基准样本负责提供分箱规则和 PSI expected distribution；
+当前样本不需要已经充分表现。监督分箱时，基准 target 必须至少包含两个有效类别。
 
-benchmark 必须包含全部监控特征；指定 `weights_col` 时也必须包含对应权重列。传入已拟合
-`binner` 时，该 binner 优先，benchmark 只提供 PSI 基准和可选的 RC 基准。
-
-## PSI 与缺失值
-
-监控默认不把缺失箱和特殊值箱纳入 PSI：
-
-```python
-monitor = MarsMonitor(
-    psi_include_missing=False,
-    psi_include_special=False,
-)
-```
-
-缺失率会单独进入趋势监控，因此默认不混入 PSI。需要复现某些历史口径时，可以在 `MarsMonitor(...)` 构造函数中设置默认值，也可以在单次 `monitor(...)` 调用中显式覆盖这两个参数。
-
-## 趋势列顺序
-
-`trend_column_order` 控制趋势宽表的时间或分组列顺序：
-
-- `"asc"`：从早到晚，默认行为。
-- `"desc"`：从晚到早，适合让最新月份靠前展示。
-
-`Total` 列如果存在，会固定在最后。报警器会读取 `MarsMonitoringReport.metadata` 中记录的趋势列顺序，识别基准期和最新期。
-
-## report 数据结构
+## 输出
 
 | 字段 | 含义 |
 | --- | --- |
 | `summary_table` | 特征级监控汇总 |
 | `detail_table` | 分箱明细 |
-| `trend_tables` | PSI、缺失率、坏账率等趋势表 |
-| `missing_by_day_table` | 按日缺失率趋势 |
-| `bin_stat_table` | 每个特征、每个分箱的统计量 |
-| `bin_stat_trend_tables` | 分箱统计量随时间或分组变化的趋势表 |
-| `target_observation_table` | target 表现覆盖率、未表现样本数和已表现样本坏账率 |
-| `metadata` | 运行上下文、趋势列顺序和 PSI 口径 |
+| `trend_tables` | PSI、缺失率、坏账率等趋势 |
+| `bin_stat_table` | 每个特征和分箱的统计量 |
+| `bin_stat_trend_tables` | 分箱统计量随分组变化的趋势 |
+| `target_observation_table` | 已表现、未表现样本和观察坏账率 |
+| `metadata` | 规则来源、趋势顺序和 PSI 口径 |
+
+`trend_column_order="asc"` 从早到晚排列趋势列，`"desc"` 让最新分组靠前；`Total` 始终位于最后。
 
 ## 报警摘要
 
-```python
-from mars.monitoring import MarsMonitoringAlertConfig, generate_monitoring_alert
+`generate_monitoring_alert()` 从已有 report 中读取指标并生成文本摘要。缺少某类表或字段时跳过对应
+检查。调用方需要将摘要接入自己的阈值审批、通知和处置流程。
 
-alert_text = generate_monitoring_alert(
-    report,
-    score_key="model_score",
-    model_features=["income", "utilization"],
-    config=MarsMonitoringAlertConfig(
-        psi_warn=0.10,
-        psi_critical=0.25,
-    ),
-)
-```
+## 常见失败
 
-报警摘要读取已有 report 表；缺少某类表或字段时会跳过对应检查。将摘要作为复核输入时，请结合
-自己的阈值、审批规则和处置流程决定后续动作。
+- 当前期无标签却使用监督分箱且没有基准数据：提供带标签 `benchmark_df` 或改用 native 无监督分箱。
+- 基准数据缺少监控特征：基准表必须覆盖全部 active features 和可选权重列。
+- 把 target 字符串当二分类值：在调用前转换成整数、布尔值或空值。
+
+## 下一步
+
+- 理解基准期、当前期与 target 表现状态：[数据角色与运行边界](../concepts/data-and-runs.md)。
+- 导出监控结果：[报告与评分卡](reports-and-exports.md)。
+- 查询精确签名：[Monitoring API](../reference/monitoring.md)。

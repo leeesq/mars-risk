@@ -1,41 +1,75 @@
-name: Publish to PyPI 🚀
+name: Publish to PyPI
 
-# 触发机制：只有当你在 GitHub 页面点击 "Create a Release" 发布新版本时才触发
 on:
   release:
     types: [published]
 
 permissions:
   contents: read
-  # 重要：这是为了使用 OIDC 认证，必须开启 id-token 写权限
-  id-token: write 
+  id-token: write
 
 jobs:
   build-and-publish:
-    name: Build and Publish to PyPI
+    name: Build and publish package
     runs-on: ubuntu-latest
-    
+
     steps:
-    # 1. 拉取代码
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build tomli
+      - name: Check release version
+        run: python scripts/check_release_version.py --release-tag "${{ github.event.release.tag_name }}"
+      - name: Build package
+        run: python -m build
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
-    # 2. 设置 Python 环境
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
+  deploy-docs:
+    name: Deploy released documentation
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
-    # 3. 安装构建工具
-    - name: Install build dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build
-
-    # 4. 打包代码 (生成 .whl 和 .tar.gz)
-    - name: Build package
-      run: python -m build
-
-    # 5. 发布到 PyPI (使用官方 Action)
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ml,tuning,docs]"
+      - name: Check release version
+        run: python scripts/check_release_version.py --release-tag "${{ github.event.release.tag_name }}"
+      - name: Run released documentation tests
+        run: python -m pytest -q tests/test_documentation.py --basetemp .pytest-tmp-docs-release
+      - name: Build released documentation
+        run: python -m mkdocs build --strict
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

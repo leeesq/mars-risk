@@ -1,121 +1,94 @@
 ---
-description: 导出 MARS 的 Excel、可检索 HTML、风险趋势图和结构化 report 数据。
+description: 读取结构化 report，导出 Excel/HTML，并从分箱规则构建评分卡和部署 SQL。
 ---
 
-# 报告导出与二次加工
+# 报告与评分卡
 
-<div align="center">
-  <img src="../assets/mars-report-flow.svg" alt="Report 对象输出 summary、detail、trend 和 metadata，并支持 Excel、HTML 和 Agent 二次加工" width="920">
-</div>
+!!! info "Reporting：Stable"
 
-report 保存用于导出和二次处理的结构化数据。先读取表对象完成筛选或复盘；需要分享时再导出
-Excel 或 HTML。
+    本页的结构化 report 读取和 Excel/HTML 导出属于 Stable Reporting 能力。评分卡能力的状态
+    单独标注在对应章节。
 
-## 常用 report 与表
+## 适用场景
 
-| report | 来源 | 高价值字段 |
+Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或人工交付；Scorecard 将已拟合分箱规则
+与逻辑回归系数转换为评分映射和 SQL。
+
+## 1. 获得 Report
+
+下面的受测试示例定义了 `report`，后续导出调用均基于该对象：
+
+```python
+--8<-- "docs/snippets/quickstart.py"
+```
+
+常见对象与字段：
+
+| Report | 状态 | 高价值字段 |
 | --- | --- | --- |
-| `MarsProfileReport` | 数据画像 | `overview_table`、`dq_tables`、`stats_tables` |
-| `MarsBinningReport` | 分箱评估 | `summary_table`、`detail_table`、`trend_tables`、`missing_by_day_table` |
-| `MarsMonitoringReport` | 监控 | 监控汇总、分箱统计、表现覆盖率和报警元数据 |
-| `MarsModelingReport` | 建模评估 | 多样本切片的汇总、明细、趋势和元数据 |
+| `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables` |
+| `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
+| `MarsMonitoringReport` | Experimental | 监控汇总、分箱统计、表现覆盖率和元数据 |
+| `MarsModelingReport` | Experimental | 多样本切片的汇总、明细、趋势和元数据 |
+
+## 2. 导出 Excel 或 HTML
+
+以下代码继续使用上一步定义的 `report`：
 
 ```python
-summary = eval_report.summary_table
-detail = eval_report.detail_table
-trends = eval_report.trend_tables
-metadata = eval_report.report_meta
-```
-
-## Excel
-
-```python
-profile_report.write_excel("mars_profile.xlsx")
-eval_report.write_excel("mars_evaluation.xlsx", engine="openpyxl")
-```
-
-Excel 适合归档、人工筛选和固定格式交付；需要针对大量特征即时检索时，优先使用 HTML。
-
-需要由 Agent 生成摘要、筛选说明或重排报告时，可传入 `summary`、`detail`、`trends` 和 `metadata`。
-MARS 不会调用 Agent，也不会校验 Agent 输出；调用方负责选择模型、补充业务上下文和复核结果。
-
-## 可检索 HTML
-
-```python
-eval_report.write_html(
-    "mars_evaluation.html",
-    report_name="June feature review",
-    max_plots=500,
+report.write_excel("risk_report.xlsx", engine="openpyxl")
+report.write_html(
+    "risk_report.html",
+    report_name="Current-period risk review",
+    max_plots=100,
     chart_embed_mode="auto",
 )
 ```
 
-HTML 是单文件入口，内部通过按钮和 URL hash 切换以下视图：Overview、Summary、Missing By Day、
-Trend Tables、Grouped Pivot 和 Charts。刷新、前进和后退会保留当前视图；全局搜索会检索 Summary
-和 Charts，并可直接打开对应 target 的特征趋势图。
+| HTML 模式 | 行为 |
+| --- | --- |
+| `auto` | 小报告内嵌图片，大报告生成同级资产目录并懒加载 |
+| `inline` | 所有图片内嵌，适合必须单文件离线转发的报告 |
+| `asset` | 强制使用相对路径图片目录，适合大报告归档 |
 
-### 图表数量与资产模式
+风险趋势图和 HTML Charts 需要评估阶段已经提供有效 `time_col`。`group_col` 不能替代日期范围。
 
-| 模式 | 行为 | 适用场景 |
-| --- | --- | --- |
-| `chart_embed_mode="auto"` | 不超过 50 张图时内嵌；超过时写入同级 `<html_stem>_assets/` 并懒加载 | 默认推荐 |
-| `chart_embed_mode="inline"` | 所有图 Base64 内嵌为单文件 | 少量图、单文件必须可离线转发 |
-| `chart_embed_mode="asset"` | 强制生成图片资产目录并用相对路径引用 | 大报告、长期归档或快速打开 |
+## 3. 单独复用趋势图
 
-`max_plots=500` 的上限按每个 target 单独计算。资产模式下，图片初始保存在 `data-src`，只有进入
-Charts 视图或滚动到可见区域才会解码，避免浏览器同时加载数百张图片。
-
-### Missing By Day
-
-当评估期传入有效 `time_col` 且生成了按日缺失率表时，HTML 会显示独立的 Missing By Day 视图。
-没有有效日期或该表为空时，页面会说明原因；不会把 `group_col` 误当成日期来源。设置
-`include_trends=False` 会关闭整体趋势区域及该视图。
-
-!!! warning "风险趋势图需要日期"
-
-    `group_col` 决定面板分组，不能提供趋势图的时间范围。调用风险趋势图或包含 Charts 的 HTML
-    前，必须在评估时传入有效 `time_col`。日期时间值会截断显示为 `YYYY-MM-DD`。
-
-## 单独复用风险趋势图
+继续使用上一步定义的 `report`：
 
 ```python
-figures = eval_report.build_risk_trend_figures(features=["income"])
-
-fragment = eval_report.render_risk_trends_html(
+figures = report.build_risk_trend_figures(features=["income"])
+fragment = report.render_risk_trends_html(
     features=["income"],
     image_format="svg",
     embed_mode="inline",
 )
-
-asset_fragment = eval_report.render_risk_trends_html(
-    features=["income"],
-    image_format="svg",
-    embed_mode="asset",
-    output_dir="report/assets",
-    relative_to="report",
-)
 ```
 
-这些接口适用于 Notebook、外部 HTML 模板或多个报告组合。`fragment.html` 只包含 HTML 片段；
-资产模式会在 `asset_fragment.assets` 中返回已写出的图片路径。
+`fragment.html` 是可嵌入现有模板的 HTML 片段；资产模式同时返回已写入的图片路径。
 
-## 评分卡与 SQL
+## 4. 构建评分卡
+
+!!! warning "Scoring：Experimental"
+
+    评分映射、刻度参数和 SQL 输出仍可能调整。受控生产使用应固定 `mars-risk==0.0.23`，
+    并为 `points_table` 和生成 SQL 增加契约测试。
 
 ```python
-from mars.scoring import build_scorecard
-
-scorecard = build_scorecard(
-    binner,
-    coefficients={"income": 0.25, "utilization": 0.60},
-    intercept=-1.2,
-    pdo=20,
-    base_score=600,
-    base_odds=50,
-)
-
-sql = scorecard.generate_sql(
-    features=["income", "utilization"],
-    table_prefix="t",
-    score_name="score",
-)
+--8<-- "docs/snippets/reporting_scorecard.py"
 ```
+
+评分卡要求分箱器已经使用 target 拟合并具备 WOE 映射。系数字典的特征必须与分箱器规则一致。
+
+## 常见失败
+
+- HTML 图表为空：确认生成 report 时传入了有效 `time_col`。
+- 大报告单文件打开缓慢：使用 `auto` 或 `asset`，不要强制内嵌数百张图片。
+- 评分卡提示缺少映射：确认 binner 已拟合、特征名一致且包含 WOE 统计。
+
+## 下一步
+
+- 理解 report 与 artifact 的边界：[Report 与 Artifact](../concepts/reports-and-artifacts.md)。
+- 查询导出对象：[Reporting API](../reference/reporting.md)。
+- 查询评分卡签名：[Scoring API](../reference/scoring.md)。

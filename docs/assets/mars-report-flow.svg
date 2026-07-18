@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="260" viewBox="0 0 1120 260" role="img" aria-labelledby="title desc">
   <title id="title">MARS report 数据对象</title>
-  <desc id="desc">各模块 report 返回汇总、明细、趋势和元数据，可导出或作为 Agent 二次加工输入。</desc>
+  <desc id="desc">各模块 report 返回汇总、明细、趋势和元数据，可导出或供下游流程继续处理。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
       <path d="M0 0 L10 5 L0 10 Z" fill="#8b5cf6"/>
@@ -119,7 +119,7 @@
   </g>
   <g>
     <rect class="node" x="930" y="101" width="130" height="58" rx="14"/>
-    <text class="label" x="995" y="135" text-anchor="middle">Agent</text>
+    <text class="label" x="995" y="135" text-anchor="middle">Downstream</text>
     <text class="hint" x="995" y="153" text-anchor="middle">摘要与重排</text>
   </g>
 

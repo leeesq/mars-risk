@@ -54,6 +54,8 @@ class MarsScorecard:
     该对象封装了由已拟合分箱器和逻辑回归系数推导出的分值明细表，
     同时保留评分卡刻度参数，便于导出 CSV、Excel 或生成部署 SQL。
 
+    本对象属于 Experimental Scoring API；生产使用应固定 MARS 版本并验证评分映射和生成 SQL。
+
     Attributes
     ----------
     points_table : pl.DataFrame or pd.DataFrame
@@ -426,6 +428,8 @@ def build_scorecard(
 ) -> MarsScorecard:
     """
     基于分箱器和逻辑回归系数构建评分卡。
+
+    本函数属于 Experimental Scoring API；生产使用应固定 MARS 版本并验证评分表和生成 SQL。
 
     Parameters
     ----------

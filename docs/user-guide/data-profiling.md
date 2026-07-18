@@ -1,94 +1,60 @@
-# 数据画像与特征分析
+---
+description: 使用 MarsDataProfiler 检查宽表的数据质量、分布和分组漂移。
+---
 
-数据画像用于回答训练前最基础的问题：字段是否可用、缺失和特殊值是否异常、分布是否稳定、不同时间或业务分组之间是否出现漂移。
+# 数据画像
 
-## 主要入口
+## 适用场景
+
+在分箱或建模前使用数据画像回答以下问题：字段是否可用，缺失和特殊值是否异常，分布是否稳定，
+不同时间或业务分组之间是否发生漂移。
+
+## 前置条件
+
+- 输入是 Pandas 或 Polars DataFrame。
+- `features` 只包含需要画像的业务特征，不包含 target、分组和日期列。
+- 业务缺失码和特殊值需要显式配置，例如 `-999`。
+
+## 完整调用
 
 ```python
-from mars.analysis import MarsDataProfiler, profile_stats
+--8<-- "docs/snippets/data_profiling.py"
 ```
 
-- `MarsDataProfiler`：配置好的画像器，适合反复分析不同数据集。
-- `profile_stats`：轻量函数入口，适合快速计算少量指标。
+`MarsDataProfiler` 的构造函数保存可复用的缺失值等策略；`generate_profile()` 接收本次数据、特征、
+分组和指标。
 
-## 基本用法
+## 输出
 
-```python
-profiler = MarsDataProfiler(missing_values=[-999])
-
-report = profiler.generate_profile(
-    df,
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    psi_include_missing=False,
-    psi_include_special=False,
-    metrics=["missing", "zeros", "mean", "psi"],
-    enable_sparkline=False,
-)
-```
-
-`generate_profile` 接收本次数据、特征范围、分组和指标列表。`MarsDataProfiler` 构造函数只保留稳定策略，例如缺失值、特殊值和 PSI 策略。
-
-画像里的 PSI 可通过 `psi_include_missing` 和 `psi_include_special` 控制是否纳入缺失箱和特殊值箱。画像 PSI 公式复用 `compute` 表达式底座，数值和类别特征都会先走 `MarsNativeBinner` 分箱，再按分箱索引计算 PSI。数值特征默认会删除全局空箱，并合并占比低于 `psi_min_bin_size=0.02` 的小箱，以降低极小箱带来的 PSI 噪音。类别特征的 `psi_n_bins` 表示最多保留的 Top-K 类别数量，其余类别进入 Other 箱。需要更敏感地观察数值小箱漂移时，可以显式设置 `psi_merge_small_bins=False`，或调低 `psi_min_bin_size`。
-
-## 常见输出
-
-| 字段 | 含义 |
+| 字段 | 用途 |
 | --- | --- |
-| `overview_table` | 特征级画像总览，通常用于排序、筛选和看板展示 |
-| `dq_tables` | 数据质量指标趋势表字典 |
-| `stats_tables` | 统计指标趋势表字典 |
-| `get_profile_data()` | 返回 `overview`、`dq_trends`、`stats_trends` 的结构化集合 |
+| `overview_table` | 特征级质量和统计汇总 |
+| `dq_tables` | 缺失、零值等数据质量趋势 |
+| `stats_tables` | 均值、分位数等统计趋势 |
+| `get_profile_data()` | 以结构化对象返回 overview、DQ 和统计趋势 |
 
-```python
-overview = report.overview_table
-profile_data = report.get_profile_data()
-dq_trends = profile_data.dq_trends
-stats_trends = profile_data.stats_trends
-```
+## 分组与日期
 
-## 分组与时间
+已有月份、渠道或客群列时传 `group_col`。只有原始日期时，传 `time_col` 与 `time_grain` 生成分组。
+同时存在时，`group_col` 决定面板分组，`time_col` 保留日期语义。
 
-已经有分组列时，使用 `group_col`：
+## PSI 口径
 
-```python
-report = profiler.generate_profile(df, group_col="month")
-```
+画像 PSI 会先对数值或类别特征分箱，再比较各分组的分布。缺失率通常单独观察，因此默认不把缺失
+箱和特殊值箱纳入 PSI。需要复现其他口径时显式设置 `psi_include_missing` 和
+`psi_include_special`。
 
-只有原始日期列时，使用 `time_col` 和 `time_grain`：
+数值特征可通过 `psi_merge_small_bins` 和 `psi_min_bin_size` 控制小箱合并；类别特征通过
+`psi_n_bins` 控制保留的 Top-K 类别，其余类别进入 Other 箱。
 
-```python
-report = profiler.generate_profile(
-    df,
-    time_col="apply_dt",
-    time_grain="month",
-)
-```
+## 常见失败
 
-`time_grain` 可用于把日期聚合到天、周、月或自定义窗口。具体切分窗口由调用者根据业务需要选择。
+- `features` 包含不存在的列：先固定本次特征清单，不要依赖全表自动推断。
+- 业务缺失码仍进入均值或分布：在构造 `MarsDataProfiler` 时传入 `missing_values`。
+- 期望时间趋势但只提供月份字符串：需要原始日期语义时同时传入 `time_col`。
 
-## 数据源分组
+## 下一步
 
-数据源分组主要用于分箱评估和特征筛选链路，例如解释某类数据源的特征整体表现或筛选流失情况：
-
-```python
-from mars.analysis import profile_risk
-
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    feature_data_source={
-        "user_profile": ["income"],
-        "credit_usage": ["utilization"],
-        "application": ["segment"],
-    },
-)
-```
-
-## 使用建议
-
-- 画像阶段先关注缺失率、特殊值比例、稳定性和数据源分组。
-- 对宽表建议先用 `features` 缩小范围，确认指标口径后再扩展到全量字段。
-- 对上线监控或周期复盘，可读取 `dq_tables` 和 `stats_tables` 生成周期对比表，或导出 Excel 供人工查看。
+- 对可用特征计算 IV、KS 和风险趋势：[分箱与风险评估](binning-risk-evaluation.md)。
+- 用质量、区分度和稳定性规则压缩特征集合：[特征筛选](feature-selection.md)。
+- 查询全部参数：[Analysis API](../reference/analysis.md)。

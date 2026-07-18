@@ -9,6 +9,21 @@
   text-align: center;
 }
 
+.mars-home-hero--compact {
+  max-width: 520px;
+  margin-bottom: 1rem;
+}
+
+.mars-home-hero--compact .mars-home-logo {
+  width: min(480px, 92%);
+  margin-bottom: 0.7rem;
+}
+
+.mars-home-hero--compact .mars-home-wordmark {
+  width: min(420px, 82%);
+  margin-bottom: 0;
+}
+
 .mars-home-logo {
   display: block;
   width: min(800px, 97.56%);

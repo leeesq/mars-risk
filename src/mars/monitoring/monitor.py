@@ -30,6 +30,8 @@ class MarsMonitoringData(NamedTuple):
     """
     监控报告底层数据对象集合。
 
+    本对象属于 Experimental Monitoring API；生产使用应固定 MARS 版本并验证依赖字段。
+
     Attributes
     ----------
     summary : DataFrame
@@ -64,6 +66,8 @@ class MarsMonitoringReport:
 
     保存汇总、明细、趋势和分箱统计表。模型分、概率列或评分列会作为特殊特征进入同一套
     监控链路。
+
+    本对象属于 Experimental Monitoring API；生产使用应固定 MARS 版本并为依赖字段增加契约测试。
 
     Attributes
     ----------
@@ -149,6 +153,8 @@ class MarsMonitor(MarsBaseEstimator):
 
     监控器复用分箱评估链路，生成 PSI、缺失率、分箱占比和已表现样本上的风险指标。
     调用 `monitor()` 后读取 `MarsMonitoringReport` 中的汇总、明细和趋势表。
+
+    本类属于 Experimental Monitoring API；生产使用应固定 MARS 版本并验证 report 契约。
 
     Examples
     --------

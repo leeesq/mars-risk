@@ -24,7 +24,13 @@ from mars.modeling.workflows.tuner import MarsModelTuner
 
 
 class MarsModelingSession:
-    """组织切分、调参、评估和 replay 的会话级门面。"""
+    """组织切分、调参、评估和 replay 的会话级门面。
+
+    Notes
+    -----
+    本类属于 Experimental API。生产项目应固定 MARS 版本，并在升级后重新验证结果字段、
+    replay 产物和模型指标。
+    """
 
     def __init__(
         self,

@@ -1,99 +1,57 @@
 ---
-description: 用一条可运行的风险评估和 HTML 报告链路快速开始使用 MARS。
+description: 从安装后的空环境完成一次可运行的风险评估，并读取结构化结果。
 ---
 
 # 10 分钟 Quickstart
 
-本页只走一条高频链路：准备带日期和标签的样本，完成风险评估，再导出可检索 HTML。
-画像、分箱器细节、特征筛选、建模和监控分别进入对应的用户指南。
+本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。运行前只需要安装 MARS：
 
-## 1. 准备数据
-
-`time_col` 保留原始日期；`month` 是已有分组列。两者同时存在时，`month` 用于面板分组，
-`apply_dt` 用于趋势图左上角的真实时间范围。
-
-```python
-import polars as pl
-
-df = pl.DataFrame(
-    {
-        "apply_dt": [
-            "2024-01-03", "2024-01-10", "2024-01-17", "2024-01-24",
-            "2024-02-03", "2024-02-10", "2024-02-17", "2024-02-24",
-            "2024-03-03", "2024-03-10", "2024-03-17", "2024-03-24",
-        ],
-        "month": [
-            "2024-01", "2024-01", "2024-01", "2024-01",
-            "2024-02", "2024-02", "2024-02", "2024-02",
-            "2024-03", "2024-03", "2024-03", "2024-03",
-        ],
-        "income": [
-            3200, 3600, -999, None, 3300, 4200, -999, 5800, 3400, 4300, None, 6100,
-        ],
-        "utilization": [
-            0.12, 0.18, 0.52, 0.61, 0.14, 0.29, 0.54, 0.58, 0.16, 0.31, 0.56, 0.63,
-        ],
-        "segment": [
-            "new", "repeat", "vip", "vip", "new", "repeat",
-            "vip", "vip", "new", "repeat", "vip", "vip",
-        ],
-        "target": [0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1],
-    }
-)
+```bash
+pip install mars-risk==0.0.23
 ```
 
-## 2. 评估风险并保留分箱规则
+## 1. 运行完整示例
+
+下面的代码块是受测试的完整示例，可以直接保存并运行。样本包含原始申请日期、已有月份分组、
+两个数值特征、一个类别特征和二分类 target。
 
 ```python
-from mars.analysis import profile_risk
-
-risk_profile = profile_risk(
-    df,
-    target="target",
-    features=["income", "utilization", "segment"],
-    group_col="month",
-    time_col="apply_dt",
-    binning_type="native",
-    method="quantile",
-    n_bins=4,
-    missing_values=[-999],
-    special_values=[-999],
-    psi_include_missing=False,
-    psi_include_special=False,
-)
-
-report = risk_profile.report
-binner = risk_profile.binner
-summary = report.summary_table
+--8<-- "docs/snippets/quickstart.py"
 ```
 
-`report` 保存汇总、分箱明细、趋势表和导出方法；`binner` 可以在后续流程中复用相同分箱规则。
+## 2. 读取返回对象
 
-## 3. 查看趋势并导出 HTML
+`profile_risk()` 返回 `MarsRiskProfile`，而不是直接返回文件路径：
+
+| 字段 | 含义 |
+| --- | --- |
+| `report` | `MarsBinningReport`，包含汇总、明细、趋势和导出方法 |
+| `binner` | 本次拟合的分箱器，可复用相同规则转换其他数据 |
+| `targets` | 本次评估的 target 列表 |
+| `metadata` | 特征、分组、日期和分箱配置等运行元数据 |
+
+`group_col="month"` 决定报告按哪个分组展开；`time_col="apply_dt"` 保存真实日期范围并支持按日
+缺失趋势。两者职责不同，详见[数据角色与运行边界](../concepts/data-and-runs.md)。
+
+## 3. 导出报告
+
+在示例末尾的 `report` 对象上继续调用：
 
 ```python
-report.plot_risk_trends(max_plots=5)
-
 report.write_html(
     "risk_report.html",
-    report_name="March risk review",
-    max_plots=500,
+    report_name="Current-period risk review",
+    max_plots=20,
     chart_embed_mode="auto",
 )
 ```
 
-`write_html()` 每个 target 最多绘制 500 个特征。图表超过 50 张时，`auto` 会在 HTML 同级
-生成 `<报告名>_assets/` 图片目录，并在 Charts 视图中懒加载；小报告仍是单文件。全局搜索可从
-Summary 或 Charts 直达特征趋势图。
+HTML 图表需要评估时已经提供有效 `time_col`。需要控制基准期、复用分箱规则或评估无标签当前期时，
+进入[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
 
-!!! note "趋势图契约"
+## 下一步
 
-    `plot_risk_trends()` 和 HTML 内的图表都需要有效 `time_col`。左上角范围仅使用原始日期的
-    最小/最大有效值，显示为 `YYYY-MM-DD`；`group_col` 不能代替日期来源。
-
-## 接下来读什么
-
-- 需要五月建箱、六月评估或显式复用分箱器：读[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
-- 当前期没有成熟标签：读[特征/模型监控](../user-guide/monitoring.md)。
-- 需要画像、筛选、建模或 Pipeline：从[首页任务导航](../index.md)选择对应路径。
-- 需要精确参数、默认值和异常：查看[API Reference](../reference/index.md)。
+- 检查缺失、分布和 PSI：[数据画像](../user-guide/data-profiling.md)。
+- 使用基准期规则评估当前期：[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
+- 监控尚未充分表现的数据：[特征与模型监控](../user-guide/monitoring.md)。
+- 查询精确签名、默认值和异常：[API Reference](../reference/index.md)。

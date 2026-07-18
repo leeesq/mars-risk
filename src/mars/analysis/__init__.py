@@ -1,4 +1,4 @@
-"""MARS 数据画像与分箱评估模块的公开导出入口。"""
+"""MARS Stable 数据画像与分箱评估公开入口。"""
 
 from ._risk_profile import profile_risk
 from .evaluator import MarsBinEvaluator, MarsRiskProfile

@@ -19,6 +19,8 @@ class MarsMonitoringAlertConfig:
     """
     监控报警阈值配置。
 
+    本对象属于 Experimental Monitoring API；生产使用应固定 MARS 版本并验证阈值与报警结果。
+
     Attributes
     ----------
     psi_warn : float
@@ -86,6 +88,8 @@ class MarsMonitoringAlerter(MarsBaseEstimator):
     若报告缺少某类表或字段，对应检查会跳过并写入文本末尾的数据跳过说明。
     报警器会读取报告元数据中的趋势列顺序，用于识别模型分均值趋势和 target 覆盖率的基准期、
     最新期。
+
+    本类属于 Experimental Monitoring API；生产使用应固定 MARS 版本并为报警结果增加契约测试。
 
     Examples
     --------
@@ -873,6 +877,8 @@ def generate_monitoring_alert(
 ) -> str:
     """
     生成监控报警文本的轻量函数入口。
+
+    本函数属于 Experimental Monitoring API；生产使用应固定 MARS 版本并验证报警结果。
 
     Parameters
     ----------

@@ -1,4 +1,4 @@
-"""MARS 建模模块一级稳定入口。"""
+"""MARS Experimental 建模模块公开入口。"""
 
 from mars.modeling.contracts import (
     MarsFeatureGrowthResult,

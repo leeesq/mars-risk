@@ -1,10 +1,13 @@
+---
+description: Experimental Scoring API：评分卡对象、构建函数与 SQL 导出。
+---
+
 # Scoring
 
-评分卡构建、分数映射和部署导出。
+!!! warning "Experimental"
 
-`build_scorecard()` 消费已拟合的 binner 与模型系数，生成分数映射和部署 SQL。若还没有稳定分箱规则，
-先完成[分箱与风险评估](../user-guide/binning-risk-evaluation.md)；若需要 LR/WOE 全流程，阅读
-[Modeling / Pipeline](../user-guide/modeling-pipeline.md)。
+    Scoring 的评分映射、刻度参数和 SQL 输出仍可能调整。受控生产使用应固定精确版本，
+    并为评分表和生成 SQL 增加契约测试。完整流程见[报告与评分卡](../user-guide/reports-and-exports.md)。
 
 ::: mars.scoring.MarsScorecard
 

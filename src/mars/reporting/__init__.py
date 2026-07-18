@@ -1,4 +1,4 @@
-"""MARS 报告对象稳定导出入口。"""
+"""MARS Stable 报告对象公开入口。"""
 
 from ._types import MarsHtmlRenderResult
 from .binning_report import MarsBinningReport

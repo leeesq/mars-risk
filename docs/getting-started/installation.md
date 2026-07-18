@@ -1,23 +1,30 @@
+---
+description: 安装 MARS 0.0.23、可选依赖和本地开发环境。
+---
+
 # 安装
 
-MARS 支持 `Python >= 3.10`，包名为 `mars-risk`。
+MARS `0.0.23` 支持 Python 3.10、3.11 和 3.12。
 
 ```bash
 pip install mars-risk==0.0.23
 ```
 
-基础安装已经包含数据画像、分箱、筛选、Excel/HTML 报表导出和图表报告能力。
+!!! warning "发布前提"
+
+    正式站点只应在 PyPI 已发布 `0.0.23` 后部署。发布前请从源码安装进行预览验收。
 
 ## 可选依赖
 
 | 场景 | 安装命令 |
 | --- | --- |
-| Notebook 交互 | `pip install "mars-risk[notebook]"` |
-| 树模型与调参 | `pip install "mars-risk[ml,tuning]"` |
-| 文档站构建 | `pip install "mars-risk[docs]"` |
-| 本地开发 | `pip install -e ".[dev,ml,tuning,docs]"` |
+| Notebook | `pip install "mars-risk[notebook]==0.0.23"` |
+| 树模型 | `pip install "mars-risk[ml]==0.0.23"` |
+| 调参 | `pip install "mars-risk[ml,tuning]==0.0.23"` |
+| 文档构建 | `pip install "mars-risk[docs]==0.0.23"` |
 
-`ml` 包含 XGBoost、LightGBM、CatBoost、SHAP 和 statsmodels。`tuning` 包含 Optuna 相关依赖。`docs` 包含 MkDocs Material 和 API Reference 生成工具。
+基础安装已经包含画像、分箱、筛选、监控、Excel/HTML 导出和评分卡能力。`ml` 提供 XGBoost、
+LightGBM、CatBoost、SHAP 与 statsmodels；`tuning` 提供 Optuna。
 
 ## 从源码安装
 
@@ -27,45 +34,26 @@ cd mars-risk
 pip install -e ".[dev,ml,tuning,docs]"
 ```
 
-## 开发检查
-
-提交代码前建议运行：
+## 验证安装
 
 ```bash
-python -m ruff check src tests benchmarks scripts
-python -m mypy src/mars
-pydoclint src/mars
-python scripts/check_private_docstrings.py src/mars
-python -m mkdocs build --strict
-MPLBACKEND=Agg python -m pytest -q --basetemp .pytest-tmp
+python -c "import mars; print(mars.__version__)"
 ```
 
-Windows PowerShell 可使用：
+输出应为 `0.0.23`。随后运行[10 分钟 Quickstart](quickstart.md)。
 
-```powershell
-$env:MPLBACKEND = "Agg"
-python -m pytest -q --basetemp .pytest-tmp
-```
+## 常见问题
 
-## 常见安装问题
+### Modeling 导入失败
 
-### 建模模块导入失败
-
-如果使用 `MarsModelingSession`、`MarsModelTuner` 或 `MarsModelReplayRunner`，请确认安装了建模可选依赖：
-
-```bash
-pip install "mars-risk[ml,tuning]"
-```
+确认安装 `ml,tuning` extra，并检查模型库是否支持当前 Python 与操作系统。
 
 ### Excel 或绘图依赖缺失
 
-基础安装应已包含 Excel/HTML 报表和绘图报告依赖。如果环境中缺少 `openpyxl`、`xlsxwriter`、`xlwings`、`matplotlib` 或 `seaborn`，建议重新安装：
+基础安装包含 `openpyxl`、`xlsxwriter`、`xlwings`、`matplotlib` 和 `seaborn`。环境损坏时在新的
+虚拟环境中重新安装，不建议在已有环境强制覆盖全部依赖。
 
-```bash
-pip install --upgrade --force-reinstall mars-risk
-```
+### Pandas 与 Polars 怎么选
 
-### Pandas 与 Polars 输入怎么选
-
-MARS 同时支持 Pandas 和 Polars。宽表、大样本场景建议优先使用 Polars，以减少内存复制和跨框架转换。
-
+MARS 接受两类 DataFrame。宽表和大样本优先使用 Polars；已有 Pandas 工作流可以直接传入
+Pandas DataFrame，并在边界处关注返回类型。
