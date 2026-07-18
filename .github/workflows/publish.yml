@@ -33,43 +33,17 @@ jobs:
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  deploy-docs:
-    name: Deploy released documentation
+  request-docs-deployment:
+    name: Request released documentation deployment
     needs: build-and-publish
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Checkout release
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install documentation dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,ml,tuning,docs]"
-      - name: Check release version
-        run: python scripts/check_release_version.py --release-tag "${{ github.event.release.tag_name }}"
-      - name: Run released documentation tests
-        run: python -m pytest -q tests/test_documentation.py --basetemp .pytest-tmp-docs-release
-      - name: Build released documentation
-        run: python -m mkdocs build --strict
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Dispatch Docs workflow from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh workflow run docs.yml --ref main -f release_tag="$RELEASE_TAG"

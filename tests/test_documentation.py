@@ -215,11 +215,29 @@ def test_readme_restores_dynamic_python_and_download_badges() -> None:
     assert 'href="https://pepy.tech/project/mars-risk"' in readme
 
 
+def test_brand_hero_uses_complete_visual_asset_stack() -> None:
+    """README 和网站首页必须保留完整的四层品牌首屏。"""
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    homepage = (DOCS_ROOT / "index.md").read_text(encoding="utf-8")
+    for asset_name in [
+        "mars-logo.svg",
+        "mars-wordmark.svg",
+        "mars-tagline.svg",
+        "mars-workflow.svg",
+    ]:
+        assert f'docs/assets/{asset_name}' in readme
+        assert f'assets/{asset_name}' in homepage
+    assert "mars-home-hero--compact" not in homepage
+
+
 def test_docs_workflow_deploys_pages_after_main_validation() -> None:
-    """Docs 工作流应在 main push 或手动触发验证通过后部署 Pages。"""
+    """Docs 工作流应从 main 验证并部署普通提交或指定 release tag。"""
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "docs.yml").read_text(
         encoding="utf-8"
     )
+    assert "release_tag:" in workflow
+    assert "ref: ${{ inputs.release_tag || github.ref }}" in workflow
+    assert '--release-tag "${{ inputs.release_tag }}"' in workflow
     assert "github.event_name == 'push' || github.event_name == 'workflow_dispatch'" in workflow
     assert "needs: build" in workflow
     for action in [
@@ -228,6 +246,17 @@ def test_docs_workflow_deploys_pages_after_main_validation() -> None:
         "actions/deploy-pages@v4",
     ]:
         assert action in workflow
+
+
+def test_release_workflow_dispatches_docs_from_main() -> None:
+    """Release workflow 不应直接从受保护的 tag ref 部署 Pages。"""
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "publish.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "actions: write" in workflow
+    assert "gh workflow run docs.yml --ref main" in workflow
+    assert 'release_tag="$RELEASE_TAG"' in workflow
+    assert "actions/deploy-pages" not in workflow
 
 
 @pytest.mark.parametrize(

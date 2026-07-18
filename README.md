@@ -1,17 +1,32 @@
 # MARS
 
 <div align="center">
-  <img src="docs/assets/mars-logo.svg" alt="MARS" width="520">
-  <p><strong>MODELING ANALYSIS RISK SCORE</strong></p>
-  <p>面向信贷风控分析与建模的 Polars-first Python 工具库</p>
-  <p>
-    <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
-    <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
-    <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square&label=Python&color=364f6b"></a>
-    <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
-    <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
-    <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
-  </p>
+
+<img src="docs/assets/mars-logo.svg" alt="MARS" width="800">
+
+<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="720">
+
+<img src="docs/assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库" width="720">
+
+<img src="docs/assets/mars-workflow.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
+
+<p align="center">
+  <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
+  <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
+  <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square&label=Python&color=364f6b"></a>
+  <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
+  <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
+</p>
+
+<p align="center">
+  <a href="https://leeesq.github.io/mars-risk/">文档站</a> ·
+  <a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">Quickstart</a> ·
+  <a href="https://leeesq.github.io/mars-risk/user-guide/binning-risk-evaluation/">分箱评估</a> ·
+  <a href="https://leeesq.github.io/mars-risk/user-guide/monitoring/">监控</a> ·
+  <a href="https://leeesq.github.io/mars-risk/user-guide/reports-and-exports/">报告导出</a>
+</p>
+
 </div>
 
 MARS 接受 Pandas 或 Polars 宽表，提供数据画像、分箱评估、特征筛选、建模、监控、结构化 report、
