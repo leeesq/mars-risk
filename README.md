@@ -34,19 +34,19 @@ Excel/HTML 导出和评分卡能力。
 
 ## 安装
 
-MARS `0.0.23` 支持 Python 3.10、3.11 和 3.12。
+MARS `0.0.24` 支持 Python 3.10、3.11 和 3.12。
 
 ```bash
-pip install mars-risk==0.0.23
+pip install mars-risk==0.0.24
 ```
 
 建模与调参需要可选依赖：
 
 ```bash
-pip install "mars-risk[ml,tuning]==0.0.23"
+pip install "mars-risk[ml,tuning]==0.0.24"
 ```
 
-`0.0.23` 正式发布前，请从源码安装进行文档预览验收。
+`0.0.24` 正式发布前，请从源码安装进行文档预览验收。
 
 ## 最小风险评估
 

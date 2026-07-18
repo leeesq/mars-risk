@@ -35,7 +35,7 @@ def read_package_version(project_root: Path = PROJECT_ROOT) -> str:
 
 
 def normalize_release_tag(release_tag: str) -> str:
-    """将 ``v0.0.23`` 或 ``0.0.23`` 规范为包版本文本。"""
+    """将 ``v0.0.24`` 或 ``0.0.24`` 规范为包版本文本。"""
     normalized = release_tag.strip()
     if normalized.startswith("v"):
         normalized = normalized[1:]
@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--release-tag",
         default=None,
-        help="可选 GitHub release tag，例如 v0.0.23。",
+        help="可选 GitHub release tag，例如 v0.0.24。",
     )
     return parser.parse_args()
 
