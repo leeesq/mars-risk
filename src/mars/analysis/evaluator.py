@@ -291,8 +291,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         working_df, group_col = prepare_group_context(
             working_df,
-            profile_by=profile_by,
-            dt_col=dt_col,
+            group_col=group_col,
+            time_col=time_col,
+            time_grain=time_grain,
             mars_group_col=self.MARS_GROUP_COL,
         )
         if amount_col is not None and amount_col not in working_df.columns:

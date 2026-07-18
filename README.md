@@ -86,7 +86,10 @@ report.write_html("risk_report.html", max_plots=500, chart_embed_mode="auto")
 - 风险趋势图需要有效 `time_col`。`group_col` 决定面板分组，时间范围只来自 `time_col`，
   并显示为 `YYYY-MM-DD`；只有未传 `group_col` 时，`time_grain` 才生成时间分组。
 - `benchmark_df` 是基准期样本。在 `MarsBinEvaluator.evaluate()` 和 `MarsMonitor.monitor()` 中，
-  分箱规则优先级为显式 `binner` → `benchmark_df` → 当前 `df`；benchmark 同时提供 PSI 基准。
+  分箱规则优先级为显式 `binner` → `benchmark_df` → 当前 `df`；`MarsStatsSelector.fit()`
+  使用 `benchmark_df` 拟合分箱并提供 PSI 基准，但质量、IV、Lift、RC 和相关性仍在 `df` 上计算。
+- `MarsStatsSelector` 默认启用 PSI/RC，因此 `fit()` 必须提供 `group_col` 或 `time_col`；只做
+  静态质量和区分度筛选时，显式设置 `psi_thr=None, rc_thr=None`。
 - `profile_risk()` 是高层自动建箱入口，不接收 `binner`。需要固定规则时使用
   `MarsBinEvaluator.evaluate(..., binner=...)`。
 - `write_html()` 默认每个 target 最多展示 500 个特征；图表超过 50 张时，`auto` 自动生成旁路

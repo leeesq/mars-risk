@@ -75,7 +75,8 @@ MARS 为 Pandas 或 Polars 宽表提供画像、分箱评估、特征筛选、�
 
 **benchmark 是基准期样本。** 在 `MarsBinEvaluator.evaluate()` 和 `MarsMonitor.monitor()`
 中，规则来源优先级为显式 `binner`、`benchmark_df`、当前 `df`。`benchmark_df` 同时是
-PSI 的 expected distribution；`profile_risk()` 不接收显式 `binner`。
+PSI 的 expected distribution；`profile_risk()` 不接收显式 `binner`。统计筛选器也可传入
+`benchmark_df` 拟合分箱，筛选指标仍在当前 `df` 上计算。
 
 **report 提供结构化结果。** 读取 `summary_table`、`detail_table`、`trend_tables` 和
 `metadata`，可继续做筛选、复盘或定制化输出。

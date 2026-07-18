@@ -52,10 +52,16 @@ expected distribution，并可在当前期未表现时提供监督分箱标签�
 | `MarsBinEvaluator.evaluate` | 显式 `binner` → `benchmark_df` → 当前 `df` |
 | `MarsMonitor.monitor` | 显式 `binner` → `benchmark_df` → 当前 `df` |
 | `profile_risk` | `benchmark_df` → 当前 `df`；该入口没有 `binner` 参数 |
+| `MarsStatsSelector.fit` | `benchmark_df` → 当前 `df`；筛选指标仍来自当前 `df` |
 
 监督分箱需要拟合期至少有两个有效 target 类别。若当前期 target 缺列或全空，但 benchmark 有效，
 仍可用 benchmark 监督建箱，当前期输出保持无标签模式。默认 RC 基准仍是当前期 Total；只有
 `risk_corr_baseline="benchmark"` 才使用 benchmark 坏率。
+
+`MarsStatsSelector` 不使用上述 label-free 回退：其粗筛和精筛需要在 `df` 上计算 IV/Lift，
+因此 `df` 必须包含至少两个有效 target 类别。传入 benchmark 后，selector 用其拟合分箱规则和
+构造 PSI expected distribution；最终报告需要再次显式传入同一 `benchmark_df`，selector 不会
+长期保存原始基准样本。
 
 ## report 是结构化结果，不只是文件
 

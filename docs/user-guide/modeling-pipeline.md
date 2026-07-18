@@ -33,7 +33,7 @@ pipeline = MarsModelingPipeline(
     steps=[
         MarsSelectionStep(
             name="stats_filter",
-            selector=MarsStatsSelector(iv_thr=0.02),
+            selector=MarsStatsSelector(iv_thr=0.02, psi_thr=None, rc_thr=None),
         ),
         MarsSelectionStep(
             name="importance_filter",
@@ -71,7 +71,7 @@ pipeline = MarsModelingPipeline(
     steps=[
         MarsSelectionStep(
             name="stats_filter",
-            selector=MarsStatsSelector(iv_thr=0.02),
+            selector=MarsStatsSelector(iv_thr=0.02, psi_thr=None, rc_thr=None),
         ),
         MarsWOEBinningStep(
             name="woe",

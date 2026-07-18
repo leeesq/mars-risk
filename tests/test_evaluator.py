@@ -111,6 +111,32 @@ def test_profile_risk_returns_structured_run(sample_credit_df):
     assert run.report.summary_table.height == 2
 
 
+def test_explicit_group_col_named_like_time_grain_has_priority() -> None:
+    df = pl.DataFrame(
+        {
+            "month": ["SEG_A"] * 4 + ["SEG_B"] * 4,
+            "biz_dt": _daily_datetimes("2024-01-01", periods=8),
+            "x": list(range(8)),
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+        }
+    )
+
+    run = profile_risk(
+        df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        time_col="biz_dt",
+        time_grain="week",
+        method="quantile",
+        n_bins=2,
+    )
+    groups = set(run.report.detail_table.get_column("mars_group").to_list())
+
+    assert {"SEG_A", "SEG_B"}.issubset(groups)
+    assert run.report.report_meta["profile_by_input"] == "month"
+
+
 def test_profile_risk_preserves_feature_names_containing_bin_suffix() -> None:
     values = np.linspace(0.0, 1.0, 80)
     df = pl.DataFrame(
@@ -1755,8 +1781,8 @@ def test_feature_start_aware_reference_reanchors_monthly_psi_and_summary_metrics
         feature_start_aware_df,
         target="target",
         features=["x"],
-        group_col="month",
         time_col="biz_dt",
+        time_grain="month",
         binning_type="native",
         method="quantile",
         n_bins=2,
@@ -1765,8 +1791,8 @@ def test_feature_start_aware_reference_reanchors_monthly_psi_and_summary_metrics
         feature_start_aware_df,
         target="target",
         features=["x"],
-        group_col="month",
         time_col="biz_dt",
+        time_grain="month",
         feature_start_aware_reference=True,
         binning_type="native",
         method="quantile",
@@ -2067,8 +2093,8 @@ def test_feature_start_aware_reference_is_ignored_when_benchmark_df_is_provided(
             feature_start_aware_df,
             target="target",
             features=["x"],
-            group_col="month",
             time_col="biz_dt",
+            time_grain="month",
             benchmark_df=benchmark_df,
             feature_start_aware_reference=True,
             binning_type="native",

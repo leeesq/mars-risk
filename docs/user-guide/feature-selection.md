@@ -18,6 +18,7 @@ selector = MarsStatsSelector(
 selector.fit(
     df,
     target="target",
+    benchmark_df=benchmark_df,
     features=["income", "utilization", "segment"],
     group_col="month",
     feature_data_source={
@@ -33,11 +34,30 @@ selector.fit(
 ```python
 selected_features = selector.selected_features_
 decision_table = selector.decision_table_
-report = selector.get_binning_report(df)
+report = selector.get_binning_report(df, benchmark_df=benchmark_df)
 report.plot_risk_trends(max_plots=5)
 ```
 
 `feature_data_source` 表示本次候选特征全集的数据源配置。如果部分特征在筛选过程中被过滤，传给评估报告的数据源映射会自动裁剪到当前 `active features`；筛选决策表仍会保留被过滤特征的来源信息，方便复盘。
+
+`benchmark_df` 用于拟合粗筛和精筛分箱规则，并提供 PSI expected distribution；它不会进入
+`df` 的 Total 或趋势分组。缺失率、IV、Lift、RC 和 WOE 相关性仍在 `df` 上计算，因此 `df`
+必须包含至少两个有效 target 类别。selector 不保存原始 benchmark，调用
+`get_binning_report()` 时需要重新传入。
+
+默认 `psi_thr` 和 `rc_thr` 均已启用，必须提供 `group_col` 或 `time_col`。只做静态筛选时显式
+关闭两项稳定性检查：
+
+```python
+selector = MarsStatsSelector(
+    psi_thr=None,
+    rc_thr=None,
+)
+selector.fit(df, target="target", features=features)
+```
+
+同时提供 `group_col`、`time_col` 和 `time_grain` 时，`group_col` 决定趋势分组，`time_col`
+保留日期上下文；只有未传 `group_col` 时才由 `time_col/time_grain` 生成时间分组。
 
 ## 线性模型筛选：`MarsLinearSelector`
 

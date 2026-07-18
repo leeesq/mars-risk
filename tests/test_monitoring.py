@@ -36,6 +36,25 @@ def test_monitoring_public_exports() -> None:
     assert "generate_monitoring_alert" in mars.__all__
 
 
+def test_monitoring_context_prefers_explicit_group_named_like_time_grain() -> None:
+    df = pl.DataFrame(
+        {
+            "month": ["SEG_A", "SEG_B"],
+            "biz_dt": _daily_datetimes("2024-01-01", periods=2),
+        }
+    )
+
+    grouped_df, group_col = MarsMonitor._prepare_monitoring_context(
+        df=df,
+        group_col="month",
+        time_col="biz_dt",
+        time_grain="week",
+    )
+
+    assert group_col == "mars_group"
+    assert grouped_df.get_column(group_col).to_list() == ["SEG_A", "SEG_B"]
+
+
 def _make_partial_target_df() -> pl.DataFrame:
     return pl.DataFrame(
         {

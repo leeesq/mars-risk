@@ -6,7 +6,12 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mars.feature import MarsImportanceSelector, MarsLinearSelector, MarsLiteOptBinner
+from mars.feature import (
+    MarsImportanceSelector,
+    MarsLinearSelector,
+    MarsLiteOptBinner,
+    MarsStatsSelector,
+)
 from mars.feature.selection.base import MarsBaseSelector
 from mars.modeling import MarsModelTuningResult
 from mars.pipeline import (
@@ -96,6 +101,50 @@ def test_pipeline_allows_multiple_selection_steps(sample_modeling_pd: pd.DataFra
     assert isinstance(transformed, pd.DataFrame)
     with pytest.raises(RuntimeError, match="MarsModelingStep"):
         pipeline.predict(sample_modeling_pd)
+
+
+def test_pipeline_passes_benchmark_to_stats_selector() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(20)),
+            "target": [0, 1] * 10,
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "month": ["A"] * 20 + ["B"] * 20,
+            "x": list(range(40)),
+            "target": [0, 1] * 20,
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=100.0,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    )
+    pipeline = MarsModelingPipeline(
+        target="target",
+        features=["x"],
+        steps=[
+            MarsSelectionStep(
+                name="stats",
+                selector=selector,
+                fit_params={
+                    "group_col": "month",
+                    "benchmark_df": benchmark_df,
+                },
+            )
+        ],
+    )
+
+    result = pipeline.fit(df)
+
+    assert result.active_features == ["x"]
+    assert selector._fit_used_benchmark is True
+    assert selector._binning_fit_source == "benchmark_df"
 
 
 def test_pipeline_selection_step_empty_features_raises(sample_modeling_pd: pd.DataFrame) -> None:

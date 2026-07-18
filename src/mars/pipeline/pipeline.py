@@ -29,7 +29,16 @@ class MarsModelingPipeline:
     >>> pipeline = MarsModelingPipeline(
     ...     target="target",
     ...     features=["age"],
-    ...     steps=[MarsSelectionStep(name="stats", selector=MarsStatsSelector(skip_fine_scan=True))],
+    ...     steps=[
+    ...         MarsSelectionStep(
+    ...             name="stats",
+    ...             selector=MarsStatsSelector(
+    ...                 skip_fine_scan=True,
+    ...                 psi_thr=None,
+    ...                 rc_thr=None,
+    ...             ),
+    ...         )
+    ...     ],
     ... )
     >>> pipeline.features
     ['age']

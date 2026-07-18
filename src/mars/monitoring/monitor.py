@@ -10,7 +10,6 @@ from mars.analysis import MarsBinEvaluator
 from mars.analysis._evaluation.context import (
     normalize_binary_target_column,
     prepare_group_context,
-    resolve_profile_by,
 )
 from mars.compute import (
     FrameLike,
@@ -452,15 +451,11 @@ class MarsMonitor(MarsBaseEstimator):
         time_grain: str | None,
     ) -> tuple[pl.DataFrame, str]:
         """复用评估上下文解析逻辑，保证监控附表和风险评估口径一致。"""
-        profile_by = resolve_profile_by(
+        return prepare_group_context(
+            df,
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
-        )
-        return prepare_group_context(
-            df,
-            profile_by=profile_by,
-            dt_col=time_col,
             mars_group_col=MarsBinEvaluator.MARS_GROUP_COL,
         )
 

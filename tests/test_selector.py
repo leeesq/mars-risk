@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -5,7 +7,12 @@ import pytest
 
 import mars
 import mars.feature as feature_module
-from mars.feature import MarsImportanceSelector, MarsLinearSelector, MarsStatsSelector
+from mars.feature import (
+    MarsImportanceSelector,
+    MarsLinearSelector,
+    MarsNativeBinner,
+    MarsStatsSelector,
+)
 
 
 def test_feature_subpackage_exports_new_selectors_without_top_level_exports():
@@ -153,6 +160,8 @@ def test_importance_selector_not_implemented_methods_raise(sample_credit_pd, met
 def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
     selector = MarsStatsSelector(
         skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
         rough_binning_params={"method": "quantile", "n_bins": 3, "min_bin_size": 0.1, "merge_small_bins": True},
     )
 
@@ -179,6 +188,8 @@ def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
 def test_stats_selector_rejects_feature_data_source_outside_candidate_features(sample_credit_df):
     selector = MarsStatsSelector(
         skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
         rough_binning_params={"method": "quantile", "n_bins": 3},
     )
 
@@ -248,6 +259,8 @@ def test_stats_selector_trims_filtered_feature_data_source_for_eval_report(sampl
 def test_stats_selector_preserves_selected_feature_order(sample_credit_df):
     selector = MarsStatsSelector(
         skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
         rough_binning_params={"method": "quantile", "n_bins": 3, "min_bin_size": 0.1, "merge_small_bins": True},
     )
 
@@ -329,7 +342,6 @@ def test_stats_selector_handles_notebook_mock_data_with_group_context() -> None:
         group_col="month",
         white_list=["white_feature"],
         black_list=["black_feature"],
-        max_samples=300,
     )
     report = selector.get_report()
 
@@ -337,3 +349,397 @@ def test_stats_selector_handles_notebook_mock_data_with_group_context() -> None:
     assert "black_feature" not in selector.selected_features_
     assert "high_missing" not in selector.selected_features_
     assert "white_feature" in set(report["feature"].to_list())
+
+
+def test_stats_selector_rough_bins_use_benchmark_but_metrics_use_df() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(8)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "x": list(range(8)),
+            "target": [0, 1, 0, 1, 0, 1, 0, 1],
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=None,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    )
+
+    selector.fit(
+        df,
+        target="target",
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+
+    finite_cuts = [cut for cut in selector._stage3_binner.bin_cuts_["x"] if np.isfinite(cut)]
+    benchmark_iv = selector._stage3_binner.profile_bin_performance(
+        benchmark_df,
+        benchmark_df.get_column("target"),
+        update_woe=False,
+    ).get_column("IV").max()
+
+    assert max(finite_cuts) < 8
+    assert selector._feature_iv_dict["x"] == pytest.approx(0.0, abs=1e-9)
+    assert benchmark_iv > selector._feature_iv_dict["x"]
+    assert selector._stage3_binner.bin_woes_["x"]
+
+
+def test_stats_selector_fine_bins_use_benchmark() -> None:
+    rng = np.random.default_rng(2029)
+    benchmark_values = np.linspace(0.0, 1.0, 120)
+    evaluation_values = np.linspace(100.0, 101.0, 120)
+    benchmark_df = pl.DataFrame(
+        {
+            "x": benchmark_values,
+            "target": (
+                benchmark_values + rng.normal(scale=0.25, size=benchmark_values.size) >= 0.5
+            ).astype(int),
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "x": evaluation_values,
+            "target": np.tile([0, 1], 60),
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_rough_scan=True,
+        iv_thr=-1.0,
+        lift_thr=None,
+        psi_thr=None,
+        rc_thr=None,
+        corr_thr=None,
+        binning_params={
+            "n_bins": 3,
+            "min_bin_size": 0.05,
+            "time_limit": 1,
+        },
+    )
+
+    selector.fit(
+        df,
+        target="target",
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+    finite_cuts = [cut for cut in selector._stage3_binner.bin_cuts_["x"] if np.isfinite(cut)]
+
+    assert finite_cuts
+    assert max(finite_cuts) < 2.0
+    assert selector._feature_iv_dict["x"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_stats_selector_benchmark_provides_full_psi_reference() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": [0.0] * 20 + [10.0] * 20,
+            "target": [0, 1] * 20,
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "month": ["A"] * 20 + ["B"] * 20,
+            "x": [0.0] * 20 + [10.0] * 20,
+            "target": [0, 1] * 20,
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=100.0,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    )
+
+    selector.fit(
+        df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        benchmark_df=benchmark_df,
+    )
+    report = selector.get_binning_report(df, benchmark_df=benchmark_df)
+    psi_row = report.trend_tables["psi"].row(0, named=True)
+    detail_groups = set(report.detail_table.get_column("mars_group").to_list())
+
+    assert psi_row["A"] > 0.0
+    assert psi_row["B"] > 0.0
+    assert "Benchmark" not in detail_groups
+    assert report.report_meta["binning_fit_source"] == "benchmark_df"
+    assert report.report_meta["benchmark_row_count"] == benchmark_df.height
+    assert report.report_meta["row_count"] == df.height
+    assert report.report_meta["selection_metric_source"] == "df"
+
+
+def test_stats_selector_report_requires_benchmark_to_be_repassed() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(8)),
+            "target": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    df = benchmark_df.with_columns(pl.lit("A").alias("month"))
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=100.0,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    ).fit(
+        df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        benchmark_df=benchmark_df,
+    )
+    cuts_before = list(selector._stage3_binner.bin_cuts_["x"])
+
+    with pytest.raises(ValueError, match="must be provided to `get_binning_report`"):
+        selector.get_binning_report(df)
+
+    report = selector.get_binning_report(df, benchmark_df=benchmark_df)
+
+    assert selector._stage3_binner.bin_cuts_["x"] == cuts_before
+    assert report.report_meta["binning_fit_source"] == "benchmark_df"
+
+
+def test_stats_selector_requires_group_context_when_stability_is_enabled(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    selector = MarsStatsSelector(skip_fine_scan=True)
+
+    with pytest.raises(ValueError, match="`group_col` or `time_col` is required"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+        )
+
+
+def test_stats_selector_rejects_time_grain_without_time_col(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+
+    with pytest.raises(ValueError, match="`time_grain` requires `time_col`"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            time_grain="week",
+        )
+
+
+@pytest.mark.parametrize(
+    "df",
+    [
+        pl.DataFrame({"x": [0.0, 1.0]}),
+        pl.DataFrame({"x": [0.0, 1.0], "target": [None, None]}),
+        pl.DataFrame({"x": [0.0, 1.0], "target": [0, 0]}),
+    ],
+)
+def test_stats_selector_requires_valid_binary_target_in_df(df: pl.DataFrame) -> None:
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+
+    with pytest.raises(ValueError, match="target|Target"):
+        selector.fit(df, target="target", features=["x"])
+
+
+def test_stats_selector_validates_benchmark_schema(sample_credit_df: pl.DataFrame) -> None:
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+    benchmark_df = sample_credit_df.select(["income", "target"])
+
+    with pytest.raises(ValueError, match="missing active feature columns.*utilization"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income", "utilization"],
+            benchmark_df=benchmark_df,
+        )
+
+
+def test_stats_selector_rejects_empty_benchmark(sample_credit_df: pl.DataFrame) -> None:
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+    benchmark_df = sample_credit_df.select(["income", "target"]).head(0)
+
+    with pytest.raises(ValueError, match="must contain at least one row"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            benchmark_df=benchmark_df,
+        )
+
+
+def test_stats_selector_reports_benchmark_binning_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "benchmark_marker": [1, 1, 1, 1],
+            "x": [0.0, 1.0, 2.0, 3.0],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "x": [10.0, 11.0, 12.0, 13.0],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    original_transform = MarsNativeBinner.transform
+
+    def _drop_benchmark_bin(
+        self: MarsNativeBinner,
+        frame: pl.DataFrame,
+        **kwargs: object,
+    ) -> pl.DataFrame:
+        transformed = original_transform(self, frame, **kwargs)
+        if "benchmark_marker" in frame.columns:
+            return transformed.drop("x_bin")
+        return transformed
+
+    monkeypatch.setattr(MarsNativeBinner, "transform", _drop_benchmark_bin)
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+
+    with pytest.raises(ValueError, match="could not produce bins.*Fit failures"):
+        selector.fit(
+            df,
+            target="target",
+            features=["x"],
+            benchmark_df=benchmark_df,
+        )
+
+
+@pytest.mark.parametrize(
+    "benchmark_df",
+    [
+        pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0]}),
+        pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0], "target": [0, 0, 0, 0]}),
+        pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0], "target": [None] * 4}),
+    ],
+)
+def test_stats_selector_supervised_fine_scan_validates_benchmark_target(
+    benchmark_df: pl.DataFrame,
+) -> None:
+    df = pl.DataFrame(
+        {
+            "x": [10.0, 11.0, 12.0, 13.0],
+            "target": [0, 0, 1, 1],
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_rough_scan=True,
+        psi_thr=None,
+        rc_thr=None,
+    )
+
+    with pytest.raises(ValueError, match="target column|Target column|requested target"):
+        selector.fit(
+            df,
+            target="target",
+            features=["x"],
+            benchmark_df=benchmark_df,
+        )
+
+
+def test_stats_selector_benchmark_overrides_feature_start_reference_once(
+    sample_credit_df: pl.DataFrame,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    benchmark_df = sample_credit_df.select(["income", "target"])
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=100.0,
+        rc_thr=None,
+        corr_thr=None,
+        feature_start_aware_reference=True,
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    )
+
+    with caplog.at_level("WARNING"):
+        selector.fit(
+            sample_credit_df,
+            target="target",
+            features=["income"],
+            group_col="month",
+            benchmark_df=benchmark_df,
+        )
+
+    messages = [
+        message
+        for message in caplog.messages
+        if "ignored because `benchmark_df` was provided" in message
+    ]
+    assert len(messages) == 1
+
+
+def test_stats_selector_explicit_benchmark_risk_corr_source() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "x": list(range(20)),
+            "target": [0, 1] * 10,
+        }
+    )
+    df = pl.DataFrame(
+        {
+            "month": ["A"] * 20 + ["B"] * 20,
+            "x": list(range(40)),
+            "target": [0, 1] * 20,
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        psi_thr=100.0,
+        rc_thr=-1.0,
+        corr_thr=None,
+        risk_corr_baseline="benchmark",
+        rough_binning_params={"method": "quantile", "n_bins": 2},
+    ).fit(
+        df,
+        target="target",
+        features=["x"],
+        group_col="month",
+        benchmark_df=benchmark_df,
+    )
+
+    report = selector.get_binning_report(df, benchmark_df=benchmark_df)
+
+    assert report.report_meta["risk_corr_reference_source"] == "benchmark_df"
+
+
+def test_stats_selector_no_longer_exposes_max_samples() -> None:
+    assert "max_samples" not in inspect.signature(MarsStatsSelector.fit).parameters

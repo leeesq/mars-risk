@@ -209,22 +209,29 @@ def resolve_profile_by(
 def prepare_group_context(
     df: pl.DataFrame,
     *,
-    profile_by: str | None,
-    dt_col: str | None,
+    group_col: str | None,
+    time_col: str | None,
+    time_grain: str | None,
     mars_group_col: str,
 ) -> tuple[pl.DataFrame, str]:
-    """构造内部趋势分组上下文。"""
-    if dt_col and not profile_by:
-        profile_by = "month"
+    """按显式参数优先级构造内部趋势分组，缺少声明列时直接失败。"""
+    if time_grain is not None and time_col is None:
+        raise ValueError("`time_grain` requires `time_col`.")
+    if group_col is not None and group_col not in df.columns:
+        raise ValueError(f"Group column {group_col!r} was not found in dataframe.")
+    if time_col is not None and time_col not in df.columns:
+        raise ValueError(f"Time column {time_col!r} was not found in dataframe.")
 
-    if dt_col and profile_by is not None and MarsDate.is_time_grain(profile_by):
-        date_expr = MarsDate.from_grain(dt_col, profile_by).alias(mars_group_col)
+    if group_col is not None:
+        return (
+            df.with_columns(pl.col(group_col).cast(pl.String).alias(mars_group_col)),
+            mars_group_col,
+        )
+
+    if time_col is not None:
+        effective_grain = time_grain or "month"
+        date_expr = MarsDate.from_grain(time_col, effective_grain).alias(mars_group_col)
         return df.with_columns(date_expr), mars_group_col
-
-    if profile_by:
-        if profile_by in df.columns:
-            return df.with_columns(pl.col(profile_by).cast(pl.String).alias(mars_group_col)), mars_group_col
-        logger.warning("Column '%s' was not found. Falling back to snapshot mode.", profile_by)
 
     return df.with_columns(pl.lit("Total").alias(mars_group_col)), mars_group_col
 
