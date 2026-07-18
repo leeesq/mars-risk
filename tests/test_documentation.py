@@ -249,13 +249,15 @@ def test_docs_workflow_deploys_pages_after_main_validation() -> None:
 
 
 def test_release_workflow_dispatches_docs_from_main() -> None:
-    """Release workflow 不应直接从受保护的 tag ref 部署 Pages。"""
+    """Release workflow 应显式指定仓库，并从 main 派发 Pages 部署。"""
     workflow = (PROJECT_ROOT / ".github" / "workflows" / "publish.yml").read_text(
         encoding="utf-8"
     )
     assert "actions: write" in workflow
-    assert "gh workflow run docs.yml --ref main" in workflow
-    assert 'release_tag="$RELEASE_TAG"' in workflow
+    assert "gh workflow run docs.yml" in workflow
+    assert '--repo "$GITHUB_REPOSITORY"' in workflow
+    assert "--ref main" in workflow
+    assert '--raw-field "release_tag=$RELEASE_TAG"' in workflow
     assert "actions/deploy-pages" not in workflow
 
 
