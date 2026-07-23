@@ -72,7 +72,7 @@ fragment = report.render_risk_trends_html(
 
 !!! warning "Scoring：Experimental"
 
-    评分映射、刻度参数和 SQL 输出仍可能调整。受控生产使用应固定 `mars-risk==0.0.24`，
+    评分映射、刻度参数和 SQL 输出仍可能调整。受控生产使用应固定 `mars-risk==0.0.25`，
     并为 `points_table` 和生成 SQL 增加契约测试。
 
 ```python

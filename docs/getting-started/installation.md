@@ -1,27 +1,27 @@
 ---
-description: 安装 MARS 0.0.24、可选依赖和本地开发环境。
+description: 安装 MARS 0.0.25、可选依赖和本地开发环境。
 ---
 
 # 安装
 
-MARS `0.0.24` 支持 Python 3.10、3.11 和 3.12。
+MARS `0.0.25` 支持 Python 3.10、3.11 和 3.12。
 
 ```bash
-pip install mars-risk==0.0.24
+pip install mars-risk==0.0.25
 ```
 
 !!! warning "发布前提"
 
-    正式站点只应在 PyPI 已发布 `0.0.24` 后部署。发布前请从源码安装进行预览验收。
+    正式站点只应在 PyPI 已发布 `0.0.25` 后部署。发布前请从源码安装进行预览验收。
 
 ## 可选依赖
 
 | 场景 | 安装命令 |
 | --- | --- |
-| Notebook | `pip install "mars-risk[notebook]==0.0.24"` |
-| 树模型 | `pip install "mars-risk[ml]==0.0.24"` |
-| 调参 | `pip install "mars-risk[ml,tuning]==0.0.24"` |
-| 文档构建 | `pip install "mars-risk[docs]==0.0.24"` |
+| Notebook | `pip install "mars-risk[notebook]==0.0.25"` |
+| 树模型 | `pip install "mars-risk[ml]==0.0.25"` |
+| 调参 | `pip install "mars-risk[ml,tuning]==0.0.25"` |
+| 文档构建 | `pip install "mars-risk[docs]==0.0.25"` |
 
 基础安装已经包含画像、分箱、筛选、监控、Excel/HTML 导出和评分卡能力。`ml` 提供 XGBoost、
 LightGBM、CatBoost、SHAP 与 statsmodels；`tuning` 提供 Optuna。
@@ -40,7 +40,7 @@ pip install -e ".[dev,ml,tuning,docs]"
 python -c "import mars; print(mars.__version__)"
 ```
 
-输出应为 `0.0.24`。随后运行[10 分钟 Quickstart](quickstart.md)。
+输出应为 `0.0.25`。随后运行[10 分钟 Quickstart](quickstart.md)。
 
 ## 常见问题
 
