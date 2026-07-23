@@ -161,6 +161,30 @@ class MarsPlotter:
         return bool(df_detail["amt_bad_rate"].notna().any())
 
     @staticmethod
+    def _has_labeled_target_contract(df_detail: pd.DataFrame) -> bool:
+        """校验有标签明细的已表现样本计数契约。"""
+        has_label_values = any(
+            column in df_detail.columns and df_detail[column].notna().any()
+            for column in ("bad", "bad_rate")
+        )
+        if "observed_count" not in df_detail.columns:
+            if has_label_values:
+                raise ValueError(
+                    "Labeled risk trend data requires `observed_count` to distinguish "
+                    "observed samples from total samples."
+                )
+            return False
+
+        has_observed_count = df_detail["observed_count"].notna().any()
+        if has_label_values and not has_observed_count:
+            raise ValueError(
+                "Labeled risk trend data requires non-null `observed_count` values."
+            )
+        if has_observed_count and "bad" not in df_detail.columns:
+            raise ValueError("Labeled risk trend data requires the `bad` column.")
+        return bool(has_observed_count)
+
+    @staticmethod
     def _figure_to_base64(fig: plt.Figure, dpi: int = 150, close: bool = True) -> str:
         """将 Matplotlib 图表序列化为 Base64 PNG 字符串。"""
         buffer = BytesIO()
@@ -345,18 +369,19 @@ class MarsPlotter:
         else:
             total_count = 0
 
-        has_target_global = (
+        has_observed_risk_global = (
             "bad_rate" in total_metric_df.columns
             and total_metric_df["bad_rate"].notna().any()
         )
+        has_labeled_target = MarsPlotter._has_labeled_target_contract(total_metric_df)
 
-        if has_target_global:
+        if has_observed_risk_global:
             global_iv, global_ks, global_auc = MarsPlotter._summarize_binning_metrics(
                 total_metric_df,
             )
 
         trend_str = "n.a."
-        if has_target_global:
+        if has_observed_risk_global:
             trend_source_df = total_rollup_df if not total_rollup_df.empty else total_metric_df
             if "trend" in trend_source_df.columns:
                 raw_trend = trend_source_df["trend"].iloc[0]
@@ -419,9 +444,12 @@ class MarsPlotter:
             left=0.05, right=0.95, top=0.75, bottom=0.15
         )
 
-        if has_target_global:
+        if has_labeled_target:
             summary_str_1 = f"{feature},  {target_name},  Total: {int(total_count)},  {time_range_label}"
-            summary_str_2 = f"IV: {global_iv:.3f},  KS: {global_ks:.1f},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
+            if has_observed_risk_global:
+                summary_str_2 = f"IV: {global_iv:.3f},  KS: {global_ks:.1f},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
+            else:
+                summary_str_2 = f"IV: n.a.,  KS: n.a.,  AUC: n.a.,  Missing: {miss_str},  Trend: n.a."
         else:
             summary_str_1 = f"{feature}  (Label-Free Mode),  Total: {int(total_count)},  {time_range_label}"
             summary_str_2 = f"Missing: {miss_str},  PSI Check Only"
@@ -448,7 +476,7 @@ class MarsPlotter:
             if len(tmp_counts) > 0:
                 global_max_count = max(global_max_count, tmp_counts.max())
 
-            if has_target_global and "bad_rate" in tmp_df.columns:
+            if has_observed_risk_global and "bad_rate" in tmp_df.columns:
                 tmp_bads = tmp_df["bad_rate"]
                 if len(tmp_bads) > 0:
                     global_max_bad = max(global_max_bad, tmp_bads.max())
@@ -474,7 +502,9 @@ class MarsPlotter:
                 feature_reference_pd,
             )
 
-            has_target = "bad_rate" in df_g.columns and df_g["bad_rate"].notna().any()
+            has_observed_risk = (
+                "bad_rate" in df_g.columns and df_g["bad_rate"].notna().any()
+            )
             x = range(len(df_g))
             labels = df_g["bin_label"].tolist()
             indices = df_g["bin_index"].tolist()
@@ -494,7 +524,7 @@ class MarsPlotter:
             ax.set_xticklabels(labels, rotation=90, fontsize=fs_label + 1.5)
             ax.tick_params(axis="x", length=0)
 
-            if has_target:
+            if has_observed_risk:
                 bads = df_g["bad_rate"]
                 ax2 = ax.twinx()
                 for spine in ax2.spines.values():
@@ -625,10 +655,30 @@ class MarsPlotter:
             g_miss_row = df_g[df_g["bin_index"] == -1]
             g_miss_str = f"{g_miss_row['count'].sum() / total_count_g:.0%}" if not g_miss_row.empty and total_count_g > 0 else "0%"
 
-            if has_target:
+            if has_labeled_target and not has_observed_risk:
                 total_bad = df_g["bad"].sum()
-                avg_bad_rate = total_bad / total_count_g if total_count_g > 0 else 0
-                ax.set_title(f"{group}   ({int(total_bad)}/{int(total_count_g)}, {avg_bad_rate:.1%})", fontsize=fs_title + 0.85, y=1.05, ha="center")
+                total_observed = df_g["observed_count"].sum()
+                ax.set_title(
+                    f"{group} ({int(total_bad):,}/{int(total_observed):,}: "
+                    f"n.a., n: {int(total_count_g):,})",
+                    fontsize=fs_title + 0.85,
+                    y=1.05,
+                    ha="center",
+                )
+                psi_color = "red" if psi_val > 0.1 else "black"
+                ax.text(0.48, 1.015, f"PSI: {psi_val:.2f}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
+                ax.text(0.52, 1.015, f"Miss: {g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
+            elif has_observed_risk:
+                total_bad = df_g["bad"].sum()
+                total_observed = df_g["observed_count"].sum()
+                avg_bad_rate = total_bad / total_observed
+                ax.set_title(
+                    f"{group} ({int(total_bad):,}/{int(total_observed):,}: "
+                    f"{avg_bad_rate:.1%}, n: {int(total_count_g):,})",
+                    fontsize=fs_title + 0.85,
+                    y=1.05,
+                    ha="center",
+                )
 
                 iv_val, ks_val, auc_val = MarsPlotter._summarize_binning_metrics(df_g)
 

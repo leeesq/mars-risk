@@ -412,6 +412,44 @@ def test_risk_trend_uses_time_grain_when_group_col_is_not_provided(
             plt.close(figure)
 
 
+def test_risk_trend_titles_use_only_observed_targets(
+    sample_credit_df: pl.DataFrame,
+) -> None:
+    partial_target_df = (
+        sample_credit_df.with_row_index("_row_index")
+        .with_columns(
+            pl.when(
+                (pl.col("month") == "2024-03")
+                | ((pl.col("month") == "2024-02") & (pl.col("_row_index") >= 12))
+            )
+            .then(None)
+            .otherwise(pl.col("target"))
+            .alias("target")
+        )
+        .drop("_row_index")
+    )
+    partial_target_df = _with_biz_dt(partial_target_df)
+    run = profile_risk(
+        partial_target_df,
+        target="target",
+        features=["income"],
+        group_col="month",
+        time_col="biz_dt",
+        method="quantile",
+        n_bins=3,
+    )
+
+    figures = run.report.build_risk_trend_figures(features="income")
+    try:
+        assert len(figures) == 1
+        titles = [axis.get_title() for axis in figures[0].axes if axis.get_title()]
+        assert "2024-02 (2/4: 50.0%, n: 8)" in titles
+        assert "2024-03 (0/0: n.a., n: 8)" in titles
+    finally:
+        for figure in figures:
+            plt.close(figure)
+
+
 def test_risk_trend_time_range_truncates_timestamp_precision(
     sample_credit_df: pl.DataFrame,
 ) -> None:
