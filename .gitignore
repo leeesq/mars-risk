@@ -68,3 +68,6 @@ benchmarks/_artifacts/
 tutorial/*.tmp
 tutorial/*.log
 .html
+
+/.build-check-template/
+/迭代进度/
