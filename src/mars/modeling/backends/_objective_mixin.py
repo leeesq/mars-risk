@@ -108,16 +108,21 @@ class BackendObjectiveMixin:
 
             ptype = config[0]
             if ptype == "int":
-                low, high = int(config[1]), int(config[2])
-                step = int(config[3]) if len(config) > 3 else 1
-                params[name] = trial.suggest_int(name, low, high, step=step)
+                int_low, int_high = int(config[1]), int(config[2])
+                int_step = int(config[3]) if len(config) > 3 else 1
+                params[name] = trial.suggest_int(
+                    name,
+                    int_low,
+                    int_high,
+                    step=int_step,
+                )
             elif ptype == "float":
-                low, high = float(config[1]), float(config[2])
-                step = float(config[3]) if len(config) > 3 else None
+                float_low, float_high = float(config[1]), float(config[2])
+                float_step = float(config[3]) if len(config) > 3 else None
                 params[name] = (
-                    trial.suggest_float(name, low, high)
-                    if step is None
-                    else trial.suggest_float(name, low, high, step=step)
+                    trial.suggest_float(name, float_low, float_high)
+                    if float_step is None
+                    else trial.suggest_float(name, float_low, float_high, step=float_step)
                 )
             elif ptype == "categorical":
                 params[name] = trial.suggest_categorical(name, list(config[1]))

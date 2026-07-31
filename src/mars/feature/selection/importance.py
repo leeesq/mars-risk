@@ -210,7 +210,7 @@ class MarsImportanceSelector(MarsBaseSelector):
     ) -> dict[str, float]:
         """将编码列级别的重要性聚合回原始特征名。"""
         importance_map = {feature: 0.0 for feature in raw_features}
-        for encoded_feature, value in zip(encoded_features, values, strict=False):
+        for encoded_feature, value in zip(encoded_features, values):
             raw_feature = mapping.get(str(encoded_feature), str(encoded_feature))
             if raw_feature in importance_map:
                 importance_map[raw_feature] += float(value)
@@ -429,7 +429,7 @@ class MarsImportanceSelector(MarsBaseSelector):
         self.importance_table_ = table.copy()
         self.selected_features_ = [feature for feature in raw_features if feature in selected_set]
 
-        importance_lookup = dict(zip(table["feature"], table["importance"], strict=False))
+        importance_lookup = dict(zip(table["feature"], table["importance"]))
         for feature in raw_features:
             status = "Selected" if feature in selected_set else "Dropped"
             reason = self.selection_mode if feature in selected_set else f"below_{self.selection_mode}"

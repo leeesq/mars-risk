@@ -13,7 +13,7 @@ from mars.modeling.backends.registry import ensure_builtin_backends_registered, 
 from mars.utils.imports import optional_import as _optional_import
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class PredictionAdapter:
     """面向 Pandas/Polars 特征矩阵的预测适配器。"""
 

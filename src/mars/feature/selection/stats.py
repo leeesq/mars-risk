@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Union
 import pandas as pd
 import polars as pl
 
+from mars._compat import pandas_styler_map, remove_suffix
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
@@ -25,6 +26,8 @@ class MarsStatsSelector(MarsBaseSelector):
     该筛选器将数据质量、IV/Lift、PSI、相关性和白黑名单规则串成一个漏斗式筛选流程。
     构造函数只保存阈值、分箱策略、缺失/特殊值配置以及运行资源参数；样本数据、
     目标列、特征范围、分组列和时间列都由 `fit` 传入。
+    质量、分布和 PSI 使用全量样本；监督分箱、IV/Lift、RC 与 WOE 相关性只使用
+    target 非空的已表现样本。
 
     典型用法是先用粗分箱低成本压缩特征空间，再用精细分箱和稳定性规则做最终筛选。
     `white_list` 中的特征会尽量绕过自动剔除规则，`black_list` 中的特征会被强制排除。
@@ -94,7 +97,7 @@ class MarsStatsSelector(MarsBaseSelector):
         rc_thr : float | None
             排名变化率筛选阈值。
         corr_thr : float | None
-            WOE 相关性筛选阈值。
+            已表现样本上的 WOE 相关性筛选阈值。
         feature_start_aware_reference : bool
             是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
         risk_corr_baseline : RiskCorrBaseline
@@ -224,7 +227,8 @@ class MarsStatsSelector(MarsBaseSelector):
             二分类目标列名。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
             基准样本表。传入后用于拟合粗筛和精筛分箱规则，并提供 PSI expected
-            distribution；质量、IV、Lift、RC 和相关性仍在 ``df`` 上计算。
+            distribution；质量和 PSI 仍使用完整 ``df``，IV、Lift、RC 和相关性使用
+            ``df`` 中 target 非空的已表现样本。
         features : list[str] | None
             候选特征列；不传时会从样本表中自动推断。
         feature_data_source : dict[str, list[str]] | None
@@ -451,12 +455,11 @@ class MarsStatsSelector(MarsBaseSelector):
                                 prev_count, len(current_features))
 
         # 执行特征集终态覆盖映射
-        selected_features = list(current_features)
-        selected_set = set(selected_features)
-        for feature in valid_white_list:
-            if feature not in selected_set:
-                selected_features.append(feature)
-                selected_set.add(feature)
+        selected_set = set(current_features)
+        selected_set.update(valid_white_list)
+        selected_features = [
+            feature for feature in candidate_features if feature in selected_set
+        ]
         self.selected_features_ = selected_features
         self._record_funnel("Final", "White List Forcing",
                             {"white_list_len": len(valid_white_list)},
@@ -559,7 +562,7 @@ class MarsStatsSelector(MarsBaseSelector):
         if not missing_cols:
             return
 
-        failed_features = [column.removesuffix("_bin") for column in missing_cols]
+        failed_features = [remove_suffix(column, "_bin") for column in missing_cols]
         raise ValueError(
             "`benchmark_df` could not produce bins for active features "
             f"{failed_features}. Fit failures: {getattr(binner, 'fit_failures_', {})}."
@@ -780,13 +783,21 @@ class MarsStatsSelector(MarsBaseSelector):
                 **{'text-align': 'center'},
                 subset=['Input', 'Dropped', 'Remaining', 'Retention %', 'Cumulative %'],
             )
-            .map(lambda v: dropped_style if v > 0 else muted_style, subset=['Dropped'])
-            .map(lambda v: remaining_style, subset=['Remaining'])
-            .map(_color_retention, subset=['Retention %'])
-            .map(lambda v: cumulative_style, subset=['Cumulative %'])
-            .map(_style_logic_text, subset=['Thresholds'])
-            .set_table_styles(table_styles)
         )
+        styler = pandas_styler_map(
+            styler,
+            lambda v: dropped_style if v > 0 else muted_style,
+            subset=['Dropped'],
+        )
+        styler = pandas_styler_map(styler, lambda v: remaining_style, subset=['Remaining'])
+        styler = pandas_styler_map(styler, _color_retention, subset=['Retention %'])
+        styler = pandas_styler_map(
+            styler,
+            lambda v: cumulative_style,
+            subset=['Cumulative %'],
+        )
+        styler = pandas_styler_map(styler, _style_logic_text, subset=['Thresholds'])
+        styler = styler.set_table_styles(table_styles)
 
         try:
             from IPython.display import display
@@ -1147,12 +1158,15 @@ class MarsStatsSelector(MarsBaseSelector):
         return kept_features
 
     def _filter_corr(self, df: pl.DataFrame, features: List[str]) -> List[str]:
-        """内部方法：执行目标感知导向的共线性惩罚计算。"""
+        """仅在已表现样本上执行目标感知的 WOE 共线性惩罚计算。"""
         if len(features) < 2:
             return features
+        if self.target is None:
+            raise ValueError("Selector target is unavailable for WOE correlation filtering.")
 
         woe_cols = [f"{c}_woe" for c in features]
-        df_woe = self._stage3_binner.transform(df.select(features), return_type="woe")
+        observed_df = df.filter(pl.col(self.target).is_not_null()).select(features)
+        df_woe = self._stage3_binner.transform(observed_df, return_type="woe")
         corr_matrix_df = df_woe.select(woe_cols).fill_null(0.0).corr()
 
         corr_matrix_with_names = corr_matrix_df.with_columns(
@@ -1341,9 +1355,10 @@ class MarsStatsSelector(MarsBaseSelector):
             pd_df.to_csv(path, index=False, encoding="utf-8-sig")
         else:
             try:
-                styler = pd_df.style.map(
+                styler = pandas_styler_map(
+                    pd_df.style,
                     lambda v: 'color: green; font-weight: bold' if v == 'Selected' else 'color: red',
-                    subset=['status']
+                    subset=['status'],
                 )
                 styler.to_excel(path, index=False, engine="openpyxl")
             except Exception as e:

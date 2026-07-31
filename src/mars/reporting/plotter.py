@@ -1,5 +1,7 @@
 """MARS 风控特征趋势图绘制与 HTML 渲染工具。"""
 
+from __future__ import annotations
+
 import base64
 import uuid
 from io import BytesIO

@@ -13,7 +13,7 @@ from mars.compute import to_pandas_frame
 from mars.feature.binning.base import MarsBinnerBase
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsLogisticModel:
     """可序列化的 LR 模型包装器。"""
 

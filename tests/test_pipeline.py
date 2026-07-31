@@ -158,6 +158,7 @@ def test_pipeline_selection_step_empty_features_raises(sample_modeling_pd: pd.Da
         pipeline.fit(sample_modeling_pd)
 
 
+@pytest.mark.optional_ml
 def test_pipeline_runs_selection_to_internal_woe_lr_modeling(
     sample_modeling_pd: pd.DataFrame,
 ) -> None:
@@ -193,6 +194,7 @@ def test_pipeline_runs_selection_to_internal_woe_lr_modeling(
     assert "pipeline_score" in scored.columns
 
 
+@pytest.mark.optional_ml
 def test_pipeline_runs_external_woe_step_without_internal_lr_woe(
     sample_modeling_pd: pd.DataFrame,
 ) -> None:

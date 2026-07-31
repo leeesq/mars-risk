@@ -1095,8 +1095,10 @@ def ordered_binary_metric_exprs(
     partitions = list(group_keys)
     cum_bad_dist = pl.col(bad_dist_col).cum_sum().over(partitions)
     cum_good_dist = pl.col(good_dist_col).cum_sum().over(partitions)
-    prev_bad_dist = cum_bad_dist.shift(1, fill_value=0.0).over(partitions)
-    prev_good_dist = cum_good_dist.shift(1, fill_value=0.0).over(partitions)
+    # Polars 1.8 不允许在窗口表达式外再套一层 shift().over()。排序后的前一累计值
+    # 等价于当前累计值减去当前箱分布，且能保留单次 with_columns 的 public 用法。
+    prev_bad_dist = cum_bad_dist - pl.col(bad_dist_col)
+    prev_good_dist = cum_good_dist - pl.col(good_dist_col)
     return [
         cum_bad_dist_expr(
             group_keys,

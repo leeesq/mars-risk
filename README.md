@@ -34,19 +34,21 @@ Excel/HTML 导出和评分卡能力。
 
 ## 安装
 
-MARS `0.0.25` 支持 Python 3.10、3.11 和 3.12。
+MARS `0.0.26` 支持 Python 3.8–3.12。Python 3.8 使用冻结兼容依赖栈；可选的建模、
+调参、Notebook 和文档工具要求 Python 3.10+。
 
 ```bash
-pip install mars-risk==0.0.25
+pip install mars-risk==0.0.26
 ```
 
 建模与调参需要可选依赖：
 
 ```bash
-pip install "mars-risk[ml,tuning]==0.0.25"
+pip install "mars-risk[ml,tuning]==0.0.26"
 ```
 
-`0.0.25` 正式发布前，请从源码安装进行文档预览验收。
+`0.0.26` 正式发布前，请从源码安装进行文档预览验收。Python 3.8 已停止官方安全维护；
+MARS 的运行兼容不代表解释器仍有安全支持。
 
 ## 最小风险评估
 

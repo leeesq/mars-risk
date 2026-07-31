@@ -110,7 +110,7 @@ def _normalize_profile_risk_binning_type(binning_type: str) -> _ProfileRiskBinni
         raise ValueError(
             f"`binning_type` must be one of {valid_text}. Got {binning_type!r}."
         )
-    return normalized
+    return cast(_ProfileRiskBinningType, normalized)
 
 
 def _resolve_method_param_key(binning_type: _ProfileRiskBinningType) -> str:

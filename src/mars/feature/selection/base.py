@@ -1,5 +1,7 @@
 """特征筛选共享基类。"""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any, List, Union
 
@@ -46,7 +48,7 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self,
         X: Union[pl.DataFrame, pd.DataFrame],
         y: Any | None = None,
-    ) -> "MarsBaseSelector":
+    ) -> MarsBaseSelector:
         """
         执行特征筛选拟合。
 

@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import polars as pl
 
+from mars._compat import collect_streaming
 from mars.analysis._profiling.metrics import feature_dtypes
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
 from mars.compute import psi_contribution_expr, psi_partition_prob_expr, psi_valid_condition
@@ -170,11 +171,11 @@ def _binned_psi_batch(
         {"feat_idx": list(feat_map), "feature": list(feat_map.values())},
         schema={"feat_idx": pl.Int16, "feature": pl.String},
     )
-    return (
+    result_query = (
         lf_psi.join(mapping_df, on="feat_idx", how="left")
         .select([context.group_col, "feature", "total", "psi"])
-        .collect(engine="streaming")
     )
+    return collect_streaming(result_query)
 
 
 def calc_psi_from_stats(

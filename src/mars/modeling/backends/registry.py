@@ -8,7 +8,7 @@ from typing import Dict, Iterable
 from mars.modeling.backends.base import MarsBaseModelStrategy
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class BackendSpec:
     """注册后端的元数据描述。"""
 

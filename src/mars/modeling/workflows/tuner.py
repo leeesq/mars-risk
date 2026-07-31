@@ -291,8 +291,6 @@ class MarsModelTuner:
             当当前功能依赖的可选组件不可用时抛出。
         RuntimeError
             当底层训练、评估或导出流程失败时抛出。
-        Exception
-            第三方依赖在调参期间抛出的未包装异常会继续向上抛出。
         """
         del overwrite
         try:
@@ -420,17 +418,17 @@ class MarsModelTuner:
             raise RuntimeError(f"Model tuning failed: {exc}") from exc
 
         if backend.best_model is None:
-            exc = RuntimeError("No valid trial satisfied the generalization constraints.")
+            failure_message = "No valid trial satisfied the generalization constraints."
             if artifact_path is not None:
                 write_json(
                     artifact_path / "failure.json",
                     {
                         "run_id": run_id,
-                        "error_type": type(exc).__name__,
-                        "error": str(exc),
+                        "error_type": RuntimeError.__name__,
+                        "error": failure_message,
                     },
                 )
-            raise exc
+            raise RuntimeError(failure_message)
 
         history_table = backend.build_history_table()
         best_trial_num = int(study.best_trial.number)

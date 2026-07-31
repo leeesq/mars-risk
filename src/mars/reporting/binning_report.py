@@ -1,5 +1,7 @@
 """分箱评估报告对象。"""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union
 
@@ -385,7 +387,7 @@ class MarsBinningReport:
         ascending: bool = False,
         max_plots: int = 20,
         dpi: int = 150,
-    ) -> list["Figure"]:
+    ) -> list[Figure]:
         """
         构建风险趋势图对象。
 
@@ -637,7 +639,7 @@ class MarsBinningReport:
         max_plots: int = 20,
         dpi: int = 150,
         return_figures: bool = False,
-    ) -> list["Figure"] | None:
+    ) -> list[Figure] | None:
         """
         直接展示分箱风险趋势图。
 
@@ -696,7 +698,7 @@ class MarsBinningReport:
 
     def show_summary(self,
                      features: Union[str, List[str]] | None = None
-                     ) -> "pd.io.formats.style.Styler":
+                     ) -> pd.io.formats.style.Styler:
         """
         展示特征汇总评分表。
 
@@ -763,7 +765,7 @@ class MarsBinningReport:
                    features: Union[str, List[str]] | None = None,
                    group_ascending: bool = True,
                    sort_by: Union[str, List[str]] = "Total",
-                   sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
+                   sort_ascending: bool = False) -> pd.io.formats.style.Styler:
         """
         展示指定指标的时间趋势热力图。
 

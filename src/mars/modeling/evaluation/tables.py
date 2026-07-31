@@ -126,7 +126,6 @@ def build_roc_curve_detail(
             thinned["fpr"],
             thinned["tpr"],
             thinned["threshold"],
-            strict=False,
         ):
             rows.append(
                 {

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _RiskTrendPlotContext:
     """保存单个 target 下风险趋势图生成所需的上下文。"""
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Union
 
 import pandas as pd
 import polars as pl
@@ -11,7 +11,7 @@ import polars as pl
 from mars.compute import RiskCorrBaseline
 from mars.feature.binning.base import MarsBinnerBase
 
-FrameLike = pl.DataFrame | pd.DataFrame
+FrameLike = Union[pl.DataFrame, pd.DataFrame]
 
 
 @dataclass(frozen=True)
@@ -55,4 +55,3 @@ class MetricFrames:
     risk_corr_reference_table: pl.DataFrame
     risk_corr_reference_source: str
     monotonicity_df: pl.DataFrame
-

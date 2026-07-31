@@ -1,5 +1,7 @@
 """MARS 日期解析与粒度转换工具。"""
 
+from __future__ import annotations
+
 import re
 from typing import Union
 

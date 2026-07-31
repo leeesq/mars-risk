@@ -1,5 +1,7 @@
 """MARS 核心估计器与转换器基类。"""
 
+from __future__ import annotations
+
 import re
 from abc import ABC, abstractmethod
 from typing import Any, Literal, Union
@@ -52,7 +54,7 @@ class MarsBaseEstimator(BaseEstimator):
     def set_output(
         self,
         transform: Literal["default", "pandas", "polars"] = "default",
-    ) -> "MarsBaseEstimator":
+    ) -> MarsBaseEstimator:
         """
         设置实例输出格式。
 
@@ -356,7 +358,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         self,
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
-    ) -> "MarsTransformer":
+    ) -> MarsTransformer:
         """
         拟合转换器并缓存输入特征信息。
 

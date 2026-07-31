@@ -7,6 +7,7 @@ from typing import Any, cast
 import numpy as np
 import polars as pl
 
+from mars._compat import polars_is_in
 from mars.modeling.workflows._splitter_protocols import _HybridKeyValidator
 
 
@@ -33,7 +34,7 @@ class PolarsSplitterMixin:
         assert isinstance(self.df, pl.DataFrame)
         self.df = self.df.with_columns(
             pl.when(
-                pl.col(self.label_col).is_in(pl.Series([0, 1]).implode())
+                polars_is_in(pl.col(self.label_col), pl.Series([0, 1]))
                 & pl.col("__date__").is_not_null()
             )
             .then(pl.lit("unassigned"))

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from mars.modeling.contracts.report import MarsModelingReport
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsModelReplayResult:
     """
     调参 replay 流程的结构化结果对象。

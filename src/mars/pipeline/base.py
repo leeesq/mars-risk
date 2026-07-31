@@ -11,7 +11,7 @@ import polars as pl
 from mars.modeling.contracts.tuning_result import MarsModelTuningResult
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsStepResult:
     """
     单个 Pipeline step 的结构化执行结果。
@@ -43,7 +43,7 @@ class MarsStepResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsPipelineResult:
     """
     MarsModelingPipeline 的结构化运行结果。

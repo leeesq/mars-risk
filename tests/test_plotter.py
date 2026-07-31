@@ -18,9 +18,10 @@ def _build_panel_title_frame(
     counts = [count_left, total - count_left]
     observed_counts = [observed_left, observed - observed_left]
     bad_counts = [bad_left, bad - bad_left]
+    assert len(bad_counts) == len(observed_counts)
     bad_rates = [
         bad_count / observed_count if observed_count > 0 else float("nan")
-        for bad_count, observed_count in zip(bad_counts, observed_counts, strict=True)
+        for bad_count, observed_count in zip(bad_counts, observed_counts)
     ]
     return pd.DataFrame(
         {

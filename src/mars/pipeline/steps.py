@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, MutableMapping, Sequence, cast
+from typing import Any, Dict, Mapping, MutableMapping, Sequence, cast
 
 import polars as pl
 
@@ -223,8 +223,8 @@ class MarsWOEBinningStep(MarsPipelineStep):
         _validate_woe_columns(self.name, binned_pl, output_features)
 
         updated_df = _append_or_replace_columns(df, binned_pl.select(output_features))
-        feature_map = cast(dict[str, str], pipeline_state.setdefault("feature_map", {}))
-        for source, derived in zip(input_features, output_features, strict=False):
+        feature_map = cast(Dict[str, str], pipeline_state.setdefault("feature_map", {}))
+        for source, derived in zip(input_features, output_features):
             feature_map[source] = derived
         pipeline_state["has_woe_step"] = True
 

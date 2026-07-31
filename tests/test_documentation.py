@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import pytest
+from packaging.requirements import Requirement
 
 try:
     import tomllib
@@ -187,9 +188,9 @@ def test_documented_version_matches_package_metadata() -> None:
     )
     package_match = re.search(r'^__version__ = "([^"]+)"$', package_source, re.M)
     assert package_match is not None
-    assert package_match.group(1) == project_version == "0.0.25"
+    assert package_match.group(1) == project_version == "0.0.26"
 
-    required_install_command = "pip install mars-risk==0.0.25"
+    required_install_command = "pip install mars-risk==0.0.26"
     for path in [
         PROJECT_ROOT / "README.md",
         DOCS_ROOT / "index.md",
@@ -197,6 +198,37 @@ def test_documented_version_matches_package_metadata() -> None:
         DOCS_ROOT / "getting-started" / "quickstart.md",
     ]:
         assert required_install_command in path.read_text(encoding="utf-8")
+
+
+def test_python_version_dependency_markers_cover_supported_range() -> None:
+    """Python 3.8–3.12 应各自解析到唯一的 Polars 与 scikit-learn 约束。"""
+    with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:
+        project = tomllib.load(file)["project"]
+
+    assert project["requires-python"] == ">=3.8,<3.13"
+    requirements = [Requirement(value) for value in project["dependencies"]]
+    expected = {
+        "3.8": {"polars": "==1.8.2", "scikit-learn": "<1.4,>=1.3.2"},
+        "3.9": {"polars": ">=1.33.1", "scikit-learn": "<1.7,>=1.6.1"},
+        "3.10": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
+        "3.11": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
+        "3.12": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
+    }
+
+    for python_version, expected_specs in expected.items():
+        environment = {"python_version": python_version}
+        for package_name, expected_spec in expected_specs.items():
+            active = [
+                requirement
+                for requirement in requirements
+                if requirement.name == package_name
+                and (
+                    requirement.marker is None
+                    or requirement.marker.evaluate(environment=environment)
+                )
+            ]
+            assert len(active) == 1
+            assert str(active[0].specifier) == expected_spec
 
 
 def test_readme_restores_dynamic_python_and_download_badges() -> None:

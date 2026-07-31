@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, List
 
 
-@dataclass(slots=True)
+@dataclass
 class ModelingSpec:
     """
     建模 session 级上下文配置。
@@ -52,7 +52,7 @@ class ModelingSpec:
     lr_binner: Any | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class SplitSpec:
     """
     数据切分配置。
@@ -87,7 +87,7 @@ class SplitSpec:
     random_seed: int = 42
 
 
-@dataclass(slots=True)
+@dataclass
 class ReplaySpec:
     """
     Top-K replay 配置。

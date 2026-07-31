@@ -1,5 +1,7 @@
 """MARS 监控报警文本生成器。"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any, Dict, List, Literal
@@ -748,8 +750,8 @@ class MarsMonitoringAlerter(MarsBaseEstimator):
         }
         for col in table.columns:
             if col not in metric_cols:
-                return col
-        return table.columns[0]
+                return str(col)
+        return str(table.columns[0])
 
     def _add_high_value_alert(
         self,
@@ -862,8 +864,8 @@ class MarsMonitoringAlerter(MarsBaseEstimator):
         if skipped:
             lines.append("")
             lines.append("数据跳过：")
-            for idx, item in enumerate(skipped, start=1):
-                lines.append(f"{idx}. {item}")
+            for idx, skipped_item in enumerate(skipped, start=1):
+                lines.append(f"{idx}. {skipped_item}")
 
         return "\n".join(lines)
 

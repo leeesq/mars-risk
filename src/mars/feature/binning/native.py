@@ -1,5 +1,7 @@
 """MARS 原生分箱器。"""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from typing import Any, Dict, List, Literal, Tuple, Union
 
@@ -9,6 +11,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from sklearn.tree import DecisionTreeClassifier
 
+from mars._compat import polars_is_in
 from mars.feature.binning.base import MarsBinnerBase
 from mars.utils.logger import logger
 
@@ -107,7 +110,7 @@ class MarsNativeBinner(MarsBinnerBase):
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "MarsNativeBinner":
+    ) -> MarsNativeBinner:
         """
         拟合原生分箱器。
 
@@ -301,7 +304,7 @@ class MarsNativeBinner(MarsBinnerBase):
             if col_dtype in [pl.Float32, pl.Float64]:
                 valid_mask &= series.is_not_nan()
             if safe_exclude:
-                valid_mask &= ~series.is_in(pl.Series(safe_exclude).implode())
+                valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
             clean_series = series.filter(valid_mask)
             clean_total = clean_series.len()
@@ -323,7 +326,7 @@ class MarsNativeBinner(MarsBinnerBase):
             kept_cuts = []
             last_cdf = 0.0
 
-            for cut_val, cdf in zip(inner_cuts, cdf_vals, strict=False):
+            for cut_val, cdf in zip(inner_cuts, cdf_vals):
                 # 只有当当前切点与上一个保留切点的全局区间占比达标时，才保留该切点
                 if cdf - last_cdf >= self.min_bin_size:
                     kept_cuts.append(cut_val)
@@ -376,7 +379,7 @@ class MarsNativeBinner(MarsBinnerBase):
             # 构建过滤掩码：剔除空值与业务指定的特殊值
             valid_mask = series.is_not_null()
             if safe_exclude:
-                valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
+                valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
             clean_series = series.filter(valid_mask)
 
@@ -450,13 +453,13 @@ class MarsNativeBinner(MarsBinnerBase):
                 keep_mask &= ~pl.col(c).is_nan()
             # 非特殊值
             if safe_exclude:
-                keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
+                keep_mask &= ~polars_is_in(pl.col(c), pl.Series(safe_exclude))
 
             target_col = pl.col(c).filter(keep_mask)
             unique_exprs.append(target_col.n_unique().alias(c))
 
         unique_counts = X.select(unique_exprs).row(0)
-        col_unique_map = dict(zip(cols, unique_counts, strict=False))
+        col_unique_map = dict(zip(cols, unique_counts))
 
         # 分流: 哪些列走 Quantile, 哪些列走 Midpoint (中点)
         quantile_cols = []
@@ -485,7 +488,7 @@ class MarsNativeBinner(MarsBinnerBase):
 
                 # 叠加: 非 Special Values
                 if safe_exclude:
-                    valid_cond &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
+                    valid_cond &= ~polars_is_in(pl.col(c), pl.Series(safe_exclude))
 
                 # 应用过滤
                 target_col = pl.col(c).filter(valid_cond)
@@ -503,7 +506,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 # 解析结果并去重排序
                 temp_cuts: Dict[str, List[float]] = {c: [] for c in quantile_cols}
 
-                for val, name in zip(row, stats.columns, strict=False):
+                for val, name in zip(row, stats.columns):
                     c_name, _ = name.split(":::")
                     if val is not None and not np.isnan(val):
                         temp_cuts[c_name].append(val)
@@ -599,7 +602,7 @@ class MarsNativeBinner(MarsBinnerBase):
             if col_dtype in [pl.Float32, pl.Float64]:
                 keep_mask &= ~pl.col(c).is_nan()
             if safe_exclude:
-                keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
+                keep_mask &= ~polars_is_in(pl.col(c), pl.Series(safe_exclude))
 
             target_col = pl.col(c).filter(keep_mask)
 
@@ -664,7 +667,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 if col_dtype in [pl.Float32, pl.Float64]:
                     keep_mask &= ~pl.col(c).is_nan()
                 if safe_exclude:
-                    keep_mask &= ~pl.col(c).is_in(pl.Series(safe_exclude).implode())
+                    keep_mask &= ~polars_is_in(pl.col(c), pl.Series(safe_exclude))
                 target_col = pl.col(c).filter(keep_mask)
 
                 labels = [str(i) for i in range(len(breaks)+1)]
@@ -786,7 +789,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 if col_dtype in self.NUMERIC_DTYPES:
                     valid_mask &= (~series.is_nan())
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
+                    valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
                 if not valid_mask.any():
                     continue

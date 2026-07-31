@@ -1,5 +1,7 @@
 """数据画像报告对象。"""
 
+from __future__ import annotations
+
 from typing import Dict, List, NamedTuple, Union
 
 import pandas as pd
@@ -263,7 +265,7 @@ class MarsProfileReport:
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
-    ) -> "pd.io.formats.style.Styler | None":
+    ) -> pd.io.formats.style.Styler | None:
         """构建画像报告复用的 Pandas Styler。"""
         return _ProfileExcelWriter(self)._get_styler(
             df_input=df_input,
@@ -281,7 +283,7 @@ class MarsProfileReport:
     def show_overview(self,
                       features: Union[str, List[str]] | None = None,
                       sort_by: Union[str, List[str]] | None = None,
-                      sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
+                      sort_ascending: bool = False) -> pd.io.formats.style.Styler:
         """
         展示特征概览宽表。
 
@@ -341,7 +343,7 @@ class MarsProfileReport:
                    features: Union[str, List[str]] | None = None,
                    group_ascending: bool = True,
                    sort_by: Union[List[str], str] = "total",
-                   sort_ascending: bool = False) -> "pd.io.formats.style.Styler":
+                   sort_ascending: bool = False) -> pd.io.formats.style.Styler:
         """
         展示指定指标的分组趋势。
 
@@ -385,6 +387,8 @@ class MarsProfileReport:
             raise ValueError(f"Metric '{metric}' not found. Available metrics: {available[:10]}...")
 
         # 获取数据
+        vmin: float | None
+        vmax: float | None
         if source_type == "dq":
             df_raw = self.dq_tables[metric]
             # DQ 默认配置

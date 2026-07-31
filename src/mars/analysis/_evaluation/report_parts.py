@@ -7,6 +7,7 @@ from typing import Any
 
 import polars as pl
 
+from mars._compat import polars_is_in
 from mars.analysis._evaluation.references import build_risk_corr_long
 from mars.compute import (
     amount_distribution_exprs,
@@ -340,7 +341,7 @@ def _merge_feature_frame(
 
     override_features = override_df.get_column("feature").unique().to_list()
     retained_default = default_df.filter(
-        ~pl.col("feature").is_in(pl.Series(override_features).implode())
+        ~polars_is_in(pl.col("feature"), pl.Series(override_features))
     )
     return pl.concat([retained_default, override_df], how="vertical_relaxed")
 

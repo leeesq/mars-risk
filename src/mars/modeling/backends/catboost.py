@@ -207,7 +207,7 @@ class MarsCatBoostStrategy(MarsBaseModelStrategy):
         importance_values = model.get_feature_importance(type="FeatureImportance")
         importance_map = {
             feature: float(value)
-            for feature, value in zip(self.features, importance_values, strict=False)
+            for feature, value in zip(self.features, importance_values)
         }
         return _build_importance_table(
             model_type="cbt",

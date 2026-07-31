@@ -2,7 +2,8 @@
 
 ## 代码与文档
 
-- Python 3.10+ 原生类型注解。
+- Python 3.8–3.12 兼容；需要高版本注解语法的模块必须启用 postponed annotations，运行时
+  类型表达式使用 Python 3.8 可求值的 typing 形式。
 - public API 使用完整 NumPy docstring，参数、返回值和异常与签名一致。
 - 自然语言注释/docstring 使用中文。
 - Ruff `D` 负责 docstring 格式和缺失检查；pydoclint 负责签名一致性。

@@ -1,10 +1,13 @@
-from importlib import resources
+from __future__ import annotations
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
 
+import mars.reporting as reporting_package
 from mars.analysis import MarsDataProfiler, profile_stats
 
 
@@ -25,7 +28,7 @@ def test_profiler_returns_pandas_tables_for_pandas_input(sample_credit_pd: pd.Da
 
 
 def test_evaluation_templates_are_packaged() -> None:
-    template_dir = resources.files("mars.reporting").joinpath("template")
+    template_dir = Path(reporting_package.__file__).resolve().parent / "template"
     linux_template = template_dir.joinpath("mars_bin_report_linux.xlsx")
     win_mac_template = template_dir.joinpath("mars_bin_report_win_mac.xlsx")
 
@@ -313,7 +316,7 @@ def test_profiler_psi_binner_uses_stable_defaults(monkeypatch: pytest.MonkeyPatc
             self.features: list[str] = []
             self.bin_cuts_: dict[str, list[float]] = {}
 
-        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> "SpyNativeBinner":
+        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> SpyNativeBinner:
             self.features = list(features or [])
             self.bin_cuts_ = {feature: [] for feature in self.features}
             return self
@@ -364,7 +367,7 @@ def test_profiler_psi_binner_accepts_legacy_style_options(monkeypatch: pytest.Mo
             self.features: list[str] = []
             self.bin_cuts_: dict[str, list[float]] = {}
 
-        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> "SpyNativeBinner":
+        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> SpyNativeBinner:
             self.features = list(features or [])
             self.bin_cuts_ = {feature: [] for feature in self.features}
             return self
@@ -417,7 +420,7 @@ def test_profiler_psi_uses_observed_bins_for_numeric_skeleton(
             self.features: list[str] = []
             self.bin_cuts_: dict[str, list[float]] = {}
 
-        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> "SparseNativeBinner":
+        def fit(self, df: pl.DataFrame, features: list[str] | None = None) -> SparseNativeBinner:
             self.features = list(features or [])
             self.bin_cuts_ = {feature: [] for feature in self.features}
             return self

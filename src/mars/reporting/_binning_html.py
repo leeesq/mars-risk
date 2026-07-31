@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
 import numpy as np
 import pandas as pd
 
+from mars._compat import remove_suffix
 from mars.compute import to_pandas_frame
 from mars.core.constants import DIVISION_EPSILON, FLOAT_TOLERANCE
 from mars.reporting._binning_html_helpers import (
@@ -638,7 +639,7 @@ class _BinningHtmlRenderer:
         return {
             "trend-section": "trends",
             "chart-section": "charts",
-        }.get(section_id, section_id.removesuffix("-section"))
+        }.get(section_id, remove_suffix(section_id, "-section"))
 
     def _build_chart_section_html(
         self: Any,
@@ -1424,7 +1425,6 @@ class _BinningHtmlRenderer:
                 zip(
                     summary_pd["feature"].astype(str),
                     summary_pd["data_source"].astype(str),
-                    strict=False,
                 )
             )
         if not feature_sources and not detail_pd.empty and {"feature", "data_source"}.issubset(detail_pd.columns):
@@ -1433,7 +1433,6 @@ class _BinningHtmlRenderer:
                 zip(
                     source_df["feature"].astype(str),
                     source_df["data_source"].astype(str),
-                    strict=False,
                 )
             )
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date, datetime
-from typing import Any, TypeAlias
+from typing import Any, Tuple
 
-TimeRange: TypeAlias = tuple[str, str]
+TimeRange = Tuple[str, str]
 
 _INVALID_TIME_VALUES = frozenset({"", "<na>", "nan", "nat", "none"})
 

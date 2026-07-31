@@ -1,5 +1,5 @@
 ---
-description: MARS 0.0.25 文档入口：安装、最小风险评估、任务指南和 API Reference。
+description: MARS 0.0.26 文档入口：安装、最小风险评估、任务指南和 API Reference。
 ---
 
 # MARS
@@ -18,7 +18,7 @@ report 对象。
 === "安装"
 
     ```bash
-    pip install mars-risk==0.0.25
+    pip install mars-risk==0.0.26
     ```
 
 === "最小风险评估"
@@ -91,5 +91,5 @@ Analysis、Feature、Reporting 是当前 **Stable** 模块。Monitoring、Modeli
 
 !!! info "版本"
 
-    本站面向 MARS `0.0.25`。该版本正式发布前，安装命令仅用于文档预览验收，不能作为已发布
+    本站面向 MARS `0.0.26`。该版本正式发布前，安装命令仅用于文档预览验收，不能作为已发布
     PyPI 包的可用性证明。

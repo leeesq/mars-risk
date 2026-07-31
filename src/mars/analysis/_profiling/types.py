@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 import polars as pl
 
@@ -23,7 +23,7 @@ DEFAULT_STAT_METRICS: list[str] = [
 DEFAULT_PROFILE_METRICS: list[str] = DEFAULT_DQ_METRICS + DEFAULT_STAT_METRICS
 
 ProfileBinMethod = Literal["quantile", "uniform"]
-FrameDtype = type | pl.DataType
+FrameDtype = Union[type, pl.DataType]
 
 
 @dataclass(frozen=True)

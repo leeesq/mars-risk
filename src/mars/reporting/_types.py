@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class MarsHtmlRenderResult:
     """
     可嵌入 HTML 片段的渲染结果。

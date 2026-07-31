@@ -18,8 +18,9 @@ CONTROL_NODES: tuple[type[ast.AST], ...] = (
     ast.Try,
     ast.With,
     ast.AsyncWith,
-    ast.Match,
 )
+if hasattr(ast, "Match"):
+    CONTROL_NODES += (ast.Match,)  # type: ignore[attr-defined]
 NESTED_SCOPE_NODES: tuple[type[ast.AST], ...] = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,

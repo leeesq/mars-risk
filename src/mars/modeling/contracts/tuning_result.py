@@ -17,7 +17,7 @@ from mars.modeling.contracts._artifact_frames import (
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsModelTuningResult:
     """
     单次调参流程的结构化结果对象。

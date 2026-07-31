@@ -1,5 +1,7 @@
 """MARS 统一日志工具。"""
 
+from __future__ import annotations
+
 import logging
 import sys
 from typing import Dict, Union
@@ -190,6 +192,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     # ---------------------------------------------------------
     # 3. 格式化器配置 (Formatter Configuration)
     # ---------------------------------------------------------
+    formatter: logging.Formatter
     if HAS_COLORLOG:
         # 定义颜色映射方案：符合直觉的警示色
         log_colors: Dict[str, str] = {

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from importlib import resources
+from pathlib import Path
 
 import polars as pl
 import pytest
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
 
+import mars.reporting
 from mars.reporting import MarsBinningReport, MarsHtmlRenderResult, MarsProfileReport
 from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting._binning_html import _BinningHtmlRenderer
@@ -241,9 +242,10 @@ def test_binning_report_excel_uses_template_columns_only(tmp_path) -> None:
 
     report.write_excel(str(output_path), engine="openpyxl")
 
-    template_path = resources.files("mars.reporting").joinpath(
-        "template",
-        "mars_bin_report_linux.xlsx",
+    template_path = (
+        Path(mars.reporting.__file__).resolve().parent
+        / "template"
+        / "mars_bin_report_linux.xlsx"
     )
     template_workbook = load_workbook(template_path)
     output_workbook = load_workbook(output_path)

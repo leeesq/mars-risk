@@ -3,12 +3,30 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Run static checks against the Python 3.8 syntax target
+      run: |
+        python -m ruff check src tests scripts
+        python -m mypy src/mars
+        pydoclint src/mars
+        python scripts/check_private_docstrings.py src/mars
+
+  core:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -19,38 +37,49 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e ".[dev]"
-    - name: Run static checks
-      run: |
-        python -m ruff check src tests scripts
-        python -m mypy src/mars
-        pydoclint src/mars
-        python scripts/check_private_docstrings.py src/mars
-    - name: Run test suite
-      run: |
-        python -m pytest -q tests/test_binner.py tests/test_selector.py tests/test_evaluator.py tests/test_profiler.py tests/test_scoring.py
+    - name: Run default-dependency test suite
+      run: python -m pytest -q -m "not docs_ml and not optional_ml"
 
-  modeling:
+  legacy:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10"]
-
+        python-version: ["3.8", "3.9"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Install Python 3.8 frozen stack
+      if: matrix.python-version == '3.8'
+      run: |
+        python -m pip install --upgrade "pip<25"
+        python -m pip install -c constraints/python38.txt -e . pytest
+    - name: Install Python 3.9 dependency-boundary stack
+      if: matrix.python-version == '3.9'
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e . pytest
+    - name: Verify package imports
+      run: |
+        python -m compileall -q src/mars
+        python -c "import mars; print(mars.__version__)"
+    - name: Run base public-API test suite
+      run: python -m pytest -q -m "not docs_ml and not optional_ml"
+
+  modeling:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e ".[dev,ml,tuning]"
-    - name: Run static checks
-      run: |
-        python -m ruff check src tests scripts
-        python -m mypy src/mars
-        pydoclint src/mars
-        python scripts/check_private_docstrings.py src/mars
     - name: Run modeling test suite
       run: |
-        python -m pytest -q tests/test_modeling_slicer.py tests/test_modeling_tuner.py tests/test_modeling_evaluator.py tests/test_modeling_testbench.py tests/test_modeling_pipeline.py
+        python -m pytest -q tests/test_modeling_slicer.py tests/test_modeling_tuner.py tests/test_modeling_evaluator.py tests/test_modeling_testbench.py tests/test_modeling_pipeline.py tests/test_pipeline.py tests/test_selector.py

@@ -1,5 +1,7 @@
 """MARS 特征分箱评估模块。"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union
 
@@ -7,6 +9,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from mars._compat import polars_is_in, remove_suffix
 from mars.analysis._evaluation.aggregation import (
     aggregate_basic_stats,
     build_missing_by_day_table,
@@ -366,7 +369,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             expected_bin_cols = {f"{feature}_bin" for feature in target_features}
             missing_bin_cols = sorted(expected_bin_cols - set(benchmark_binned.columns))
             if missing_bin_cols:
-                failed_features = [col.removesuffix("_bin") for col in missing_bin_cols]
+                failed_features = [remove_suffix(col, "_bin") for col in missing_bin_cols]
                 fit_failures = getattr(active_binner, "fit_failures_", {})
                 raise ValueError(
                     "`benchmark_df` could not produce bins for active features "
@@ -699,7 +702,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         override_features = feature_expected_dist.get_column("feature").unique().to_list()
         retained_default = default_expected_dist.filter(
-            ~pl.col("feature").is_in(pl.Series(override_features).implode())
+            ~polars_is_in(pl.col("feature"), pl.Series(override_features))
         )
         return pl.concat([retained_default, feature_expected_dist], how="vertical_relaxed")
 
@@ -977,7 +980,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         risk_corr_reference_table: pl.DataFrame | None = None,
         monitor_metrics_groups: pl.DataFrame | None = None,
         monitor_metrics_total: pl.DataFrame | None = None,
-    ) -> "MarsBinningReport":
+    ) -> MarsBinningReport:
         """
         构建评估报告的明细、汇总与趋势数据。
 

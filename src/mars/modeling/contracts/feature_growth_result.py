@@ -12,7 +12,7 @@ from mars.modeling.artifacts import read_json, write_json
 from mars.modeling.contracts.tuning_result import MarsModelTuningResult
 
 
-@dataclass(slots=True)
+@dataclass
 class MarsFeatureGrowthResult:
     """
     逐步增加特征调参的结构化结果。

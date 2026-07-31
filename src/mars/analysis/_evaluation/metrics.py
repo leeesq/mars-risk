@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
+from mars._compat import polars_is_in
 from mars.compute import (
     OrderedMetricSortBy,
     amount_distribution_exprs,
@@ -57,7 +58,7 @@ def ensure_woe_info(binner: MarsBinnerBase, group_stats_raw: pl.DataFrame) -> No
 
     logger.debug("Calculating missing WOEs for %s features.", len(missing_woe_features))
     target_stats = group_stats_raw.filter(
-        pl.col("feature").is_in(pl.Series(missing_woe_features).implode())
+        polars_is_in(pl.col("feature"), pl.Series(missing_woe_features))
     )
     woe_df = (
         target_stats
@@ -93,7 +94,6 @@ def ensure_woe_info(binner: MarsBinnerBase, group_stats_raw: pl.DataFrame) -> No
         woe_data["feature"],
         woe_data["bin_index"],
         woe_data["woe"],
-        strict=False,
     ):
         if bin_index is not None and not (isinstance(bin_index, float) and np.isnan(bin_index)):
             temp_woe_map[str(feature)][int(bin_index)] = float(woe)
@@ -114,7 +114,8 @@ def calculate_metrics_from_stats(
     """使用 compute 表达式 bundle 计算分箱指标。"""
     effective_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
     woe_df = build_woe_table_from_mapping(binner.bin_woes_)
-    working_df = stats_df
+    working_df = stats_df.with_columns(pl.col("bin_index").cast(pl.Int16))
+    expected_dist = expected_dist.with_columns(pl.col("bin_index").cast(pl.Int16))
     if "observed_count" not in working_df.columns:
         working_df = working_df.with_columns(pl.col("count").alias("observed_count"))
 

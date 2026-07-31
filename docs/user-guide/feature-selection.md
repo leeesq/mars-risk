@@ -29,8 +29,9 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 ## 基准样本
 
 `MarsStatsSelector.fit(..., benchmark_df=...)` 使用基准数据拟合粗筛和精筛分箱，并构造 PSI expected
-distribution。缺失率、IV、Lift、RC 和相关性仍在当前 `df` 上计算，因此当前数据必须包含至少两个
-有效 target 类别。
+distribution。选择器采用双样本口径：质量、缺失率、分布和 PSI 使用完整 `df`；监督分箱、IV、
+Lift、RC 和 WOE 相关性只使用 `df` 中 target 非空的已表现样本。当前数据仍必须包含至少两个
+有效 target 类别；target 为空的最新未表现样本不会稀释标签类指标或 WOE 相关性。
 
 Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时，需要再次传入同一
 `benchmark_df` 才能复现基准口径。

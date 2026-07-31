@@ -37,7 +37,7 @@ def build_logistic_diagnostics(strategy: Any, model: Any) -> dict[str, pd.DataFr
         bic = np.nan
 
     rows = []
-    for output_feature, model_feature in zip(strategy.features, strategy.model_features, strict=False):
+    for output_feature, model_feature in zip(strategy.features, strategy.model_features):
         coef = float(params.get(model_feature, np.nan))
         rows.append(
             {

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from mars._compat import polars_is_in
 from mars.core.constants import FLOAT_TOLERANCE
 from mars.utils.logger import logger
 
@@ -344,7 +345,12 @@ class MarsLiteOptBinner(MarsBinnerBase):
 
         invalid_values = (
             y_checked
-            .filter(~y_checked.is_in(pl.Series([0, 1, False, True], strict=False).implode()))
+            .filter(
+                ~polars_is_in(
+                    y_checked,
+                    pl.Series([0, 1, False, True], strict=False),
+                )
+            )
             .unique()
             .head(5)
             .to_list()
@@ -420,7 +426,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
             if series.dtype in {pl.Float32, pl.Float64}:
                 valid_mask &= ~series.is_nan()
             if safe_exclude:
-                valid_mask &= ~series.is_in(pl.Series(safe_exclude).implode())
+                valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
             clean_series = series.filter(valid_mask)
             if clean_series.len() == 0 or clean_series.n_unique() <= 1:

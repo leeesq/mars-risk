@@ -6,6 +6,7 @@ from typing import Any
 
 import polars as pl
 
+from mars._compat import polars_is_in
 from mars.analysis._profiling.types import (
     DEFAULT_DQ_METRICS,
     DEFAULT_PROFILE_METRICS,
@@ -104,7 +105,7 @@ def metric_expr(context: ProfileRunContext, options: ProfileComputeOptions, col:
 
     exclude_vals = excluded_values(context, col, options)
     if exclude_vals:
-        keep_mask &= ~raw_col.is_in(pl.Series(exclude_vals).implode())
+        keep_mask &= ~polars_is_in(raw_col, pl.Series(exclude_vals))
 
     clean_col = raw_col.filter(keep_mask)
     mapper: dict[str, pl.Expr] = {

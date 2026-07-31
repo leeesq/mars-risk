@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 
 import numpy as np
@@ -33,6 +35,7 @@ def _linear_selector_df() -> pd.DataFrame:
     return pd.DataFrame({"x1": x1, "x2": x2, "x3": x3, "x4": x4, "target": target})
 
 
+@pytest.mark.optional_ml
 def test_linear_selector_filters_corr_vif_and_stepwise():
     df = _linear_selector_df()
     selector = MarsLinearSelector(
@@ -179,7 +182,7 @@ def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):
             for row in report.select(["feature", "data_source"]).unique().to_dicts()
         }
     else:
-        source_map = dict(zip(report["feature"], report["data_source"], strict=False))
+        source_map = dict(zip(report["feature"], report["data_source"]))
 
     assert source_map["income"] == "EXT_SOURCE_1"
     assert source_map["utilization"] == "UNMAPPED"
@@ -349,6 +352,55 @@ def test_stats_selector_handles_notebook_mock_data_with_group_context() -> None:
     assert "black_feature" not in selector.selected_features_
     assert "high_missing" not in selector.selected_features_
     assert "white_feature" in set(report["feature"].to_list())
+
+
+@pytest.mark.parametrize("frame_kind", ["polars", "pandas"])
+def test_stats_selector_corr_uses_only_observed_target_rows(frame_kind: str) -> None:
+    rng = np.random.default_rng(2030)
+    observed_rows = 240
+    unobserved_rows = 480
+    observed_feature = rng.normal(size=observed_rows)
+    event_probability = 1.0 / (1.0 + np.exp(-1.2 * observed_feature))
+    observed_target = rng.binomial(1, event_probability)
+    frame_data = {
+        "x1": np.concatenate([observed_feature, rng.normal(size=unobserved_rows)]),
+        "x2": np.concatenate([observed_feature, rng.normal(size=unobserved_rows)]),
+        "target": [int(value) for value in observed_target] + [None] * unobserved_rows,
+    }
+    df: pl.DataFrame | pd.DataFrame
+    if frame_kind == "polars":
+        df = pl.DataFrame(frame_data)
+    else:
+        df = pd.DataFrame(frame_data)
+
+    selector = MarsStatsSelector(
+        skip_rough_scan=True,
+        iv_thr=-1.0,
+        lift_thr=None,
+        psi_thr=None,
+        rc_thr=None,
+        corr_thr=0.8,
+        binning_params={
+            "n_bins": 4,
+            "n_prebins": 12,
+            "min_bin_size": 0.05,
+            "min_bin_n_event": 1,
+            "time_limit": 1,
+            "n_jobs": 1,
+        },
+        n_jobs=1,
+    )
+
+    selector.fit(df, target="target", features=["x1", "x2"])
+    decision_report = selector.get_report()
+    if isinstance(decision_report, pd.DataFrame):
+        decision_report = pl.from_pandas(decision_report)
+    corr_decisions = decision_report.filter(pl.col("stage") == "Corr_Filter")
+
+    assert len(selector.selected_features_) == 1
+    assert corr_decisions.filter(pl.col("status") == "Dropped").height == 1
+    assert selector._stability_report is not None
+    assert selector._stability_report.report_meta["row_count"] == observed_rows + unobserved_rows
 
 
 def test_stats_selector_rough_bins_use_benchmark_but_metrics_use_df() -> None:

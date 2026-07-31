@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import importlib
 import warnings
 from datetime import datetime, timedelta
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -1233,9 +1234,10 @@ def test_evaluation_report_excel_uses_template_headers_for_detail_sheet(
 
     report.write_excel(str(output_path), engine="openpyxl")
 
-    template_path = resources.files("mars.reporting").joinpath(
-        "template",
-        "mars_bin_report_linux.xlsx",
+    template_path = (
+        Path(mars.reporting.__file__).resolve().parent
+        / "template"
+        / "mars_bin_report_linux.xlsx"
     )
     template_workbook = load_workbook(template_path)
     try:
@@ -1304,9 +1306,10 @@ def test_evaluation_report_excel_raises_when_template_has_unknown_detail_column(
         method="quantile",
         n_bins=3,
     )
-    template_path = resources.files("mars.reporting").joinpath(
-        "template",
-        "mars_bin_report_linux.xlsx",
+    template_path = (
+        Path(mars.reporting.__file__).resolve().parent
+        / "template"
+        / "mars_bin_report_linux.xlsx"
     )
     custom_template_path = tmp_path / "custom_template.xlsx"
     custom_template_path.write_bytes(template_path.read_bytes())

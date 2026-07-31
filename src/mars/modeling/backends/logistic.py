@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Mapping, Sequence, cast
+from typing import Any, Literal, Mapping, Sequence, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -146,7 +146,10 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     def _resolve_binner(self) -> MarsNativeBinner | MarsOptimalBinner | MarsLiteOptBinner:
         """返回用户传入或内部构建的 LR WOE 分箱器。"""
         if self.lr_binner is not None:
-            return cast(MarsNativeBinner | MarsOptimalBinner | MarsLiteOptBinner, self.lr_binner)
+            return cast(
+                Union[MarsNativeBinner, MarsOptimalBinner, MarsLiteOptBinner],
+                self.lr_binner,
+            )
 
         kwargs = dict(self.lr_binner_kwargs)
         if self.lr_binning_type == "optimal":
@@ -201,7 +204,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         coefficients = np.ravel(model.estimator.coef_)
         importance_map = {
             feature: float(abs(coef))
-            for feature, coef in zip(self.features, coefficients, strict=False)
+            for feature, coef in zip(self.features, coefficients)
         }
         return _build_importance_table(
             model_type="lr",

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 
 import numpy as np
@@ -380,6 +382,121 @@ def test_optimal_binner_uses_native_fallback_when_constraints_fail() -> None:
     assert len(cuts) <= binner.n_bins + 1
     assert len(cuts) < binner.n_prebins
     assert "native fallback applied" in binner.fit_failures_["score"]
+
+
+def test_optimal_binner_batches_native_fallback_for_all_failed_features(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rng = np.random.default_rng(2031)
+    features = [f"x{index}" for index in range(4)]
+    df = pl.DataFrame({feature: rng.normal(size=120) for feature in features})
+    target = pl.Series("target", rng.integers(0, 2, size=120))
+    native_fit_calls: list[tuple[str, ...]] = []
+    original_fit = MarsNativeBinner.fit
+
+    def _count_native_fit(
+        self: MarsNativeBinner,
+        X: pl.DataFrame | pd.DataFrame,
+        y: pl.Series | pd.Series | np.ndarray | list[object] | None = None,
+        *,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> MarsNativeBinner:
+        native_fit_calls.append(tuple(features or []))
+        return original_fit(
+            self,
+            X,
+            y,
+            features=features,
+            cat_features=cat_features,
+        )
+
+    monkeypatch.setattr(MarsNativeBinner, "fit", _count_native_fit)
+    binner = MarsOptimalBinner(
+        n_bins=3,
+        min_n_bins=4,
+        min_bin_size=0.3,
+        min_bin_n_event=1,
+        n_prebins=20,
+        n_jobs=1,
+    )
+    expected_binner = MarsNativeBinner(
+        method="quantile",
+        n_bins=3,
+        min_bin_size=0.3,
+        merge_small_bins=True,
+        remove_empty_bins=False,
+        n_jobs=1,
+    )
+
+    binner.fit(df, target, features=features)
+    original_fit(expected_binner, df, target, features=features)
+
+    assert native_fit_calls == [tuple(features), tuple(features)]
+    assert set(binner.fit_failures_) == set(features)
+    for feature in features:
+        assert np.allclose(binner.bin_cuts_[feature], expected_binner.bin_cuts_[feature])
+
+
+def test_optimal_binner_batches_only_failed_features_after_mixed_solver_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = np.linspace(0.0, 1.0, 120)
+    df = pl.DataFrame(
+        {
+            "stable": values,
+            "sparse": [*values[:30], *([None] * 90)],
+        }
+    )
+    target = pl.Series("target", np.tile([0, 1], 60))
+    native_fit_calls: list[tuple[str, ...]] = []
+    original_fit = MarsNativeBinner.fit
+
+    def _count_native_fit(
+        self: MarsNativeBinner,
+        X: pl.DataFrame | pd.DataFrame,
+        y: pl.Series | pd.Series | np.ndarray | list[object] | None = None,
+        *,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> MarsNativeBinner:
+        native_fit_calls.append(tuple(features or []))
+        return original_fit(
+            self,
+            X,
+            y,
+            features=features,
+            cat_features=cat_features,
+        )
+
+    class _SuccessfulOptimalBinning:
+        """为满足样本约束的特征返回稳定切点。"""
+
+        def __init__(self, **_: object) -> None:
+            self.status = "OPTIMAL"
+            self.splits = np.array([0.5])
+
+        def fit(self, _values: np.ndarray, _target: np.ndarray) -> None:
+            return None
+
+    monkeypatch.setattr(MarsNativeBinner, "fit", _count_native_fit)
+    binner = MarsOptimalBinner(
+        n_bins=3,
+        min_n_bins=2,
+        min_bin_size=0.3,
+        min_bin_n_event=1,
+        prebinning_method="quantile",
+        n_prebins=10,
+        n_jobs=1,
+    )
+    binner.OptimalBinning = _SuccessfulOptimalBinning
+
+    binner.fit(df, target, features=["stable", "sparse"])
+
+    assert native_fit_calls == [("stable", "sparse"), ("sparse",)]
+    assert binner.bin_cuts_["stable"] == [float("-inf"), 0.5, float("inf")]
+    assert set(binner.fit_failures_) == {"sparse"}
+    assert binner.bin_cuts_["sparse"]
 
 
 def test_optimal_binner_respects_explicit_native_fallback_params() -> None:

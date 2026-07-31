@@ -257,7 +257,7 @@ class MarsLGBStrategy(MarsBaseModelStrategy):
         importance_values = model.feature_importance(importance_type="gain")
         importance_map = {
             feature: float(value)
-            for feature, value in zip(feature_names, importance_values, strict=False)
+            for feature, value in zip(feature_names, importance_values)
         }
         return _build_importance_table(
             model_type="lgb",

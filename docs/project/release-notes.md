@@ -1,8 +1,40 @@
 ---
-description: MARS 0.0.24 的用户可见变化、兼容性说明和升级检查项。
+description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查项。
 ---
 
 # Release Notes
+
+## 0.0.26
+
+该版本将基础包的运行范围扩展到 Python 3.8–3.12，同时保持业务 public API、报告 schema
+和指标定义不变。
+
+### Python 与依赖兼容
+
+- Python 3.8 固定使用 Polars 1.8.2，并将 scikit-learn 限制在 1.3.x；仓库通过
+  `constraints/python38.txt` 固定验证栈。
+- Python 3.9 使用现代 Polars 与 scikit-learn 1.6.x；Python 3.10–3.12 延续当前现代依赖。
+- Python 3.8 已停止官方安全维护。MARS 的兼容承诺仅表示冻结栈可以运行，不延长解释器的
+  安全支持周期。
+- `ml`、`tuning`、`notebook`、`docs` 和 `dev` extras 要求 Python 3.10+；Python 3.6、3.7
+  以及 3.13+ 不在本版本支持范围内。
+
+### 实现与结果口径
+
+- 新增内部 Polars 兼容层，统一 membership 与 streaming collect 的跨版本差异。
+- KS/AUC 的前一累计分布改为“当前累计值减当前箱分布”，以兼容 Polars 1.8 的窗口表达式
+  限制；指标结果与现代 Polars 保持一致。
+- Python 3.8 语言兼容改造只涉及注解求值、dataclass、zip 和字符串后缀处理，不改变公开
+  参数、返回类型或序列化字段。
+- 特征筛选的监督指标和 WOE 相关性只使用 target 非空的已表现样本；质量、分布和 PSI 仍
+  使用全量样本。
+- Optimal Binner 的失败特征统一批量回退到 Native Binner，避免随失败特征数增长的重复拟合。
+
+### 升级检查
+
+- Python 3.8 环境按约束文件重建，不要在已有环境中强制覆盖整套依赖。
+- 使用可选建模或文档依赖时升级到 Python 3.10+。
+- 发布前同时验证 Python 3.8 冻结栈、Python 3.9 依赖边界和 Python 3.10–3.12 现代栈。
 
 ## 0.0.24
 

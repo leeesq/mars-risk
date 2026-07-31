@@ -1,5 +1,7 @@
 """内部常量和模块依赖方向的架构回归测试。"""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest

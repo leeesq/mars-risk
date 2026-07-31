@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import polars as pl
 
+from mars._compat import collect_streaming
 from mars.compute import (
     amount_stats_agg_exprs,
     binary_stats_agg_exprs,
@@ -52,7 +53,7 @@ def aggregate_basic_stats(
     result_frames: list[pl.DataFrame] = []
     for start in range(0, len(bin_cols), batch_size):
         batch_bins = bin_cols[start : start + batch_size]
-        batch_res = (
+        batch_query = (
             df_binned
             .lazy()
             .select(
@@ -68,8 +69,8 @@ def aggregate_basic_stats(
             .with_columns(pl.col("feature_bin").str.replace(r"_bin$", "").alias("feature"))
             .group_by([group_col, "feature", "bin_index"])
             .agg(agg_exprs)
-            .collect(engine="streaming")
         )
+        batch_res = collect_streaming(batch_query)
         result_frames.append(batch_res)
 
     if not result_frames:

@@ -1,5 +1,7 @@
 """MARS 最优分箱器。"""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from typing import Any, Dict, List, Literal, Tuple
 
@@ -9,6 +11,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from optbinning import OptimalBinning
 
+from mars._compat import polars_is_in
 from mars.core.constants import MIN_VARIANCE
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
@@ -196,22 +199,28 @@ class MarsOptimalBinner(MarsBinnerBase):
         fallback_params["cart_params"] = dict(cart_params) if cart_params is not None else {}
         return fallback_params
 
-    def _fit_numeric_native_fallback(
+    def _fit_numeric_native_fallbacks(
         self,
         X: pl.DataFrame,
         y: pl.Series,
-        feature: str,
-    ) -> List[float]:
-        """使用原生分箱为最优求解失败的数值特征重新生成切点。"""
-        fallback_params = self._resolve_fallback_binner_params()
+        features: list[str],
+    ) -> dict[str, list[float]]:
+        """使用单个原生分箱器为全部最优求解失败特征批量生成切点。"""
+        if not features:
+            return {}
+
+        fallback_params: dict[str, Any] = self._resolve_fallback_binner_params()
         fallback_binner = MarsNativeBinner(
             **fallback_params,
             special_values=self.special_values,
             missing_values=self.missing_values,
             n_jobs=self.n_jobs,
         )
-        fallback_binner.fit(X.select([feature]), y, features=[feature])
-        return list(fallback_binner.bin_cuts_.get(feature, []))
+        fallback_binner.fit(X.select(features), y, features=features)
+        return {
+            feature: list(fallback_binner.bin_cuts_.get(feature, []))
+            for feature in features
+        }
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -249,7 +258,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "MarsOptimalBinner":
+    ) -> MarsOptimalBinner:
         """
         拟合最优分箱器。
 
@@ -403,19 +412,17 @@ class MarsOptimalBinner(MarsBinnerBase):
         pre_binner.fit(X, y_series, features=num_cols)
         pre_cuts_map = pre_binner.bin_cuts_
 
-        # 筛选需要优化的列
+        # 先收集预分箱不可用的特征，避免在循环内重复构造回退分箱器。
         active_cols: list[str] = []
-        for col, cuts in pre_cuts_map.items():
+        fallback_reasons: dict[str, str] = {}
+        for col in num_cols:
+            cuts = pre_cuts_map.get(col, [])
             if len(cuts) > 2:
                 active_cols.append(col)
             else:
-                self.bin_cuts_[col] = self._fit_numeric_native_fallback(X, y_series, col)
-                self.fit_failures_[col] = (
-                    "Prebinning produced no usable optimization splits; native fallback applied."
+                fallback_reasons[col] = (
+                    "Prebinning produced no usable optimization splits"
                 )
-
-        if not active_cols:
-            return
 
         # 获取全局样本总数
         n_total_samples = X.height
@@ -516,7 +523,7 @@ class MarsOptimalBinner(MarsBinnerBase):
 
                 # 针对业务特殊值进行排除, 如 -999, -998
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
+                    valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
                 # 将位掩码转换为 NumPy 布尔数组, 用于 y 的快速切片
                 mask_np = valid_mask.to_numpy()
@@ -539,19 +546,34 @@ class MarsOptimalBinner(MarsBinnerBase):
                 clean_y = y_np[mask_np]
                 yield c, pre_cuts_map[c], col_np, clean_y
 
-        results = Parallel(n_jobs=self.n_jobs, backend="loky")(
-            delayed(num_worker)(c, cuts, data, y) for c, cuts, data, y in num_task_gen()
-       )
+        results: list[tuple[str, list[float] | None, str | None]] = []
+        if active_cols:
+            results = Parallel(n_jobs=self.n_jobs, backend="loky")(
+                delayed(num_worker)(c, cuts, data, y)
+                for c, cuts, data, y in num_task_gen()
+            )
 
         for col, cuts, error_msg in results:
             if cuts is None:
-                self.bin_cuts_[col] = self._fit_numeric_native_fallback(X, y_series, col)
-                self.fit_failures_[col] = f"{error_msg}; native fallback applied."
+                fallback_reasons[col] = error_msg or "Optimal binning did not return cuts"
                 continue
 
             self.bin_cuts_[col] = cuts
             if error_msg:
                 self.fit_failures_[col] = error_msg
+
+        # NativeBinner 能在一次 Polars 查询中处理宽表，因此所有失败特征统一批量回退。
+        fallback_features = [col for col in num_cols if col in fallback_reasons]
+        fallback_cuts = self._fit_numeric_native_fallbacks(
+            X,
+            y_series,
+            fallback_features,
+        )
+        for col in fallback_features:
+            self.bin_cuts_[col] = fallback_cuts.get(col, [])
+            self.fit_failures_[col] = (
+                f"{fallback_reasons[col]}; native fallback applied."
+            )
 
     def _fit_categorical_impl(self, X: pl.DataFrame, y_np: np.ndarray, cat_cols: List[str]) -> None:
         """
@@ -611,7 +633,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                     top_vals = top_k_df.get_column(c)
 
                     truncated_expr: pl.Expr = (
-                        pl.when(pl.col(c).is_in(top_vals.implode()))
+                        pl.when(polars_is_in(pl.col(c), top_vals))
                         .then(pl.col(c))
                         .otherwise(pl.lit("__Mars_Other_Pre__"))
                     )
@@ -623,7 +645,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 # 过滤条件: 非空 且 不在排除列表中
                 valid_mask = series.is_not_null()
                 if safe_exclude:
-                    valid_mask &= (~series.is_in(pl.Series(safe_exclude).implode()))
+                    valid_mask &= ~polars_is_in(series, pl.Series(safe_exclude))
 
                 # 执行过滤
                 clean_series = series.filter(valid_mask)

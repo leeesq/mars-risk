@@ -6,6 +6,7 @@ High-performance Risk Modeling Toolkit powered by Polars
 Copyright (c) 2026 Christian and Tina
 """
 
+from . import _compat as _compat
 from .analysis import (
     MarsBinEvaluator,
     MarsDataProfiler,
@@ -41,7 +42,7 @@ from .reporting import MarsBinningReport, MarsProfileReport
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.25"
+__version__ = "0.0.26"
 
 _BANNER = rf"""
     __________________________________________________________________________

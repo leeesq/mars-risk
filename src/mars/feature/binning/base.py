@@ -1,5 +1,7 @@
 """MARS 分箱器共享基类。"""
 
+from __future__ import annotations
+
 import gc
 import multiprocessing
 from collections import defaultdict
@@ -9,6 +11,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
+from mars._compat import collect_streaming
 from mars.compute import (
     OrderedMetricSortBy,
     binary_distribution_exprs,
@@ -133,7 +136,7 @@ class MarsBinnerBase(MarsTransformer):
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> "MarsBinnerBase":
+    ) -> MarsBinnerBase:
         """
         拟合分箱器并缓存本次分箱特征范围。
 
@@ -334,7 +337,7 @@ class MarsBinnerBase(MarsTransformer):
         return pl.DataFrame(rows)
 
     @classmethod
-    def from_dict(cls: type["MarsBinnerBase"], data: Dict[str, Any]) -> "MarsBinnerBase":
+    def from_dict(cls: type[MarsBinnerBase], data: Dict[str, Any]) -> MarsBinnerBase:
         """
         从字典恢复分箱器实例。
 
@@ -919,7 +922,7 @@ class MarsBinnerBase(MarsTransformer):
             batch_cols = bin_cols[i : i + batch_size]
 
             # 构建仅针对当前批次的查询计划，并在聚合后立即 collect() 物化为极小的表
-            batch_stats = (
+            batch_query = (
                 X_bin_lazy
                 .select([y_name] + batch_cols)
                 .unpivot(
@@ -934,11 +937,9 @@ class MarsBinnerBase(MarsTransformer):
                     pl.len().alias("count"),
                     pl.col(y_name).sum().alias("bad")
                 ])
-                .with_columns(
-                    pl.col("feature").str.replace(r"_bin$", "")
-                )
-                .collect(engine="streaming")
+                .with_columns(pl.col("feature").str.replace(r"_bin$", ""))
             )
+            batch_stats = collect_streaming(batch_query)
             agg_results.append(batch_stats)
 
         if not agg_results:
@@ -1023,7 +1024,6 @@ class MarsBinnerBase(MarsTransformer):
                 woe_data["feature"],
                 woe_data["bin_index"],
                 woe_data["woe"],
-                strict=False,
             ):
                 valid_bin_index = bin_index is not None and not (
                     isinstance(bin_index, float) and np.isnan(bin_index)
@@ -1191,7 +1191,7 @@ class MarsBinnerBase(MarsTransformer):
 
         return stats_df
 
-    def prune(self, keep_features: List[str]) -> "MarsBinnerBase":
+    def prune(self, keep_features: List[str]) -> MarsBinnerBase:
         """
         裁剪分箱器内部状态，仅保留指定特征。
 
