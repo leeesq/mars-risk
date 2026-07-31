@@ -231,6 +231,27 @@ def test_python_version_dependency_markers_cover_supported_range() -> None:
             assert str(active[0].specifier) == expected_spec
 
 
+def test_default_dependencies_include_pandas_styler_runtime() -> None:
+    """默认安装必须包含基础报告和 selector 所需的 Pandas Styler 运行时。"""
+    with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:
+        requirements = [
+            Requirement(value)
+            for value in tomllib.load(file)["project"]["dependencies"]
+        ]
+
+    jinja_requirements = [
+        requirement for requirement in requirements if requirement.name == "jinja2"
+    ]
+    assert len(jinja_requirements) == 1
+    assert str(jinja_requirements[0].specifier) == ">=3.1.2"
+
+    python38_constraints = (PROJECT_ROOT / "constraints" / "python38.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "jinja2==3.1.6" in python38_constraints
+    assert "markupsafe==2.1.5" in python38_constraints
+
+
 def test_readme_restores_dynamic_python_and_download_badges() -> None:
     """README badge 应使用动态 PyPI/PePy 数据并保持约定顺序。"""
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")

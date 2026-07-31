@@ -6,6 +6,9 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
 
 ## 0.0.26
 
+发布依赖补充 `Jinja2>=3.1.2`，确保默认安装即可使用基础报告、特征筛选器和
+`Pandas Styler` 展示接口；Python 3.8 冻结栈使用 Jinja2 3.1.6 与 MarkupSafe 2.1.5。
+
 该版本将基础包的运行范围扩展到 Python 3.8–3.12，同时保持业务 public API、报告 schema
 和指标定义不变。
 
