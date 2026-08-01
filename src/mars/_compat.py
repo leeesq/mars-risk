@@ -3,16 +3,9 @@
 from __future__ import annotations
 
 import re
-import sys
-from importlib import import_module
 from typing import Any, Callable, cast
 
 import polars as pl
-
-# Python 3.8/Windows 下，OptBinning 会先加载 scikit-learn 再加载 OSQP，二者的原生
-# 运行库顺序会触发 access violation。MARS 顶层在其他业务模块之前导入本兼容模块。
-if sys.platform == "win32" and sys.version_info < (3, 9):
-    import_module("osqp")
 
 
 def _polars_version() -> tuple[int, int]:

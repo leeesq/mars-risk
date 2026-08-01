@@ -8,7 +8,6 @@ from typing import Any, List, Union
 import pandas as pd
 
 from mars.compute import to_pandas_frame
-from mars.utils.logger import logger
 
 
 class _ProfileExcelWriter:
@@ -44,6 +43,15 @@ class _ProfileExcelWriter:
         -----
         该方法依赖 ``xlsxwriter`` 导出带样式的多工作表 Excel 文件。
 
+        Raises
+        ------
+        ImportError
+            基础安装缺少 ``xlsxwriter`` 时抛出。
+        ValueError
+            报告没有任何可导出内容时抛出。
+        RuntimeError
+            Excel 渲染或写入失败时抛出。
+
         Examples
         --------
         >>> import polars as pl
@@ -66,20 +74,33 @@ class _ProfileExcelWriter:
         """
         # 1. 依赖检查
         if importlib.util.find_spec("xlsxwriter") is None:
-            logger.error(
+            raise ImportError(
                 "'xlsxwriter' is included in the base mars-risk installation; "
                 "reinstall mars-risk if missing."
             )
-            return
 
         try:
             with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
+                wrote_any = False
+                if self.report_meta:
+                    metadata = pd.DataFrame(
+                        [
+                            {
+                                "key": key,
+                                "value": value if isinstance(value, str) else repr(value),
+                            }
+                            for key, value in sorted(self.report_meta.items())
+                        ]
+                    )
+                    metadata.to_excel(writer, sheet_name="Metadata", index=False)
+                    wrote_any = True
                 #--------------------------------------------------------
                 # 1. 导出概览页 (Overview)
                 #--------------------------------------------------------
-                overview_styler = self.show_overview()
-                if overview_styler is not None:
+                if not to_pandas_frame(self.overview_table).empty:
+                    overview_styler = self.show_overview()
                     overview_styler.to_excel(writer, sheet_name="Overview", index=False)
+                    wrote_any = True
 
                 #--------------------------------------------------------
                 # 2. 统一导出所有趋势页 (Trend & DQ)
@@ -102,6 +123,7 @@ class _ProfileExcelWriter:
                         sheet_name = f"{prefix}_{metric.capitalize()}"[:31]
 
                         styler.to_excel(writer, sheet_name=sheet_name, index=False)
+                        wrote_any = True
 
                         # 确保条件格式锚定的列与导出的表完全吻合
                         self._apply_excel_formatting(
@@ -111,14 +133,24 @@ class _ProfileExcelWriter:
                             sort_ascending=sort_ascending
                         )
 
+                for name, comparison in self.comparison_tables.items():
+                    sheet_name = f"Compare_{name.capitalize()}"[:31]
+                    to_pandas_frame(comparison).to_excel(
+                        writer,
+                        sheet_name=sheet_name,
+                        index=False,
+                    )
+                    wrote_any = True
+
+                if not wrote_any:
+                    raise ValueError("Profile report contains no generated content to export.")
+
                 # 3. 自动列宽调整
                 for sheet in writer.sheets.values():
                     sheet.autofit()
 
-            logger.info("Report exported successfully.")
-
-        except Exception as e:
-            logger.error(f"Failed to export Excel: {e}", exc_info=True)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to export profile Excel to '{path}'.") from exc
 
     def _apply_excel_formatting(
         self: Any,
@@ -195,15 +227,15 @@ class _ProfileExcelWriter:
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None
-    ) -> pd.io.formats.style.Styler | None:
+    ) -> pd.io.formats.style.Styler:
         """生成统一的 Pandas Styler 样式对象。"""
         if df_input is None:
-            return None
+            raise ValueError("Requested profile table was not generated.")
         df: pd.DataFrame = to_pandas_frame(df_input)
         if sort_by is not None:
             df = df.sort_values(by=sort_by, ascending=sort_ascending) # 使用统一参数进行底层排序
         if df.empty:
-            return None
+            raise ValueError("Requested profile table is empty.")
 
         # 元数据排除列表
         exclude_meta: List[str] = [

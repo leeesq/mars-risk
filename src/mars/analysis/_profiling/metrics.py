@@ -8,6 +8,7 @@ import polars as pl
 
 from mars._compat import polars_is_in
 from mars.analysis._profiling.types import (
+    COMPARISON_METRICS,
     DEFAULT_DQ_METRICS,
     DEFAULT_PROFILE_METRICS,
     DEFAULT_STAT_METRICS,
@@ -35,6 +36,7 @@ def normalize_profile_metrics(metrics: list[str] | None, *, require_metrics: boo
     dq_metrics: list[str] = []
     stat_metrics: list[str] = []
     unknown_metrics: list[str] = []
+    comparison_metrics: list[str] = []
     for metric in requested_metrics:
         metric_name = str(metric)
         if metric_name in dq_supported:
@@ -43,14 +45,21 @@ def normalize_profile_metrics(metrics: list[str] | None, *, require_metrics: boo
         elif metric_name in stat_supported:
             if metric_name not in stat_metrics:
                 stat_metrics.append(metric_name)
+        elif metric_name in COMPARISON_METRICS:
+            if metric_name not in comparison_metrics:
+                comparison_metrics.append(metric_name)
         else:
             unknown_metrics.append(metric_name)
 
     if unknown_metrics:
-        supported = sorted(dq_supported | stat_supported)
+        supported = sorted(dq_supported | stat_supported | set(COMPARISON_METRICS))
         raise ValueError(f"Unknown metrics: {unknown_metrics}. Supported metrics: {supported}")
 
-    return ProfileMetricSelection(dq_metrics=dq_metrics, stat_metrics=stat_metrics)
+    return ProfileMetricSelection(
+        dq_metrics=dq_metrics,
+        stat_metrics=stat_metrics,
+        comparison_metrics=comparison_metrics,
+    )
 
 
 def is_numeric_feature(context: ProfileRunContext, col: str) -> bool:

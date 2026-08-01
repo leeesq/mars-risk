@@ -27,6 +27,15 @@ Modeling 的 artifact 保存调参历史、运行配置、模型、重要性和�
 Artifact 是实验复现和模型交付材料，不等同于 report。Report 回答“本次结果如何”，artifact
 回答“本次模型如何产生并如何恢复”。
 
+## Binner JSON Artifact
+
+已拟合分箱规则的正式跨版本格式是 `schema_version=1` JSON artifact，通过
+`save_json()` 和 `MarsBinnerBase.load_json()` 写入、恢复。它保存构造配置、分箱规则、
+WOE、趋势状态和拟合诊断，不保存训练数据缓存。
+
+Pickle/joblib 可用于同一受控 Python 环境中的便利存储，但不是分箱规则的跨版本承诺。
+旧 `{params, state}` dict/JSON 不兼容 0.0.26 artifact，不应为它建立自动降级路径。
+
 ## 生命周期建议
 
 - Notebook 探索可以只保留返回对象。

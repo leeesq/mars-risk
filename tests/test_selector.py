@@ -154,10 +154,8 @@ def test_importance_selector_shap_method(sample_credit_pd):
 
 @pytest.mark.parametrize("method", ["rfe", "sfm"])
 def test_importance_selector_not_implemented_methods_raise(sample_credit_pd, method: str):
-    selector = MarsImportanceSelector(method=method)
-
-    with pytest.raises(NotImplementedError, match=method):
-        selector.fit(sample_credit_pd.drop(columns=["target"]), sample_credit_pd["target"])
+    with pytest.raises(ValueError, match="importance.*shap"):
+        MarsImportanceSelector(method=method)
 
 
 def test_stats_selector_records_feature_data_source_in_report(sample_credit_df):

@@ -162,7 +162,7 @@ class MarsLinearSelector(_MarsXYSelector):
         strengths: dict[str, float] = {}
         for feature in features:
             corr = pd.Series(X[feature]).corr(y, method="spearman")
-            strengths[feature] = 0.0 if pd.isna(corr) else float(abs(corr))
+            strengths[feature] = float("nan") if pd.isna(corr) else float(abs(corr))
         return strengths
 
     def _apply_corr_filter(
@@ -400,7 +400,7 @@ class MarsLinearSelector(_MarsXYSelector):
         if self.max_features is None or len(features) <= int(self.max_features):
             return list(features)
         strengths = self._target_strength(X, y, features)
-        ranked = sorted(features, key=lambda feature: strengths.get(feature, 0.0), reverse=True)
+        ranked = sorted(features, key=lambda feature: strengths[feature], reverse=True)
         selected = ranked[: int(self.max_features)]
         selected_set = set(selected)
         for feature in features:
@@ -410,7 +410,7 @@ class MarsLinearSelector(_MarsXYSelector):
                     status="Dropped",
                     stage="max_features",
                     reason="rank_cap",
-                    value=float(strengths.get(feature, 0.0)),
+                    value=float(strengths[feature]),
                     desc=f"Feature rank exceeded max_features={self.max_features}.",
                 )
         return [feature for feature in features if feature in selected_set]
@@ -450,6 +450,23 @@ class MarsLinearSelector(_MarsXYSelector):
         self.report_records_ = []
         X_numeric, target_series, features = self._prepare_xy(X, y, features)
         self.n_features_in_ = len(features)
+
+        target_strengths = self._target_strength(X_numeric, target_series, features)
+        unavailable_features = {
+            feature
+            for feature, value in target_strengths.items()
+            if not np.isfinite(value)
+        }
+        for feature in features:
+            if feature in unavailable_features:
+                self._register_decision(
+                    feature,
+                    status="Dropped",
+                    stage="target_strength",
+                    reason="metric_unavailable",
+                    desc="Feature-target association could not be computed.",
+                )
+        features = [feature for feature in features if feature not in unavailable_features]
 
         selected = self._apply_corr_filter(X_numeric, target_series, features)
         if self.enable_corr_filter:

@@ -36,7 +36,11 @@ class MarsLogisticModel:
 
         if self.binner is None:
             raise ValueError("LR WOE mode requires a fitted binner attached to the model.")
-        woe_frame = self.binner.transform(frame.loc[:, self.features], return_type="woe")
+        woe_frame = self.binner.transform(
+            frame.loc[:, self.features],
+            features=self.features,
+            return_type="woe",
+        )
         woe_frame = to_pandas_frame(woe_frame)
         missing_woe = sorted(set(self.model_features).difference(woe_frame.columns))
         if missing_woe:

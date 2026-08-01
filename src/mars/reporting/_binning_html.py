@@ -783,7 +783,7 @@ class _BinningHtmlRenderer:
                     f'<h4>{html.escape(feature)}</h4>{image_html}</article>'
                 )
         except Exception as exc:
-            logger.warning("HTML chart rendering skipped due to error: %s", exc)
+            raise RuntimeError("HTML chart rendering failed.") from exc
 
         for y_val in chart_y_values:
             chart_cards = chart_cards_by_target[y_val]

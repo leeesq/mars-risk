@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import json
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -63,7 +67,15 @@ def test_binner_public_signatures_expose_user_visible_parameters():
     native_fit_sig = inspect.signature(MarsNativeBinner.fit)
     optimal_fit_sig = inspect.signature(MarsOptimalBinner.fit)
 
-    assert list(transform_sig.parameters) == ["self", "X", "return_type", "woe_batch_size", "lazy"]
+    assert list(transform_sig.parameters) == [
+        "self",
+        "X",
+        "features",
+        "on_missing",
+        "return_type",
+        "woe_batch_size",
+        "lazy",
+    ]
     assert transform_sig.parameters["return_type"].kind is inspect.Parameter.KEYWORD_ONLY
     assert transform_sig.parameters["woe_batch_size"].default == 200
     assert transform_sig.parameters["lazy"].default is False
@@ -232,7 +244,11 @@ def test_native_binner_handles_notebook_numeric_edge_cases() -> None:
     binner.fit(df, target)
 
     transformed = binner.transform(df, return_type="index")
-    labels = binner.transform(df.select(["all_null", "special_num"]), return_type="label")
+    labels = binner.transform(
+        df.select(["all_null", "special_num"]),
+        features=["all_null", "special_num"],
+        return_type="label",
+    )
 
     assert len(binner.bin_cuts_["repeat_num"]) == len(set(binner.bin_cuts_["repeat_num"]))
     assert set(transformed["all_null_bin"].to_list()) == {-1}
@@ -541,6 +557,9 @@ def test_optimal_binner_serializes_fallback_binner_params() -> None:
         fallback_binner_params={"method": "uniform", "n_bins": 3},
     )
 
+    frame = pl.DataFrame({"x": list(range(20))})
+    target = pl.Series("target", [0] * 10 + [1] * 10)
+    binner.fit(frame, target)
     restored = MarsOptimalBinner.from_dict(binner.to_dict())
 
     assert isinstance(restored, MarsOptimalBinner)
@@ -597,3 +616,91 @@ def test_profile_bin_performance_supports_bin_index_ordered_metrics() -> None:
     special_row = index_stats.filter(pl.col("bin_index") < 0).row(0, named=True)
     assert special_row["bin_ks"] is None
     assert index_stats["KS"].max() != pytest.approx(woe_stats["KS"].max())
+
+
+def test_binner_strict_subset_transform_and_fit_report() -> None:
+    frame = pl.DataFrame({"x": [1, 2, 3, 4], "y": [10, 20, 30, 40]})
+    binner = MarsNativeBinner(n_bins=2).fit(frame)
+
+    with pytest.raises(ValueError, match="missing required features"):
+        binner.transform(frame.select("x"))
+
+    subset = binner.transform(frame.select("x"), features=["x"])
+    ignored = binner.transform(frame.select("x"), on_missing="ignore")
+    report = binner.get_fit_report()
+
+    assert subset.columns == ["x", "x_bin"]
+    assert ignored.columns == ["x", "x_bin"]
+    assert report.columns == [
+        "feature",
+        "dtype",
+        "feature_type",
+        "status",
+        "usable",
+        "n_bins",
+        "reason",
+    ]
+    assert report["usable"].to_list() == [True, True]
+
+
+def test_binner_json_artifact_roundtrip_and_validation(tmp_path: Path) -> None:
+    frame = pl.DataFrame({"x": [1, 2, 3, 4], "cat": ["a", "b", "a", "c"]})
+    binner = MarsNativeBinner(
+        n_bins=2,
+        special_values=[
+            Decimal("-999.25"),
+            date(2026, 1, 2),
+            datetime(2026, 1, 2, 3, 4, 5),
+            np.int64(-998),
+        ],
+        n_jobs=1,
+    ).fit(frame, cat_features=["cat"])
+    artifact_path = tmp_path / "binner.json"
+
+    binner.save_json(artifact_path)
+    restored = MarsBinnerBase.load_json(artifact_path)
+
+    assert isinstance(restored, MarsNativeBinner)
+    assert restored._requested_n_jobs == 1
+    assert restored.special_values == binner.special_values
+    assert restored.transform(frame).to_dicts() == binner.transform(frame).to_dicts()
+    assert restored.get_fit_report().to_dicts() == binner.get_fit_report().to_dicts()
+    assert json.loads(artifact_path.read_text(encoding="utf-8"))["schema_version"] == 1
+
+    with pytest.raises(ValueError, match="Legacy"):
+        MarsBinnerBase.from_dict({"params": {}, "state": {}})
+    payload = binner.to_dict()
+    payload["schema_version"] = 99
+    with pytest.raises(ValueError, match="schema_version"):
+        MarsBinnerBase.from_dict(payload)
+    with pytest.raises(FileNotFoundError, match="parent directory"):
+        binner.save_json(tmp_path / "missing" / "binner.json")
+
+
+def test_binner_json_rejects_unknown_state_objects() -> None:
+    binner = MarsNativeBinner(n_bins=2).fit(pl.DataFrame({"x": [1, 2, 3, 4]}))
+    binner.special_values = [object()]
+
+    with pytest.raises(TypeError, match="does not support"):
+        binner.to_dict()
+
+
+def test_binner_strict_rule_mutation_mapping_and_woe_contracts() -> None:
+    frame = pl.DataFrame({"x": [1, 2, 3, 4], "cat": ["O'Reilly", "a", "b", "a"]})
+    binner = MarsNativeBinner(n_bins=2).fit(frame, cat_features=["cat"])
+
+    with pytest.raises(KeyError, match="unknown"):
+        binner.get_bin_mapping("unknown")
+    with pytest.raises(ValueError, match="unknown"):
+        binner.prune(["unknown"])
+    with pytest.raises(ValueError, match="at least one"):
+        binner.prune([])
+    with pytest.raises(ValueError, match="unknown"):
+        binner.update_bins({"unknown": [1.5]})
+    with pytest.raises(ValueError, match="WOE"):
+        binner.transform(frame, return_type="woe")
+    with pytest.raises(ValueError, match="WOE mapping"):
+        binner.generate_sql(return_type="woe")
+
+    sql = binner.generate_sql(features="cat", return_type="index")
+    assert "O''Reilly" in sql

@@ -39,6 +39,14 @@ class _KeepSelector(MarsBaseSelector):
         del y
         candidates = list(features or X.columns)
         self.selected_features_ = [feature for feature in candidates if feature in self._selected]
+        selected = set(self.selected_features_)
+        for feature in candidates:
+            self._register_decision(
+                feature,
+                status="Selected" if feature in selected else "Dropped",
+                stage="test_keep",
+                reason="configured test selection",
+            )
         self.n_features_in_ = len(candidates)
         self._is_fitted = True
         return self

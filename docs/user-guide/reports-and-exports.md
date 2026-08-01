@@ -26,7 +26,7 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 
 | Report | 状态 | 高价值字段 |
 | --- | --- | --- |
-| `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables` |
+| `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables`、`comparison_tables`、`report_meta` |
 | `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
 | `MarsMonitoringReport` | Experimental | 监控汇总、分箱统计、表现覆盖率和元数据 |
 | `MarsModelingReport` | Experimental | 多样本切片的汇总、明细、趋势和元数据 |
@@ -52,6 +52,10 @@ report.write_html(
 | `asset` | 强制使用相对路径图片目录，适合大报告归档 |
 
 风险趋势图和 HTML Charts 需要评估阶段已经提供有效 `time_col`。`group_col` 不能替代日期范围。
+
+`MarsProfileReport.write_html()` 始终生成无外部资源的单文件，包含 Metadata、Overview、
+DQ、Stats 和 Comparisons 页面；它不生成图表。所有 Stable 报告导出已改为严格失败：
+资源缺失、请求内容未生成或写入失败都会抛异常，不再只记日志后返回成功。
 
 ## 3. 单独复用趋势图
 

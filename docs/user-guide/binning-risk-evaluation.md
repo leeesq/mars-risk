@@ -42,7 +42,28 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 | `optimal` | 数学规划最优分箱与类别合并 | 要求 |
 
 三个分箱器都继承 `MarsBinnerBase`，共享 `transform()`、`profile_bin_performance()`、
-`to_dict()` / `from_dict()` 和 `prune()`。
+`get_fit_report()`、JSON artifact 和 `prune()`。
+
+`transform()` 默认要求输入包含全部可用规则列。只转换子集时显式传
+`features=[...]`；确实需要宽松处理时才使用 `on_missing="warn"` 或 `"ignore"`。
+`update_bins()` 对未知特征默认报错，`prune()` 和 `get_bin_mapping()` 也不再静默忽略未知名称。
+
+## 分箱诊断与 JSON artifact
+
+`get_fit_report()` 固定返回 Polars 表，包含 `feature`、`dtype`、`feature_type`、
+`status`、`usable`、`n_bins` 和 `reason`。宽表拟合可以保留成功 fallback，无规则特征
+则标记为 `failed`；全部失败会抛出 `ValueError`。
+
+```python
+binner.fit(baseline_df, target, features=features)
+fit_report = binner.get_fit_report()
+binner.save_json("artifacts/binner.json")
+restored = MarsBinnerBase.load_json("artifacts/binner.json")
+```
+
+JSON 顶层包含 `artifact_type`、`schema_version`、`binner_type`、`mars_version`、`params`
+和 `state`，当前 `schema_version=1`。这是正式跨版本规则格式；旧 `{params, state}` 载荷不兼容，
+必须用 0.0.26 重新拟合或导出。Pickle/joblib 只用于 Python 进程级便利存储。
 
 ## 输出
 
@@ -69,6 +90,7 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 - `benchmark_df` 缺少 active feature 或权重列：基准数据必须包含拟合规则所需的全部列。
 - 复用规则时仍调用 `profile_risk()`：改用 `MarsBinEvaluator.evaluate(..., binner=...)`。
 - 生成图表时没有 `time_col`：重新评估并提供原始日期列。
+- WOE 转换或 SQL 报缺少映射：使用有两个有效类别的 target 拟合并完成 WOE 统计。
 
 ## 下一步
 

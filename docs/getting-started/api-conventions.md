@@ -14,7 +14,7 @@ MARS 将稳定策略放在构造函数，将本次运行的数据和列名放在
 | 自动建箱并评估 | `profile_risk(df, ...)` | `benchmark_df` 或当前 `df` |
 | 复用固定规则评估 | `MarsBinEvaluator.evaluate(df, binner=...)` | 显式 `binner` |
 | 特征或模型监控 | `MarsMonitor.monitor(df, ...)` | `binner`、`benchmark_df` 或当前 `df` |
-| 数据画像 | `MarsDataProfiler.generate_profile(df, ...)` | 当前 `df` |
+| 数据画像 | `MarsDataProfiler.generate_profile(df, ...)` | `benchmark_df` 或当前 `df` |
 
 `profile_risk()` 不接受 `binner` 参数。需要固定或外部恢复的规则时，使用
 `MarsBinEvaluator.evaluate()`。
@@ -27,6 +27,9 @@ MARS 将稳定策略放在构造函数，将本次运行的数据和列名放在
 | 方法参数 | 本次数据、列名、分组、日期、特征范围和输出路径 | `df`、`target`、`group_col`、`time_col` |
 
 同一个对象可以服务多个数据切片，而不会依赖上一次调用留下的隐式数据上下文。
+
+Stable API 默认 fail-closed：缺列、缺少必需指标、空报告和导出失败均抛出明确异常。
+逐特征宽表任务只在诊断结构中记录了失败特征时允许部分成功；零可用结果会终止。
 
 ## 结构化结果
 

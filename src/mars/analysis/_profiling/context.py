@@ -9,7 +9,6 @@ import polars as pl
 
 from mars.analysis._profiling.types import FrameDtype, ProfileRunContext
 from mars.utils.date import MarsDate
-from mars.utils.logger import logger
 
 
 def normalize_include_dtypes(include_dtypes: FrameDtype | list[FrameDtype] | None) -> list[Any] | None:
@@ -53,20 +52,18 @@ def prepare_profile_data(
     features: list[str] | None,
     exclude_features: list[str] | None,
     include_dtypes: FrameDtype | list[FrameDtype] | None,
-    sample_frac: float | None,
+    allow_missing_features: bool = False,
 ) -> tuple[pl.DataFrame, list[str]]:
     """准备单次画像运行使用的数据副本和特征范围。"""
     df_pl = ensure_polars(df)
     if isinstance(df_pl, pl.LazyFrame):
         df_pl = df_pl.collect()
 
-    if sample_frac is not None:
-        if not 0 < sample_frac < 1:
-            raise ValueError("`sample_frac` must be in (0, 1).")
-        logger.warning("[SAMPLE] Data is sampled (frac=%s). Metrics are estimates.", sample_frac)
-        df_pl = df_pl.sample(fraction=sample_frac, shuffle=True)
-
-    candidates = list(features) if features else list(df_pl.columns)
+    requested = list(features) if features else list(df_pl.columns)
+    missing = [column for column in requested if column not in df_pl.columns]
+    if missing and not allow_missing_features:
+        raise ValueError(f"Profile features are missing from current data: {missing}.")
+    candidates = [column for column in requested if column in df_pl.columns]
     if exclude_features:
         exclude_set = set(exclude_features)
         candidates = [col for col in candidates if col not in exclude_set]
@@ -79,16 +76,25 @@ def prepare_profile_data(
             dtype_selector = cs.by_dtype(target_dtypes)
             candidates = df_pl.select(pl.col(candidates)).select(dtype_selector).columns
         except (pl.exceptions.PolarsError, TypeError, ValueError) as exc:
-            logger.warning(
-                "Type filtering failed: %s. Falling back to direct schema filtering.",
-                exc,
-            )
-            candidates = [col for col in candidates if df_pl.schema[col] in target_dtypes]
+            raise ValueError("Profile dtype filtering failed.") from exc
 
     if not candidates and (features or exclude_features or include_dtypes):
         raise ValueError("No features selected after filtering.")
 
     return df_pl, candidates
+
+
+def prepare_benchmark_data(
+    benchmark_df: pl.DataFrame | pd.DataFrame,
+) -> pl.DataFrame:
+    """转换 PSI benchmark，且不改变 profiler 的当前输出类型状态。"""
+    if isinstance(benchmark_df, pl.DataFrame):
+        return benchmark_df
+
+    try:
+        return pl.from_pandas(benchmark_df)
+    except (ImportError, TypeError, ValueError, pl.exceptions.PolarsError) as exc:
+        raise ValueError(f"`benchmark_df` could not be converted to Polars: {exc}") from exc
 
 
 def resolve_profile_group(

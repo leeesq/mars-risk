@@ -359,9 +359,17 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
 
         # 后续评估只消费分箱索引列，原始特征取值不再参与指标计算。
-        df_binned = active_binner.transform(working_df, return_type="index")
+        df_binned = active_binner.transform(
+            working_df,
+            features=target_features,
+            return_type="index",
+        )
         benchmark_binned = (
-            active_binner.transform(benchmark_prepared, return_type="index")
+            active_binner.transform(
+                benchmark_prepared,
+                features=target_features,
+                return_type="index",
+            )
             if benchmark_prepared is not None
             else None
         )

@@ -712,6 +712,11 @@ class MarsBinningReport:
         pd.io.formats.style.Styler
             样式化后的特征汇总表。
 
+        Raises
+        ------
+        ValueError
+            汇总表为空或指定特征没有匹配行时抛出。
+
         Examples
         --------
         >>> import polars as pl
@@ -737,9 +742,8 @@ class MarsBinningReport:
 
         styler = df.style.set_caption("<b>Feature Performance Summary</b>").hide(axis="index")
 
-        # 异常熔断：如果筛选后为空，直接返回表框架，避免底图渲染报错
         if df.empty:
-            return styler
+            raise ValueError("Requested binning summary contains no matching rows.")
 
         if "psi_max" in df.columns:
             styler = styler.background_gradient(cmap="RdYlGn_r", subset=["psi_max"], vmin=0, vmax=0.25)
@@ -842,7 +846,7 @@ class MarsBinningReport:
         styler = styler.set_properties(subset=["feature"], **{'text-align': 'left', 'font-weight': 'bold'})
 
         if df.empty:
-            return styler # 如果筛选后为空，直接返回空表格框架，避免报错
+            raise ValueError("Requested binning trend contains no matching rows.")
 
         # 根据不同业务指标的阈值与方向，映射专属渐变色盘
         if metric == "psi":

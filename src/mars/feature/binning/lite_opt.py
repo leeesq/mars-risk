@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, cast
+from typing import Any, List, Literal
 
 import numpy as np
 import pandas as pd
@@ -217,17 +217,10 @@ class MarsLiteOptBinner(MarsBinnerBase):
         super().fit(X, y, features=features, cat_features=cat_features)
         return self
 
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        将轻量级分箱器状态序列化为字典。
-
-        Returns
-        -------
-        Dict[str, Any]
-            包含构造参数与拟合后状态的可序列化字典。
-        """
-        data = super().to_dict()
-        data["params"].update(
+    def _serialization_params(self) -> dict[str, Any]:
+        """返回轻量最优分箱器的完整构造配置。"""
+        params = super()._serialization_params()
+        params.update(
             {
                 "min_bin_size": self.min_bin_size,
                 "monotonic_trend": self.monotonic_trend,
@@ -235,54 +228,32 @@ class MarsLiteOptBinner(MarsBinnerBase):
                 "n_prebins": self.n_prebins,
             }
         )
-        data["state"].update(
+        return params
+
+    def _serialization_state(self) -> dict[str, Any]:
+        """返回轻量最优分箱器的完整拟合状态。"""
+        state = super()._serialization_state()
+        state.update(
             {
                 "fitted_trends_": self.fitted_trends_,
                 "candidate_scores_": self.candidate_scores_,
             }
         )
-        return data
+        return state
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> MarsLiteOptBinner:
-        """
-        从字典恢复轻量级分箱器实例。
-
-        Parameters
-        ----------
-        data : Dict[str, Any]
-            由 ``to_dict`` 生成的状态字典。
-
-        Returns
-        -------
-        MarsLiteOptBinner
-            恢复后的已拟合轻量级分箱器。
-
-        Examples
-        --------
-        >>> binner = MarsLiteOptBinner.from_dict(
-        ...     {
-        ...         "params": {"n_bins": 2},
-        ...         "state": {"bin_cuts_": {"x": [-float("inf"), float("inf")]}},
-        ...     }
-        ... )
-        >>> binner.fitted_trends_
-        {}
-        """
-        instance = cast("MarsLiteOptBinner", super().from_dict(data))
-        state: Dict[str, Any] = data.get("state", {})
-        instance.fitted_trends_ = {
+    def _restore_extra_serialization_state(self, state: dict[str, Any]) -> None:
+        """恢复轻量最优分箱器的趋势与候选评分。"""
+        self.fitted_trends_ = {
             str(feature): str(trend)
             for feature, trend in state.get("fitted_trends_", {}).items()
         }
-        instance.candidate_scores_ = {
+        self.candidate_scores_ = {
             str(feature): {
                 str(shape): float(score)
                 for shape, score in scores.items()
             }
             for feature, scores in state.get("candidate_scores_", {}).items()
         }
-        return instance
 
     def _fit_impl(self, X: pl.DataFrame, y: pl.Series | None = None) -> None:
         """识别列类型并分别拟合数值轻量最优分箱与类别 Top-K 分箱。"""

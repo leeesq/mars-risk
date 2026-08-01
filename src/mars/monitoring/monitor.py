@@ -476,7 +476,13 @@ class MarsMonitor(MarsBaseEstimator):
         group_col: str,
     ) -> pl.DataFrame:
         """按分箱和分组计算原始特征值的统计量。"""
-        binned_result = self._ensure_polars_dataframe(binner.transform(df, return_type="index"))
+        binned_result = self._ensure_polars_dataframe(
+            binner.transform(
+                df,
+                features=features,
+                return_type="index",
+            )
+        )
         binned_df = binned_result.collect() if isinstance(binned_result, pl.LazyFrame) else binned_result
         frames: list[pl.DataFrame] = []
         for feature in features:

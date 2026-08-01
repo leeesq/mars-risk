@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from typing import Any, Dict, List, Literal, Union, cast
 
@@ -588,7 +589,11 @@ class MarsStatsSelector(MarsBaseSelector):
         features: list[str],
     ) -> None:
         """确认 benchmark 中每个活跃特征都能按拟合规则产出分箱列。"""
-        transformed = binner.transform(benchmark_df, return_type="index")
+        transformed = binner.transform(
+            benchmark_df,
+            features=features,
+            return_type="index",
+        )
         benchmark_binned = transformed.collect() if isinstance(transformed, pl.LazyFrame) else transformed
         expected_cols = {f"{feature}_bin" for feature in features}
         missing_cols = sorted(expected_cols - set(benchmark_binned.columns))
@@ -689,9 +694,10 @@ class MarsStatsSelector(MarsBaseSelector):
         df: Union[pl.DataFrame, pd.DataFrame],
         *,
         keep_target: bool = True,
+        on_missing: Literal["error", "warn", "ignore"] = "error",
     ) -> Union[pl.DataFrame, pd.DataFrame]:
-        """根据筛选结果裁剪数据，可选择保留目标列。"""
-        result = super().transform(df)
+        """根据筛选结果严格裁剪数据，并可选择保留目标列。"""
+        result = super().transform(df, on_missing=on_missing)
         if not keep_target or self.target is None:
             return result
 
@@ -738,6 +744,11 @@ class MarsStatsSelector(MarsBaseSelector):
         None
             函数仅展示或记录漏斗摘要，不返回表格对象。
 
+        Raises
+        ------
+        ValueError
+            尚无可展示的漏斗统计时抛出。
+
         Notes
         -----
         在 Notebook 环境中优先返回富样式表格；若环境不支持，则退化为日志打印。
@@ -750,8 +761,7 @@ class MarsStatsSelector(MarsBaseSelector):
         True
         """
         if not self._funnel_stats:
-            logger.warning("No funnel stats available. Run .fit() first.")
-            return
+            raise ValueError("No funnel stats are available. Fit the selector first.")
 
         df_summary = pd.DataFrame(self._funnel_stats)
 
@@ -978,22 +988,54 @@ class MarsStatsSelector(MarsBaseSelector):
         ).to_dicts()
 
         kept_features = []
+        feat_stats_map = {str(row["feature"]): row for row in feat_stats}
 
-        for row in feat_stats:
-            feat, iv, has_high_lift, max_lift = row["feature"], row["IV_total"], row["has_high_lift"], row["max_lift"]
+        for feat in features:
+            row = feat_stats_map.get(feat)
+            iv = row.get("IV_total") if row is not None else None
+            has_high_lift = bool(row.get("has_high_lift")) if row is not None else False
+            max_lift = row.get("max_lift") if row is not None else None
 
             if self._should_bypass_filter(feat):
                 kept_features.append(feat)
-                self._feature_iv_dict[feat] = iv
+                self._feature_iv_dict[feat] = float(iv) if iv is not None else 0.0
                 continue
 
-            if iv > self.rough_iv_thr or has_high_lift:
-                reason = f"Pass (IV={iv:.3f})" if iv > self.rough_iv_thr else f"Pass (Lift={max_lift:.2f})"
-                self._register_feature_decision(feat, "Selected", "Rough_Scan", reason, iv)
+            if iv is None or not math.isfinite(float(iv)):
+                self._register_feature_decision(
+                    feat,
+                    "Dropped",
+                    "Rough_Scan",
+                    "metric_unavailable",
+                )
+                continue
+
+            iv_value = float(iv)
+            max_lift_value = float(max_lift) if max_lift is not None else float("nan")
+
+            if iv_value > self.rough_iv_thr or has_high_lift:
+                reason = (
+                    f"Pass (IV={iv_value:.3f})"
+                    if iv_value > self.rough_iv_thr
+                    else f"Pass (Lift={max_lift_value:.2f})"
+                )
+                self._register_feature_decision(
+                    feat,
+                    "Selected",
+                    "Rough_Scan",
+                    reason,
+                    iv_value,
+                )
                 kept_features.append(feat)
-                self._feature_iv_dict[feat] = iv
+                self._feature_iv_dict[feat] = iv_value
             else:
-                self._register_feature_decision(feat, "Dropped", "Rough_Scan", "Low IV & Low Lift", iv)
+                self._register_feature_decision(
+                    feat,
+                    "Dropped",
+                    "Rough_Scan",
+                    "Low IV & Low Lift",
+                    iv_value,
+                )
 
         # 构建分箱失败时的容错矩阵，确保声明属性不发生物理丢失
         kept_set = set(kept_features)
@@ -1067,15 +1109,33 @@ class MarsStatsSelector(MarsBaseSelector):
             )
             lift_recall_set = set(lift_passed["feature"].unique().to_list())
 
+        if "iv" not in report.summary_table.columns:
+            raise ValueError("Fine-scan report is missing required metric column 'iv'.")
+        summary_map = {
+            str(row["feature"]): row
+            for row in report.summary_table.to_dicts()
+        }
         kept_features = []
-        for row in report.summary_table.to_dicts():
-            feat = row["feature"]
-            iv_total = row.get("iv", 0.0)
+        for feat in features:
+            row = summary_map.get(feat)
+            iv_raw = row.get("iv") if row is not None else None
 
             if self._should_bypass_filter(feat):
-                self._feature_iv_dict[feat] = iv_total
+                self._feature_iv_dict[feat] = float(iv_raw) if iv_raw is not None else 0.0
                 kept_features.append(feat)
                 continue
+
+
+            if iv_raw is None or not math.isfinite(float(iv_raw)):
+                self._register_feature_decision(
+                    feat,
+                    "Dropped",
+                    "Fine_Scan",
+                    "metric_unavailable",
+                )
+                continue
+
+            iv_total = float(iv_raw)
 
             is_iv_ok = iv_total >= self.iv_thr
             is_lift_recall = feat in lift_recall_set
@@ -1147,6 +1207,8 @@ class MarsStatsSelector(MarsBaseSelector):
         features: list[str],
     ) -> list[str]:
         """基于共享稳定性报告执行 PSI 上限筛选。"""
+        if "psi_max" not in report.summary_table.columns:
+            raise ValueError("Stability report is missing required metric column 'psi_max'.")
         psi_map = {
             row["feature"]: row["psi_max"]
             for row in report.summary_table.select(["feature", "psi_max"]).to_dicts()
@@ -1161,7 +1223,16 @@ class MarsStatsSelector(MarsBaseSelector):
                 kept_features.append(feat)
                 continue
 
-            psi_val = psi_map.get(feat, 0.0)
+            psi_val = psi_map.get(feat)
+            if psi_val is None or not math.isfinite(float(psi_val)):
+                self._register_feature_decision(
+                    feat,
+                    "Dropped",
+                    "Stability",
+                    "metric_unavailable",
+                )
+                continue
+            psi_val = float(psi_val)
             if psi_val < threshold:
                 self._register_feature_decision(feat, "Selected", "Stability", "Stable PSI", psi_val)
                 kept_features.append(feat)
@@ -1176,14 +1247,12 @@ class MarsStatsSelector(MarsBaseSelector):
         features: list[str],
     ) -> list[str]:
         """基于共享稳定性报告执行 RC 下限筛选。"""
-        if "rc_min" in report.summary_table.columns:
-            rc_map = {
-                row["feature"]: row["rc_min"]
-                for row in report.summary_table.select(["feature", "rc_min"]).to_dicts()
-            }
-        else:
-            rc_map = {}
-            logger.warning("rc_min metric not found in report. Skipping RC check.")
+        if "rc_min" not in report.summary_table.columns:
+            raise ValueError("Stability report is missing required metric column 'rc_min'.")
+        rc_map = {
+            row["feature"]: row["rc_min"]
+            for row in report.summary_table.select(["feature", "rc_min"]).to_dicts()
+        }
         threshold = self.rc_thr
         if threshold is None:
             return features
@@ -1194,9 +1263,18 @@ class MarsStatsSelector(MarsBaseSelector):
                 kept_features.append(feat)
                 continue
 
-            rc_val = rc_map.get(feat, 1.0)
-            if rc_val is None or rc_val >= threshold:
-                self._register_feature_decision(feat, "Selected", "RiskCorr", "Stable Logic", rc_val if rc_val is not None else 1.0)
+            rc_val = rc_map.get(feat)
+            if rc_val is None or not math.isfinite(float(rc_val)):
+                self._register_feature_decision(
+                    feat,
+                    "Dropped",
+                    "RiskCorr",
+                    "metric_unavailable",
+                )
+                continue
+            rc_val = float(rc_val)
+            if rc_val >= threshold:
+                self._register_feature_decision(feat, "Selected", "RiskCorr", "Stable Logic", rc_val)
                 kept_features.append(feat)
             else:
                 self._register_feature_decision(feat, "Dropped", "RiskCorr", f"Logic Broken (RC={rc_val:.2f})", rc_val)
@@ -1214,7 +1292,11 @@ class MarsStatsSelector(MarsBaseSelector):
 
         woe_cols = [f"{c}_woe" for c in features]
         observed_df = df.filter(pl.col(self.target).is_not_null()).select(features)
-        df_woe = self._stage3_binner.transform(observed_df, return_type="woe")
+        df_woe = self._stage3_binner.transform(
+            observed_df,
+            features=features,
+            return_type="woe",
+        )
         corr_matrix_df = df_woe.select(woe_cols).fill_null(0.0).corr()
 
         corr_matrix_with_names = corr_matrix_df.with_columns(
@@ -1374,6 +1456,11 @@ class MarsStatsSelector(MarsBaseSelector):
         None
             报告直接写入 ``path``，函数不返回文件句柄或表格对象。
 
+        Raises
+        ------
+        ValueError
+            决策报告为空时抛出。
+
         Examples
         --------
         >>> from pathlib import Path
@@ -1390,28 +1477,22 @@ class MarsStatsSelector(MarsBaseSelector):
         report_df = self.get_report()
         if isinstance(report_df, pd.DataFrame):
             if report_df.empty:
-                logger.warning("No report to export.")
-                return
+                raise ValueError("Selector decision report is empty; no file was written.")
             pd_df = report_df
         else:
             if report_df.height == 0:
-                logger.warning("No report to export.")
-                return
+                raise ValueError("Selector decision report is empty; no file was written.")
             pd_df = report_df.to_pandas()
 
         if path.endswith(".csv"):
             pd_df.to_csv(path, index=False, encoding="utf-8-sig")
         else:
-            try:
-                styler = pandas_styler_map(
-                    pd_df.style,
-                    lambda v: 'color: green; font-weight: bold' if v == 'Selected' else 'color: red',
-                    subset=['status'],
-                )
-                styler.to_excel(path, index=False, engine="openpyxl")
-            except Exception as e:
-                logger.warning(f"Failed to export styled excel, falling back to basic export. Error: {e}")
-                pd_df.to_excel(path, index=False)
+            styler = pandas_styler_map(
+                pd_df.style,
+                lambda v: 'color: green; font-weight: bold' if v == 'Selected' else 'color: red',
+                subset=['status'],
+            )
+            styler.to_excel(path, index=False, engine="openpyxl")
 
     def save_selector_lists(
         self,
@@ -1502,6 +1583,8 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Raises
         ------
+        FileNotFoundError
+            名单文件不存在时抛出。
         ValueError
             JSON 顶层不是对象，或白黑名单字段不是字符串列表时抛出。
 
@@ -1519,8 +1602,7 @@ class MarsStatsSelector(MarsBaseSelector):
         ['age']
         """
         if not os.path.exists(path):
-            logger.warning(f"File {path} not found. Returning empty lists.")
-            return {"white_list": [], "black_list": []}
+            raise FileNotFoundError(f"Selector list file was not found: {path}")
 
         with open(path, encoding='utf-8') as f:
             payload = json.load(f)
@@ -1549,6 +1631,11 @@ class MarsStatsSelector(MarsBaseSelector):
         None
             函数仅通过日志输出统计摘要。
 
+        Raises
+        ------
+        ValueError
+            没有任何特征通过筛选时抛出。
+
         Examples
         --------
         >>> selector = MarsStatsSelector()
@@ -1561,8 +1648,7 @@ class MarsStatsSelector(MarsBaseSelector):
         self._check_is_fitted()
 
         if not self.selected_features_:
-            logger.warning("No features survived the selection funnel.")
-            return
+            raise ValueError("No features survived the selection funnel.")
 
         if iv_thresholds is None:
             iv_thresholds = [0.02, 0.05, 0.10]

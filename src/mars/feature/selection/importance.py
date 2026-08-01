@@ -44,7 +44,7 @@ class MarsImportanceSelector(_MarsXYSelector):
         self,
         estimator: Union[str, Any] = "lgbm",
         estimator_params: dict | None = None,
-        method: Literal["importance", "shap", "rfe", "sfm"] = "importance",
+        method: Literal["importance", "shap"] = "importance",
         selection_mode: Literal["top_k", "threshold", "percentile"] = "top_k",
         selection_threshold: Union[int, float, str] = 50,
         cv: int = 3,
@@ -60,7 +60,7 @@ class MarsImportanceSelector(_MarsXYSelector):
             底层模型类型或实例。
         estimator_params : dict | None
             底层模型初始化参数。
-        method : Literal['importance', 'shap', 'rfe', 'sfm']
+        method : Literal['importance', 'shap']
             重要性筛选策略。
         selection_mode : Literal['top_k', 'threshold', 'percentile']
             特征保留模式。
@@ -89,8 +89,8 @@ class MarsImportanceSelector(_MarsXYSelector):
         self.n_jobs = int(n_jobs)
         self.random_state = int(random_state)
 
-        if self.method not in {"importance", "shap", "rfe", "sfm"}:
-            raise ValueError("method must be one of {'importance', 'shap', 'rfe', 'sfm'}.")
+        if self.method not in {"importance", "shap"}:
+            raise ValueError("method must be one of {'importance', 'shap'}.")
         if self.selection_mode not in {"top_k", "threshold", "percentile"}:
             raise ValueError("selection_mode must be one of {'top_k', 'threshold', 'percentile'}.")
 
@@ -316,7 +316,7 @@ class MarsImportanceSelector(_MarsXYSelector):
         if "feature" not in table_pd.columns or "importance" not in table_pd.columns:
             raise ValueError("importance_table must contain 'feature' and 'importance' columns.")
         table_pd["feature"] = table_pd["feature"].astype(str)
-        table_pd["importance"] = pd.to_numeric(table_pd["importance"], errors="coerce").fillna(0.0)
+        table_pd["importance"] = pd.to_numeric(table_pd["importance"], errors="coerce")
         table_pd = table_pd[table_pd["feature"].isin(set(raw_features))].copy()
         if "importance_type" not in table_pd.columns:
             table_pd["importance_type"] = "provided"
@@ -377,8 +377,6 @@ class MarsImportanceSelector(_MarsXYSelector):
 
         Raises
         ------
-        NotImplementedError
-            当当前选项尚未实现时抛出。
         ValueError
             当输入参数、列配置或数据状态不满足当前方法要求时抛出。
 
@@ -387,15 +385,13 @@ class MarsImportanceSelector(_MarsXYSelector):
         >>> import pandas as pd
         >>> df = pd.DataFrame({"age": [20, 30, 40, 50], "y": [0, 0, 1, 1]})
         >>> importance = pd.DataFrame({"feature": ["age"], "importance": [1.0]})
-        >>> selector = MarsImportanceSelector().fit(X, importance_table=importance)
+        >>> selector = MarsImportanceSelector().fit(
+        ...     df[["age"]],
+        ...     importance_table=importance,
+        ... )
         >>> selector.selected_features_
         ['age']
         """
-        if self.method in {"rfe", "sfm"}:
-            raise NotImplementedError(
-                f"MarsImportanceSelector method={self.method!r} is not implemented in v1."
-            )
-
         self.report_records_ = []
         X_pd, y_series, raw_features = self._prepare_xy(X, y, features)
         self.n_features_in_ = len(raw_features)
@@ -425,21 +421,39 @@ class MarsImportanceSelector(_MarsXYSelector):
                     raw_features,
                 )
 
-        selected = self._select_features(table)
+        valid_table = table.loc[np.isfinite(table["importance"].to_numpy(dtype=float))].copy()
+        selected = self._select_features(valid_table)
         selected_set = set(selected)
         self.importance_table_ = table.copy()
         self.selected_features_ = [feature for feature in raw_features if feature in selected_set]
 
         importance_lookup = dict(zip(table["feature"], table["importance"]))
         for feature in raw_features:
+            importance_value = importance_lookup.get(feature)
+            numeric_importance = (
+                float(importance_value) if importance_value is not None else None
+            )
+            metric_available = numeric_importance is not None and np.isfinite(
+                numeric_importance
+            )
             status = "Selected" if feature in selected_set else "Dropped"
-            reason = self.selection_mode if feature in selected_set else f"below_{self.selection_mode}"
+            if not metric_available:
+                reason = "metric_unavailable"
+                decision_value = -1.0
+            else:
+                assert numeric_importance is not None
+                decision_value = numeric_importance
+                reason = (
+                    self.selection_mode
+                    if feature in selected_set
+                    else f"below_{self.selection_mode}"
+                )
             self._register_decision(
                 feature,
                 status=status,
                 stage=self.method,
                 reason=reason,
-                value=float(importance_lookup.get(feature, 0.0)),
+                value=decision_value,
                 desc="Feature selection based on normalized importance table.",
             )
 

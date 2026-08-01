@@ -8,7 +8,6 @@ import polars as pl
 
 from mars.analysis._profiling.metrics import excluded_values, is_numeric_feature
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
-from mars.utils.logger import logger
 
 
 def compute_sparklines(context: ProfileRunContext, options: ProfileComputeOptions) -> pl.DataFrame:
@@ -63,7 +62,9 @@ def _sparkline_for_column(
         else:
             distribution = _histogram_distribution(series, options.sparkline_bins, bars)
     except (pl.exceptions.PolarsError, ValueError, TypeError) as exc:
-        logger.warning("Sparkline calculation failed for feature '%s': %s", col, exc)
+        options.diagnostics.append(
+            {"component": "sparkline", "feature": col, "reason": str(exc)}
+        )
         distribution = "ERR"
 
     return {"feature": col, "distribution": distribution}

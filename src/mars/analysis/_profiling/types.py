@@ -21,6 +21,7 @@ DEFAULT_STAT_METRICS: list[str] = [
     "kurtosis",
 ]
 DEFAULT_PROFILE_METRICS: list[str] = DEFAULT_DQ_METRICS + DEFAULT_STAT_METRICS
+COMPARISON_METRICS: list[str] = ["schema", "unseen"]
 
 ProfileBinMethod = Literal["quantile", "uniform"]
 FrameDtype = Union[type, pl.DataType]
@@ -32,6 +33,7 @@ class ProfileMetricSelection:
 
     dq_metrics: list[str]
     stat_metrics: list[str]
+    comparison_metrics: list[str]
 
 
 @dataclass(frozen=True)
@@ -63,3 +65,5 @@ class ProfileComputeOptions:
     sparkline_sample_size: int
     psi_include_missing: bool
     psi_include_special: bool
+    categorical_features: list[str]
+    diagnostics: list[dict[str, Any]]

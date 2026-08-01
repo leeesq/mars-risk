@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import inspect
+import math
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -9,6 +12,16 @@ import pytest
 
 import mars.reporting as reporting_package
 from mars.analysis import MarsDataProfiler, profile_stats
+from mars.feature import MarsNativeBinner
+
+
+def _manual_psi(actual: list[float], expected: list[float]) -> float:
+    """按 MARS PSI 定义计算测试期望值。"""
+    return sum(
+        (actual_prob - expected_prob)
+        * math.log(actual_prob / (expected_prob + 1e-6))
+        for actual_prob, expected_prob in zip(actual, expected)
+    )
 
 
 def test_profiler_returns_pandas_tables_for_pandas_input(sample_credit_pd: pd.DataFrame) -> None:
@@ -179,6 +192,251 @@ def test_profiler_psi_scope_uses_explicit_params() -> None:
     assert quick_psi == pytest.approx(scoped_psi)
 
 
+def test_profiler_external_benchmark_drives_group_and_total_psi() -> None:
+    benchmark_df = pl.DataFrame({"x": [0.0] * 8 + [1.0] * 2})
+    current_df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 10 + ["2024-02"] * 10,
+            "x": [0.0] * 8 + [1.0] * 2 + [0.0] * 2 + [1.0] * 8,
+        }
+    )
+
+    report = MarsDataProfiler(psi_merge_small_bins=False).generate_profile(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+        group_col="month",
+        enable_sparkline=False,
+    )
+
+    psi_row = report.stats_tables["psi"].row(0, named=True)
+    assert psi_row["2024-01"] == pytest.approx(0.0, abs=1e-12)
+    assert psi_row["2024-02"] == pytest.approx(_manual_psi([0.2, 0.8], [0.8, 0.2]))
+    assert psi_row["total"] == pytest.approx(_manual_psi([0.5, 0.5], [0.8, 0.2]))
+    assert psi_row["group_mean"] == pytest.approx(
+        (psi_row["2024-01"] + psi_row["2024-02"]) / 2
+    )
+
+
+def test_profiler_external_benchmark_supports_total_only_psi(tmp_path: Path) -> None:
+    benchmark_df = pl.DataFrame({"x": [0.0] * 8 + [1.0] * 2})
+    current_df = pl.DataFrame({"x": [0.0] * 2 + [1.0] * 8})
+
+    report = profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+
+    psi_table = report.stats_tables["psi"]
+    assert psi_table.columns == ["feature", "dtype", "total"]
+    assert psi_table["total"][0] == pytest.approx(
+        _manual_psi([0.2, 0.8], [0.8, 0.2])
+    )
+    assert "Trend Analysis: psi" in report.show_trend("psi").to_html()
+
+    output_path = tmp_path / "benchmark-profile.xlsx"
+    report.write_excel(str(output_path))
+    assert output_path.stat().st_size > 0
+
+
+def test_profiler_external_benchmark_uses_union_of_observed_bins() -> None:
+    benchmark_df = pl.DataFrame({"segment": ["A"] * 5 + ["B"] * 5})
+    current_df = pl.DataFrame({"segment": ["C"] * 10})
+
+    report = MarsDataProfiler(psi_n_bins=2).generate_profile(
+        current_df,
+        metrics=["psi"],
+        features=["segment"],
+        benchmark_df=benchmark_df,
+        enable_sparkline=False,
+    )
+
+    expected = _manual_psi(
+        [1e-6, 1e-6, 1.0],
+        [0.5, 0.5, 1e-6],
+    )
+    assert report.stats_tables["psi"]["total"][0] == pytest.approx(expected)
+
+
+def test_profiler_external_benchmark_is_native_binner_fit_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mars.analysis._profiling import psi as psi_module
+
+    observed_fit_values: list[list[float]] = []
+    original_fit = MarsNativeBinner.fit
+
+    def spy_fit(
+        self: MarsNativeBinner,
+        X: pl.DataFrame | pd.DataFrame,
+        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
+        *,
+        features: list[str] | None = None,
+        cat_features: list[str] | None = None,
+    ) -> MarsNativeBinner:
+        """记录 NativeBinner 实际接收的拟合数据。"""
+        X_pl = X if isinstance(X, pl.DataFrame) else pl.from_pandas(X)
+        observed_fit_values.append(X_pl.get_column("x").to_list())
+        return original_fit(
+            self,
+            X,
+            y,
+            features=features,
+            cat_features=cat_features,
+        )
+
+    monkeypatch.setattr(psi_module.MarsNativeBinner, "fit", spy_fit)
+    benchmark_df = pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0]})
+    current_df = pl.DataFrame({"x": [100.0, 101.0, 102.0, 103.0]})
+
+    profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+
+    assert observed_fit_values == [[0.0, 1.0, 2.0, 3.0]]
+
+
+def test_profiler_external_benchmark_does_not_change_other_metrics() -> None:
+    current_df = pl.DataFrame(
+        {
+            "month": ["2024-01", "2024-01", "2024-02", "2024-02"],
+            "x": [1.0, None, 3.0, 4.0],
+        }
+    )
+    benchmark_df = pl.DataFrame({"x": [0.0, 1.0, 2.0, 3.0]})
+    profiler = MarsDataProfiler()
+
+    base_report = profiler.generate_profile(
+        current_df,
+        metrics=["missing", "mean"],
+        features=["x"],
+        group_col="month",
+        enable_sparkline=False,
+    )
+    benchmark_report = profiler.generate_profile(
+        current_df,
+        metrics=["missing", "mean"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+        group_col="month",
+        enable_sparkline=False,
+    )
+
+    assert base_report.overview_table.equals(benchmark_report.overview_table)
+    assert base_report.dq_tables["missing"].equals(
+        benchmark_report.dq_tables["missing"]
+    )
+    assert base_report.stats_tables["mean"].equals(
+        benchmark_report.stats_tables["mean"]
+    )
+
+
+def test_profiler_ignores_invalid_benchmark_when_psi_is_not_requested() -> None:
+    report = profile_stats(
+        pl.DataFrame({"x": [1.0, 2.0, 3.0]}),
+        metrics=["mean"],
+        features=["x"],
+        benchmark_df=pl.DataFrame(),
+    )
+
+    assert report.stats_tables["mean"]["total"][0] == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize("current_kind", ["polars", "pandas"])
+@pytest.mark.parametrize("benchmark_kind", ["polars", "pandas"])
+def test_profiler_external_benchmark_preserves_current_output_type(
+    current_kind: str,
+    benchmark_kind: str,
+) -> None:
+    current_pl = pl.DataFrame({"x": [0.0, 0.0, 1.0, 1.0]})
+    benchmark_pl = pl.DataFrame({"x": [0.0, 0.0, 0.0, 1.0]})
+    current = current_pl if current_kind == "polars" else current_pl.to_pandas()
+    benchmark = benchmark_pl if benchmark_kind == "polars" else benchmark_pl.to_pandas()
+
+    report = profile_stats(
+        current,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark,
+    )
+
+    expected_type = pl.DataFrame if current_kind == "polars" else pd.DataFrame
+    assert isinstance(report.stats_tables["psi"], expected_type)
+
+
+@pytest.mark.parametrize(
+    ("benchmark_df", "error_match"),
+    [
+        (pl.DataFrame(schema={"x": pl.Float64}), "at least one row"),
+        (pl.DataFrame({"other": [1.0, 2.0]}), "missing active PSI features"),
+        (pl.DataFrame({"x": ["a", "b"]}), "incompatible dtypes"),
+    ],
+)
+def test_profiler_external_benchmark_rejects_invalid_frames(
+    benchmark_df: pl.DataFrame,
+    error_match: str,
+) -> None:
+    with pytest.raises(ValueError, match=error_match):
+        profile_stats(
+            pl.DataFrame({"x": [1.0, 2.0]}),
+            metrics=["psi"],
+            features=["x"],
+            benchmark_df=benchmark_df,
+        )
+
+
+def test_profiler_external_benchmark_rejects_features_without_included_bins() -> None:
+    current_df = pl.DataFrame({"x": [None, None]}, schema={"x": pl.Float64})
+    benchmark_df = pl.DataFrame({"x": [None, None]}, schema={"x": pl.Float64})
+
+    with pytest.raises(ValueError, match="at least one included bin"):
+        profile_stats(
+            current_df,
+            metrics=["psi"],
+            features=["x"],
+            benchmark_df=benchmark_df,
+        )
+
+
+def test_profile_stats_and_profiler_share_external_benchmark_contract() -> None:
+    current_df = pl.DataFrame({"x": [0.0, 1.0, 1.0, 1.0]})
+    benchmark_df = pl.DataFrame({"x": [0.0, 0.0, 0.0, 1.0]})
+
+    quick_report = profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+    class_report = MarsDataProfiler().generate_profile(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+        enable_sparkline=False,
+    )
+
+    assert quick_report.stats_tables["psi"].equals(class_report.stats_tables["psi"])
+
+
+def test_profiler_public_api_replaces_sampling_with_external_benchmark() -> None:
+    profile_stats_params = inspect.signature(profile_stats).parameters
+    generate_profile_params = inspect.signature(MarsDataProfiler.generate_profile).parameters
+
+    assert "benchmark_df" in profile_stats_params
+    assert "benchmark_df" in generate_profile_params
+    assert "categorical_features" in profile_stats_params
+    assert "categorical_features" in generate_profile_params
+    assert "sample_frac" not in profile_stats_params
+    assert "sample_frac" not in generate_profile_params
+
+
 def test_profiler_categorical_psi_uses_native_binner_bins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -325,6 +583,7 @@ def test_profiler_psi_binner_uses_stable_defaults(monkeypatch: pytest.MonkeyPatc
             self,
             df: pl.DataFrame,
             *,
+            features: list[str] | None = None,
             return_type: str = "index",
             lazy: bool = False,
         ) -> pl.DataFrame | pl.LazyFrame:
@@ -376,6 +635,7 @@ def test_profiler_psi_binner_accepts_legacy_style_options(monkeypatch: pytest.Mo
             self,
             df: pl.DataFrame,
             *,
+            features: list[str] | None = None,
             return_type: str = "index",
             lazy: bool = False,
         ) -> pl.DataFrame | pl.LazyFrame:
@@ -429,6 +689,7 @@ def test_profiler_psi_uses_observed_bins_for_numeric_skeleton(
             self,
             df: pl.DataFrame,
             *,
+            features: list[str] | None = None,
             return_type: str = "index",
             lazy: bool = False,
         ) -> pl.DataFrame | pl.LazyFrame:
@@ -498,7 +759,6 @@ def test_profiler_reuses_instance_without_runtime_state(sample_credit_pd: pd.Dat
         metrics=["missing", "mean"],
         features=["income"],
         group_col="month",
-        sample_frac=0.5,
         enable_sparkline=False,
     )
     second_df = sample_credit_pd.rename(columns={"income": "debt"})
@@ -570,3 +830,109 @@ def test_profiler_rejects_legacy_top1_metric(sample_credit_df: pl.DataFrame) -> 
             features=["income"],
             group_col="month",
         )
+
+
+def test_profile_schema_comparison_uses_business_column_union() -> None:
+    current = pl.DataFrame(
+        {
+            "matched": [1, 2],
+            "width_change": pl.Series([1, 2], dtype=pl.Int32),
+            "current_only": [True, False],
+        }
+    )
+    benchmark = pl.DataFrame(
+        {
+            "matched": [3, 4],
+            "width_change": pl.Series([3, 4], dtype=pl.Int64),
+            "benchmark_only": ["a", "b"],
+        }
+    )
+
+    report = profile_stats(current, metrics=["schema"], benchmark_df=benchmark)
+    status = {
+        row["feature"]: row["status"]
+        for row in report.comparison_tables["schema"].to_dicts()
+    }
+
+    assert status == {
+        "matched": "matched",
+        "width_change": "compatible_change",
+        "current_only": "current_only",
+        "benchmark_only": "benchmark_only",
+    }
+    assert report.report_meta["benchmark_row_count"] == 2
+    assert report.report_meta["diagnostics"] == []
+
+
+def test_profile_unseen_excludes_missing_special_and_supports_groups() -> None:
+    benchmark = pl.DataFrame({"category_code": [1, 2, -999, None]})
+    current = pl.DataFrame(
+        {
+            "category_code": [1, 3, -999, None],
+            "month": ["2026-01", "2026-01", "2026-02", "2026-02"],
+        }
+    )
+
+    report = profile_stats(
+        current,
+        metrics=["unseen"],
+        benchmark_df=benchmark,
+        categorical_features=["category_code"],
+        special_values=[-999],
+        group_col="month",
+    )
+    row = report.comparison_tables["unseen"].row(0, named=True)
+
+    assert row["benchmark_unique_count"] == 2
+    assert row["valid_count"] == 2
+    assert row["unseen_count"] == 1
+    assert row["unseen_unique_count"] == 1
+    assert row["total"] == pytest.approx(0.5)
+    assert row["2026-01"] == pytest.approx(0.5)
+    assert row["2026-02"] is None
+
+
+def test_profile_comparison_output_type_and_report_exports(tmp_path: Path) -> None:
+    current = pd.DataFrame({"category": ["a", "new"]})
+    benchmark = pl.DataFrame({"category": ["a", "b"]})
+
+    report = profile_stats(
+        current,
+        metrics=["schema", "unseen"],
+        benchmark_df=benchmark,
+    )
+    html_path = tmp_path / "profile.html"
+    excel_path = tmp_path / "profile.xlsx"
+    report.write_html(str(html_path), report_name="<unsafe>")
+    report.write_excel(str(excel_path))
+    html = html_path.read_text(encoding="utf-8")
+
+    assert isinstance(report.comparison_tables["schema"], pd.DataFrame)
+    assert report.get_profile_data()._fields == (
+        "overview",
+        "dq_trends",
+        "stats_trends",
+        "comparisons",
+    )
+    assert "&lt;unsafe&gt;" in html
+    assert "<unsafe>" not in html
+    assert "Search all tables" in html
+    assert "Comparisons" in html
+    assert excel_path.stat().st_size > 0
+    assert {"Metadata", "Compare_Schema", "Compare_Unseen"}.issubset(
+        pd.ExcelFile(excel_path).sheet_names
+    )
+
+
+def test_profile_comparison_requires_benchmark_and_other_metrics_ignore_it() -> None:
+    current = pl.DataFrame({"x": [1, 2, 3]})
+
+    with pytest.raises(ValueError, match="require `benchmark_df`"):
+        profile_stats(current, metrics=["schema"])
+
+    report = profile_stats(
+        current,
+        metrics=["mean"],
+        benchmark_df=object(),  # benchmark must remain untouched for non-comparison metrics
+    )
+    assert "mean" in report.stats_tables

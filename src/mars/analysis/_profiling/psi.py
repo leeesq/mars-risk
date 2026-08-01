@@ -12,9 +12,9 @@ from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunCont
 from mars.compute import psi_contribution_expr, psi_partition_prob_expr, psi_valid_condition
 from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
 from mars.feature import MarsNativeBinner
-from mars.utils.logger import logger
 
 MAX_PSI_GROUPS = 1000
+INTERNAL_PSI_GROUP_COL = "_mars_profile_psi_group"
 
 
 def get_psi_trend(
@@ -22,37 +22,60 @@ def get_psi_trend(
     options: ProfileComputeOptions,
     *,
     features: list[str] | None = None,
+    benchmark_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    """计算特征在分组维度上的 PSI 趋势。"""
-    if context.group_col is None:
-        return pl.DataFrame()
+    """计算特征相对内部首组或外部 benchmark 的 PSI。"""
+    if context.group_col is None and benchmark_df is None:
+        raise ValueError("PSI requires `group_col`, `time_col`, or `benchmark_df`.")
 
-    n_groups = context.working_df.select(pl.col(context.group_col).n_unique()).item()
-    if n_groups > MAX_PSI_GROUPS:
-        logger.warning(
-            "PSI calculation aborted: column '%s' has %s unique values. "
-            "Threshold is %s; check whether an ID column was passed as group_col.",
-            context.group_col,
-            n_groups,
-            MAX_PSI_GROUPS,
-        )
-        return pl.DataFrame()
+    if context.group_col is not None:
+        n_groups = context.working_df.select(pl.col(context.group_col).n_unique()).item()
+        if n_groups > MAX_PSI_GROUPS:
+            raise ValueError(
+                f"PSI group column '{context.group_col}' has {n_groups} unique values; "
+                f"the maximum is {MAX_PSI_GROUPS}."
+            )
 
-    candidates = [col for col in (features or context.features) if col != context.group_col]
+    selected_features = context.features if features is None else features
+    candidates = [col for col in selected_features if col != context.group_col]
     if not candidates:
-        return pl.DataFrame()
+        raise ValueError("PSI requires at least one active feature.")
 
-    try:
-        baseline_group = context.working_df.select(pl.col(context.group_col).min()).item()
-    except (pl.exceptions.PolarsError, ValueError, TypeError) as exc:
-        logger.warning("PSI baseline selection failed for group_col='%s': %s", context.group_col, exc)
-        return pl.DataFrame()
+    baseline_group: Any = None
+    if benchmark_df is not None:
+        _validate_benchmark_frame(
+            benchmark_df,
+            current_df=context.working_df,
+            candidates=candidates,
+        )
+    else:
+        assert context.group_col is not None
+        try:
+            baseline_group = context.working_df.select(pl.col(context.group_col).min()).item()
+        except (pl.exceptions.PolarsError, ValueError, TypeError) as exc:
+            raise ValueError(
+                f"PSI baseline selection failed for group_col='{context.group_col}'."
+            ) from exc
 
-    result_parts = _binned_psi_parts(context, options, candidates, baseline_group)
+    result_parts = _binned_psi_parts(
+        context,
+        options,
+        candidates,
+        baseline_group,
+        benchmark_df=benchmark_df,
+    )
     if not result_parts:
-        return pl.DataFrame()
+        raise ValueError("PSI did not produce any usable feature results.")
 
     final_long = pl.concat(result_parts)
+    if context.group_col is None:
+        total_df = final_long.select(["feature", "total"]).unique()
+        return (
+            total_df.join(feature_dtypes(context), on="feature", how="left")
+            .select(["feature", "dtype", "total"])
+            .sort("feature")
+        )
+
     pivot_df = final_long.pivot(on=context.group_col, index=["feature", "total"], values="psi")
     result = pivot_df.join(feature_dtypes(context), on="feature", how="left")
     psi_data_cols = sorted([col for col in result.columns if col not in ["feature", "dtype", "total"]])
@@ -83,13 +106,125 @@ def get_psi_trend(
     ).sort("feature")
 
 
+def _validate_benchmark_frame(
+    benchmark_df: pl.DataFrame,
+    *,
+    current_df: pl.DataFrame,
+    candidates: list[str],
+) -> None:
+    """校验显式 PSI benchmark 的基础表结构。"""
+    if benchmark_df.is_empty():
+        raise ValueError("`benchmark_df` must contain at least one row for PSI calculation.")
+
+    missing_features = [feature for feature in candidates if feature not in benchmark_df.columns]
+    if missing_features:
+        raise ValueError(
+            "`benchmark_df` is missing active PSI features "
+            f"{missing_features}. Group and time columns are not required."
+        )
+
+    incompatible_dtypes: dict[str, tuple[pl.DataType, pl.DataType]] = {}
+    numeric_dtypes = MarsNativeBinner.NUMERIC_DTYPES
+    categorical_dtypes = {pl.String, pl.Categorical}
+    for feature in candidates:
+        current_dtype = current_df.schema[feature]
+        benchmark_dtype = benchmark_df.schema[feature]
+        both_numeric = current_dtype in numeric_dtypes and benchmark_dtype in numeric_dtypes
+        both_string_like = (
+            current_dtype in categorical_dtypes and benchmark_dtype in categorical_dtypes
+        )
+        if current_dtype != benchmark_dtype and not both_numeric and not both_string_like:
+            incompatible_dtypes[feature] = (current_dtype, benchmark_dtype)
+
+    if incompatible_dtypes:
+        raise ValueError(
+            "`benchmark_df` has incompatible dtypes for active PSI features "
+            f"{incompatible_dtypes}."
+        )
+
+
+def _aggregate_binned_stats(
+    binned_df: pl.LazyFrame,
+    *,
+    group_col: str,
+    rename_map: dict[str, str],
+) -> pl.LazyFrame:
+    """把一批分箱列聚合到 group、feature 和 bin 粒度。"""
+    return (
+        binned_df.rename(rename_map)
+        .select([group_col, *rename_map.values()])
+        .unpivot(
+            index=[group_col],
+            on=list(rename_map.values()),
+            variable_name="feat_idx",
+            value_name="bin_id",
+        )
+        .with_columns(
+            [
+                pl.col("feat_idx").cast(pl.Int16),
+                pl.col("bin_id").cast(pl.Int16),
+            ]
+        )
+        .group_by([group_col, "feat_idx", "bin_id"])
+        .len()
+    )
+
+
+def _valid_feature_indices(
+    stats_df: pl.LazyFrame,
+    options: ProfileComputeOptions,
+) -> set[int]:
+    """返回在当前 PSI 箱口径下至少有一条观测的特征索引。"""
+    valid_condition = psi_valid_condition(
+        pl.col("bin_id"),
+        include_missing=options.psi_include_missing,
+        include_special=options.psi_include_special,
+    )
+    valid_features = collect_streaming(
+        stats_df.filter(valid_condition).select("feat_idx").unique()
+    )
+    return set(valid_features.get_column("feat_idx").to_list())
+
+
+def _validate_benchmark_observations(
+    *,
+    current_stats: pl.LazyFrame,
+    benchmark_stats: pl.LazyFrame,
+    feat_map: dict[int, str],
+    options: ProfileComputeOptions,
+) -> None:
+    """确保显式基准两侧的每个特征都有可用于 PSI 的观测。"""
+    current_valid = _valid_feature_indices(current_stats, options)
+    benchmark_valid = _valid_feature_indices(benchmark_stats, options)
+    expected_indices = set(feat_map)
+    issues: dict[str, list[str]] = {}
+
+    missing_current = sorted(expected_indices - current_valid)
+    if missing_current:
+        issues["current_df"] = [feat_map[index] for index in missing_current]
+
+    missing_benchmark = sorted(expected_indices - benchmark_valid)
+    if missing_benchmark:
+        issues["benchmark_df"] = [feat_map[index] for index in missing_benchmark]
+
+    if issues:
+        raise ValueError(
+            "PSI requires at least one included bin for every active feature on both sides; "
+            f"invalid observations: {issues}."
+        )
+
+
 def _binned_psi_parts(
     context: ProfileRunContext,
     options: ProfileComputeOptions,
     candidates: list[str],
     baseline_group: Any,
+    *,
+    benchmark_df: pl.DataFrame | None,
 ) -> list[pl.DataFrame]:
     """基于 NativeBinner 分箱结果分批计算画像 PSI。"""
+    strict_benchmark = benchmark_df is not None
+    fit_df = benchmark_df if benchmark_df is not None else context.working_df
     try:
         binner = MarsNativeBinner(
             method=options.psi_bin_method,
@@ -100,14 +235,37 @@ def _binned_psi_parts(
             merge_small_bins=options.psi_merge_small_bins,
             remove_empty_bins=options.psi_remove_empty_bins,
         )
-        binner.fit(context.working_df, features=candidates)
+        categorical_candidates = [
+            feature
+            for feature in options.categorical_features
+            if feature in candidates
+        ]
+        fit_kwargs: dict[str, Any] = {"features": candidates}
+        if categorical_candidates:
+            fit_kwargs["cat_features"] = categorical_candidates
+        binner.fit(fit_df, **fit_kwargs)
     except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
-        logger.warning("Profile PSI binning failed for %s features: %s", len(candidates), exc)
-        return []
+        if strict_benchmark:
+            raise ValueError(
+                f"`benchmark_df` PSI binning failed for active features {candidates}: {exc}"
+            ) from exc
+        raise ValueError(
+            f"Profile PSI binning failed for active features {candidates}: {exc}"
+        ) from exc
+
+    fit_failures = getattr(binner, "fit_failures_", {})
+    if strict_benchmark and fit_failures:
+        raise ValueError(f"`benchmark_df` PSI binning failed: {fit_failures}.")
 
     bin_cuts = getattr(binner, "bin_cuts_", {})
     cat_cuts = getattr(binner, "cat_cuts_", {})
     fitted_cols = [col for col in candidates if col in bin_cuts or col in cat_cuts]
+    missing_fitted_cols = [col for col in candidates if col not in fitted_cols]
+    if strict_benchmark and missing_fitted_cols:
+        raise ValueError(
+            "`benchmark_df` could not produce binning rules for active features "
+            f"{missing_fitted_cols}."
+        )
     if not fitted_cols:
         return []
 
@@ -115,13 +273,25 @@ def _binned_psi_parts(
     for start in range(0, len(fitted_cols), options.psi_batch_size):
         batch_cols = fitted_cols[start : start + options.psi_batch_size]
         try:
-            part = _binned_psi_batch(context, options, binner, batch_cols, baseline_group)
+            part = _binned_psi_batch(
+                context,
+                options,
+                binner,
+                batch_cols,
+                baseline_group,
+                benchmark_df=benchmark_df,
+            )
         except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
-            logger.warning(
-                "Profile PSI batch failed for features %s-%s: %s",
-                start,
-                start + len(batch_cols) - 1,
-                exc,
+            if strict_benchmark:
+                raise ValueError(
+                    f"`benchmark_df` PSI calculation failed for features {batch_cols}: {exc}"
+                ) from exc
+            options.diagnostics.append(
+                {
+                    "component": "psi",
+                    "features": list(batch_cols),
+                    "reason": str(exc),
+                }
             )
             continue
         if not part.is_empty():
@@ -135,37 +305,84 @@ def _binned_psi_batch(
     binner: MarsNativeBinner,
     batch_cols: list[str],
     baseline_group: Any,
+    *,
+    benchmark_df: pl.DataFrame | None,
 ) -> pl.DataFrame:
     """计算一个分箱特征批次的 PSI。"""
-    assert context.group_col is not None
-    df_batch = context.working_df.select([*batch_cols, context.group_col])
-    lf_binned = cast(pl.LazyFrame, binner.transform(df_batch, return_type="index", lazy=True))
+    group_col = context.group_col or INTERNAL_PSI_GROUP_COL
+    if context.group_col is None:
+        df_batch = context.working_df.select(batch_cols).with_columns(
+            pl.lit("Total").alias(group_col)
+        )
+    else:
+        df_batch = context.working_df.select([*batch_cols, context.group_col])
+    lf_binned = cast(
+        pl.LazyFrame,
+        binner.transform(
+            df_batch,
+            features=batch_cols,
+            return_type="index",
+            lazy=True,
+        ),
+    )
 
     feat_map = {idx: name for idx, name in enumerate(batch_cols)}
     rename_map = {f"{name}_bin": str(idx) for idx, name in enumerate(batch_cols)}
-    lf_stats = (
-        lf_binned.rename(rename_map)
-        .select([context.group_col, *rename_map.values()])
-        .unpivot(
-            index=[context.group_col],
-            on=list(rename_map.values()),
-            variable_name="feat_idx",
-            value_name="bin_id",
-        )
-        .with_columns([pl.col("feat_idx").cast(pl.Int16), pl.col("bin_id").cast(pl.Int16)])
-        .group_by([context.group_col, "feat_idx", "bin_id"])
-        .len()
-    )
+    lf_stats = _aggregate_binned_stats(lf_binned, group_col=group_col, rename_map=rename_map)
 
     lf_skeleton = lf_stats.select(["feat_idx", "bin_id"]).unique()
-    lf_psi = calc_psi_from_stats(
-        stats_df=lf_stats,
-        unique_bins_skel=lf_skeleton,
-        group_col=context.group_col,
-        baseline_group=baseline_group,
-        include_missing=options.psi_include_missing,
-        include_special=options.psi_include_special,
-    )
+    if benchmark_df is None:
+        lf_psi = calc_psi_from_stats(
+            stats_df=lf_stats,
+            unique_bins_skel=lf_skeleton,
+            group_col=group_col,
+            baseline_group=baseline_group,
+            include_missing=options.psi_include_missing,
+            include_special=options.psi_include_special,
+        )
+    else:
+        benchmark_batch = benchmark_df.select(batch_cols).with_columns(
+            pl.lit("Benchmark").alias(group_col)
+        )
+        benchmark_binned = cast(
+            pl.LazyFrame,
+            binner.transform(
+                benchmark_batch,
+                features=batch_cols,
+                return_type="index",
+                lazy=True,
+            ),
+        )
+        benchmark_stats_grouped = _aggregate_binned_stats(
+            benchmark_binned,
+            group_col=group_col,
+            rename_map=rename_map,
+        )
+        benchmark_stats = (
+            benchmark_stats_grouped.group_by(["feat_idx", "bin_id"])
+            .agg(pl.col("len").sum().alias("len"))
+        )
+        lf_skeleton = pl.concat(
+            [
+                lf_skeleton,
+                benchmark_stats.select(["feat_idx", "bin_id"]),
+            ]
+        ).unique()
+        _validate_benchmark_observations(
+            current_stats=lf_stats,
+            benchmark_stats=benchmark_stats,
+            feat_map=feat_map,
+            options=options,
+        )
+        lf_psi = calc_psi_from_stats(
+            stats_df=lf_stats,
+            unique_bins_skel=lf_skeleton,
+            group_col=group_col,
+            baseline_group=None,
+            include_missing=options.psi_include_missing,
+            include_special=options.psi_include_special,
+            expected_stats_df=benchmark_stats,
+        )
 
     mapping_df = pl.LazyFrame(
         {"feat_idx": list(feat_map), "feature": list(feat_map.values())},
@@ -173,7 +390,7 @@ def _binned_psi_batch(
     )
     result_query = (
         lf_psi.join(mapping_df, on="feat_idx", how="left")
-        .select([context.group_col, "feature", "total", "psi"])
+        .select([group_col, "feature", "total", "psi"])
     )
     return collect_streaming(result_query)
 
@@ -186,6 +403,7 @@ def calc_psi_from_stats(
     baseline_group: Any,
     include_missing: bool,
     include_special: bool,
+    expected_stats_df: pl.LazyFrame | None = None,
 ) -> pl.LazyFrame:
     """基于聚合频次表计算 PSI。"""
     feat_col = "feat_idx" if "feat_idx" in stats_df.collect_schema().names() else "feature"
@@ -198,8 +416,13 @@ def calc_psi_from_stats(
     filtered_skel = unique_bins_skel.filter(filter_cond)
     full_skeleton = filtered_skel.join(filtered_stats.select(group_col).unique(), how="cross")
 
+    if expected_stats_df is None:
+        expected_source = filtered_stats.filter(pl.col(group_col) == baseline_group)
+    else:
+        expected_source = expected_stats_df.filter(filter_cond)
+
     expected = (
-        filtered_stats.filter(pl.col(group_col) == baseline_group)
+        expected_source
         .with_columns(psi_partition_prob_expr([feat_col], output_col="E"))
         .select([feat_col, "bin_id", "E"])
     )

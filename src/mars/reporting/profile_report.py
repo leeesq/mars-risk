@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, NamedTuple, Union
+from typing import Any, Dict, List, NamedTuple, Union
 
 import pandas as pd
 import polars as pl
 
 from mars.compute import to_pandas_frame
 from mars.reporting._profile_excel import _ProfileExcelWriter
+from mars.reporting._profile_html import write_profile_html
 
 
 class ProfileData(NamedTuple):
@@ -23,11 +24,15 @@ class ProfileData(NamedTuple):
         数据质量指标的趋势宽表字典。
     stats_trends : dict of str to DataFrame
         统计分布指标的趋势宽表字典。
+    comparisons : dict of str to DataFrame
+        Schema drift 与 unseen rate 对比表字典。
 
     Examples
     --------
     >>> import polars as pl
-    >>> data = ProfileData(overview=pl.DataFrame(), dq_trends={}, stats_trends={})
+    >>> data = ProfileData(
+    ...     overview=pl.DataFrame(), dq_trends={}, stats_trends={}, comparisons={}
+    ... )
     >>> data.dq_trends
     {}
     """
@@ -35,6 +40,7 @@ class ProfileData(NamedTuple):
     overview: Union[pl.DataFrame, pd.DataFrame]
     dq_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
     stats_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
+    comparisons: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
 
 class MarsProfileReport:
     """
@@ -53,6 +59,10 @@ class MarsProfileReport:
 
     stats_tables : dict of str to DataFrame
         统计分布指标趋势表字典。
+    comparison_tables : dict of str to DataFrame
+        显式请求的 current/benchmark 对比表。
+    report_meta : dict of str to Any
+        本次运行的轻量元数据与结构化诊断。
 
     Notes
     -----
@@ -65,7 +75,7 @@ class MarsProfileReport:
     >>> overview = pl.DataFrame({"feature": ["age"], "missing_rate": [0.0]})
     >>> dq_tables = {"missing": pl.DataFrame({"feature": ["age"], "202601": [0.0]})}
     >>> report = MarsProfileReport(overview, dq_tables=dq_tables, stats_tables={})
-    >>> overview_df, dq_dict, stat_dict = report.get_profile_data()
+    >>> overview_df, dq_dict, stat_dict, comparisons = report.get_profile_data()
     >>> overview_df.height
     1
     """
@@ -74,7 +84,9 @@ class MarsProfileReport:
         self,
         overview: Union[pl.DataFrame, pd.DataFrame],
         dq_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
-        stats_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
+        stats_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
+        comparison_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]] | None = None,
+        report_meta: Dict[str, Any] | None = None,
     ) -> None:
         """
         初始化画像报告容器。
@@ -87,10 +99,16 @@ class MarsProfileReport:
             数据质量趋势表字典。
         stats_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
             统计指标趋势表字典。
+        comparison_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]] | None
+            Schema drift 与 unseen rate 对比表字典。
+        report_meta : Dict[str, Any] | None
+            报告运行元数据与可恢复诊断。
         """
         self.overview_table = overview
         self.dq_tables = dq_tables
         self.stats_tables = stats_tables
+        self.comparison_tables = dict(comparison_tables or {})
+        self.report_meta = dict(report_meta or {})
 
         # 建立索引：将所有指标名映射到对应的数据源类型 ('dq' 或 'stat')
         # 这允许我们在 show_trend 中快速定位
@@ -99,6 +117,8 @@ class MarsProfileReport:
             self._metric_index[k] = "dq"
         for k in self.stats_tables.keys():
             self._metric_index[k] = "stat"
+        for k in self.comparison_tables.keys():
+            self._metric_index[k] = "comparison"
 
     def get_profile_data(self) -> ProfileData:
         """
@@ -107,7 +127,7 @@ class MarsProfileReport:
         Returns
         -------
         ProfileData
-            包含概览表、数据质量趋势表字典和统计指标趋势表字典的命名元组。
+            包含概览表、数据质量趋势表、统计趋势表和对比表的命名元组。
 
         Examples
         --------
@@ -120,7 +140,8 @@ class MarsProfileReport:
         return ProfileData(
             overview=self.overview_table,
             dq_trends=self.dq_tables,
-            stats_trends=self.stats_tables
+            stats_trends=self.stats_tables,
+            comparisons=self.comparison_tables,
         )
 
     def _repr_html_(self) -> str:
@@ -253,6 +274,29 @@ class MarsProfileReport:
             sort_ascending=sort_ascending,
         )
 
+    def write_html(
+        self,
+        path: str = "mars_profile_report.html",
+        *,
+        report_name: str = "MARS Data Profile",
+    ) -> None:
+        """Export a self-contained interactive HTML profile report.
+
+        Parameters
+        ----------
+        path : str
+            Output HTML file path.
+        report_name : str
+            Report title displayed in the HTML header.
+
+        Returns
+        -------
+        None
+            The method only writes the report file.
+
+        """
+        write_profile_html(self, path=path, report_name=report_name)
+
     def _get_styler(
         self,
         df_input: object,
@@ -265,7 +309,7 @@ class MarsProfileReport:
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
-    ) -> pd.io.formats.style.Styler | None:
+    ) -> pd.io.formats.style.Styler:
         """构建画像报告复用的 Pandas Styler。"""
         return _ProfileExcelWriter(self)._get_styler(
             df_input=df_input,
@@ -327,11 +371,17 @@ class MarsProfileReport:
                 features = [features]
             df = df[df["feature"].isin(features)]
 
+        requested_sort = ["dtype"] + (
+            ["missing_rate"]
+            if sort_by is None
+            else ([sort_by] if isinstance(sort_by, str) else sort_by)
+        )
+        available_sort = [column for column in requested_sort if column in df.columns]
         return self._get_styler(
             df,
             title="Dataset Overview",
             cmap="RdYlGn_r",
-            sort_by= ["dtype"] + (["missing_rate"] if sort_by is None else ([sort_by] if isinstance(sort_by, str) else sort_by)),
+            sort_by=available_sort or None,
             sort_ascending=sort_ascending,
             # 指定哪些列应用“红绿灯”配色 (高值=红)
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "mode_rate"],

@@ -9,13 +9,15 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
 发布依赖补充 `Jinja2>=3.1.2`，确保默认安装即可使用基础报告、特征筛选器和
 `Pandas Styler` 展示接口；Python 3.8 冻结栈使用 Jinja2 3.1.6 与 MarkupSafe 2.1.5。
 
-该版本将基础包的运行范围扩展到 Python 3.8–3.12，同时保持业务 public API、报告 schema
-和指标定义不变。
+该版本将基础包的运行范围扩展到 Python 3.8–3.12，并对 Analysis、Feature 和
+Reporting Stable API 执行 fail-closed 收口。本版本包含明确的 API、报告和序列化 breaking changes，
+升级前必须按本页的迁移清单核对。
 
 ### Python 与依赖兼容
 
 - Python 3.8 固定使用 Polars 1.8.2，并将 scikit-learn 限制在 1.3.x；仓库通过
-  `constraints/python38.txt` 固定验证栈。
+  `constraints/python38.txt` 固定验证栈。Windows 环境固定 OSQP 1.0.4，避免旧 0.6.x
+  在 Polars 已加载后导入时的原生库崩溃。
 - Python 3.9 使用现代 Polars 与 scikit-learn 1.6.x；Python 3.10–3.12 延续当前现代依赖。
 - Python 3.8 已停止官方安全维护。MARS 的兼容承诺仅表示冻结栈可以运行，不延长解释器的
   安全支持周期。
@@ -27,11 +29,41 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
 - 新增内部 Polars 兼容层，统一 membership 与 streaming collect 的跨版本差异。
 - KS/AUC 的前一累计分布改为“当前累计值减当前箱分布”，以兼容 Polars 1.8 的窗口表达式
   限制；指标结果与现代 Polars 保持一致。
-- Python 3.8 语言兼容改造只涉及注解求值、dataclass、zip 和字符串后缀处理，不改变公开
-  参数、返回类型或序列化字段。
+- Python 3.8 语言兼容改造本身只涉及注解求值、dataclass、zip 和字符串后缀处理，
+  不改变业务算法；本版本的 Stable API 与 artifact 变更单独列在下文。
 - 特征筛选的监督指标和 WOE 相关性只使用 target 非空的已表现样本；质量、分布和 PSI 仍
   使用全量样本。
 - Optimal Binner 的失败特征统一批量回退到 Native Binner，避免随失败特征数增长的重复拟合。
+- `profile_stats()` 与 `MarsDataProfiler.generate_profile()` 新增 `benchmark_df`：基准样本只负责
+  PSI 分箱和 expected distribution，不进入当前数据的质量与统计指标；未分组时可直接输出
+  当前全量相对 benchmark 的 `total` PSI。
+- 数据画像删除 `sample_frac` 参数。抽样改由调用方在传入前显式完成；仍传该参数的旧调用会
+  收到 Python 标准 `TypeError`，升级时应删除参数并在外部准备抽样 DataFrame。
+
+### Stable API 与报告加固
+
+- Binner `transform()` 新增 `features` 和 `on_missing`，默认要求全部规则列齐全；Selector
+  `transform()` 使用相同的严格缺列策略。`update_bins()`、`prune()` 和 `get_bin_mapping()`
+  不再静默忽略未知特征。
+- 三种 Binner 新增固定 schema 的 `get_fit_report()`。合法 fallback 可继续，真正无规则的
+  特征标为 `failed`，全部失败终止。
+- `to_dict()` / `from_dict()` 改为 `schema_version=1` 的自描述 artifact，新增 `save_json()`
+  和 `MarsBinnerBase.load_json()`。旧 `{params, state}` 载荷不兼容，必须重新拟合或导出。
+- WOE transform/SQL 必须具备完整 WOE 映射；SQL 类别值使用安全引号转义。
+- 报告级指标列缺失会终止；单特征空值、NaN 或 Inf 指标以 `metric_unavailable`
+  淘汰并记录。`MarsImportanceSelector` 删除未实现的 `rfe` / `sfm` 公开选项。
+- Excel、HTML、JSON 写入、资源读取和空报告导出失败现在会显式抛异常；Binning
+  HTML 如需图表，任一图表构建失败会使导出失败，可显式使用 `include_charts=False`。
+
+### 画像对比能力
+
+- `profile_stats()` 和 `generate_profile()` 新增 `categorical_features`，使整数编码类别同时进入
+  unseen 与类别 PSI 口径。
+- 新增显式 `schema` 和 `unseen` metrics，不加入默认指标。Schema 表区分两侧列存在性、
+  兼容和不兼容 dtype 变化；unseen 排除缺失与特殊值，输出 total 与分组趋势。
+- `MarsProfileReport` 新增 `comparison_tables`、`report_meta` 和自包含交互式 `write_html()`。
+  Profile Excel 新增 Metadata 和 comparison 工作表。
+- `ProfileData` 从三字段扩展为四字段，位置解包调用需增加 `comparisons`。
 
 ### 发布与工程门禁
 
@@ -46,6 +78,11 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
 
 - Python 3.8 环境按约束文件重建，不要在已有环境中强制覆盖整套依赖。
 - 使用可选建模或文档依赖时升级到 Python 3.10+。
+- 使用数据画像内部抽样的调用，改为先对 DataFrame 显式抽样，再调用 `profile_stats()` 或
+  `generate_profile()`。
+- 将 Binner 旧 dict/JSON 载荷全部用 0.0.26 重新拟合或 `save_json()` 导出。
+- 将依赖缺列静默忽略的 Binner/Selector 调用改为显式 `features` 或 `on_missing`。
+- 将 `ProfileData` 的三元素解包改为四元素，并移除 Importance Selector 的 `rfe` / `sfm` 配置。
 - 发布前同时验证 Python 3.8 冻结栈、Python 3.9 依赖边界和 Python 3.10–3.12 现代栈。
 
 ## 0.0.24

@@ -131,7 +131,13 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
         self.lr_binner = binner
 
         for split_name, raw_frame in self.raw_feature_frame_dict.items():
-            woe_frame = to_pandas_frame(binner.transform(raw_frame, return_type="woe"))
+            woe_frame = to_pandas_frame(
+                binner.transform(
+                    raw_frame,
+                    features=list(self.features),
+                    return_type="woe",
+                )
+            )
             missing = sorted(set(self.model_features).difference(woe_frame.columns))
             if missing:
                 raise ValueError(f"WOE transform did not produce required columns: {missing}")

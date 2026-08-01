@@ -64,6 +64,7 @@ class MarsNativeBinner(MarsBinnerBase):
         merge_small_bins: bool = False,
         cart_params: Dict[str, Any] | None = None,
         remove_empty_bins: bool = False,
+        join_threshold: int = 100,
         n_jobs: int = -1,
     ) -> None:
         """
@@ -87,6 +88,8 @@ class MarsNativeBinner(MarsBinnerBase):
             透传给 ``DecisionTreeClassifier`` 的参数。
         remove_empty_bins : bool
             是否在 ``uniform`` 分箱时清理空箱。
+        join_threshold : int
+            高基数类别映射切换为 Hash Join 的阈值。
         n_jobs : int
             并行计算使用的核心数限制。
         """
@@ -94,6 +97,7 @@ class MarsNativeBinner(MarsBinnerBase):
             n_bins=n_bins,
             special_values=special_values,
             missing_values=missing_values,
+            join_threshold=join_threshold,
             n_jobs=n_jobs
        )
         self.method = method
@@ -102,6 +106,20 @@ class MarsNativeBinner(MarsBinnerBase):
         self.remove_empty_bins = remove_empty_bins
 
         self.cart_params = cart_params if cart_params is not None else {}
+
+    def _serialization_params(self) -> dict[str, Any]:
+        """返回原生分箱器的完整构造配置。"""
+        params = super()._serialization_params()
+        params.update(
+            {
+                "method": self.method,
+                "min_bin_size": self.min_bin_size,
+                "merge_small_bins": self.merge_small_bins,
+                "cart_params": self.cart_params,
+                "remove_empty_bins": self.remove_empty_bins,
+            }
+        )
+        return params
 
     def fit(
         self,

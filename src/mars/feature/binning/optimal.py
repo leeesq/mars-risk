@@ -222,17 +222,10 @@ class MarsOptimalBinner(MarsBinnerBase):
             for feature in features
         }
 
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        将最优分箱器状态序列化为字典。
-
-        Returns
-        -------
-        Dict[str, Any]
-            包含构造参数与拟合状态的可序列化字典。
-        """
-        data = super().to_dict()
-        data["params"].update(
+    def _serialization_params(self) -> dict[str, Any]:
+        """返回最优分箱器的完整构造配置。"""
+        params = super()._serialization_params()
+        params.update(
             {
                 "min_n_bins": self.min_n_bins,
                 "min_bin_size": self.min_bin_size,
@@ -249,7 +242,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                 "fallback_binner_params": self.fallback_binner_params,
             }
         )
-        return data
+        return params
 
     def fit(
         self,

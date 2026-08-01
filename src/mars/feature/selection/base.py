@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Sequence, Union
+from typing import Any, List, Literal, Sequence, Union
 
 import pandas as pd
 import polars as pl
@@ -43,7 +43,12 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self.report_records_: list[dict[str, Any]] = []
         self._is_fitted: bool = False
 
-    def transform(self, X: Union[pl.DataFrame, pd.DataFrame]) -> pl.DataFrame:
+    def transform(
+        self,
+        X: Union[pl.DataFrame, pd.DataFrame],
+        *,
+        on_missing: Literal["error", "warn", "ignore"] = "error",
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
         """
         根据筛选结果裁剪输入数据。
 
@@ -51,11 +56,18 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         ----------
         X : Union[pl.DataFrame, pd.DataFrame]
             待裁剪的数据集。
+        on_missing : Literal['error', 'warn', 'ignore']
+            输入缺少已选择特征时的处理策略。默认报错；宽松模式仅保留实际存在列。
 
         Returns
         -------
         pl.DataFrame or pd.DataFrame
             仅保留 ``selected_features_`` 以及目标列后的数据集。
+
+        Raises
+        ------
+        ValueError
+            缺失已选特征或 ``on_missing`` 策略无效时抛出。
 
         Examples
         --------
@@ -69,14 +81,25 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         ['age', 'y']
         """
         self._check_is_fitted()
+        if on_missing not in {"error", "warn", "ignore"}:
+            raise ValueError("on_missing must be one of {'error', 'warn', 'ignore'}.")
         X = self._ensure_polars_dataframe(X)
 
-        cols_to_keep = [c for c in self.selected_features_ if c in X.columns]
+        missing_features = [
+            feature for feature in self.selected_features_ if feature not in X.columns
+        ]
+        if missing_features and on_missing == "error":
+            raise ValueError(
+                f"Selector transform input is missing selected features: {missing_features}."
+            )
+        if missing_features and on_missing == "warn":
+            logger.warning("Selector transform skipped missing features: %s", missing_features)
+        cols_to_keep = [feature for feature in self.selected_features_ if feature in X.columns]
 
         X_out = X.select(cols_to_keep)
         return self._format_output(X_out)
 
-    def get_report(self) -> pl.DataFrame:
+    def get_report(self) -> Union[pl.DataFrame, pd.DataFrame]:
         """
         生成特征筛选报告。
 
@@ -84,6 +107,11 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         -------
         pl.DataFrame or pd.DataFrame
             包含各特征筛选状态、阶段、原因、指标值与描述的报告表。
+
+        Raises
+        ------
+        ValueError
+            已拟合筛选器没有任何决策记录时抛出。
 
         Examples
         --------
@@ -100,8 +128,9 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self._check_is_fitted()
 
         if not self.report_records_:
-            logger.warning("No report records found. Did you forget to call `_register_decision` in a subclass?")
-            return pl.DataFrame([])
+            raise ValueError(
+                "Selector decision report is empty; fit must record at least one decision."
+            )
 
         report_df = pl.DataFrame(
             self.report_records_,
