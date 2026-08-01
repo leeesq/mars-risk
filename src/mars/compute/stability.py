@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 import polars as pl
 
@@ -198,7 +198,7 @@ def normalize_risk_corr_baseline(value: str | None) -> RiskCorrBaseline:
             "risk_corr_baseline must be one of {'total', 'first_group', 'benchmark'}, "
             f"got {value!r}.",
         )
-    return normalized  # type: ignore[return-value]
+    return cast(RiskCorrBaseline, normalized)
 
 
 def risk_corr_expr(

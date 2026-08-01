@@ -197,7 +197,7 @@ class MarsLogisticRegressionStrategy(MarsBaseModelStrategy):
     def predict_scores(self, model: MarsLogisticModel, split_name: str) -> np.ndarray:
         """预测指定切片的正类概率。"""
         proba = model.estimator.predict_proba(self.feature_frame_dict[split_name])
-        return np.asarray(proba[:, 1])
+        return cast(np.ndarray, np.asarray(proba[:, 1]))
 
     def extract_importance(self, model: MarsLogisticModel) -> pd.DataFrame:
         """返回按绝对系数归一后的特征重要性表。"""

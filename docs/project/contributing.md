@@ -14,6 +14,8 @@ description: 为 MARS 补充公共能力和文档时需要满足的内容与验�
 - 与文档共享源码的可运行示例。
 - Stable 或 Experimental 状态，以及必要的 Release Notes。
 - `mkdocs build --strict`、文档示例、内部链接和公开 API 覆盖检查。
+- wheel/sdist 静态校验，以及同一 wheel 在 Python 3.8、3.12 全新环境中的安装后 smoke。
+- Mypy 1.13.0/Python 3.8 目标下的全部业务源码零错误、零业务 override 和零 `type: ignore`。
 
 文档只描述仓库中已经存在并可验证的能力。性能结论必须附带可复现脚本、数据规模、参数、版本、
 硬件环境和测量限制。

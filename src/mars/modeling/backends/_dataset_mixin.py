@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -169,7 +169,7 @@ class BackendDatasetMixin:
     def _get_target_array(self, df: FrameLike) -> np.ndarray:
         """提取切片中的目标数组。"""
         if isinstance(df, pd.DataFrame):
-            return df[self.target].to_numpy()
+            return cast(np.ndarray, np.asarray(df[self.target].to_numpy()))
         if isinstance(df, pl.DataFrame):
-            return df.get_column(self.target).to_numpy()
+            return cast(np.ndarray, np.asarray(df.get_column(self.target).to_numpy()))
         raise TypeError(f"Expected pandas or polars DataFrame, got {type(df)!r}.")

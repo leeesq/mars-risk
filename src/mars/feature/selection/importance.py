@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.feature.selection.base import MarsBaseSelector
+from mars.feature.selection.base import _MarsXYSelector
 from mars.utils.imports import require_optional_module
 
 
-class MarsImportanceSelector(MarsBaseSelector):
+class MarsImportanceSelector(_MarsXYSelector):
     """
     基于模型重要性或 SHAP 的特征筛选器。
 
@@ -332,10 +332,11 @@ class MarsImportanceSelector(MarsBaseSelector):
             return []
         if self.selection_mode == "top_k":
             k = max(int(float(self.selection_threshold)), 0)
-            return table.head(k)["feature"].astype(str).tolist()
+            return [str(value) for value in table.head(k)["feature"].tolist()]
         if self.selection_mode == "threshold":
             threshold = float(self.selection_threshold)
-            return table.loc[table["importance"] >= threshold, "feature"].astype(str).tolist()
+            values = table.loc[table["importance"] >= threshold, "feature"].tolist()
+            return [str(value) for value in values]
 
         raw_threshold = self.selection_threshold
         if isinstance(raw_threshold, str) and raw_threshold.endswith("%"):
@@ -345,7 +346,7 @@ class MarsImportanceSelector(MarsBaseSelector):
             percentile = threshold_value / 100.0 if threshold_value > 1 else threshold_value
         percentile = min(max(percentile, 0.0), 1.0)
         keep_count = int(np.ceil(len(table) * percentile))
-        return table.head(keep_count)["feature"].astype(str).tolist()
+        return [str(value) for value in table.head(keep_count)["feature"].tolist()]
 
     def fit(
         self,
@@ -444,3 +445,20 @@ class MarsImportanceSelector(MarsBaseSelector):
 
         self._is_fitted = True
         return self
+
+    def fit_transform(
+        self,
+        X: pl.DataFrame | pd.DataFrame,
+        y: Any | None = None,
+        *,
+        features: Sequence[str] | None = None,
+        importance_table: pd.DataFrame | pl.DataFrame | None = None,
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
+        """使用与 :meth:`fit` 相同的参数拟合，并转换当前特征表。"""
+        self.fit(
+            X,
+            y,
+            features=features,
+            importance_table=importance_table,
+        )
+        return self.transform(X)

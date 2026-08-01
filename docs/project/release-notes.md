@@ -33,6 +33,15 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
   使用全量样本。
 - Optimal Binner 的失败特征统一批量回退到 Native Binner，避免随失败特征数增长的重复拟合。
 
+### 发布与工程门禁
+
+- 普通 CI 和 Release 均只构建一次 wheel/sdist，静态核对版本、Python 范围、依赖 marker、
+  `py.typed`、Excel 模板和 dist-info，再运行 `twine check`。
+- 同一 wheel 会在 Python 3.8 与 3.12 全新环境中独立安装，并验证递归导入、`profile_risk`、
+  selector、Pandas Styler、Excel/HTML 报告和安装后的模板资源；发布 job 不再重新构建。
+- Mypy 固定为 1.13.0，并以 Python 3.8 为统一目标检查全部 `src/mars`；业务模块 override 与
+  源码 `type: ignore` 已清零，第三方动态边界通过显式类型收窄处理。
+
 ### 升级检查
 
 - Python 3.8 环境按约束文件重建，不要在已有环境中强制覆盖整套依赖。
@@ -64,5 +73,5 @@ description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查�
 
 !!! note "发布状态"
 
-    本页随 `0.0.24` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
+    本页随 `0.0.26` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
     通过版本一致性检查后，安装命令才表示正式可用。

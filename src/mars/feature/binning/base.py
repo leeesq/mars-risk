@@ -5,7 +5,7 @@ from __future__ import annotations
 import gc
 import multiprocessing
 from collections import defaultdict
-from typing import Any, Dict, List, Literal, Set, Union
+from typing import Any, Dict, List, Literal, Set, TypeVar, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,8 @@ from mars.compute import (
 from mars.core.base import MarsTransformer
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
+
+_MarsBinnerT = TypeVar("_MarsBinnerT", bound="MarsBinnerBase")
 
 
 class MarsBinnerBase(MarsTransformer):
@@ -130,13 +132,13 @@ class MarsBinnerBase(MarsTransformer):
         self.fit_failures_: Dict[str, str] = {}
 
     def fit(
-        self,
+        self: _MarsBinnerT,
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
-    ) -> MarsBinnerBase:
+    ) -> _MarsBinnerT:
         """
         拟合分箱器并缓存本次分箱特征范围。
 
@@ -469,7 +471,7 @@ class MarsBinnerBase(MarsTransformer):
             return []
 
         is_numeric = dtype in self.NUMERIC_DTYPES
-        safe_vals = []
+        safe_vals: List[Union[int, float, str]] = []
 
         for v in values:
             if v is None or (isinstance(v, float) and np.isnan(v)):
@@ -1161,14 +1163,15 @@ class MarsBinnerBase(MarsTransformer):
 
             if not is_categorical:
                 # 数值型特征：补齐边界并去重排序
-                clean_splits = sorted(list(set(splits)))
-                new_cuts = [float('-inf')] + clean_splits + [float('inf')]
+                numeric_splits = cast(List[Union[int, float]], splits)
+                clean_splits = sorted(set(float(value) for value in numeric_splits))
+                new_cuts = [float('-inf'), *clean_splits, float('inf')]
                 self.bin_cuts_[feature] = new_cuts
             else:
                 # 类别型特征
                 if not hasattr(self, "cat_cuts_"):
                     self.cat_cuts_ = {}
-                self.cat_cuts_[feature] = splits
+                self.cat_cuts_[feature] = cast(List[List[Any]], splits)
 
             # 清理旧的映射与 WOE 缓存
             if feature in self.bin_mappings_:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -162,7 +162,7 @@ def normalize_metric_directions(
                 f"Unsupported metric direction for {metric_name!r}: {raw_direction!r}. "
                 "Expected 'maximize' or 'minimize'."
             )
-        directions[normalized_name] = raw_direction  # type: ignore[assignment]
+        directions[normalized_name] = cast(MetricDirection, raw_direction)
     return directions
 
 
@@ -324,7 +324,7 @@ def as_probability(preds: Any) -> np.ndarray:
     arr = np.asarray(preds, dtype=float).reshape(-1)
     if arr.size and (np.nanmin(arr) < 0.0 or np.nanmax(arr) > 1.0):
         arr = 1.0 / (1.0 + np.exp(-arr))
-    return arr
+    return cast(np.ndarray, arr)
 
 
 def xgb_ks_metric(preds: np.ndarray, dmatrix: Any) -> tuple[str, float]:

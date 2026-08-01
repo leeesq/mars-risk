@@ -254,7 +254,7 @@ class MarsOptimalBinner(MarsBinnerBase):
     def fit(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any],
+        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
@@ -266,8 +266,8 @@ class MarsOptimalBinner(MarsBinnerBase):
         ----------
         X : pl.DataFrame | pd.DataFrame
             输入特征矩阵。
-        y : pl.Series | pd.Series | np.ndarray | list[Any]
-            目标变量。最优分箱依赖监督信息，必须提供。
+        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
+            目标变量。最优分箱依赖监督信息；省略或传入 ``None`` 时抛出 ``ValueError``。
         features : list[str] | None
             本次拟合的特征列；不传时使用全部候选列。
         cat_features : list[str] | None
@@ -297,7 +297,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         super().fit(X, y, features=features, cat_features=cat_features)
         return self
 
-    def _fit_impl(self, X: pl.DataFrame, y: pl.Series = None) -> None:
+    def _fit_impl(self, X: pl.DataFrame, y: pl.Series | None = None) -> None:
         """
         自动执行特征识别与任务流分发。
 
@@ -553,12 +553,12 @@ class MarsOptimalBinner(MarsBinnerBase):
                 for c, cuts, data, y in num_task_gen()
             )
 
-        for col, cuts, error_msg in results:
-            if cuts is None:
+        for col, fitted_cuts, error_msg in results:
+            if fitted_cuts is None:
                 fallback_reasons[col] = error_msg or "Optimal binning did not return cuts"
                 continue
 
-            self.bin_cuts_[col] = cuts
+            self.bin_cuts_[col] = fitted_cuts
             if error_msg:
                 self.fit_failures_[col] = error_msg
 

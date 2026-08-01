@@ -314,6 +314,30 @@ def test_release_workflow_dispatches_docs_from_main() -> None:
     assert "actions/deploy-pages" not in workflow
 
 
+def test_distribution_workflows_reuse_the_verified_artifacts() -> None:
+    """PR 与 Release 必须只构建一次，并在 3.8/3.12 验证同一 wheel。"""
+    test_workflow = (PROJECT_ROOT / ".github" / "workflows" / "test.yml").read_text(
+        encoding="utf-8"
+    )
+    publish_workflow = (
+        PROJECT_ROOT / ".github" / "workflows" / "publish.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "distribution:" in test_workflow
+    assert "needs: distribution" in test_workflow
+    assert 'python-version: ["3.8", "3.12"]' in test_workflow
+    assert "scripts/verify_distribution.py" in test_workflow
+    assert "scripts/smoke_installed_package.py" in test_workflow
+
+    assert "needs: build" in publish_workflow
+    assert "needs: verify-wheel" in publish_workflow
+    assert "needs: publish" in publish_workflow
+    assert publish_workflow.count("python -m build") == 1
+    assert publish_workflow.count("id-token: write") == 1
+    assert 'python-version: ["3.8", "3.12"]' in publish_workflow
+    assert "Publish the exact verified artifacts" in publish_workflow
+
+
 @pytest.mark.parametrize(
     ("module_label", "module_name", "expected_status", "reference_name"),
     [

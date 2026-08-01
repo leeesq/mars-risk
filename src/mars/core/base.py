@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Literal, Union
+from typing import Any, List, Literal, TypeVar, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -292,6 +292,9 @@ class MarsBaseEstimator(BaseEstimator):
         return data
 
 
+_MarsTransformerT = TypeVar("_MarsTransformerT", bound="MarsTransformer")
+
+
 class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
     """
     MARS 转换器抽象基类。
@@ -351,14 +354,14 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         ['age']
         """
         self._check_is_fitted()
-        return self.feature_names_in_
+        return cast(List[str], self.feature_names_in_)
 
     @time_it
     def fit(
-        self,
+        self: _MarsTransformerT,
         X: pl.DataFrame | pd.DataFrame,
         y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
-    ) -> MarsTransformer:
+    ) -> _MarsTransformerT:
         """
         拟合转换器并缓存输入特征信息。
 

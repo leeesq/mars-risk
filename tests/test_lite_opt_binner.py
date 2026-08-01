@@ -74,7 +74,7 @@ def test_lite_opt_binner_public_signature_exposes_fit_parameters() -> None:
     fit_sig = inspect.signature(MarsLiteOptBinner.fit)
 
     assert list(fit_sig.parameters) == ["self", "X", "y", "features", "cat_features"]
-    assert fit_sig.parameters["y"].default is inspect.Parameter.empty
+    assert fit_sig.parameters["y"].default is None
     assert fit_sig.parameters["features"].kind is inspect.Parameter.KEYWORD_ONLY
     assert fit_sig.parameters["cat_features"].kind is inspect.Parameter.KEYWORD_ONLY
 

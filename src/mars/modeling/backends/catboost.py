@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import numpy as np
 import pandas as pd
@@ -119,7 +119,7 @@ class MarsCatBoostStrategy(MarsBaseModelStrategy):
         """
         catboost = _load_module("catboost")
 
-        callbacks = []
+        callbacks: list[Any] = []
 
         # CatBoost 的训练监控指标同样走 training_metric；
         # 外层若优化 KS，会提前把这里的训练指标切到 AUC。
@@ -177,7 +177,7 @@ class MarsCatBoostStrategy(MarsBaseModelStrategy):
         [0.2, 0.9]
         """
         preds = model.predict_proba(self.predict_frame_dict[split_name])
-        return np.asarray(preds[:, 1])
+        return cast(np.ndarray, np.asarray(preds[:, 1]))
 
     def extract_importance(self, model: Any) -> pd.DataFrame:
         """

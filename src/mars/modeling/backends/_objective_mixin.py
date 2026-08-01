@@ -208,9 +208,11 @@ class BackendObjectiveMixin:
             return float(val_score if is_valid else self._invalid_trial_score(max_penalty_diff))
 
         except Exception as exc:
-            optuna_module = None
+            optuna_module: Any = None
             try:
-                import optuna as optuna_module  # type: ignore
+                import optuna
+
+                optuna_module = optuna
             except Exception:
                 optuna_module = None
 

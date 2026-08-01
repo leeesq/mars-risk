@@ -6,11 +6,10 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  build-and-publish:
-    name: Build and publish package
+  build:
+    name: Build release distributions
     runs-on: ubuntu-latest
 
     steps:
@@ -18,24 +17,92 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up Python 3.10
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build tomli
+          python -m pip install build packaging twine
       - name: Check release version
         run: python scripts/check_release_version.py --release-tag "${{ github.event.release.tag_name }}"
-      - name: Build package
+      - name: Build wheel and sdist once
         run: python -m build
-      - name: Publish package to PyPI
+      - name: Verify distribution metadata and resources
+        run: |
+          python scripts/verify_distribution.py --dist-dir dist
+          python -m twine check dist/*
+      - name: Upload release candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: mars-release-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  verify-wheel:
+    name: Verify wheel (Python ${{ matrix.python-version }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.12"]
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Download release candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: mars-release-distributions
+          path: dist
+      - name: Create isolated environment
+        id: venv
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/mars-wheel-smoke"
+          echo "python=$RUNNER_TEMP/mars-wheel-smoke/bin/python" >> "$GITHUB_OUTPUT"
+      - name: Install wheel with Python 3.8 frozen constraints
+        if: matrix.python-version == '3.8'
+        shell: bash
+        run: |
+          "${{ steps.venv.outputs.python }}" -m pip install --upgrade "pip<25"
+          "${{ steps.venv.outputs.python }}" -m pip install -c constraints/python38.txt dist/*.whl
+      - name: Install wheel with modern dependencies
+        if: matrix.python-version == '3.12'
+        shell: bash
+        run: |
+          "${{ steps.venv.outputs.python }}" -m pip install --upgrade pip
+          "${{ steps.venv.outputs.python }}" -m pip install dist/*.whl
+      - name: Run installed-wheel smoke outside the repository
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          "${{ steps.venv.outputs.python }}" "$GITHUB_WORKSPACE/scripts/smoke_installed_package.py" --repo-root "$GITHUB_WORKSPACE" --output-dir "$RUNNER_TEMP/mars-smoke-output"
+          "${{ steps.venv.outputs.python }}" -m pip check
+
+  publish:
+    name: Publish verified distributions to PyPI
+    needs: verify-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download verified release candidates
+        uses: actions/download-artifact@v4
+        with:
+          name: mars-release-distributions
+          path: dist
+      - name: Publish the exact verified artifacts
         uses: pypa/gh-action-pypi-publish@release/v1
 
   request-docs-deployment:
     name: Request released documentation deployment
-    needs: build-and-publish
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
       actions: write

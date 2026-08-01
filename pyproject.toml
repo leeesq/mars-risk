@@ -103,7 +103,7 @@ docs = [
 dev = [
     "pytest>=7.4.0",
     "ruff>=0.8.0",
-    "mypy>=1.13.0,<1.15",
+    "mypy==1.13.0",
     "pydoclint>=0.8.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
@@ -118,7 +118,10 @@ dev = [
     "tqdm>=4.66.0",        
     "psutil>=5.9.0",
     "statsmodels>=0.14.0",
-    "shap>=0.45.0"
+    "shap>=0.45.0",
+    "build>=1.2.2",
+    "packaging>=24.0",
+    "twine>=5.1.0",
 ]
 
 # 自动发现包配置
@@ -196,7 +199,7 @@ warn_return_any = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 strict_equality = true
-ignore_missing_imports = true
+ignore_missing_imports = false
 incremental = false
 allow_redefinition = true
 show_error_codes = true
@@ -223,55 +226,20 @@ module = [
     "catboost.*",
     "lightgbm.*",
     "matplotlib.*",
+    "joblib.*",
+    "openpyxl.*",
     "optbinning.*",
     "optuna.*",
+    "pandas",
+    "pandas.*",
+    "ruptures.*",
     "seaborn.*",
     "shap.*",
     "sklearn.*",
     "statsmodels.*",
     "xgboost.*",
+    "xlsxwriter.*",
     "xlwings.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
-
-[[tool.mypy.overrides]]
-module = [
-    "mars.analysis.evaluator",
-    "mars.analysis.profiler",
-    "mars.analysis.report",
-    "mars.core.base",
-    "mars.feature.binning.base",
-    "mars.feature.binning.lite_opt",
-    "mars.feature.binning.native",
-    "mars.feature.binning.optimal",
-    "mars.feature.selection.base",
-    "mars.feature.selection.importance",
-    "mars.feature.selection.linear",
-    "mars.feature.selection.stats",
-]
-disable_error_code = [
-    "arg-type",
-    "assignment",
-    "attr-defined",
-    "call-arg",
-    "has-type",
-    "index",
-    "misc",
-    "no-any-return",
-    "override",
-    "return-value",
-    "union-attr",
-    "var-annotated",
-]
-
-[[tool.mypy.overrides]]
-module = [
-    "mars.modeling.*",
-    "mars.scoring.scorecard",
-]
-disable_error_code = [
-    "no-any-return",
-    "union-attr",
-    "var-annotated",
-]

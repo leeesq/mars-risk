@@ -10,11 +10,11 @@ import pandas as pd
 import polars as pl
 
 from mars.core.constants import DIVISION_EPSILON
-from mars.feature.selection.base import MarsBaseSelector
+from mars.feature.selection.base import _MarsXYSelector
 from mars.utils.imports import require_optional_module
 
 
-class MarsLinearSelector(MarsBaseSelector):
+class MarsLinearSelector(_MarsXYSelector):
     """
     面向传统 LR 建模的线性特征筛选器。
 

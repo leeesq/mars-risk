@@ -6,7 +6,7 @@
 
 <img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="720">
 
-<img src="docs/assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库" width="720">
+<img src="docs/assets/mars-tagline.svg" alt="面向信用风控分析与建模的 Polars-first 高性能工具库" width="720">
 
 <img src="docs/assets/mars-workflow.svg" alt="Profile -> Bin/Evaluate -> Analyze -> Select -> Modeling -> Pipeline -> Monitor -> Report" width="820">
 
@@ -39,6 +39,20 @@ MARS `0.0.26` 支持 Python 3.8–3.12。Python 3.8 使用冻结兼容依赖栈�
 
 ```bash
 pip install mars-risk==0.0.26
+```
+
+从 GitHub 源码安装当前 `main` 分支：
+
+```bash
+pip install "git+https://github.com/leeesq/mars-risk.git"
+```
+
+也可以先克隆仓库，再从本地源码安装：
+
+```bash
+git clone https://github.com/leeesq/mars-risk.git
+cd mars-risk
+pip install .
 ```
 
 建模与调参需要可选依赖：

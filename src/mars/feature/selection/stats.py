@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Literal, Union, cast
 
 import pandas as pd
 import polars as pl
@@ -185,7 +185,7 @@ class MarsStatsSelector(MarsBaseSelector):
         self.psi_include_missing = psi_include_missing
         self.psi_include_special = psi_include_special
 
-        self.batch_size = batch_size
+        self.batch_size = 100 if batch_size is None else batch_size
         self.n_jobs = n_jobs
 
         self._rough_binner: MarsNativeBinner | None = None
@@ -197,7 +197,7 @@ class MarsStatsSelector(MarsBaseSelector):
         self._benchmark_row_count: int | None = None
         self._binning_fit_source = "df"
 
-        self._funnel_stats = []
+        self._funnel_stats: list[dict[str, Any]] = []
 
     @time_it
     def fit(
@@ -473,6 +473,39 @@ class MarsStatsSelector(MarsBaseSelector):
         self._is_fitted = True
         self.show_summary()
         return self
+
+    def fit_transform(
+        self,
+        df: pl.DataFrame | pd.DataFrame,
+        *,
+        target: str,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        features: list[str] | None = None,
+        feature_data_source: dict[str, list[str]] | None = None,
+        group_col: str | None = None,
+        time_col: str | None = None,
+        time_grain: str | None = None,
+        white_list: list[str] | None = None,
+        black_list: list[str] | None = None,
+        feature_start_aware_reference: bool | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
+        """使用与 :meth:`fit` 相同的参数拟合，并转换当前数据。"""
+        self.fit(
+            df,
+            target=target,
+            benchmark_df=benchmark_df,
+            features=features,
+            feature_data_source=feature_data_source,
+            group_col=group_col,
+            time_col=time_col,
+            time_grain=time_grain,
+            white_list=white_list,
+            black_list=black_list,
+            feature_start_aware_reference=feature_start_aware_reference,
+            risk_corr_baseline=risk_corr_baseline,
+        )
+        return self.transform(df)
 
     def _prepare_evaluation_frame(self, df: pl.DataFrame) -> pl.DataFrame:
         """校验并归一化当前筛选样本的二分类标签。"""
@@ -894,10 +927,23 @@ class MarsStatsSelector(MarsBaseSelector):
         cat_features = [c for c in features if fit_df.schema[c] in cat_types]
 
         binner = MarsNativeBinner(
+            method=cast(
+                Literal["cart", "quantile", "uniform"],
+                self.rough_binning_params["method"],
+            ),
+            n_bins=cast(int, self.rough_binning_params["n_bins"]),
             missing_values=self.missing_values,
             special_values=self.special_values,
+            min_bin_size=cast(float, self.rough_binning_params["min_bin_size"]),
+            merge_small_bins=bool(self.rough_binning_params["merge_small_bins"]),
+            cart_params=cast(
+                Union[Dict[str, Any], None],
+                self.rough_binning_params.get("cart_params"),
+            ),
+            remove_empty_bins=bool(
+                self.rough_binning_params.get("remove_empty_bins", False)
+            ),
             n_jobs=self.n_jobs,
-            **self.rough_binning_params,
         )
         fit_target = (
             fit_df.get_column(self.target)
@@ -1163,6 +1209,8 @@ class MarsStatsSelector(MarsBaseSelector):
             return features
         if self.target is None:
             raise ValueError("Selector target is unavailable for WOE correlation filtering.")
+        if self._stage3_binner is None:
+            raise ValueError("Selector binner is unavailable for WOE correlation filtering.")
 
         woe_cols = [f"{c}_woe" for c in features]
         observed_df = df.filter(pl.col(self.target).is_not_null()).select(features)
@@ -1452,6 +1500,11 @@ class MarsStatsSelector(MarsBaseSelector):
         dict
             包含 ``white_list`` 与 ``black_list`` 的字典。
 
+        Raises
+        ------
+        ValueError
+            JSON 顶层不是对象，或白黑名单字段不是字符串列表时抛出。
+
         Examples
         --------
         >>> from pathlib import Path
@@ -1470,7 +1523,17 @@ class MarsStatsSelector(MarsBaseSelector):
             return {"white_list": [], "black_list": []}
 
         with open(path, encoding='utf-8') as f:
-            return json.load(f)
+            payload = json.load(f)
+        if not isinstance(payload, dict):
+            raise ValueError("Selector list file must contain a JSON object.")
+
+        result: Dict[str, List[str]] = {}
+        for key in ("white_list", "black_list"):
+            values = payload.get(key, [])
+            if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                raise ValueError(f"Selector list field {key!r} must be a list of strings.")
+            result[key] = list(values)
+        return result
 
     def print_stats(self, iv_thresholds: List[float] | None = None) -> None:
         """

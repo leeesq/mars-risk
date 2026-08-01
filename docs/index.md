@@ -7,11 +7,11 @@ description: MARS 0.0.26 文档入口：安装、最小风险评估、任务指�
 <div class="mars-home-hero">
   <img class="mars-home-logo" src="assets/mars-logo.svg" alt="MARS">
   <img class="mars-home-wordmark" src="assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE">
-  <img class="mars-home-tagline" src="assets/mars-tagline.svg" alt="面向信贷风控分析与建模的 Polars-first 高性能工具库">
+  <img class="mars-home-tagline" src="assets/mars-tagline.svg" alt="面向信用风控分析与建模的 Polars-first 高性能工具库">
   <img class="mars-home-pipeline" src="assets/mars-workflow.svg" alt="Profile to Bin and Evaluate to Analyze to Select to Modeling to Pipeline to Monitor to Report">
 </div>
 
-MARS 是面向信贷风控宽表分析、分箱评估、特征筛选、建模和监控的
+MARS 是面向信用风控宽表分析、分箱评估、特征筛选、建模和监控的
 Polars-first Python 工具库。它接受 Pandas 或 Polars 数据，并返回可继续读取和加工的结构化
 report 对象。
 

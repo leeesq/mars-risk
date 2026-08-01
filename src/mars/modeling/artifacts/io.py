@@ -97,6 +97,8 @@ def read_json(path: Path) -> Dict[str, Any]:
     ------
     FileNotFoundError
         文件不存在时抛出。
+    ValueError
+        JSON 顶层不是对象时抛出。
 
     Examples
     --------
@@ -110,7 +112,10 @@ def read_json(path: Path) -> Dict[str, Any]:
     """
     if not path.exists():
         raise FileNotFoundError(f"Artifact metadata file is missing: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Artifact metadata must be a JSON object: {path}")
+    return {str(key): value for key, value in payload.items()}
 
 
 def save_report_tables(reports: Dict[str, MarsModelingReport], reports_dir: Path) -> Dict[str, str]:

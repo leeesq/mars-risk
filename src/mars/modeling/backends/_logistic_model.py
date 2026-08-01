@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -46,4 +46,4 @@ class MarsLogisticModel:
     def predict_proba(self, X: pd.DataFrame | pl.DataFrame) -> np.ndarray:
         """通过保存的预处理路径预测二分类概率。"""
         model_frame = self.transform_features(X)
-        return np.asarray(self.estimator.predict_proba(model_frame))
+        return cast(np.ndarray, np.asarray(self.estimator.predict_proba(model_frame)))

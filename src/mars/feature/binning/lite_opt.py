@@ -182,7 +182,7 @@ class MarsLiteOptBinner(MarsBinnerBase):
     def fit(
         self,
         X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any],
+        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
         *,
         features: list[str] | None = None,
         cat_features: list[str] | None = None,
@@ -194,8 +194,8 @@ class MarsLiteOptBinner(MarsBinnerBase):
         ----------
         X : pl.DataFrame | pd.DataFrame
             输入特征矩阵。
-        y : pl.Series | pd.Series | np.ndarray | list[Any]
-            二分类目标变量，必须为 0/1 或布尔值，且不允许为空。
+        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
+            二分类目标变量，必须为 0/1 或布尔值；省略或传入 ``None`` 时抛出 ``ValueError``。
         features : list[str] | None
             本次拟合的特征列；不传时使用全部候选列。
         cat_features : list[str] | None

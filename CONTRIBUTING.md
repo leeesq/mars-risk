@@ -35,6 +35,14 @@ pydoclint src/mars
 python scripts/check_private_docstrings.py src/mars
 python -m pytest -q tests/test_documentation.py
 python -m mkdocs build --strict
+python -m build
+python scripts/verify_distribution.py --dist-dir dist
+python -m twine check dist/*
 ```
 
 Modeling、Pipeline 或 Notebook 示例还需要安装 `ml,tuning` extra 并执行文档集成测试。
+
+发布产物必须只构建一次。普通 CI 和 Release 都会把同一份 wheel 分别安装到全新 Python 3.8
+与 3.12 环境，从仓库外运行 `scripts/smoke_installed_package.py`；PyPI job 只能上传两端均已
+验证的 artifact，不得重新构建。Mypy 固定为 1.13.0，并统一按 Python 3.8 语法目标检查；
+`mars.*` 业务模块不得通过 override 或 `type: ignore` 绕过类型错误。

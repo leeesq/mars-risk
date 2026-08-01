@@ -1,5 +1,5 @@
 site_name: MARS
-site_description: 面向信贷风控分析与建模的 Polars-first Python 工具库
+site_description: 面向信用风控分析与建模的 Polars-first Python 工具库
 site_url: https://leeesq.github.io/mars-risk/
 repo_url: https://github.com/leeesq/mars-risk
 repo_name: leeesq/mars-risk

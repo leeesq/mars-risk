@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, cast
 
 import numpy as np
 import pandas as pd
@@ -26,6 +26,11 @@ class PredictionAdapter:
 _PREDICTION_ADAPTERS: Dict[str, PredictionAdapter] = {}
 
 
+def _as_ndarray(value: Any) -> np.ndarray:
+    """将动态后端预测值收窄为 NumPy 数组。"""
+    return cast(np.ndarray, np.asarray(value))
+
+
 def register_prediction_adapter(adapter: PredictionAdapter) -> PredictionAdapter:
     """按规范后端名称注册预测适配器。"""
     _PREDICTION_ADAPTERS[adapter.name] = adapter
@@ -41,10 +46,10 @@ def get_prediction_adapter(model_type: str) -> PredictionAdapter:
 def _predict_proba_like(model: Any, X: pd.DataFrame) -> np.ndarray:
     """处理 sklearn 风格 `predict_proba` 接口的通用适配逻辑。"""
     preds = model.predict_proba(X)
-    preds_arr = np.asarray(preds)
+    preds_arr = _as_ndarray(preds)
     if preds_arr.ndim == 2 and preds_arr.shape[1] >= 2:
-        return np.asarray(preds_arr[:, 1])
-    return np.ravel(preds_arr)
+        return _as_ndarray(preds_arr[:, 1])
+    return cast(np.ndarray, np.ravel(preds_arr))
 
 
 def _xgb_matches(model: Any) -> bool:
@@ -68,8 +73,8 @@ def _xgb_predict_pandas(model: Any, X: pd.DataFrame) -> np.ndarray:
         dtest = xgb.DMatrix(X, enable_categorical=any(str(dtype) == "category" for dtype in X.dtypes))
         best_iteration = getattr(model, "best_iteration", None)
         if best_iteration is None:
-            return np.asarray(model.predict(dtest))
-        return np.asarray(model.predict(dtest, iteration_range=(0, best_iteration + 1)))
+            return _as_ndarray(model.predict(dtest))
+        return _as_ndarray(model.predict(dtest, iteration_range=(0, best_iteration + 1)))
     if isinstance(model, getattr(xgb, "XGBModel", tuple())):
         return _predict_proba_like(model, X)
     raise TypeError(f"Unsupported XGBoost model type: {type(model)!r}")
@@ -83,8 +88,8 @@ def _xgb_predict_polars(model: Any, X: pl.DataFrame) -> np.ndarray | None:
     dtest = xgb.DMatrix(X.to_arrow())
     best_iteration = getattr(model, "best_iteration", None)
     if best_iteration is None:
-        return np.asarray(model.predict(dtest))
-    return np.asarray(model.predict(dtest, iteration_range=(0, best_iteration + 1)))
+        return _as_ndarray(model.predict(dtest))
+    return _as_ndarray(model.predict(dtest, iteration_range=(0, best_iteration + 1)))
 
 
 def _lgb_matches(model: Any) -> bool:
@@ -106,7 +111,7 @@ def _lgb_predict_pandas(model: Any, X: pd.DataFrame) -> np.ndarray:
         raise ImportError("lightgbm is required for LightGBM prediction.")
     if isinstance(model, getattr(lgb, "Booster", tuple())):
         best_iteration = getattr(model, "best_iteration", None)
-        return np.asarray(model.predict(X, num_iteration=best_iteration or None))
+        return _as_ndarray(model.predict(X, num_iteration=best_iteration or None))
     if isinstance(model, getattr(lgb, "LGBMModel", tuple())):
         return _predict_proba_like(model, X)
     raise TypeError(f"Unsupported LightGBM model type: {type(model)!r}")
@@ -118,7 +123,7 @@ def _lgb_predict_polars(model: Any, X: pl.DataFrame) -> np.ndarray | None:
     if lgb is None or not isinstance(model, getattr(lgb, "Booster", tuple())):
         return None
     best_iteration = getattr(model, "best_iteration", None)
-    return np.asarray(model.predict(X.to_arrow(), num_iteration=best_iteration or None))
+    return _as_ndarray(model.predict(X.to_arrow(), num_iteration=best_iteration or None))
 
 
 def _cat_matches(model: Any) -> bool:

@@ -87,7 +87,7 @@ def test_binner_public_signatures_expose_user_visible_parameters():
     assert native_fit_sig.parameters["cat_features"].kind is inspect.Parameter.KEYWORD_ONLY
     assert "kwargs" not in native_fit_sig.parameters
     assert list(optimal_fit_sig.parameters) == ["self", "X", "y", "features", "cat_features"]
-    assert optimal_fit_sig.parameters["y"].default is inspect.Parameter.empty
+    assert optimal_fit_sig.parameters["y"].default is None
     assert optimal_fit_sig.parameters["features"].kind is inspect.Parameter.KEYWORD_ONLY
     assert optimal_fit_sig.parameters["cat_features"].kind is inspect.Parameter.KEYWORD_ONLY
     assert "kwargs" not in optimal_fit_sig.parameters

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, List, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
@@ -67,7 +67,7 @@ class ModelPredictor:
     def _predict_pandas_matrix(self, X: pd.DataFrame) -> np.ndarray:
         """基于已准备好的 Pandas 特征矩阵执行预测。"""
         adapter = get_prediction_adapter(self._resolve_backend_name())
-        return np.asarray(adapter.predict_pandas(self.model, X))
+        return cast(np.ndarray, np.asarray(adapter.predict_pandas(self.model, X)))
 
     def _safe_predict_logic(self, df: pd.DataFrame) -> np.ndarray:
         """通过已注册适配器执行 Pandas 预测路径。"""
@@ -85,7 +85,7 @@ class ModelPredictor:
         adapter = get_prediction_adapter(self._resolve_backend_name())
         preds = adapter.predict_polars(self.model, df.select(self.features))
         if preds is not None:
-            return np.asarray(preds)
+            return cast(np.ndarray, np.asarray(preds))
 
         return self._safe_predict_logic(to_pandas_frame(df))
 

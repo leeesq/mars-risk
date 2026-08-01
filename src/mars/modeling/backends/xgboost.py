@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import numpy as np
 import pandas as pd
@@ -224,8 +224,13 @@ class MarsXGBStrategy(MarsBaseModelStrategy):
         best_iteration = self.get_best_iteration(model)
         iteration_range = (0, best_iteration + 1) if best_iteration is not None else None
         if iteration_range is None:
-            return np.asarray(model.predict(self.dmatrix_dict[split_name]))
-        return np.asarray(model.predict(self.dmatrix_dict[split_name], iteration_range=iteration_range))
+            return cast(np.ndarray, np.asarray(model.predict(self.dmatrix_dict[split_name])))
+        return cast(
+            np.ndarray,
+            np.asarray(
+                model.predict(self.dmatrix_dict[split_name], iteration_range=iteration_range)
+            ),
+        )
 
     def extract_importance(self, model: Any) -> pd.DataFrame:
         """

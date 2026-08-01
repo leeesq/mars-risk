@@ -746,7 +746,11 @@ class MarsNativeBinner(MarsBinnerBase):
             raise ValueError(f"Target 'y' length mismatch: X({X.height}) vs y({len(y_np)})")
 
         n_total_samples = X.height
-        def worker(col_name: str, x_clean_np: np.ndarray, y_clean_np: np.ndarray) -> Tuple[str, List[float]]:
+        def worker(
+            col_name: str,
+            x_clean_np: np.ndarray,
+            y_clean_np: np.ndarray,
+        ) -> Tuple[str, List[float], str | None]:
             """对单个数值特征执行 CART 分箱拟合。"""
             try:
                 # 如果 min_bin_size 是浮点数 (如 0.05), 则基于 总行数(n_total_samples) 计算

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, List, Union
+from typing import Any, List, Sequence, Union
 
 import pandas as pd
 import polars as pl
@@ -43,40 +43,6 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self.report_records_: list[dict[str, Any]] = []
         self._is_fitted: bool = False
 
-    @abstractmethod
-    def fit(
-        self,
-        X: Union[pl.DataFrame, pd.DataFrame],
-        y: Any | None = None,
-    ) -> MarsBaseSelector:
-        """
-        执行特征筛选拟合。
-
-        Parameters
-        ----------
-        X : Union[pl.DataFrame, pd.DataFrame]
-            输入特征数据集。
-        y : Any | None
-            目标变量。若子类无需单独传入标签，可从 ``X`` 中自行解析。
-
-        Returns
-        -------
-        MarsBaseSelector
-            完成拟合后的筛选器实例。
-
-        Examples
-        --------
-        >>> class KeepAgeSelector(MarsBaseSelector):
-        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
-        ...         self.selected_features_ = ["age"]
-        ...         self.n_features_in_ = len(X.columns)
-        ...         self._is_fitted = True
-        ...         return self
-        >>> selector = KeepAgeSelector(target="y").fit(pl.DataFrame({"age": [20], "y": [0]}))
-        >>> selector.selected_features_
-        ['age']
-        """
-
     def transform(self, X: Union[pl.DataFrame, pd.DataFrame]) -> pl.DataFrame:
         """
         根据筛选结果裁剪输入数据。
@@ -109,44 +75,6 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
         X_out = X.select(cols_to_keep)
         return self._format_output(X_out)
-
-    def fit_transform(
-        self,
-        X: Union[pl.DataFrame, pd.DataFrame],
-        y: Any | None = None,
-        **kwargs: Any,
-    ) -> Union[pl.DataFrame, pd.DataFrame]:
-        """
-        先拟合再返回筛选后的结果。
-
-        Parameters
-        ----------
-        X : Union[pl.DataFrame, pd.DataFrame]
-            输入特征数据集。
-        y : Any | None
-            目标变量。
-        **kwargs : Any
-            透传给子类 ``fit`` 实现的附加参数。
-
-        Returns
-        -------
-        pl.DataFrame or pd.DataFrame
-            仅保留入选特征及目标列的数据集。
-
-        Examples
-        --------
-        >>> class KeepAgeSelector(MarsBaseSelector):
-        ...     def fit(self, X: pl.DataFrame | pd.DataFrame, y: Any | None = None) -> "MarsBaseSelector":
-        ...         self.selected_features_ = ["age"]
-        ...         self._is_fitted = True
-        ...         return self
-        >>> result = KeepAgeSelector(target="y").fit_transform(
-        ...     pl.DataFrame({"age": [20], "income": [10], "y": [0]})
-        ... )
-        >>> result.columns
-        ['age', 'y']
-        """
-        return self.fit(X, y, **kwargs).transform(X)
 
     def get_report(self) -> pl.DataFrame:
         """
@@ -244,3 +172,27 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         """检查当前筛选器是否已完成拟合。"""
         if not self._is_fitted:
             raise ValueError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")
+
+
+class _MarsXYSelector(MarsBaseSelector, ABC):
+    """需要独立 ``X``/``y`` 输入的内部筛选器契约。"""
+
+    @abstractmethod
+    def fit(
+        self,
+        X: Union[pl.DataFrame, pd.DataFrame],
+        y: Any,
+        *,
+        features: Sequence[str] | None = None,
+    ) -> _MarsXYSelector:
+        """拟合使用独立标签输入的筛选器。"""
+
+    def fit_transform(
+        self,
+        X: Union[pl.DataFrame, pd.DataFrame],
+        y: Any,
+        *,
+        features: Sequence[str] | None = None,
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
+        """拟合筛选器并转换同一特征表。"""
+        return self.fit(X, y, features=features).transform(X)
