@@ -6,7 +6,6 @@ import polars as pl
 
 from mars.analysis._profiling.metrics import feature_dtypes, metric_expr
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
-from mars.core.constants import DIVISION_EPSILON
 
 
 def generate_pivot_report(
@@ -47,36 +46,3 @@ def generate_pivot_report(
     fixed_cols = {"feature", "dtype", "total"}
     group_cols = [col for col in result.columns if col not in fixed_cols]
     return result.select(["feature", "dtype", *group_cols, "total"]).sort(["dtype", "feature"])
-
-
-def add_stability_metrics(df: pl.DataFrame, exclude_cols: list[str]) -> pl.DataFrame:
-    """为趋势宽表增加分组均值、方差和变异系数。"""
-    if df.is_empty():
-        return df
-
-    calc_cols = [
-        col
-        for col in df.columns
-        if col not in exclude_cols and df[col].dtype in [pl.Float64, pl.Float32]
-    ]
-    if not calc_cols:
-        return df
-
-    return (
-        df.with_columns(pl.concat_list(calc_cols).alias("_tmp"))
-        .with_columns(
-            [
-                pl.col("_tmp").list.mean().fill_null(0).alias("group_mean"),
-                pl.col("_tmp").list.var().fill_null(0).alias("group_var"),
-                (
-                    pl.col("_tmp").list.std()
-                    / (pl.col("_tmp").list.mean().abs() + DIVISION_EPSILON)
-                )
-                .fill_null(0)
-                .alias("group_cv"),
-            ]
-        )
-        .drop("_tmp")
-        .select(["feature", "dtype", *calc_cols, "total", "group_mean", "group_var", "group_cv"])
-    )
-

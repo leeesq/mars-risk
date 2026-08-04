@@ -18,7 +18,7 @@ from mars.analysis._profiling.context import (
     prepare_profile_data,
 )
 from mars.analysis._profiling.metrics import calculate_overview, normalize_profile_metrics
-from mars.analysis._profiling.pivot import add_stability_metrics, generate_pivot_report
+from mars.analysis._profiling.pivot import generate_pivot_report
 from mars.analysis._profiling.psi import get_psi_trend
 from mars.analysis._profiling.sparkline import compute_sparklines
 from mars.analysis._profiling.types import ProfileBinMethod, ProfileComputeOptions
@@ -399,8 +399,6 @@ class MarsDataProfiler(MarsBaseEstimator):
         stat_tables: dict[str, pl.DataFrame] = {}
         for metric in selection.stat_metrics:
             pivot = generate_pivot_report(context, options, metric)
-            if context.group_col:
-                pivot = add_stability_metrics(pivot, exclude_cols=["feature", "dtype", "total"])
             stat_tables[metric] = pivot
 
         if (context.group_col or benchmark_pl is not None) and "psi" in selection.stat_metrics:

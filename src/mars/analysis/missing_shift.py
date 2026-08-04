@@ -1,53 +1,173 @@
-"""静态训练数据缺失率异常扫描。"""
+"""静态训练数据的缺失率异常扫描与展示。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from math import erfc, sqrt
+import importlib
+from dataclasses import dataclass, field, replace
+from math import erfc, log, sqrt
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars.compute.missing import build_missing_by_period_stats, missing_condition_expr
+from mars.compute import to_pandas_frame
+from mars.compute.missing import is_numeric_dtype, missing_condition_expr
 from mars.core.base import MarsBaseEstimator
-from mars.core.constants import FLOAT_TOLERANCE, PROBABILITY_EPSILON
+from mars.core.constants import FLOAT_TOLERANCE
 from mars.utils.date import MarsDate
 
+AnomalyType = Literal["segment_shift", "boundary", "point", "high_level"]
 Direction = Literal["increase", "decrease"]
+
+_SUPPORTED_DETECTORS: tuple[AnomalyType, ...] = (
+    "segment_shift",
+    "boundary",
+    "point",
+    "high_level",
+)
+_DETECTOR_PRIORITY: dict[AnomalyType, int] = {
+    "high_level": 0,
+    "boundary": 1,
+    "point": 2,
+    "segment_shift": 3,
+}
+
+
+@dataclass(frozen=True)
+class MarsMissingShiftConfig:
+    """
+    配置缺失率异常扫描的检测器、统计门槛与业务红线。
+
+    Parameters
+    ----------
+    enabled_detectors : tuple[AnomalyType, ...]
+        启用的检测器。默认同时检测分段变化、边界异常、单日异常和持续高缺失。
+    min_period_samples : int
+        单个时间切片参与检测所需的最小样本数，默认 ``30``。
+    min_segment_size : int
+        分段变点两侧各自所需的最少有效时间切片数，默认 ``3``。
+    reference_window : int
+        边界和单日事件使用的相邻参考切片数，默认 ``3``。
+    max_boundary_periods : int
+        开头或结尾边界事件最多覆盖的切片数，默认 ``3``。
+    max_segment_candidates : int
+        每个连续有效区间保留的 Binseg 候选上限，默认 ``5``。
+    min_abs_delta : float
+        缺失率绝对变化门槛，默认 ``0.03``。
+    min_effect_delta : float
+        进入统计确认的最小有效变化，默认 ``0.005``。
+    min_relative_delta : float
+        相对缺失率变化门槛，默认 ``0.30``。
+    fdr_q_threshold : float
+        Benjamini-Hochberg 全局 FDR 的 q 值门槛，默认 ``0.05``。
+    high_missing_rate_threshold : float
+        持续高缺失检测的全局缺失率红线，默认 ``0.90``。
+    feature_high_missing_rate_thresholds : Mapping[str, float]
+        按特征覆盖持续高缺失红线的映射，默认空映射。
+    min_high_periods : int
+        合并为持续高缺失事件所需的连续切片数，默认 ``2``。
+
+    Examples
+    --------
+    >>> config = MarsMissingShiftConfig(min_period_samples=50)
+    >>> config.high_missing_rate_threshold
+    0.9
+    """
+
+    enabled_detectors: tuple[AnomalyType, ...] = _SUPPORTED_DETECTORS
+    min_period_samples: int = 30
+    min_segment_size: int = 3
+    reference_window: int = 3
+    max_boundary_periods: int = 3
+    max_segment_candidates: int = 5
+    min_abs_delta: float = 0.03
+    min_effect_delta: float = 0.005
+    min_relative_delta: float = 0.30
+    fdr_q_threshold: float = 0.05
+    high_missing_rate_threshold: float = 0.90
+    feature_high_missing_rate_thresholds: Mapping[str, float] = field(default_factory=dict)
+    min_high_periods: int = 2
+
+
+@dataclass(frozen=True)
+class _WindowStats:
+    """保存事件窗口或参考窗口的缺失计数。"""
+
+    missing_count: int
+    total_count: int
+
+    @property
+    def rate(self) -> float:
+        """返回窗口缺失率。"""
+        return self.missing_count / self.total_count
+
+
+@dataclass(frozen=True)
+class _Candidate:
+    """保存一个检测器生成的内部异常候选。"""
+
+    feature: str
+    data_source: str
+    anomaly_type: AnomalyType
+    event_start_idx: int
+    event_end_idx: int
+    event_stats: _WindowStats
+    reference_type: str
+    reference_start_period: str | None
+    reference_end_period: str | None
+    reference_stats: _WindowStats | None
+    threshold: float | None
+    delta: float
+    abs_delta: float
+    relative_delta: float
+    p_value: float | None
+    q_value: float | None
+    test_method: str | None
 
 
 def _empty_detail_table() -> pl.DataFrame:
-    """构造空异常明细表。"""
+    """构造固定 schema 的空异常明细表。"""
     return pl.DataFrame(
         schema={
             "feature": pl.String,
             "data_source": pl.String,
-            "start_period": pl.String,
-            "end_period": pl.String,
-            "change_period": pl.String,
-            "before_missing_rate": pl.Float64,
-            "after_missing_rate": pl.Float64,
+            "anomaly_type": pl.String,
+            "detected_by": pl.String,
+            "event_start_period": pl.String,
+            "event_end_period": pl.String,
+            "reference_type": pl.String,
+            "reference_start_period": pl.String,
+            "reference_end_period": pl.String,
+            "event_missing_count": pl.Int64,
+            "event_total_count": pl.Int64,
+            "event_missing_rate": pl.Float64,
+            "reference_missing_count": pl.Int64,
+            "reference_total_count": pl.Int64,
+            "reference_missing_rate": pl.Float64,
+            "threshold": pl.Float64,
+            "delta": pl.Float64,
             "abs_delta": pl.Float64,
             "relative_delta": pl.Float64,
             "p_value": pl.Float64,
+            "q_value": pl.Float64,
             "direction": pl.String,
-            "anomaly_score": pl.Float64,
             "reason": pl.String,
         }
     )
 
 
 def _empty_summary_table() -> pl.DataFrame:
-    """构造空特征汇总表。"""
+    """构造固定 schema 的空特征汇总表。"""
     return pl.DataFrame(
         schema={
             "feature": pl.String,
             "data_source": pl.String,
             "anomaly_count": pl.Int64,
+            "anomaly_types": pl.String,
             "max_abs_delta": pl.Float64,
+            "max_event_missing_rate": pl.Float64,
             "first_anomaly_period": pl.String,
             "last_anomaly_period": pl.String,
             "primary_direction": pl.String,
@@ -56,7 +176,7 @@ def _empty_summary_table() -> pl.DataFrame:
 
 
 def _empty_source_table() -> pl.DataFrame:
-    """构造空数据源汇总表。"""
+    """构造固定 schema 的空数据源汇总表。"""
     return pl.DataFrame(
         schema={
             "data_source": pl.String,
@@ -70,59 +190,310 @@ def _empty_source_table() -> pl.DataFrame:
 
 
 @dataclass(frozen=True)
-class _MissingSegmentStats:
-    """保存变点两侧缺失率统计。"""
-
-    before_rate: float
-    after_rate: float
-    before_missing: float
-    after_missing: float
-    before_total: float
-    after_total: float
-
-
-@dataclass(frozen=True)
 class MarsMissingShiftResult:
     """
-    缺失率异常扫描结果。
+    保存缺失率异常扫描的结构化结果与 Notebook 展示能力。
 
-    `MarsMissingShiftResult` 保存静态训练数据缺失率异常扫描的结构化输出。该结果只用于
-    数据质量复核，不会自动删除特征，也不会阻断后续建模或筛选流程。
-
-    Attributes
+    Parameters
     ----------
     summary_table : pl.DataFrame
         特征级异常汇总表。
     detail_table : pl.DataFrame
-        异常窗口明细表。
+        统一事件 schema 的异常明细表。
     source_table : pl.DataFrame
-        数据源级异常汇总表；未传 `feature_data_source` 时为空表。
-    missing_rate_table : pl.DataFrame
-        按时间粒度展开的缺失率宽表。
+        数据源级异常汇总表；未提供数据源映射时为空表。
+    trend_table : pl.DataFrame
+        ``feature × period`` 粒度的缺失计数、缺失率和检测资格长表。
+    config : MarsMissingShiftConfig
+        生成当前结果所使用的扫描配置。
 
     Examples
     --------
     >>> import polars as pl
-    >>> from mars.analysis.missing_shift import MarsMissingShiftScanner
-    >>> df = pl.DataFrame({"dt": ["2026-01-01"], "x": [None]})
+    >>> df = pl.DataFrame(
+    ...     {"dt": ["2026-01-01"] * 30, "x": [None] + list(range(29))}
+    ... )
     >>> result = MarsMissingShiftScanner().scan(df, date_col="dt", features=["x"])
-    >>> result.detail_table.is_empty()
-    True
+    >>> result.trend_table.height
+    1
     """
 
     summary_table: pl.DataFrame
     detail_table: pl.DataFrame
     source_table: pl.DataFrame
-    missing_rate_table: pl.DataFrame
+    trend_table: pl.DataFrame
+    config: MarsMissingShiftConfig
+
+    def show_summary(
+        self,
+        features: str | Sequence[str] | None = None,
+        *,
+        sort_by: str = "max_abs_delta",
+        sort_ascending: bool = False,
+    ) -> pd.io.formats.style.Styler:
+        """
+        返回适合 Notebook 展示的特征级异常汇总表。
+
+        Parameters
+        ----------
+        features : str | Sequence[str] | None
+            需要展示的特征；默认展示全部异常特征。
+        sort_by : str
+            排序列，默认 ``"max_abs_delta"``。
+        sort_ascending : bool
+            是否升序排序，默认 ``False``。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            带缺失率和变化幅度格式的汇总表。
+
+        Raises
+        ------
+        ValueError
+            当指定不存在的排序列时抛出。
+
+        Examples
+        --------
+        >>> hasattr(result.show_summary(), "to_html")
+        True
+        """
+        frame = _filter_pandas_features(to_pandas_frame(self.summary_table), features)
+        if sort_by not in frame.columns:
+            raise ValueError(f"Summary sort column '{sort_by}' was not found.")
+        frame = frame.sort_values(sort_by, ascending=sort_ascending)
+        return _style_missing_shift_table(
+            frame,
+            caption="Missing Shift Summary",
+            gradient_columns=["max_abs_delta", "max_event_missing_rate"],
+        )
+
+    def show_detail(
+        self,
+        features: str | Sequence[str] | None = None,
+        *,
+        anomaly_types: str | Sequence[str] | None = None,
+    ) -> pd.io.formats.style.Styler:
+        """
+        返回适合 Notebook 展示的异常事件明细表。
+
+        Parameters
+        ----------
+        features : str | Sequence[str] | None
+            需要展示的特征；默认展示全部异常特征。
+        anomaly_types : str | Sequence[str] | None
+            需要展示的事件类型；默认展示全部类型。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            带变化幅度和显著性格式的明细表。
+
+        Examples
+        --------
+        >>> hasattr(result.show_detail(), "to_html")
+        True
+        """
+        frame = _filter_pandas_features(to_pandas_frame(self.detail_table), features)
+        requested_types = _normalize_names(anomaly_types)
+        if requested_types is not None:
+            frame = frame[frame["anomaly_type"].isin(requested_types)]
+        if not frame.empty:
+            frame = frame.sort_values(
+                ["abs_delta", "event_start_period"],
+                ascending=[False, True],
+            )
+        return _style_missing_shift_table(
+            frame,
+            caption="Missing Shift Detail",
+            gradient_columns=["abs_delta", "event_missing_rate"],
+        )
+
+    def show_trend(
+        self,
+        features: str | Sequence[str] | None = None,
+        *,
+        max_features: int = 20,
+        group_ascending: bool = True,
+    ) -> pd.io.formats.style.Styler:
+        """
+        将长版日缺失率按需透视为 Notebook 趋势热力表。
+
+        Parameters
+        ----------
+        features : str | Sequence[str] | None
+            需要展示的特征。默认按最大异常幅度选择异常特征。
+        max_features : int
+            未显式指定特征时最多展示的特征数，默认 ``20``。
+        group_ascending : bool
+            日期列是否按升序排列，默认 ``True``。
+
+        Returns
+        -------
+        pd.io.formats.style.Styler
+            异常单元格标红、低样本单元格标灰的缺失率趋势表。
+
+        Examples
+        --------
+        >>> hasattr(result.show_trend(features="x"), "to_html")
+        True
+        """
+        selected = self._resolve_display_features(features, max_features=max_features)
+        trend = to_pandas_frame(self.trend_table)
+        filtered = trend[trend["feature"].isin(selected)].copy()
+        period_order = sorted(filtered["period"].unique(), reverse=not group_ascending)
+        if filtered.empty:
+            empty = pd.DataFrame(columns=["feature", "dtype", "data_source"])
+            return _style_missing_shift_table(empty, caption="Missing Rate Trend")
+
+        pivot = (
+            filtered
+            .pivot(
+                index=["feature", "dtype", "data_source"],
+                columns="period",
+                values="missing_rate",
+            )
+            .reindex(columns=period_order)
+            .reset_index()
+        )
+        status = filtered.set_index(["feature", "period"])[
+            ["is_detection_eligible", "is_anomaly"]
+        ].to_dict("index")
+        date_columns = [column for column in pivot.columns if column not in _TREND_META_COLUMNS]
+
+        def style_cells(frame: pd.DataFrame) -> pd.DataFrame:
+            styles = pd.DataFrame("", index=frame.index, columns=frame.columns)
+            for row_idx, row in frame.iterrows():
+                feature = str(row["feature"])
+                for period in date_columns:
+                    cell_status = status.get((feature, period), {})
+                    if cell_status.get("is_anomaly"):
+                        styles.at[row_idx, period] = "background-color: #f8696b; color: #7f0000"
+                    elif not cell_status.get("is_detection_eligible", True):
+                        styles.at[row_idx, period] = "background-color: #d9d9d9; color: #666666"
+            return styles
+
+        styler = _style_missing_shift_table(
+            pivot,
+            caption="Missing Rate Trend",
+            percentage_columns=date_columns,
+        )
+        return styler.apply(style_cells, axis=None)
+
+    def plot_trends(
+        self,
+        features: str | Sequence[str] | None = None,
+        *,
+        max_features: int = 12,
+        columns: int = 2,
+        figsize_per_plot: tuple[float, float] = (6.0, 3.2),
+    ) -> Any:
+        """
+        绘制缺失率趋势、业务红线、异常区间和低样本日期。
+
+        Parameters
+        ----------
+        features : str | Sequence[str] | None
+            需要绘制的特征。默认按异常幅度选择异常特征。
+        max_features : int
+            未显式指定特征时最多绘制的特征数，默认 ``12``。
+        columns : int
+            子图列数，默认 ``2``。
+        figsize_per_plot : tuple[float, float]
+            每个子图的宽度和高度，默认 ``(6.0, 3.2)``。
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            包含全部选中特征趋势的 Matplotlib Figure。
+
+        Raises
+        ------
+        ValueError
+            当没有可绘制特征或图形参数非法时抛出。
+
+        Examples
+        --------
+        >>> figure = result.plot_trends(features="x")
+        >>> len(figure.axes)
+        1
+        """
+        if columns < 1:
+            raise ValueError("`columns` must be >= 1.")
+        selected = self._resolve_display_features(features, max_features=max_features)
+        if not selected:
+            raise ValueError("No anomaly features are available; pass `features` explicitly.")
+
+        import matplotlib.pyplot as plt
+
+        trend = to_pandas_frame(self.trend_table)
+        detail = to_pandas_frame(self.detail_table)
+        row_count = int(np.ceil(len(selected) / columns))
+        figure, axes = plt.subplots(
+            row_count,
+            columns,
+            figsize=(figsize_per_plot[0] * columns, figsize_per_plot[1] * row_count),
+            squeeze=False,
+        )
+        colors = {
+            "segment_shift": "#f4a261",
+            "boundary": "#e76f51",
+            "point": "#9b5de5",
+            "high_level": "#d00000",
+        }
+        for plot_idx, feature in enumerate(selected):
+            axis = axes.flat[plot_idx]
+            feature_trend = trend[trend["feature"] == feature].sort_values("period")
+            periods = feature_trend["period"].astype(str).tolist()
+            positions = np.arange(len(periods))
+            rates = feature_trend["missing_rate"].astype(float).to_numpy()
+            axis.plot(positions, rates, marker="o", linewidth=1.5, color="#2a6fbb")
+
+            excluded = ~feature_trend["is_detection_eligible"].astype(bool).to_numpy()
+            if excluded.any():
+                axis.scatter(positions[excluded], rates[excluded], color="#8c8c8c", zorder=4)
+
+            threshold = self.config.feature_high_missing_rate_thresholds.get(
+                feature,
+                self.config.high_missing_rate_threshold,
+            )
+            axis.axhline(threshold, color="#d00000", linestyle="--", linewidth=1.0)
+
+            period_positions = {period: idx for idx, period in enumerate(periods)}
+            events = detail[detail["feature"] == feature]
+            for _, event in events.iterrows():
+                start = period_positions.get(str(event["event_start_period"]))
+                end = period_positions.get(str(event["event_end_period"]))
+                if start is None or end is None:
+                    continue
+                event_type = cast(AnomalyType, str(event["anomaly_type"]))
+                axis.axvspan(
+                    start - 0.35,
+                    end + 0.35,
+                    color=colors[event_type],
+                    alpha=0.16,
+                )
+
+            axis.set_title(feature)
+            axis.set_ylim(-0.02, 1.02)
+            axis.set_ylabel("Missing rate")
+            tick_step = max(1, len(periods) // 8)
+            axis.set_xticks(positions[::tick_step], periods[::tick_step], rotation=45, ha="right")
+            axis.grid(axis="y", alpha=0.2)
+
+        for axis in axes.flat[len(selected):]:
+            figure.delaxes(axis)
+        figure.tight_layout()
+        return figure
 
     def write_excel(self, path: str | Path) -> None:
         """
-        将缺失率异常扫描结果导出到 Excel。
+        将四张缺失率异常表导出为带格式的 Excel 工作簿。
 
         Parameters
         ----------
         path : str | Path
-            输出 Excel 文件路径。父目录必须已经存在。
+            输出文件路径；父目录必须已经存在。
 
         Returns
         -------
@@ -132,50 +503,125 @@ class MarsMissingShiftResult:
         Raises
         ------
         FileNotFoundError
-            当父目录不存在时抛出。
+            当输出父目录不存在时抛出。
+        RuntimeError
+            当 Excel 渲染或写入失败时抛出。
 
         Examples
         --------
-        >>> result = MarsMissingShiftResult(
-        ...     summary_table=pl.DataFrame(),
-        ...     detail_table=pl.DataFrame(),
-        ...     source_table=pl.DataFrame(),
-        ...     missing_rate_table=pl.DataFrame(),
-        ... )
-        >>> isinstance(result.summary_table, pl.DataFrame)
-        True
+        >>> from pathlib import Path
+        >>> from tempfile import TemporaryDirectory
+        >>> with TemporaryDirectory() as tmp:
+        ...     result.write_excel(Path(tmp) / "missing_shift.xlsx")
         """
         output_path = Path(path)
         if output_path.parent and not output_path.parent.exists():
             raise FileNotFoundError(f"Parent directory does not exist: {output_path.parent}")
 
-        sheets: dict[str, pl.DataFrame] = {
+        tables = {
             "summary": self.summary_table,
             "detail": self.detail_table,
             "source": self.source_table,
-            "missing_rate": self.missing_rate_table,
+            "trend": self.trend_table,
         }
-        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            for sheet_name, frame in sheets.items():
-                frame.to_pandas().to_excel(writer, sheet_name=sheet_name, index=False)
+        try:
+            with pd.ExcelWriter(output_path, engine="xlsxwriter") as writer:
+                workbook = writer.book
+                header_format = workbook.add_format(
+                    {"bold": True, "bg_color": "#D9EAF7", "border": 1}
+                )
+                percent_format = workbook.add_format({"num_format": "0.00%"})
+                for sheet_name, table in tables.items():
+                    frame = to_pandas_frame(table)
+                    frame.to_excel(writer, sheet_name=sheet_name, index=False)
+                    worksheet = writer.sheets[sheet_name]
+                    worksheet.freeze_panes(1, 0)
+                    if len(frame.columns) > 0:
+                        worksheet.autofilter(0, 0, max(len(frame), 1), len(frame.columns) - 1)
+                    for column_idx, column in enumerate(frame.columns):
+                        max_value_width = max(
+                            (len(str(value)) for value in frame[column].tolist()),
+                            default=0,
+                        )
+                        width = min(max(max_value_width, len(str(column))) + 2, 42)
+                        cell_format = (
+                            percent_format
+                            if "rate" in str(column) or "relative_delta" == column
+                            else None
+                        )
+                        worksheet.set_column(column_idx, column_idx, width, cell_format)
+                        worksheet.write(0, column_idx, column, header_format)
+                    if "abs_delta" in frame.columns and not frame.empty:
+                        delta_col = frame.columns.get_loc("abs_delta")
+                        worksheet.conditional_format(
+                            1,
+                            delta_col,
+                            len(frame),
+                            delta_col,
+                            {"type": "3_color_scale"},
+                        )
+                    if sheet_name == "trend" and not frame.empty:
+                        eligible_col = frame.columns.get_loc("is_detection_eligible")
+                        worksheet.conditional_format(
+                            1,
+                            0,
+                            len(frame),
+                            len(frame.columns) - 1,
+                            {
+                                "type": "formula",
+                                "criteria": f"=${_excel_column_name(eligible_col)}2=FALSE",
+                                "format": workbook.add_format({"bg_color": "#D9D9D9"}),
+                            },
+                        )
+        except (OSError, ValueError, TypeError) as exc:
+            raise RuntimeError(f"Failed to export missing shift Excel to '{output_path}'.") from exc
+
+    def _resolve_display_features(
+        self,
+        features: str | Sequence[str] | None,
+        *,
+        max_features: int,
+    ) -> list[str]:
+        """解析展示特征，并对显式未知特征执行严格校验。"""
+        if max_features < 1:
+            raise ValueError("`max_features` must be >= 1.")
+        known_features = self.trend_table.get_column("feature").unique().to_list()
+        requested = _normalize_names(features)
+        if requested is not None:
+            unknown = [feature for feature in requested if feature not in known_features]
+            if unknown:
+                raise ValueError(f"Trend features not found: {unknown}")
+            return requested
+        if self.summary_table.is_empty():
+            return []
+        selected = (
+            self.summary_table
+            .sort("max_abs_delta", descending=True)
+            .head(max_features)
+            .get_column("feature")
+            .to_list()
+        )
+        return [str(feature) for feature in selected]
 
 
 class MarsMissingShiftScanner(MarsBaseEstimator):
     """
-    静态训练数据缺失率异常扫描器。
+    扫描静态训练宽表中的日级或其他时间粒度缺失率异常。
 
-    该扫描器面向建模前的宽表数据质量复核。它先按时间粒度计算每个特征的缺失率序列，
-    再使用 `ruptures` 识别候选变点，并通过幅度、相对变化和两比例 z 检验确认异常。
-    输出结果只作为人工复核和数据源排查依据，不自动裁决特征生死。
+    该实验 API 同时检测持续分段变化、首尾边界异常、内部单日异常和持续高缺失。
+    统计型候选统一通过业务效果门槛与全局 FDR 确认；结果只用于数据质量复核，
+    不会自动删除特征或阻断后续建模。
 
     Examples
     --------
     >>> import polars as pl
     >>> from mars.analysis.missing_shift import MarsMissingShiftScanner
-    >>> df = pl.DataFrame({"dt": ["2026-01-01", "2026-01-02"], "x": [1, None]})
+    >>> df = pl.DataFrame(
+    ...     {"dt": ["2026-01-01"] * 30, "x": [None] + list(range(29))}
+    ... )
     >>> result = MarsMissingShiftScanner().scan(df, date_col="dt", features=["x"])
-    >>> "x" in result.missing_rate_table.get_column("feature").to_list()
-    True
+    >>> result.trend_table.get_column("feature").to_list()
+    ['x']
     """
 
     def scan(
@@ -187,135 +633,150 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         time_grain: str = "1d",
         missing_values: list[Any] | None = None,
         feature_data_source: dict[str, str] | None = None,
-        min_segment_size: int = 3,
-        min_abs_delta: float = 0.03,
-        min_effect_delta: float = 0.005,
-        min_relative_delta: float = 0.30,
-        pvalue_threshold: float = 0.01,
-        max_change_points: int = 5,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        config: MarsMissingShiftConfig | None = None,
     ) -> MarsMissingShiftResult:
         """
-        扫描静态训练数据中的缺失率异常跳变。
+        按时间切片扫描缺失率异常并生成结构化报告。
 
         Parameters
         ----------
         df : pl.DataFrame | pd.DataFrame
-            待扫描的训练宽表。
+            待扫描的当前数据宽表。
         date_col : str
-            日期列名称，会按 `time_grain` 聚合。
+            日期列名，按 ``time_grain`` 聚合。
         features : list[str] | None
-            待扫描特征。默认 ``None``，扫描除 `date_col` 外的全部列。
+            待扫描特征；默认扫描除 ``date_col`` 外的全部列。
         time_grain : str
-            时间粒度，默认 ``"1d"``，复用 `MarsDate.from_grain` 支持的格式。
+            时间粒度，默认 ``"1d"``，复用 ``MarsDate.from_grain`` 的格式。
         missing_values : list[Any] | None
-            业务自定义缺失值，默认 ``None``。
+            除 null/NaN 外需要按缺失处理的业务占位值。
         feature_data_source : dict[str, str] | None
-            特征到数据源的映射，默认 ``None``，用于生成数据源级异常汇总。
-        min_segment_size : int
-            变点两侧最小连续时间段数量，默认 ``3``。
-        min_abs_delta : float
-            直接确认异常的缺失率绝对变化阈值，默认 ``0.03``。
-        min_effect_delta : float
-            进入相对变化或显著性判断的最小有效变化，默认 ``0.005``。
-        min_relative_delta : float
-            相对变化阈值，默认 ``0.30``。
-        pvalue_threshold : float
-            两比例 z 检验 p 值阈值，默认 ``0.01``。
-        max_change_points : int
-            每个特征最多评估的候选变点数量，默认 ``5``。
+            特征到数据源的映射，用于趋势和数据源汇总。
+        benchmark_df : pl.DataFrame | pd.DataFrame | None
+            可选历史基准。提供时首尾边界优先与其聚合缺失率比较。
+        config : MarsMissingShiftConfig | None
+            检测配置；默认使用 ``MarsMissingShiftConfig()``。
 
         Returns
         -------
         MarsMissingShiftResult
-            缺失率异常扫描结果。
+            包含汇总、事件明细、数据源汇总、长版趋势和配置的报告对象。
 
         Raises
         ------
         ValueError
-            当日期列、特征列或阈值参数非法时抛出。
+            当日期、特征、benchmark 或配置不满足输入契约时抛出。
 
-        Notes
-        -----
-        当前实现依赖核心依赖 `ruptures` 执行变点检测。
+        Examples
+        --------
+        >>> config = MarsMissingShiftConfig(min_period_samples=2)
+        >>> df = pl.DataFrame(
+        ...     {"dt": ["2026-01-01", "2026-01-01"], "x": [None, 1]}
+        ... )
+        >>> result = MarsMissingShiftScanner().scan(
+        ...     df, date_col="dt", features=["x"], config=config
+        ... )
+        >>> result.trend_table.get_column("missing_rate").to_list()
+        [0.5]
         """
-        self._validate_scan_params(
-            min_segment_size=min_segment_size,
-            min_abs_delta=min_abs_delta,
-            min_effect_delta=min_effect_delta,
-            min_relative_delta=min_relative_delta,
-            pvalue_threshold=pvalue_threshold,
-            max_change_points=max_change_points,
-        )
-        working_df: pl.DataFrame = cast(pl.DataFrame, self._ensure_polars_dataframe(df))
-        target_features: list[str] = self._resolve_features(working_df, date_col, features)
+        scan_config = config or MarsMissingShiftConfig()
+        working_df = cast(pl.DataFrame, self._ensure_polars_dataframe(df))
+        target_features = self._resolve_features(working_df, date_col, features)
+        self._validate_config(scan_config, target_features)
+        source_map = feature_data_source or {}
+
         period_col = "__mars_missing_shift_period"
-        period_df: pl.DataFrame = working_df.with_columns(
-            MarsDate.from_grain(date_col, time_grain).cast(pl.String).alias(period_col)
-        ).filter(pl.col(period_col).is_not_null())
+        period_df = (
+            working_df
+            .with_columns(MarsDate.from_grain(date_col, time_grain).cast(pl.String).alias(period_col))
+            .filter(pl.col(period_col).is_not_null())
+        )
         if period_df.is_empty():
             raise ValueError(f"Date column '{date_col}' cannot be parsed into valid periods.")
 
-        missing_rate_table: pl.DataFrame = build_missing_by_period_stats(
+        trend_table = self._build_trend_table(
             period_df,
             features=target_features,
             period_col=period_col,
             missing_values=missing_values,
+            feature_data_source=source_map,
+            min_period_samples=scan_config.min_period_samples,
         )
-        long_stats: pl.DataFrame = self._build_long_missing_stats(
-            period_df,
+        benchmark_stats = self._build_benchmark_stats(
+            benchmark_df,
+            current_df=working_df,
             features=target_features,
-            period_col=period_col,
             missing_values=missing_values,
+            min_samples=scan_config.min_period_samples,
         )
-        detail_table: pl.DataFrame = self._scan_anomalies(
-            long_stats,
-            feature_data_source=feature_data_source or {},
-            min_segment_size=min_segment_size,
-            min_abs_delta=min_abs_delta,
-            min_effect_delta=min_effect_delta,
-            min_relative_delta=min_relative_delta,
-            pvalue_threshold=pvalue_threshold,
-            max_change_points=max_change_points,
+        detail_table = self._scan_anomalies(
+            trend_table,
+            benchmark_stats=benchmark_stats,
+            config=scan_config,
         )
-        summary_table: pl.DataFrame = self._build_summary_table(detail_table)
-        source_table: pl.DataFrame = self._build_source_table(
+        annotated_trend = self._annotate_trend(trend_table, detail_table)
+        summary_table = self._build_summary_table(detail_table)
+        source_table = self._build_source_table(
             detail_table,
             target_features=target_features,
-            feature_data_source=feature_data_source or {},
+            feature_data_source=source_map,
         )
         return MarsMissingShiftResult(
             summary_table=summary_table,
             detail_table=detail_table,
             source_table=source_table,
-            missing_rate_table=missing_rate_table,
+            trend_table=annotated_trend,
+            config=scan_config,
         )
 
     @staticmethod
-    def _validate_scan_params(
-        *,
-        min_segment_size: int,
-        min_abs_delta: float,
-        min_effect_delta: float,
-        min_relative_delta: float,
-        pvalue_threshold: float,
-        max_change_points: int,
-    ) -> None:
-        """校验扫描阈值参数。"""
-        if min_segment_size < 2:
-            raise ValueError("`min_segment_size` must be >= 2.")
-        if max_change_points < 1:
-            raise ValueError("`max_change_points` must be >= 1.")
-        bounded_params = {
-            "min_abs_delta": min_abs_delta,
-            "min_effect_delta": min_effect_delta,
-            "min_relative_delta": min_relative_delta,
-            "pvalue_threshold": pvalue_threshold,
+    def _validate_config(config: MarsMissingShiftConfig, features: list[str]) -> None:
+        """校验配置值、检测器名称和特征级覆盖。"""
+        unknown_detectors = [
+            detector for detector in config.enabled_detectors if detector not in _SUPPORTED_DETECTORS
+        ]
+        if unknown_detectors:
+            raise ValueError(f"Unsupported missing shift detectors: {unknown_detectors}")
+        if not config.enabled_detectors:
+            raise ValueError("`enabled_detectors` must contain at least one detector.")
+
+        positive_integer_params = {
+            "min_period_samples": config.min_period_samples,
+            "min_segment_size": config.min_segment_size,
+            "reference_window": config.reference_window,
+            "max_boundary_periods": config.max_boundary_periods,
+            "max_segment_candidates": config.max_segment_candidates,
+            "min_high_periods": config.min_high_periods,
         }
-        for name, value in bounded_params.items():
-            if value < 0:
-                raise ValueError(f"`{name}` must be >= 0.")
-        if pvalue_threshold > 1:
-            raise ValueError("`pvalue_threshold` must be <= 1.")
+        for name, value in positive_integer_params.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"`{name}` must be an integer >= 1.")
+        if config.min_segment_size < 2:
+            raise ValueError("`min_segment_size` must be >= 2.")
+
+        probability_params = {
+            "min_abs_delta": config.min_abs_delta,
+            "min_effect_delta": config.min_effect_delta,
+            "fdr_q_threshold": config.fdr_q_threshold,
+            "high_missing_rate_threshold": config.high_missing_rate_threshold,
+        }
+        for name, value in probability_params.items():
+            if not 0 <= value <= 1:
+                raise ValueError(f"`{name}` must be between 0 and 1.")
+        if config.min_relative_delta < 0:
+            raise ValueError("`min_relative_delta` must be >= 0.")
+
+        unknown_overrides = sorted(
+            set(config.feature_high_missing_rate_thresholds).difference(features)
+        )
+        if unknown_overrides:
+            raise ValueError(f"High-missing threshold features not found: {unknown_overrides}")
+        for feature, threshold in config.feature_high_missing_rate_thresholds.items():
+            if not 0 <= threshold <= 1:
+                raise ValueError(
+                    f"High-missing threshold for feature '{feature}' must be between 0 and 1."
+                )
 
     @staticmethod
     def _resolve_features(
@@ -323,233 +784,505 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         date_col: str,
         features: list[str] | None,
     ) -> list[str]:
-        """解析并校验待扫描特征。"""
+        """解析并严格校验待扫描特征。"""
         if date_col not in df.columns:
             raise ValueError(f"Date column '{date_col}' was not found.")
-        if features is None:
-            resolved = [col for col in df.columns if col != date_col]
-        else:
-            missing_features = [feature for feature in features if feature not in df.columns]
-            if missing_features:
-                raise ValueError(f"Features not found: {missing_features}")
-            resolved = [feature for feature in features if feature != date_col]
+        resolved = (
+            [column for column in df.columns if column != date_col]
+            if features is None
+            else [feature for feature in features if feature != date_col]
+        )
+        missing_features = [feature for feature in resolved if feature not in df.columns]
+        if missing_features:
+            raise ValueError(f"Features not found: {missing_features}")
         if not resolved:
             raise ValueError("No features are available for missing shift scanning.")
+        if len(resolved) != len(set(resolved)):
+            raise ValueError("`features` must not contain duplicates.")
         return resolved
 
     @staticmethod
-    def _build_long_missing_stats(
+    def _build_trend_table(
         df: pl.DataFrame,
         *,
         features: list[str],
         period_col: str,
         missing_values: list[Any] | None,
+        feature_data_source: dict[str, str],
+        min_period_samples: int,
     ) -> pl.DataFrame:
-        """构造长表缺失计数和缺失率。"""
+        """单次聚合生成特征日级缺失计数与检测资格长表。"""
         schema = df.schema
-        exprs: list[pl.Expr] = []
-        for feature in features:
-            missing_expr = missing_condition_expr(
+        missing_exprs = [
+            missing_condition_expr(
                 feature,
                 dtype=schema.get(feature),
                 missing_values=missing_values,
-            )
-            exprs.extend(
-                [
-                    missing_expr.sum().alias(f"{feature}__missing_count"),
-                    pl.len().alias(f"{feature}__total_count"),
-                ]
-            )
-        grouped = df.group_by(period_col).agg(exprs).sort(period_col)
+            ).sum().alias(feature)
+            for feature in features
+        ]
+        grouped = (
+            df
+            .group_by(period_col)
+            .agg([pl.len().alias("__total_count"), *missing_exprs])
+            .sort(period_col)
+        )
         feature_frames: list[pl.DataFrame] = []
         for feature in features:
-            feature_frame = grouped.select(
-                [
-                    pl.col(period_col).alias("period"),
-                    pl.lit(feature).alias("feature"),
-                    pl.col(f"{feature}__missing_count").cast(pl.Float64).alias("missing_count"),
-                    pl.col(f"{feature}__total_count").cast(pl.Float64).alias("total_count"),
-                ]
-            ).with_columns(
-                pl.when(pl.col("total_count") > 0)
-                .then(pl.col("missing_count") / pl.col("total_count"))
-                .otherwise(None)
-                .alias("missing_rate")
+            feature_frame = (
+                grouped
+                .select(
+                    [
+                        pl.lit(feature).alias("feature"),
+                        pl.lit(str(schema[feature])).alias("dtype"),
+                        pl.lit(feature_data_source.get(feature, "UNMAPPED")).alias(
+                            "data_source"
+                        ),
+                        pl.col(period_col).cast(pl.String).alias("period"),
+                        pl.col(feature).cast(pl.Int64).alias("missing_count"),
+                        pl.col("__total_count").cast(pl.Int64).alias("total_count"),
+                    ]
+                )
+                .with_columns(
+                    [
+                        (pl.col("missing_count") / pl.col("total_count")).alias("missing_rate"),
+                        (pl.col("total_count") >= min_period_samples).alias(
+                            "is_detection_eligible"
+                        ),
+                        pl.when(pl.col("total_count") < min_period_samples)
+                        .then(pl.lit("period_sample_count_below_minimum"))
+                        .otherwise(None)
+                        .cast(pl.String)
+                        .alias("exclusion_reason"),
+                    ]
+                )
             )
             feature_frames.append(feature_frame)
-        return pl.concat(feature_frames, how="vertical_relaxed")
+        return pl.concat(feature_frames, how="vertical_relaxed").sort(["feature", "period"])
+
+    def _build_benchmark_stats(
+        self,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None,
+        *,
+        current_df: pl.DataFrame,
+        features: list[str],
+        missing_values: list[Any] | None,
+        min_samples: int,
+    ) -> dict[str, _WindowStats] | None:
+        """校验显式 benchmark 并聚合每个特征的缺失计数。"""
+        if benchmark_df is None:
+            return None
+        benchmark = cast(pl.DataFrame, self._ensure_polars_dataframe(benchmark_df))
+        if benchmark.is_empty():
+            raise ValueError("`benchmark_df` must not be empty.")
+        if benchmark.height < min_samples:
+            raise ValueError(
+                "`benchmark_df` must contain at least "
+                f"{min_samples} rows; got {benchmark.height}."
+            )
+        missing_features = [feature for feature in features if feature not in benchmark.columns]
+        if missing_features:
+            raise ValueError(f"`benchmark_df` features not found: {missing_features}")
+
+        incompatible = [
+            feature
+            for feature in features
+            if not _dtypes_compatible(current_df.schema[feature], benchmark.schema[feature])
+        ]
+        if incompatible:
+            raise ValueError(f"`benchmark_df` feature dtypes are incompatible: {incompatible}")
+
+        benchmark_exprs = [
+            missing_condition_expr(
+                feature,
+                dtype=benchmark.schema[feature],
+                missing_values=missing_values,
+            ).sum().alias(feature)
+            for feature in features
+        ]
+        counts = benchmark.select(benchmark_exprs).row(0, named=True)
+        return {
+            feature: _WindowStats(
+                missing_count=int(counts[feature]),
+                total_count=benchmark.height,
+            )
+            for feature in features
+        }
 
     def _scan_anomalies(
         self,
-        long_stats: pl.DataFrame,
+        trend_table: pl.DataFrame,
         *,
-        feature_data_source: dict[str, str],
-        min_segment_size: int,
-        min_abs_delta: float,
-        min_effect_delta: float,
-        min_relative_delta: float,
-        pvalue_threshold: float,
-        max_change_points: int,
+        benchmark_stats: dict[str, _WindowStats] | None,
+        config: MarsMissingShiftConfig,
     ) -> pl.DataFrame:
-        """对每个特征执行变点检测并输出异常明细。"""
+        """运行全部启用检测器，并完成 FDR、效果门槛和事件合并。"""
+        statistical_candidates: list[_Candidate] = []
+        high_level_candidates: list[_Candidate] = []
+        for partition_key, feature_df in trend_table.partition_by("feature", as_dict=True).items():
+            feature = str(partition_key[0] if isinstance(partition_key, tuple) else partition_key)
+            ordered = feature_df.sort("period").with_row_index("__idx")
+            eligible_blocks = _eligible_blocks(ordered)
+            source = str(ordered.get_column("data_source")[0])
+
+            if "segment_shift" in config.enabled_detectors:
+                for block in eligible_blocks:
+                    statistical_candidates.extend(
+                        self._segment_candidates(
+                            ordered,
+                            block=block,
+                            feature=feature,
+                            data_source=source,
+                            config=config,
+                        )
+                    )
+            if "boundary" in config.enabled_detectors:
+                statistical_candidates.extend(
+                    self._boundary_candidates(
+                        ordered,
+                        eligible_blocks=eligible_blocks,
+                        feature=feature,
+                        data_source=source,
+                        benchmark_stats=(
+                            benchmark_stats.get(feature) if benchmark_stats is not None else None
+                        ),
+                        config=config,
+                    )
+                )
+            if "point" in config.enabled_detectors:
+                for block in eligible_blocks:
+                    statistical_candidates.extend(
+                        self._point_candidates(
+                            ordered,
+                            block=block,
+                            feature=feature,
+                            data_source=source,
+                            config=config,
+                        )
+                    )
+            if "high_level" in config.enabled_detectors:
+                high_level_candidates.extend(
+                    self._high_level_candidates(
+                        ordered,
+                        eligible_blocks=eligible_blocks,
+                        feature=feature,
+                        data_source=source,
+                        config=config,
+                    )
+                )
+
+        adjusted = _apply_benjamini_hochberg(statistical_candidates)
+        confirmed = [
+            candidate
+            for candidate in adjusted
+            if candidate.q_value is not None
+            and candidate.q_value <= config.fdr_q_threshold
+            and candidate.abs_delta >= config.min_effect_delta
+            and (
+                candidate.abs_delta >= config.min_abs_delta
+                or candidate.relative_delta >= config.min_relative_delta
+            )
+        ]
+        all_candidates = [*confirmed, *high_level_candidates]
+        if not all_candidates:
+            return _empty_detail_table()
+
+        rows: list[dict[str, Any]] = []
+        for partition_key, feature_df in trend_table.partition_by("feature", as_dict=True).items():
+            feature = str(partition_key[0] if isinstance(partition_key, tuple) else partition_key)
+            feature_candidates = [
+                candidate for candidate in all_candidates if candidate.feature == feature
+            ]
+            rows.extend(_merge_candidate_rows(feature_df.sort("period"), feature_candidates, config))
+        if not rows:
+            return _empty_detail_table()
+        return pl.DataFrame(rows, schema=_empty_detail_table().schema).sort(
+            ["feature", "event_start_period"]
+        )
+
+    @staticmethod
+    def _segment_candidates(
+        feature_df: pl.DataFrame,
+        *,
+        block: list[int],
+        feature: str,
+        data_source: str,
+        config: MarsMissingShiftConfig,
+    ) -> list[_Candidate]:
+        """使用惩罚式 Binseg 为一个连续有效区间生成分段变化候选。"""
+        if len(block) < config.min_segment_size * 2:
+            return []
         try:
             import ruptures as rpt
         except ImportError as exc:
             raise ImportError("`MarsMissingShiftScanner` requires dependency `ruptures`.") from exc
 
-        rows: list[dict[str, Any]] = []
-        for feature, feature_df in long_stats.partition_by("feature", as_dict=True).items():
-            feature_name = str(feature[0] if isinstance(feature, tuple) else feature)
-            ordered_df = feature_df.sort("period")
-            values = ordered_df.get_column("missing_rate").fill_null(0.0).to_numpy().astype(float)
-            if len(values) < min_segment_size * 2:
-                continue
-
-            candidates = self._detect_change_points(
-                values,
-                ruptures_module=rpt,
-                min_segment_size=min_segment_size,
-                max_change_points=max_change_points,
-            )
-            for change_idx in candidates:
-                segment_stats = self._segment_stats(
-                    ordered_df,
-                    change_idx=change_idx,
-                    min_segment_size=min_segment_size,
-                )
-                if segment_stats is None:
-                    continue
-                anomaly = self._build_anomaly_row(
-                    ordered_df,
-                    feature=feature_name,
-                    data_source=feature_data_source.get(feature_name, "UNMAPPED"),
-                    change_idx=change_idx,
-                    stats=segment_stats,
-                    min_abs_delta=min_abs_delta,
-                    min_effect_delta=min_effect_delta,
-                    min_relative_delta=min_relative_delta,
-                    pvalue_threshold=pvalue_threshold,
-                )
-                if anomaly is not None:
-                    rows.append(anomaly)
-
-        if not rows:
-            return _empty_detail_table()
-        return pl.DataFrame(rows).sort(["feature", "change_period"])
-
-    @staticmethod
-    def _detect_change_points(
-        values: np.ndarray,
-        *,
-        ruptures_module: Any,
-        min_segment_size: int,
-        max_change_points: int,
-    ) -> list[int]:
-        """调用 ruptures 生成候选变点。"""
-        effective_points = min(max_change_points, max(1, len(values) // min_segment_size - 1))
-        if effective_points <= 0:
-            return []
-        model = ruptures_module.Binseg(model="l2", min_size=min_segment_size, jump=1)
-        fitted_model = model.fit(values.reshape(-1, 1))
-        for n_bkps in range(effective_points, 0, -1):
-            try:
-                change_points = fitted_model.predict(n_bkps=n_bkps)
-            except ruptures_module.exceptions.BadSegmentationParameters:
-                continue
-            return sorted({point for point in change_points if 0 < point < len(values)})
-        return []
-
-    @staticmethod
-    def _segment_stats(
-        feature_df: pl.DataFrame,
-        *,
-        change_idx: int,
-        min_segment_size: int,
-    ) -> _MissingSegmentStats | None:
-        """计算候选变点两侧的缺失统计。"""
-        before_start = max(0, change_idx - min_segment_size)
-        after_end = min(feature_df.height, change_idx + min_segment_size)
-        before_df = feature_df.slice(before_start, change_idx - before_start)
-        after_df = feature_df.slice(change_idx, after_end - change_idx)
-        if before_df.height < min_segment_size or after_df.height < min_segment_size:
-            return None
-
-        before_missing = float(before_df.get_column("missing_count").sum())
-        after_missing = float(after_df.get_column("missing_count").sum())
-        before_total = float(before_df.get_column("total_count").sum())
-        after_total = float(after_df.get_column("total_count").sum())
-        if before_total <= 0 or after_total <= 0:
-            return None
-        return _MissingSegmentStats(
-            before_rate=before_missing / before_total,
-            after_rate=after_missing / after_total,
-            before_missing=before_missing,
-            after_missing=after_missing,
-            before_total=before_total,
-            after_total=after_total,
+        values = (
+            feature_df
+            .filter(pl.col("__idx").is_in(block))
+            .get_column("missing_rate")
+            .to_numpy()
+            .astype(float)
         )
+        variance = float(np.var(values))
+        penalty = max(variance * log(max(len(values), 2)), FLOAT_TOLERANCE)
+        model = rpt.Binseg(model="l2", min_size=config.min_segment_size, jump=1)
+        fitted = model.fit(values.reshape(-1, 1))
+        try:
+            local_points = [point for point in fitted.predict(pen=penalty) if point < len(values)]
+        except rpt.exceptions.BadSegmentationParameters:
+            return []
+
+        scored_points: list[tuple[float, int]] = []
+        for local_point in local_points:
+            before_local = list(range(local_point - config.min_segment_size, local_point))
+            after_local = list(range(local_point, local_point + config.min_segment_size))
+            if before_local[0] < 0 or after_local[-1] >= len(block):
+                continue
+            before_stats = _window_stats(feature_df, [block[idx] for idx in before_local])
+            after_stats = _window_stats(feature_df, [block[idx] for idx in after_local])
+            scored_points.append((abs(after_stats.rate - before_stats.rate), local_point))
+        scored_points.sort(reverse=True)
+
+        candidates: list[_Candidate] = []
+        periods = feature_df.get_column("period").to_list()
+        for _, local_point in scored_points[: config.max_segment_candidates]:
+            before_indices = [
+                block[idx]
+                for idx in range(local_point - config.min_segment_size, local_point)
+            ]
+            event_indices = [
+                block[idx]
+                for idx in range(local_point, local_point + config.min_segment_size)
+            ]
+            candidates.append(
+                _statistical_candidate(
+                    feature=feature,
+                    data_source=data_source,
+                    anomaly_type="segment_shift",
+                    event_indices=event_indices,
+                    event_stats=_window_stats(feature_df, event_indices),
+                    reference_type="previous_window",
+                    reference_start_period=str(periods[before_indices[0]]),
+                    reference_end_period=str(periods[before_indices[-1]]),
+                    reference_stats=_window_stats(feature_df, before_indices),
+                    min_effect_delta=config.min_effect_delta,
+                )
+            )
+        return candidates
 
     @staticmethod
-    def _build_anomaly_row(
+    def _boundary_candidates(
         feature_df: pl.DataFrame,
         *,
+        eligible_blocks: list[list[int]],
         feature: str,
         data_source: str,
-        change_idx: int,
-        stats: _MissingSegmentStats,
-        min_abs_delta: float,
-        min_effect_delta: float,
-        min_relative_delta: float,
-        pvalue_threshold: float,
-    ) -> dict[str, Any] | None:
-        """按混合阈值确认候选变点是否为异常。"""
-        delta = stats.after_rate - stats.before_rate
-        abs_delta = abs(delta)
-        relative_base = max(abs(stats.before_rate), min_effect_delta)
-        relative_delta = abs_delta / relative_base
-        p_value = _two_proportion_pvalue(
-            stats.before_missing,
-            stats.before_total,
-            stats.after_missing,
-            stats.after_total,
-        )
-        reasons: list[str] = []
-        if abs_delta >= min_abs_delta:
-            reasons.append("abs_delta")
-        if abs_delta >= min_effect_delta and relative_delta >= min_relative_delta:
-            reasons.append("relative_delta")
-        if abs_delta >= min_effect_delta and p_value <= pvalue_threshold:
-            reasons.append("z_test")
-        if not reasons:
-            return None
-
-        direction: Direction = "increase" if delta > 0 else "decrease"
+        benchmark_stats: _WindowStats | None,
+        config: MarsMissingShiftConfig,
+    ) -> list[_Candidate]:
+        """为全局开头和结尾选择最能解释边界异常的候选窗口。"""
+        if not eligible_blocks:
+            return []
         periods = feature_df.get_column("period").to_list()
-        anomaly_score = max(
-            abs_delta / max(min_abs_delta, FLOAT_TOLERANCE),
-            relative_delta / max(min_relative_delta, FLOAT_TOLERANCE),
-            -np.log10(max(p_value, PROBABILITY_EPSILON))
-            / max(-np.log10(pvalue_threshold), FLOAT_TOLERANCE),
+        candidates: list[_Candidate] = []
+        boundary_specs = [
+            ("start", eligible_blocks[0]),
+            ("end", eligible_blocks[-1]),
+        ]
+        for side, block in boundary_specs:
+            side_candidates: list[_Candidate] = []
+            max_event_size = min(config.max_boundary_periods, len(block))
+            for event_size in range(1, max_event_size + 1):
+                event_indices = block[:event_size] if side == "start" else block[-event_size:]
+                if benchmark_stats is not None:
+                    reference_stats = benchmark_stats
+                    reference_type = "benchmark"
+                    reference_start = None
+                    reference_end = None
+                else:
+                    if side == "start":
+                        reference_indices = block[event_size : event_size + config.reference_window]
+                        reference_type = "next_window"
+                    else:
+                        reference_indices = block[
+                            max(0, len(block) - event_size - config.reference_window) : -event_size
+                        ]
+                        reference_type = "previous_window"
+                    if len(reference_indices) < config.reference_window:
+                        continue
+                    reference_stats = _window_stats(feature_df, reference_indices)
+                    reference_start = str(periods[reference_indices[0]])
+                    reference_end = str(periods[reference_indices[-1]])
+
+                side_candidates.append(
+                    _statistical_candidate(
+                        feature=feature,
+                        data_source=data_source,
+                        anomaly_type="boundary",
+                        event_indices=event_indices,
+                        event_stats=_window_stats(feature_df, event_indices),
+                        reference_type=reference_type,
+                        reference_start_period=reference_start,
+                        reference_end_period=reference_end,
+                        reference_stats=reference_stats,
+                        min_effect_delta=config.min_effect_delta,
+                    )
+                )
+            if side_candidates:
+                side_candidates.sort(
+                    key=lambda candidate: (
+                        candidate.abs_delta,
+                        candidate.event_end_idx - candidate.event_start_idx + 1,
+                    ),
+                    reverse=True,
+                )
+                candidates.append(side_candidates[0])
+        return candidates
+
+    @staticmethod
+    def _point_candidates(
+        feature_df: pl.DataFrame,
+        *,
+        block: list[int],
+        feature: str,
+        data_source: str,
+        config: MarsMissingShiftConfig,
+    ) -> list[_Candidate]:
+        """生成同时偏离左右参考窗口的内部单日候选。"""
+        window = config.reference_window
+        if len(block) < window * 2 + 1:
+            return []
+        periods = feature_df.get_column("period").to_list()
+        candidates: list[_Candidate] = []
+        for local_idx in range(window, len(block) - window):
+            event_idx = block[local_idx]
+            left_indices = block[local_idx - window : local_idx]
+            right_indices = block[local_idx + 1 : local_idx + 1 + window]
+            event_stats = _window_stats(feature_df, [event_idx])
+            left_stats = _window_stats(feature_df, left_indices)
+            right_stats = _window_stats(feature_df, right_indices)
+            left_delta = event_stats.rate - left_stats.rate
+            right_delta = event_stats.rate - right_stats.rate
+            same_direction = left_delta * right_delta > 0
+            if not same_direction or min(abs(left_delta), abs(right_delta)) < config.min_effect_delta:
+                continue
+            reference_indices = [*left_indices, *right_indices]
+            candidates.append(
+                _statistical_candidate(
+                    feature=feature,
+                    data_source=data_source,
+                    anomaly_type="point",
+                    event_indices=[event_idx],
+                    event_stats=event_stats,
+                    reference_type="surrounding_window",
+                    reference_start_period=str(periods[left_indices[0]]),
+                    reference_end_period=str(periods[right_indices[-1]]),
+                    reference_stats=_window_stats(feature_df, reference_indices),
+                    min_effect_delta=config.min_effect_delta,
+                )
+            )
+        return candidates
+
+    @staticmethod
+    def _high_level_candidates(
+        feature_df: pl.DataFrame,
+        *,
+        eligible_blocks: list[list[int]],
+        feature: str,
+        data_source: str,
+        config: MarsMissingShiftConfig,
+    ) -> list[_Candidate]:
+        """将连续越过特征红线的有效日期合并为高缺失事件。"""
+        threshold = config.feature_high_missing_rate_thresholds.get(
+            feature,
+            config.high_missing_rate_threshold,
         )
-        return {
-            "feature": feature,
-            "data_source": data_source,
-            "start_period": str(periods[max(0, change_idx - 1)]),
-            "end_period": str(periods[min(len(periods) - 1, change_idx)]),
-            "change_period": str(periods[change_idx]),
-            "before_missing_rate": stats.before_rate,
-            "after_missing_rate": stats.after_rate,
-            "abs_delta": abs_delta,
-            "relative_delta": relative_delta,
-            "p_value": p_value,
-            "direction": direction,
-            "anomaly_score": float(anomaly_score),
-            "reason": ",".join(reasons),
-        }
+        rates = feature_df.get_column("missing_rate").to_list()
+        candidates: list[_Candidate] = []
+        for block in eligible_blocks:
+            run: list[int] = []
+            for idx in [*block, -1]:
+                if idx >= 0 and float(rates[idx]) >= threshold:
+                    run.append(idx)
+                    continue
+                if len(run) >= config.min_high_periods:
+                    event_stats = _window_stats(feature_df, run)
+                    delta = event_stats.rate - threshold
+                    candidates.append(
+                        _Candidate(
+                            feature=feature,
+                            data_source=data_source,
+                            anomaly_type="high_level",
+                            event_start_idx=run[0],
+                            event_end_idx=run[-1],
+                            event_stats=event_stats,
+                            reference_type="business_threshold",
+                            reference_start_period=None,
+                            reference_end_period=None,
+                            reference_stats=None,
+                            threshold=threshold,
+                            delta=delta,
+                            abs_delta=abs(delta),
+                            relative_delta=abs(delta) / max(threshold, FLOAT_TOLERANCE),
+                            p_value=None,
+                            q_value=None,
+                            test_method=None,
+                        )
+                    )
+                run = []
+        return candidates
+
+    @staticmethod
+    def _annotate_trend(
+        trend_table: pl.DataFrame,
+        detail_table: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """根据最终事件为长版趋势表补充异常标记和事件类型。"""
+        if detail_table.is_empty():
+            return trend_table.with_columns(
+                [
+                    pl.lit(False).alias("is_anomaly"),
+                    pl.lit(None).cast(pl.String).alias("anomaly_types"),
+                ]
+            )
+        event_rows = detail_table.select(
+            ["feature", "event_start_period", "event_end_period", "detected_by"]
+        ).to_dicts()
+        annotations: list[dict[str, Any]] = []
+        for row in trend_table.select(["feature", "period"]).to_dicts():
+            event_types = sorted(
+                {
+                    event_type
+                    for event in event_rows
+                    if event["feature"] == row["feature"]
+                    and event["event_start_period"] <= row["period"] <= event["event_end_period"]
+                    for event_type in str(event["detected_by"]).split(",")
+                },
+                key=lambda value: _DETECTOR_PRIORITY[cast(AnomalyType, value)],
+            )
+            annotations.append(
+                {
+                    "feature": row["feature"],
+                    "period": row["period"],
+                    "is_anomaly": bool(event_types),
+                    "anomaly_types": ",".join(event_types) if event_types else None,
+                }
+            )
+        annotation_df = pl.DataFrame(
+            annotations,
+            schema={
+                "feature": pl.String,
+                "period": pl.String,
+                "is_anomaly": pl.Boolean,
+                "anomaly_types": pl.String,
+            },
+        )
+        return trend_table.join(annotation_df, on=["feature", "period"], how="left")
 
     @staticmethod
     def _build_summary_table(detail_table: pl.DataFrame) -> pl.DataFrame:
-        """由异常明细构造特征级汇总。"""
+        """由事件明细构造特征级异常汇总。"""
         if detail_table.is_empty():
             return _empty_summary_table()
         return (
@@ -558,9 +1291,11 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
             .agg(
                 [
                     pl.len().alias("anomaly_count"),
+                    pl.col("anomaly_type").unique().sort().str.join(",").alias("anomaly_types"),
                     pl.col("abs_delta").max().alias("max_abs_delta"),
-                    pl.col("change_period").min().alias("first_anomaly_period"),
-                    pl.col("change_period").max().alias("last_anomaly_period"),
+                    pl.col("event_missing_rate").max().alias("max_event_missing_rate"),
+                    pl.col("event_start_period").min().alias("first_anomaly_period"),
+                    pl.col("event_end_period").max().alias("last_anomaly_period"),
                     pl.col("direction").mode().first().alias("primary_direction"),
                 ]
             )
@@ -574,11 +1309,10 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         target_features: list[str],
         feature_data_source: dict[str, str],
     ) -> pl.DataFrame:
-        """由异常明细构造数据源级汇总。"""
+        """由事件明细构造数据源级异常汇总。"""
         if not feature_data_source:
             return _empty_source_table()
-
-        source_feature_df = pl.DataFrame(
+        source_features = pl.DataFrame(
             {
                 "feature": target_features,
                 "data_source": [
@@ -586,7 +1320,7 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
                 ],
             }
         )
-        feature_counts = source_feature_df.group_by("data_source").agg(
+        feature_counts = source_features.group_by("data_source").agg(
             pl.len().alias("feature_count")
         )
         if detail_table.is_empty():
@@ -600,23 +1334,19 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
                         pl.lit(None).cast(pl.Float64).alias("max_abs_delta"),
                     ]
                 )
+                .select(_empty_source_table().columns)
                 .sort("data_source")
             )
-
-        source_anomaly = (
-            detail_table
-            .group_by("data_source")
-            .agg(
-                [
-                    pl.col("feature").n_unique().alias("anomaly_feature_count"),
-                    pl.len().alias("anomaly_count"),
-                    pl.col("abs_delta").max().alias("max_abs_delta"),
-                ]
-            )
+        anomaly_summary = detail_table.group_by("data_source").agg(
+            [
+                pl.col("feature").n_unique().alias("anomaly_feature_count"),
+                pl.len().alias("anomaly_count"),
+                pl.col("abs_delta").max().alias("max_abs_delta"),
+            ]
         )
         return (
             feature_counts
-            .join(source_anomaly, on="data_source", how="left")
+            .join(anomaly_summary, on="data_source", how="left")
             .with_columns(
                 [
                     pl.col("anomaly_feature_count").fill_null(0),
@@ -627,8 +1357,114 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
                     ).alias("anomaly_feature_rate"),
                 ]
             )
+            .select(_empty_source_table().columns)
             .sort(["anomaly_feature_count", "max_abs_delta"], descending=[True, True])
         )
+
+
+_TREND_META_COLUMNS = {"feature", "dtype", "data_source"}
+
+
+def _eligible_blocks(feature_df: pl.DataFrame) -> list[list[int]]:
+    """将有效日期拆成不会跨越低样本日期的连续索引块。"""
+    eligible = feature_df.get_column("is_detection_eligible").to_list()
+    blocks: list[list[int]] = []
+    current: list[int] = []
+    for idx, is_eligible in enumerate(eligible):
+        if is_eligible:
+            current.append(idx)
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _window_stats(feature_df: pl.DataFrame, indices: Sequence[int]) -> _WindowStats:
+    """聚合指定行索引对应窗口的缺失计数。"""
+    selected = feature_df.filter(pl.col("__idx").is_in(indices))
+    return _WindowStats(
+        missing_count=int(selected.get_column("missing_count").sum()),
+        total_count=int(selected.get_column("total_count").sum()),
+    )
+
+
+def _statistical_candidate(
+    *,
+    feature: str,
+    data_source: str,
+    anomaly_type: AnomalyType,
+    event_indices: Sequence[int],
+    event_stats: _WindowStats,
+    reference_type: str,
+    reference_start_period: str | None,
+    reference_end_period: str | None,
+    reference_stats: _WindowStats,
+    min_effect_delta: float,
+) -> _Candidate:
+    """计算业务效果量与两比例显著性，构造统计型候选。"""
+    delta = event_stats.rate - reference_stats.rate
+    abs_delta = abs(delta)
+    relative_delta = abs_delta / max(abs(reference_stats.rate), min_effect_delta)
+    p_value, test_method = _two_proportion_test(event_stats, reference_stats)
+    return _Candidate(
+        feature=feature,
+        data_source=data_source,
+        anomaly_type=anomaly_type,
+        event_start_idx=min(event_indices),
+        event_end_idx=max(event_indices),
+        event_stats=event_stats,
+        reference_type=reference_type,
+        reference_start_period=reference_start_period,
+        reference_end_period=reference_end_period,
+        reference_stats=reference_stats,
+        threshold=None,
+        delta=delta,
+        abs_delta=abs_delta,
+        relative_delta=relative_delta,
+        p_value=p_value,
+        q_value=None,
+        test_method=test_method,
+    )
+
+
+def _two_proportion_test(
+    event_stats: _WindowStats,
+    reference_stats: _WindowStats,
+) -> tuple[float, str]:
+    """按期望频数选择 Fisher 精确检验或两比例 z 检验。"""
+    table = np.array(
+        [
+            [
+                event_stats.missing_count,
+                event_stats.total_count - event_stats.missing_count,
+            ],
+            [
+                reference_stats.missing_count,
+                reference_stats.total_count - reference_stats.missing_count,
+            ],
+        ],
+        dtype=float,
+    )
+    grand_total = float(table.sum())
+    expected = np.outer(table.sum(axis=1), table.sum(axis=0)) / grand_total
+    if bool((expected < 5).any()):
+        scipy_stats: Any = importlib.import_module("scipy.stats")
+        _odds_ratio, p_value = scipy_stats.fisher_exact(
+            table.astype(int),
+            alternative="two-sided",
+        )
+        return float(p_value), "fisher_exact"
+    return (
+        _two_proportion_pvalue(
+            float(table[0, 0]),
+            float(table[0].sum()),
+            float(table[1, 0]),
+            float(table[1].sum()),
+        ),
+        "z_test",
+    )
 
 
 def _two_proportion_pvalue(
@@ -638,13 +1474,209 @@ def _two_proportion_pvalue(
     total_b: float,
 ) -> float:
     """计算两比例 z 检验的双侧 p 值。"""
-    if total_a <= 0 or total_b <= 0:
-        return 1.0
     rate_a = missing_a / total_a
     rate_b = missing_b / total_b
     pooled = (missing_a + missing_b) / (total_a + total_b)
     variance = pooled * (1.0 - pooled) * (1.0 / total_a + 1.0 / total_b)
     if variance <= 0:
-        return 1.0 if abs(rate_a - rate_b) == 0 else 0.0
+        return 1.0 if abs(rate_a - rate_b) <= FLOAT_TOLERANCE else 0.0
     z_score = abs(rate_b - rate_a) / sqrt(variance)
     return float(erfc(z_score / sqrt(2.0)))
+
+
+def _apply_benjamini_hochberg(candidates: list[_Candidate]) -> list[_Candidate]:
+    """对全部特征和统计检测器候选执行全局 Benjamini-Hochberg 校正。"""
+    if not candidates:
+        return []
+    ordered = sorted(enumerate(candidates), key=lambda item: cast(float, item[1].p_value))
+    adjusted: list[float] = [1.0] * len(candidates)
+    running_min = 1.0
+    total = len(candidates)
+    for reverse_idx in range(total - 1, -1, -1):
+        original_idx, candidate = ordered[reverse_idx]
+        rank = reverse_idx + 1
+        raw_adjusted = cast(float, candidate.p_value) * total / rank
+        running_min = min(running_min, raw_adjusted, 1.0)
+        adjusted[original_idx] = running_min
+    return [
+        replace(candidate, q_value=adjusted[idx]) for idx, candidate in enumerate(candidates)
+    ]
+
+
+def _merge_candidate_rows(
+    feature_df: pl.DataFrame,
+    candidates: list[_Candidate],
+    config: MarsMissingShiftConfig,
+) -> list[dict[str, Any]]:
+    """合并同特征重叠候选，并保留所有检测证据。"""
+    if not candidates:
+        return []
+    ordered = sorted(candidates, key=lambda item: (item.event_start_idx, item.event_end_idx))
+    clusters: list[list[_Candidate]] = []
+    current = [ordered[0]]
+    current_end = ordered[0].event_end_idx
+    for candidate in ordered[1:]:
+        if candidate.event_start_idx <= current_end:
+            current.append(candidate)
+            current_end = max(current_end, candidate.event_end_idx)
+        else:
+            clusters.append(current)
+            current = [candidate]
+            current_end = candidate.event_end_idx
+    clusters.append(current)
+
+    periods = feature_df.get_column("period").to_list()
+    rows: list[dict[str, Any]] = []
+    indexed_df = feature_df.with_row_index("__idx")
+    for cluster in clusters:
+        primary = min(
+            cluster,
+            key=lambda item: (
+                _DETECTOR_PRIORITY[item.anomaly_type],
+                -item.abs_delta,
+            ),
+        )
+        start_idx = min(candidate.event_start_idx for candidate in cluster)
+        end_idx = max(candidate.event_end_idx for candidate in cluster)
+        event_stats = _window_stats(indexed_df, list(range(start_idx, end_idx + 1)))
+        statistical = [candidate for candidate in cluster if candidate.q_value is not None]
+        evidence = min(statistical, key=lambda item: cast(float, item.q_value)) if statistical else None
+        reference_candidate = evidence or primary
+        reference_stats = reference_candidate.reference_stats
+        threshold = next(
+            (
+                candidate.threshold
+                for candidate in cluster
+                if candidate.anomaly_type == "high_level"
+            ),
+            primary.threshold,
+        )
+        if reference_stats is not None:
+            delta = event_stats.rate - reference_stats.rate
+            relative_base = max(abs(reference_stats.rate), config.min_effect_delta)
+        else:
+            effective_threshold = cast(float, threshold)
+            delta = event_stats.rate - effective_threshold
+            relative_base = max(effective_threshold, FLOAT_TOLERANCE)
+        direction: Direction = "increase" if delta >= 0 else "decrease"
+        detected_types = sorted(
+            {candidate.anomaly_type for candidate in cluster},
+            key=lambda item: _DETECTOR_PRIORITY[item],
+        )
+        reasons: list[str] = list(detected_types)
+        if evidence is not None:
+            reasons.extend([cast(str, evidence.test_method), "fdr"])
+            if abs(delta) >= config.min_abs_delta:
+                reasons.append("abs_delta")
+            if abs(delta) / relative_base >= config.min_relative_delta:
+                reasons.append("relative_delta")
+        rows.append(
+            {
+                "feature": primary.feature,
+                "data_source": primary.data_source,
+                "anomaly_type": primary.anomaly_type,
+                "detected_by": ",".join(detected_types),
+                "event_start_period": str(periods[start_idx]),
+                "event_end_period": str(periods[end_idx]),
+                "reference_type": reference_candidate.reference_type,
+                "reference_start_period": reference_candidate.reference_start_period,
+                "reference_end_period": reference_candidate.reference_end_period,
+                "event_missing_count": event_stats.missing_count,
+                "event_total_count": event_stats.total_count,
+                "event_missing_rate": event_stats.rate,
+                "reference_missing_count": (
+                    reference_stats.missing_count if reference_stats is not None else None
+                ),
+                "reference_total_count": (
+                    reference_stats.total_count if reference_stats is not None else None
+                ),
+                "reference_missing_rate": reference_stats.rate if reference_stats else None,
+                "threshold": threshold,
+                "delta": delta,
+                "abs_delta": abs(delta),
+                "relative_delta": abs(delta) / relative_base,
+                "p_value": evidence.p_value if evidence is not None else None,
+                "q_value": evidence.q_value if evidence is not None else None,
+                "direction": direction,
+                "reason": ",".join(dict.fromkeys(reasons)),
+            }
+        )
+    return rows
+
+
+def _dtypes_compatible(current: pl.DataType, benchmark: pl.DataType) -> bool:
+    """判断当前数据与 benchmark 特征 dtype 是否可安全共享缺失语义。"""
+    return current == benchmark or (
+        is_numeric_dtype(current) and is_numeric_dtype(benchmark)
+    )
+
+
+def _normalize_names(values: str | Sequence[str] | None) -> list[str] | None:
+    """将可选单值或序列统一为字符串列表。"""
+    if values is None:
+        return None
+    return [values] if isinstance(values, str) else list(values)
+
+
+def _filter_pandas_features(
+    frame: pd.DataFrame,
+    features: str | Sequence[str] | None,
+) -> pd.DataFrame:
+    """按可选特征列表过滤 Pandas 展示副本。"""
+    requested = _normalize_names(features)
+    if requested is None or "feature" not in frame.columns:
+        return frame.copy()
+    return frame[frame["feature"].isin(requested)].copy()
+
+
+def _style_missing_shift_table(
+    frame: pd.DataFrame,
+    *,
+    caption: str,
+    gradient_columns: Sequence[str] | None = None,
+    percentage_columns: Sequence[str] | None = None,
+) -> pd.io.formats.style.Styler:
+    """为缺失率结果构造统一 Pandas Styler。"""
+    styler = frame.style.hide(axis="index").set_caption(caption)
+    gradients = [
+        column for column in (gradient_columns or []) if column in frame.columns and not frame.empty
+    ]
+    if gradients:
+        styler = styler.background_gradient(cmap="RdYlGn_r", subset=gradients, axis=None)
+    percentage_candidates = list(percentage_columns or []) + [
+        column
+        for column in frame.columns
+        if "rate" in str(column) or column in {"delta", "abs_delta", "relative_delta"}
+    ]
+    percentage = list(dict.fromkeys(column for column in percentage_candidates if column in frame.columns))
+    if percentage:
+        styler = styler.format("{:.2%}", subset=percentage, na_rep="-")
+    numeric = [
+        column
+        for column in frame.select_dtypes(include=["number"]).columns
+        if column not in percentage
+    ]
+    if numeric:
+        styler = styler.format("{:.4f}", subset=numeric, na_rep="-")
+    return styler.set_table_styles(
+        [
+            {
+                "selector": "th",
+                "props": [("background-color", "#edf2f7"), ("text-align", "left")],
+            },
+            {
+                "selector": "caption",
+                "props": [("font-size", "1.15em"), ("font-weight", "bold")],
+            },
+        ]
+    )
+
+
+def _excel_column_name(zero_based_index: int) -> str:
+    """将零起始列索引转换为 Excel 列名。"""
+    value = zero_based_index + 1
+    result = ""
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        result = chr(65 + remainder) + result
+    return result

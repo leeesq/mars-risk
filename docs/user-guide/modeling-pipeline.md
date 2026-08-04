@@ -17,7 +17,7 @@ description: 使用 Experimental Modeling/Pipeline 完成样本切分、调参�
 支持 LightGBM、XGBoost、CatBoost 和 Logistic Regression。使用前安装：
 
 ```bash
-pip install "mars-risk[ml,tuning]==0.0.26"
+pip install "mars-risk[ml,tuning]==0.0.27"
 ```
 
 ## Pipeline 完整调用

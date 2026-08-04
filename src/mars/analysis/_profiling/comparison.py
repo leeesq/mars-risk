@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import polars as pl
 
 from mars._compat import polars_is_in
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
 from mars.compute import filter_compatible_values, is_numeric_dtype
-from mars.core.constants import DIVISION_EPSILON
 
 _UNSEEN_META_COLUMNS = {
     "feature",
@@ -23,9 +21,6 @@ _UNSEEN_META_COLUMNS = {
     "unseen_count",
     "unseen_unique_count",
     "total",
-    "group_mean",
-    "group_var",
-    "group_cv",
 }
 
 
@@ -164,21 +159,6 @@ def _unique_group_labels(values: list[Any]) -> list[str]:
     return labels
 
 
-def _append_group_stability(row: dict[str, Any], group_columns: list[str]) -> None:
-    """基于有效分组 unseen rate 补充均值、样本方差与变异系数。"""
-    values = [float(row[column]) for column in group_columns if row.get(column) is not None]
-    if not values:
-        row["group_mean"] = None
-        row["group_var"] = None
-        row["group_cv"] = None
-        return
-    mean = float(np.mean(values))
-    variance = float(np.var(values, ddof=1)) if len(values) > 1 else 0.0
-    row["group_mean"] = mean
-    row["group_var"] = variance
-    row["group_cv"] = float(np.sqrt(variance) / (abs(mean) + DIVISION_EPSILON))
-
-
 def build_unseen_comparison(
     context: ProfileRunContext,
     benchmark_df: pl.DataFrame,
@@ -290,8 +270,6 @@ def build_unseen_comparison(
                         }
                         row.update(group_rate_map)
 
-        if group_col is not None:
-            _append_group_stability(row, group_columns)
         rows.append(row)
 
     base_columns = [
@@ -307,8 +285,6 @@ def build_unseen_comparison(
         *group_columns,
         "total",
     ]
-    if group_col is not None:
-        base_columns.extend(["group_mean", "group_var", "group_cv"])
     schema: dict[str, pl.DataType] = {
         "feature": pl.Utf8,
         "current_dtype": pl.Utf8,
@@ -321,8 +297,5 @@ def build_unseen_comparison(
         "unseen_unique_count": pl.Int64,
         **{column: pl.Float64 for column in group_columns},
         "total": pl.Float64,
-        "group_mean": pl.Float64,
-        "group_var": pl.Float64,
-        "group_cv": pl.Float64,
     }
     return pl.DataFrame(rows, schema=schema).select(base_columns)

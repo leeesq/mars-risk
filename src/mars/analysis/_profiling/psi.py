@@ -9,8 +9,13 @@ import polars as pl
 from mars._compat import collect_streaming
 from mars.analysis._profiling.metrics import feature_dtypes
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
-from mars.compute import psi_contribution_expr, psi_partition_prob_expr, psi_valid_condition
-from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
+from mars.compute import (
+    missing_condition_expr,
+    psi_contribution_expr,
+    psi_partition_prob_expr,
+    psi_valid_condition,
+)
+from mars.core.constants import METRIC_EPSILON
 from mars.feature import MarsNativeBinner
 
 MAX_PSI_GROUPS = 1000
@@ -64,9 +69,6 @@ def get_psi_trend(
         baseline_group,
         benchmark_df=benchmark_df,
     )
-    if not result_parts:
-        raise ValueError("PSI did not produce any usable feature results.")
-
     final_long = pl.concat(result_parts)
     if context.group_col is None:
         total_df = final_long.select(["feature", "total"]).unique()
@@ -81,29 +83,7 @@ def get_psi_trend(
     psi_data_cols = sorted([col for col in result.columns if col not in ["feature", "dtype", "total"]])
     if not psi_data_cols:
         return result.sort("feature")
-
-    result = (
-        result.with_columns(pl.concat_list(psi_data_cols).alias("_tmp_psi_list"))
-        .with_columns(
-            [
-                pl.col("_tmp_psi_list").list.mean().alias("group_mean"),
-                pl.col("_tmp_psi_list").list.max().fill_null(0).alias("group_max"),
-                pl.col("_tmp_psi_list").list.var().fill_null(0).alias("group_var"),
-                pl.col("_tmp_psi_list").list.std().alias("_tmp_std"),
-            ]
-        )
-        .with_columns(
-            pl.when(pl.col("group_max") < options.psi_cv_ignore_threshold)
-            .then(pl.lit(0.0))
-            .otherwise(pl.col("_tmp_std") / (pl.col("group_mean") + DIVISION_EPSILON))
-            .fill_null(0)
-            .alias("group_cv")
-        )
-        .drop(["_tmp_psi_list", "_tmp_std", "group_max"])
-    )
-    return result.select(
-        ["feature", "dtype", *psi_data_cols, "total", "group_mean", "group_var", "group_cv"]
-    ).sort("feature")
+    return result.select(["feature", "dtype", *psi_data_cols, "total"]).sort("feature")
 
 
 def _validate_benchmark_frame(
@@ -141,6 +121,38 @@ def _validate_benchmark_frame(
             "`benchmark_df` has incompatible dtypes for active PSI features "
             f"{incompatible_dtypes}."
         )
+
+
+def _benchmark_degenerate_failures(
+    benchmark_df: pl.DataFrame,
+    candidates: list[str],
+    options: ProfileComputeOptions,
+) -> dict[str, str]:
+    """识别显式 benchmark 中无法构造可解释 PSI 切分的特征。"""
+    excluded_values = [*options.missing_values, *options.special_values]
+    count_exprs: list[pl.Expr] = []
+    for feature in candidates:
+        invalid_condition = missing_condition_expr(
+            feature,
+            dtype=benchmark_df.schema[feature],
+            missing_values=excluded_values,
+        )
+        count_exprs.append(
+            pl.col(feature).filter(~invalid_condition).n_unique().alias(feature)
+        )
+    valid_counts = benchmark_df.select(count_exprs).row(0, named=True)
+
+    failures: dict[str, str] = {}
+    declared_categorical = set(options.categorical_features)
+    for feature in candidates:
+        valid_count = int(valid_counts[feature])
+        if valid_count == 0:
+            failures[feature] = "All values are missing or special."
+            continue
+        is_numeric = benchmark_df.schema[feature] in MarsNativeBinner.NUMERIC_DTYPES
+        if valid_count == 1 and is_numeric and feature not in declared_categorical:
+            failures[feature] = "Degenerate feature: single unique value."
+    return failures
 
 
 def _aggregate_binned_stats(
@@ -186,32 +198,82 @@ def _valid_feature_indices(
     return set(valid_features.get_column("feat_idx").to_list())
 
 
-def _validate_benchmark_observations(
+def _record_psi_failure(
+    options: ProfileComputeOptions,
+    feature: str,
+    reason: str,
+) -> None:
+    """按特征记录 PSI 降级原因，并避免同一特征重复记录。"""
+    already_recorded = any(
+        diagnostic.get("component") == "psi"
+        and feature in diagnostic.get("features", [])
+        for diagnostic in options.diagnostics
+    )
+    if already_recorded:
+        return
+    options.diagnostics.append(
+        {
+            "component": "psi",
+            "features": [feature],
+            "reason": reason,
+        }
+    )
+
+
+def _usable_benchmark_feature_indices(
     *,
     current_stats: pl.LazyFrame,
     benchmark_stats: pl.LazyFrame,
     feat_map: dict[int, str],
     options: ProfileComputeOptions,
-) -> None:
-    """确保显式基准两侧的每个特征都有可用于 PSI 的观测。"""
+) -> set[int]:
+    """返回显式基准两侧都含有效 PSI 观测的特征索引。"""
     current_valid = _valid_feature_indices(current_stats, options)
     benchmark_valid = _valid_feature_indices(benchmark_stats, options)
     expected_indices = set(feat_map)
-    issues: dict[str, list[str]] = {}
+    usable_indices = current_valid & benchmark_valid
 
-    missing_current = sorted(expected_indices - current_valid)
-    if missing_current:
-        issues["current_df"] = [feat_map[index] for index in missing_current]
-
-    missing_benchmark = sorted(expected_indices - benchmark_valid)
-    if missing_benchmark:
-        issues["benchmark_df"] = [feat_map[index] for index in missing_benchmark]
-
-    if issues:
-        raise ValueError(
-            "PSI requires at least one included bin for every active feature on both sides; "
-            f"invalid observations: {issues}."
+    for index in sorted(expected_indices - usable_indices):
+        invalid_sides: list[str] = []
+        if index not in current_valid:
+            invalid_sides.append("current_df")
+        if index not in benchmark_valid:
+            invalid_sides.append("benchmark_df")
+        _record_psi_failure(
+            options,
+            feat_map[index],
+            "PSI has no included observations in " + " and ".join(invalid_sides) + ".",
         )
+    return usable_indices
+
+
+def _null_psi_part(
+    context: ProfileRunContext,
+    features: list[str],
+) -> pl.DataFrame:
+    """为不可计算特征构造保留输出行的空 PSI 长表。"""
+    group_col = context.group_col or INTERNAL_PSI_GROUP_COL
+    feature_df = pl.DataFrame({"feature": features}, schema={"feature": pl.String})
+    if context.group_col is None:
+        return feature_df.with_columns(
+            [
+                pl.lit("Total").alias(group_col),
+                pl.lit(None, dtype=pl.Float64).alias("total"),
+                pl.lit(None, dtype=pl.Float64).alias("psi"),
+            ]
+        ).select([group_col, "feature", "total", "psi"])
+
+    group_values = context.working_df.select(group_col).unique().sort(group_col)
+    return (
+        feature_df.join(group_values, how="cross")
+        .with_columns(
+            [
+                pl.lit(None, dtype=pl.Float64).alias("total"),
+                pl.lit(None, dtype=pl.Float64).alias("psi"),
+            ]
+        )
+        .select([group_col, "feature", "total", "psi"])
+    )
 
 
 def _binned_psi_parts(
@@ -223,8 +285,12 @@ def _binned_psi_parts(
     benchmark_df: pl.DataFrame | None,
 ) -> list[pl.DataFrame]:
     """基于 NativeBinner 分箱结果分批计算画像 PSI。"""
-    strict_benchmark = benchmark_df is not None
     fit_df = benchmark_df if benchmark_df is not None else context.working_df
+    benchmark_failures = (
+        _benchmark_degenerate_failures(benchmark_df, candidates, options)
+        if benchmark_df is not None
+        else {}
+    )
     try:
         binner = MarsNativeBinner(
             method=options.psi_bin_method,
@@ -245,7 +311,7 @@ def _binned_psi_parts(
             fit_kwargs["cat_features"] = categorical_candidates
         binner.fit(fit_df, **fit_kwargs)
     except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
-        if strict_benchmark:
+        if benchmark_df is not None:
             raise ValueError(
                 f"`benchmark_df` PSI binning failed for active features {candidates}: {exc}"
             ) from exc
@@ -254,20 +320,35 @@ def _binned_psi_parts(
         ) from exc
 
     fit_failures = getattr(binner, "fit_failures_", {})
-    if strict_benchmark and fit_failures:
-        raise ValueError(f"`benchmark_df` PSI binning failed: {fit_failures}.")
+    unavailable_fit_features: set[str] = set()
+    if benchmark_df is not None:
+        combined_failures = {
+            **benchmark_failures,
+            **{
+                feature: str(reason)
+                for feature, reason in fit_failures.items()
+                if feature in candidates
+            },
+        }
+        unavailable_fit_features = set(combined_failures)
+        for feature in candidates:
+            if feature in unavailable_fit_features:
+                _record_psi_failure(options, feature, combined_failures[feature])
 
     bin_cuts = getattr(binner, "bin_cuts_", {})
     cat_cuts = getattr(binner, "cat_cuts_", {})
-    fitted_cols = [col for col in candidates if col in bin_cuts or col in cat_cuts]
-    missing_fitted_cols = [col for col in candidates if col not in fitted_cols]
-    if strict_benchmark and missing_fitted_cols:
-        raise ValueError(
-            "`benchmark_df` could not produce binning rules for active features "
-            f"{missing_fitted_cols}."
-        )
-    if not fitted_cols:
-        return []
+    fitted_cols = [
+        col
+        for col in candidates
+        if (col in bin_cuts or col in cat_cuts) and col not in unavailable_fit_features
+    ]
+    missing_fitted_cols = [
+        col
+        for col in candidates
+        if col not in fitted_cols and col not in unavailable_fit_features
+    ]
+    for feature in missing_fitted_cols:
+        _record_psi_failure(options, feature, "PSI binning did not produce a usable rule.")
 
     parts: list[pl.DataFrame] = []
     for start in range(0, len(fitted_cols), options.psi_batch_size):
@@ -282,20 +363,24 @@ def _binned_psi_parts(
                 benchmark_df=benchmark_df,
             )
         except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
-            if strict_benchmark:
-                raise ValueError(
-                    f"`benchmark_df` PSI calculation failed for features {batch_cols}: {exc}"
-                ) from exc
-            options.diagnostics.append(
-                {
-                    "component": "psi",
-                    "features": list(batch_cols),
-                    "reason": str(exc),
-                }
-            )
+            for feature in batch_cols:
+                _record_psi_failure(options, feature, str(exc))
             continue
         if not part.is_empty():
             parts.append(part)
+
+    produced_features = {
+        str(feature)
+        for part in parts
+        for feature in part.get_column("feature").unique().to_list()
+    }
+    unavailable_features = [
+        feature for feature in candidates if feature not in produced_features
+    ]
+    for feature in unavailable_features:
+        _record_psi_failure(options, feature, "PSI calculation produced no usable result.")
+    if unavailable_features:
+        parts.append(_null_psi_part(context, unavailable_features))
     return parts
 
 
@@ -368,12 +453,21 @@ def _binned_psi_batch(
                 benchmark_stats.select(["feat_idx", "bin_id"]),
             ]
         ).unique()
-        _validate_benchmark_observations(
+        usable_indices = _usable_benchmark_feature_indices(
             current_stats=lf_stats,
             benchmark_stats=benchmark_stats,
             feat_map=feat_map,
             options=options,
         )
+        if not usable_indices:
+            return pl.DataFrame()
+
+        # 只将两侧都有有效观测的特征送入 PSI 计算，其余特征由上层补空行。
+        usable_index_values = sorted(usable_indices)
+        usable_filter = pl.col("feat_idx").is_in(usable_index_values)
+        lf_stats = lf_stats.filter(usable_filter)
+        benchmark_stats = benchmark_stats.filter(usable_filter)
+        lf_skeleton = lf_skeleton.filter(usable_filter)
         lf_psi = calc_psi_from_stats(
             stats_df=lf_stats,
             unique_bins_skel=lf_skeleton,

@@ -214,9 +214,76 @@ def test_profiler_external_benchmark_drives_group_and_total_psi() -> None:
     assert psi_row["2024-01"] == pytest.approx(0.0, abs=1e-12)
     assert psi_row["2024-02"] == pytest.approx(_manual_psi([0.2, 0.8], [0.8, 0.2]))
     assert psi_row["total"] == pytest.approx(_manual_psi([0.5, 0.5], [0.8, 0.2]))
-    assert psi_row["group_mean"] == pytest.approx(
-        (psi_row["2024-01"] + psi_row["2024-02"]) / 2
+    assert {"group_mean", "group_var", "group_cv"}.isdisjoint(
+        report.stats_tables["psi"].columns
     )
+
+
+def test_profiler_external_benchmark_keeps_degenerate_psi_as_null() -> None:
+    benchmark_df = pl.DataFrame(
+        {
+            "constant": [0.0] * 10,
+            "usable": [0.0] * 8 + [1.0] * 2,
+        }
+    )
+    current_df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 10 + ["2024-02"] * 10,
+            "constant": [0.0] * 10 + [1.0] * 10,
+            "usable": [0.0] * 8 + [1.0] * 2 + [0.0] * 2 + [1.0] * 8,
+        }
+    )
+
+    report = profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["constant", "usable"],
+        benchmark_df=benchmark_df,
+        group_col="month",
+    )
+
+    psi_table = report.stats_tables["psi"]
+    constant_row = psi_table.filter(pl.col("feature") == "constant").row(0, named=True)
+    usable_row = psi_table.filter(pl.col("feature") == "usable").row(0, named=True)
+    diagnostics = report.report_meta["diagnostics"]
+
+    assert constant_row["2024-01"] is None
+    assert constant_row["2024-02"] is None
+    assert constant_row["total"] is None
+    assert usable_row["2024-02"] is not None
+    assert any(
+        diagnostic["features"] == ["constant"]
+        and "single unique value" in diagnostic["reason"]
+        for diagnostic in diagnostics
+    )
+
+
+def test_profiler_external_benchmark_returns_null_rows_when_all_psi_degenerate() -> None:
+    benchmark_df = pl.DataFrame({"x": [1.0] * 6, "y": [2.0] * 6})
+    current_df = pl.DataFrame(
+        {
+            "month": ["2024-01"] * 3 + ["2024-02"] * 3,
+            "x": [1.0, 1.0, 1.0, 2.0, 2.0, 2.0],
+            "y": [2.0, 2.0, 2.0, 3.0, 3.0, 3.0],
+        }
+    )
+
+    report = profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["x", "y"],
+        benchmark_df=benchmark_df,
+        group_col="month",
+    )
+
+    psi_table = report.stats_tables["psi"]
+    value_columns = ["2024-01", "2024-02", "total"]
+    assert psi_table.get_column("feature").to_list() == ["x", "y"]
+    assert all(psi_table.get_column(column).null_count() == 2 for column in value_columns)
+    assert {tuple(item["features"]) for item in report.report_meta["diagnostics"]} == {
+        ("x",),
+        ("y",),
+    }
 
 
 def test_profiler_external_benchmark_supports_total_only_psi(tmp_path: Path) -> None:
@@ -391,17 +458,25 @@ def test_profiler_external_benchmark_rejects_invalid_frames(
         )
 
 
-def test_profiler_external_benchmark_rejects_features_without_included_bins() -> None:
+def test_profiler_external_benchmark_keeps_features_without_included_bins() -> None:
     current_df = pl.DataFrame({"x": [None, None]}, schema={"x": pl.Float64})
     benchmark_df = pl.DataFrame({"x": [None, None]}, schema={"x": pl.Float64})
 
-    with pytest.raises(ValueError, match="at least one included bin"):
-        profile_stats(
-            current_df,
-            metrics=["psi"],
-            features=["x"],
-            benchmark_df=benchmark_df,
-        )
+    report = profile_stats(
+        current_df,
+        metrics=["psi"],
+        features=["x"],
+        benchmark_df=benchmark_df,
+    )
+
+    assert report.stats_tables["psi"].row(0, named=True)["total"] is None
+    assert report.report_meta["diagnostics"] == [
+        {
+            "component": "psi",
+            "features": ["x"],
+            "reason": "All values are missing or special.",
+        }
+    ]
 
 
 def test_profile_stats_and_profiler_share_external_benchmark_contract() -> None:
@@ -742,14 +817,10 @@ def test_profiler_psi_uses_observed_bins_for_numeric_skeleton(
     )
 
     assert set(observed_bins) == {0, 2}
-    assert set(report.stats_tables["psi"].columns) >= {
-        "feature",
-        "dtype",
-        "total",
-        "group_mean",
-        "group_var",
-        "group_cv",
-    }
+    assert set(report.stats_tables["psi"].columns) >= {"feature", "dtype", "total"}
+    assert {"group_mean", "group_var", "group_cv"}.isdisjoint(
+        report.stats_tables["psi"].columns
+    )
 
 
 def test_profiler_reuses_instance_without_runtime_state(sample_credit_pd: pd.DataFrame) -> None:
@@ -812,6 +883,9 @@ def test_profiler_handles_notebook_synthetic_stability_metrics() -> None:
 
     assert set(report.dq_tables) == {"missing", "zeros", "unique", "mode"}
     assert {"mean", "min", "max", "skew", "psi"}.issubset(report.stats_tables)
+    assert {"group_mean", "group_var", "group_cv"}.isdisjoint(
+        report.stats_tables["mean"].columns
+    )
     assert set(report.overview_table["feature"].to_list()) == {
         "stable",
         "drift",
@@ -890,6 +964,9 @@ def test_profile_unseen_excludes_missing_special_and_supports_groups() -> None:
     assert row["total"] == pytest.approx(0.5)
     assert row["2026-01"] == pytest.approx(0.5)
     assert row["2026-02"] is None
+    assert {"group_mean", "group_var", "group_cv"}.isdisjoint(
+        report.comparison_tables["unseen"].columns
+    )
 
 
 def test_profile_comparison_output_type_and_report_exports(tmp_path: Path) -> None:

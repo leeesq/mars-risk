@@ -178,7 +178,7 @@ class _ProfileExcelWriter:
         df_pd = self._reorder_trend_cols(df_pd, group_ascending=group_ascending)
 
         # 动态识别趋势列范围，避免依赖固定列位置。
-        meta_and_stat = set(["feature", "dtype", "distribution", "mode_value", "total", "group_mean", "group_var", "group_cv"])
+        meta_and_stat = {"feature", "dtype", "distribution", "mode_value", "total"}
         time_cols = [c for c in df_pd.columns if c not in meta_and_stat]
 
         if not time_cols:
@@ -204,17 +204,6 @@ class _ProfileExcelWriter:
                 'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # 红色
             })
 
-        # 稳定性 Data Bars (针对 group_cv)
-        if "group_cv" in df_pd.columns:
-            col_idx = df_pd.columns.get_loc("group_cv")
-            worksheet.conditional_format(1, col_idx, len(df_pd), col_idx, {
-                'type': 'data_bar',
-                'bar_color': '#638EC6',
-                'bar_solid': True,
-                'min_type': 'num', 'min_value': 0,
-                'max_type': 'num', 'max_value': 1
-            })
-
     def _get_styler(
         self: Any,
         df_input: Any,
@@ -223,7 +212,6 @@ class _ProfileExcelWriter:
         sort_by: List[str] | None = None,
         sort_ascending: bool = False, # 统一内部 API 命名
         subset_cols: List[str] | None = None,
-        add_bars: bool = False,
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None
@@ -240,7 +228,6 @@ class _ProfileExcelWriter:
         # 元数据排除列表
         exclude_meta: List[str] = [
             "feature", "dtype",
-            "group_mean", "group_var", "group_cv",
             "distribution",
             "mode_value"
             ]
@@ -263,14 +250,9 @@ class _ProfileExcelWriter:
                 vmax=vmax
             )
 
-        # 应用数据条
-        if add_bars and "group_cv" in df.columns:
-            styler = styler.bar(subset=["group_cv"], color='#ff9999', vmin=0, vmax=1, width=90)
-            styler = styler.format("{:.4f}", subset=["group_cv", "group_var"])
-
         # 数值格式化逻辑
         num_cols: pd.Index = df.select_dtypes(include=['number']).columns
-        data_cols: List[str] = [c for c in num_cols if c not in ["group_var", "group_cv", "distribution"]]
+        data_cols: List[str] = [c for c in num_cols if c != "distribution"]
 
         pct_format: str = "{:.2%}"
         float_format: str = "{:.2f}"

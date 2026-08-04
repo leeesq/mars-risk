@@ -468,7 +468,8 @@ class MarsStatsSelector(MarsBaseSelector):
 
         # 触发底层引擎缓存销毁与空间压缩
         if self._stage3_binner is not None:
-            self._stage3_binner.prune(self.selected_features_)
+            if self.selected_features_:
+                self._stage3_binner.prune(self.selected_features_)
             self.clear_cache()
 
         self._is_fitted = True
@@ -933,13 +934,19 @@ class MarsStatsSelector(MarsBaseSelector):
             return []
 
         fit_df = benchmark_df if benchmark_df is not None else df
+        rough_method = self.rough_binning_params["method"]
+        if rough_method == "cart":
+            if self.target is None:
+                raise ValueError("Selector target is unavailable for supervised rough binning.")
+            # CART 的切点只能由已表现样本拟合；无监督分箱仍保留全量分布口径。
+            fit_df = fit_df.filter(pl.col(self.target).is_not_null())
         cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
         cat_features = [c for c in features if fit_df.schema[c] in cat_types]
 
         binner = MarsNativeBinner(
             method=cast(
                 Literal["cart", "quantile", "uniform"],
-                self.rough_binning_params["method"],
+                rough_method,
             ),
             n_bins=cast(int, self.rough_binning_params["n_bins"]),
             missing_values=self.missing_values,
@@ -957,7 +964,7 @@ class MarsStatsSelector(MarsBaseSelector):
         )
         fit_target = (
             fit_df.get_column(self.target)
-            if self.rough_binning_params.get("method") == "cart" and self.target is not None
+            if rough_method == "cart" and self.target is not None
             else None
         )
         binner.fit(

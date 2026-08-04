@@ -70,5 +70,7 @@ def test_missing_shift_scanner_is_not_stable_analysis_export() -> None:
     """缺失率异常扫描仍处于实验状态，不进入 analysis 稳定导出面。"""
     assert "MarsMissingShiftScanner" not in analysis_package.__all__
     assert "MarsMissingShiftResult" not in analysis_package.__all__
+    assert "MarsMissingShiftConfig" not in analysis_package.__all__
     assert not hasattr(analysis_package, "MarsMissingShiftScanner")
     assert not hasattr(analysis_package, "MarsMissingShiftResult")
+    assert not hasattr(analysis_package, "MarsMissingShiftConfig")

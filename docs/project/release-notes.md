@@ -1,8 +1,44 @@
 ---
-description: MARS 0.0.26 的用户可见变化、兼容性说明和升级检查项。
+description: MARS 0.0.27 的用户可见变化、兼容性说明和升级检查项。
 ---
 
 # Release Notes
+
+## 0.0.27
+
+本版本修正数据画像 PSI、nullable target 统计和统计筛选器空结果口径，并升级实验性的
+缺失率异常扫描器。`MarsMissingShiftScanner` 仍不从 `mars.analysis` 顶层导出，本次配置与
+结果 schema 调整属于有意的实验 API breaking change。
+
+### 数据画像与筛选修正
+
+- 显式 `benchmark_df` 中的退化特征不再导致整份 PSI 画像失败；不可计算特征保留为
+  `null` PSI，并写入 diagnostics，其他特征继续计算。
+- `profile_bin_performance()` 排除 target 为 null/NaN 的未表现样本，再计算 count、
+  good/bad、WOE、IV、KS、AUC 和 Lift；全空标签给出明确错误。
+- `MarsStatsSelector.fit()` 允许零特征存活，保留漏斗与决策报告，不再调用 `prune([])`。
+- 普通趋势、PSI 和 unseen 画像删除 `group_mean`、`group_var`、`group_cv`，保留逐组值和
+  `total`。
+
+### 缺失率异常扫描
+
+- 新增 `MarsMissingShiftConfig`，阈值和检测器配置不再作为 `scan()` 的扁平参数传递。
+- 同时支持 `segment_shift`、`boundary`、`point`、`high_level`，可准确定位首日或末日异常、
+  内部单日尖峰、持续分段变化和长期高缺失。
+- 统计候选统一经过最小效果门槛与 Benjamini-Hochberg 全局 FDR；小期望频数使用 Fisher
+  精确检验，其余使用两比例检验。
+- 低样本日期保留在长版 `trend_table`，但不参与检测，也不会跨日期桥接检测窗口。
+- 重叠检测证据合并为一个业务事件，并通过 `detected_by` 保留来源。
+- `MarsMissingShiftResult` 新增 Notebook 格式化表、趋势图和四表格式化 Excel 导出；
+  `trend_table` 取代旧的宽版 `missing_rate_table`。
+
+### 升级检查
+
+- 将缺失率扫描调用迁移到 `MarsMissingShiftConfig`，并改用 `trend_table`。
+- 如果业务需要识别扫描区间第一天的相对异常，优先提供扫描期之前的 `benchmark_df`；
+  没有 benchmark 时只能使用后续有效日期或绝对高缺失红线。
+- 持续高缺失默认红线为 90%，自然稀疏特征应通过
+  `feature_high_missing_rate_thresholds` 显式覆盖。
 
 ## 0.0.26
 
@@ -110,5 +146,5 @@ Reporting Stable API 执行 fail-closed 收口。本版本包含明确的 API、
 
 !!! note "发布状态"
 
-    本页随 `0.0.26` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
+    本页随 `0.0.27` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
     通过版本一致性检查后，安装命令才表示正式可用。

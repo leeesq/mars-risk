@@ -188,9 +188,9 @@ def test_documented_version_matches_package_metadata() -> None:
     )
     package_match = re.search(r'^__version__ = "([^"]+)"$', package_source, re.M)
     assert package_match is not None
-    assert package_match.group(1) == project_version == "0.0.26"
+    assert package_match.group(1) == project_version == "0.0.27"
 
-    required_install_command = "pip install mars-risk==0.0.26"
+    required_install_command = "pip install mars-risk==0.0.27"
     for path in [
         PROJECT_ROOT / "README.md",
         DOCS_ROOT / "index.md",

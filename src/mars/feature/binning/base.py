@@ -1214,7 +1214,7 @@ class MarsBinnerBase(MarsTransformer):
         X : pl.DataFrame | pd.DataFrame
             原始特征数据集。
         y : pl.Series | pd.Series
-            二分类目标标签。
+            二分类目标标签。空值和 NaN 表示未表现样本，不参与任何监督指标计算。
         update_woe : bool
             是否将本次计算得到的 WOE 同步回写到 ``bin_woes_``。
         batch_size : int
@@ -1234,10 +1234,16 @@ class MarsBinnerBase(MarsTransformer):
             包含各特征各分箱统计量的明细表，通常包括样本数、坏样本数、
             分布占比、WOE、IV、KS、AUC 和 Lift 等指标。
 
+        Raises
+        ------
+        ValueError
+            ``X`` 与 ``y`` 行数不一致，或 ``y`` 中没有任何已表现样本时抛出。
+
         Notes
         -----
         该方法依赖当前分箱器已完成拟合，并会复用 ``transform(return_type="index")``
-        的输出结果来执行聚合统计。
+        的输出结果来执行聚合统计。分箱规则不受本次评估标签空值影响，但所有标签
+        依赖指标只使用非空、非 NaN 的已表现样本。
 
         Examples
         --------
@@ -1256,7 +1262,23 @@ class MarsBinnerBase(MarsTransformer):
             y_name = "target"
         else:
             y_name = str(raw_name)
-        y = self._ensure_polars_series(y, name=y_name)
+        y = cast(pl.Series, self._ensure_polars_series(y, name=y_name))
+
+        if len(y) != X.height:
+            raise ValueError(f"Target 'y' length mismatch: X({X.height}) vs y({len(y)})")
+
+        # 在分箱转换前剔除未表现样本，避免空标签被误计为好样本。
+        observed_mask: pl.Series = y.is_not_null()
+        if y.dtype in {pl.Float32, pl.Float64}:
+            observed_mask = observed_mask & ~y.is_nan()
+        observed_count = int(observed_mask.sum())
+        if observed_count == 0:
+            raise ValueError(
+                "Target 'y' must contain at least one observed value after excluding null / NaN."
+            )
+        if observed_count < X.height:
+            X = X.filter(observed_mask)
+            y = y.filter(observed_mask)
 
         X_bin_lazy: pl.LazyFrame = self.transform(
             X,

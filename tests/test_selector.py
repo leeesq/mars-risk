@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -350,6 +351,84 @@ def test_stats_selector_handles_notebook_mock_data_with_group_context() -> None:
     assert "black_feature" not in selector.selected_features_
     assert "high_missing" not in selector.selected_features_
     assert "white_feature" in set(report["feature"].to_list())
+
+
+@pytest.mark.parametrize(
+    ("method", "expected_fit_rows"),
+    [("quantile", 6), ("cart", 4)],
+)
+def test_stats_selector_rough_fit_scope_depends_on_supervision(
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    expected_fit_rows: int,
+) -> None:
+    frame = pl.DataFrame(
+        {
+            "x": [0.0, 1.0, 2.0, 3.0, 100.0, 101.0],
+            "target": [0, 1, 0, 1, None, None],
+        }
+    )
+    fit_rows: list[int] = []
+    original_fit = MarsNativeBinner.fit
+
+    def _capture_fit(
+        self: MarsNativeBinner,
+        X: pl.DataFrame | pd.DataFrame,
+        *args: Any,
+        **kwargs: Any,
+    ) -> MarsNativeBinner:
+        """记录 Selector 送入粗分箱器的样本行数。"""
+        fit_rows.append(len(X))
+        return original_fit(self, X, *args, **kwargs)
+
+    monkeypatch.setattr(MarsNativeBinner, "fit", _capture_fit)
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=-1.0,
+        rough_lift_thr=100.0,
+        psi_thr=None,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": method, "n_bins": 2},
+        n_jobs=1,
+    )
+
+    selector.fit(frame, target="target", features=["x"])
+
+    assert fit_rows == [expected_fit_rows]
+
+
+def test_stats_selector_allows_empty_result_after_observed_only_rough_metrics() -> None:
+    frame = pl.DataFrame(
+        {
+            "x": [0.0, 0.0, 1.0, 1.0, 100.0, 100.0, 101.0, 101.0],
+            "target": [0, 1, 0, 1, None, None, None, None],
+        }
+    )
+    selector = MarsStatsSelector(
+        skip_fine_scan=True,
+        rough_iv_thr=0.02,
+        rough_lift_thr=100.0,
+        psi_thr=None,
+        rc_thr=None,
+        corr_thr=None,
+        rough_binning_params={"method": "quantile", "n_bins": 3},
+        n_jobs=1,
+    )
+
+    fitted = selector.fit(frame, target="target", features=["x"])
+    decision_report = selector.get_report()
+    transformed = selector.transform(frame)
+
+    assert fitted is selector
+    assert selector.selected_features_ == []
+    assert transformed.columns == ["target"]
+    rough_decision = decision_report.filter(pl.col("stage") == "Rough_Scan").row(
+        0,
+        named=True,
+    )
+    assert rough_decision["status"] == "Dropped"
+    assert rough_decision["value"] == pytest.approx(0.0, abs=1e-9)
 
 
 @pytest.mark.parametrize("frame_kind", ["polars", "pandas"])

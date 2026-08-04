@@ -305,7 +305,6 @@ class MarsProfileReport:
         sort_by: List[str] | None = None,
         sort_ascending: bool = False,
         subset_cols: List[str] | None = None,
-        add_bars: bool = False,
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
@@ -318,7 +317,6 @@ class MarsProfileReport:
             sort_by=sort_by,
             sort_ascending=sort_ascending,
             subset_cols=subset_cols,
-            add_bars=add_bars,
             fmt_as_pct=fmt_as_pct,
             vmin=vmin,
             vmax=vmax,
@@ -478,14 +476,13 @@ class MarsProfileReport:
             fmt_as_pct=fmt_pct,
             vmin=vmin,
             vmax=vmax,
-            add_bars=True # 所有趋势表都允许显示 CV 条
         )
 
     def _reorder_trend_cols(self, df: pd.DataFrame, group_ascending: bool) -> pd.DataFrame:
         """重新排列趋势表的列顺序。"""
-        # 定义元数据列和末尾统计列
+        # 定义元数据列和末尾全量统计列
         meta_cols = ["feature", "dtype", "distribution", "mode_value"]
-        stat_cols = ["total", "group_mean", "group_var", "group_cv"]
+        stat_cols = ["total"]
 
         # 识别中间的分组列（如时间列）
         all_cols = df.columns.tolist()

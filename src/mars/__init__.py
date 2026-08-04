@@ -42,7 +42,7 @@ from .reporting import MarsBinningReport, MarsProfileReport
 from .scoring import MarsScorecard, build_scorecard
 from .utils import logger, set_log_level
 
-__version__ = "0.0.26"
+__version__ = "0.0.27"
 
 _BANNER = rf"""
     __________________________________________________________________________

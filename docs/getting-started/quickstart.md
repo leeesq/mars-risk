@@ -7,7 +7,7 @@ description: 从安装后的空环境完成一次可运行的风险评估，并�
 本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。运行前只需要安装 MARS：
 
 ```bash
-pip install mars-risk==0.0.26
+pip install mars-risk==0.0.27
 ```
 
 ## 1. 运行完整示例

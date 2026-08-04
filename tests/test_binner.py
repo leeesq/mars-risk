@@ -585,6 +585,34 @@ def test_profile_bin_performance_preserves_feature_names_with_bin_text() -> None
     assert set(stats["feature"].unique().to_list()) == {"foo_bin", "foo_bin_score"}
 
 
+def test_profile_bin_performance_excludes_null_and_nan_targets() -> None:
+    frame = pl.DataFrame({"x": [0.0, 0.0, 1.0, 1.0]})
+    target = pl.Series("target", [0.0, 1.0, None, float("nan")])
+    binner = MarsNativeBinner(method="quantile", n_bins=2).fit(
+        frame,
+        features=["x"],
+    )
+
+    stats = binner.profile_bin_performance(frame, target)
+
+    assert stats.get_column("count").sum() == 2
+    assert stats.get_column("observed_count").sum() == 2
+    assert stats.get_column("bad").sum() == pytest.approx(1.0)
+    assert stats.get_column("good").sum() == pytest.approx(1.0)
+
+
+def test_profile_bin_performance_rejects_target_without_observed_values() -> None:
+    frame = pl.DataFrame({"x": [0.0, 1.0]})
+    target = pl.Series("target", [None, float("nan")], dtype=pl.Float64)
+    binner = MarsNativeBinner(method="quantile", n_bins=2).fit(
+        frame,
+        features=["x"],
+    )
+
+    with pytest.raises(ValueError, match="at least one observed value"):
+        binner.profile_bin_performance(frame, target)
+
+
 def test_profile_bin_performance_supports_bin_index_ordered_metrics() -> None:
     prob = [0.1] * 100 + [0.5] * 100 + [0.9] * 100 + [-999.0] * 20
     target = [1] * 10 + [0] * 90
