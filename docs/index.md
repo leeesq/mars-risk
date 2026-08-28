@@ -1,5 +1,5 @@
 ---
-description: MARS 0.0.27 文档入口：安装、最小风险评估、任务指南和 API Reference。
+description: MARS 0.0.28 文档入口：安装、最小风险评估、任务指南和 API Reference。
 ---
 
 # MARS
@@ -18,7 +18,7 @@ report 对象。
 === "安装"
 
     ```bash
-    pip install mars-risk==0.0.27
+    pip install mars-risk==0.0.28
     ```
 
 === "最小风险评估"
@@ -85,11 +85,11 @@ report 对象。
 
 ## 稳定性
 
-Analysis、Feature、Reporting 是当前 **Stable** 模块。Monitoring、Modeling、Pipeline、Scoring
+Analysis、Feature、Reporting 是当前 **Stable** 模块。Rule、Monitoring、Modeling、Pipeline、Scoring
 为 **Experimental**：受控生产流程应固定精确版本，并为关键结果和导出产物增加契约回归。
 完整规则见[稳定性与兼容性](project/stability.md)。
 
 !!! info "版本"
 
-    本站面向 MARS `0.0.27`。该版本正式发布前，安装命令仅用于文档预览验收，不能作为已发布
+    本站面向 MARS `0.0.28`。该版本正式发布前，安装命令仅用于文档预览验收，不能作为已发布
     PyPI 包的可用性证明。

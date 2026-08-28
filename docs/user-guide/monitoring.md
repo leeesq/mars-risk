@@ -7,7 +7,7 @@ description: 使用固定或基准期分箱规则监控特征分布、模型分�
 !!! warning "Experimental"
 
     Monitoring 的 report 字段、target 校验和报警结果仍可能调整。受控生产使用应固定
-    `mars-risk==0.0.27`，并为依赖的 report 字段和报警结果增加契约测试。
+    `mars-risk==0.0.28`，并为依赖的 report 字段和报警结果增加契约测试。
 
 ## 适用场景
 

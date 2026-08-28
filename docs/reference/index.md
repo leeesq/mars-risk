@@ -11,6 +11,7 @@ description: MARS 公开 Python API 的模块索引和稳定性状态。
 | --- | --- | --- |
 | [Analysis](analysis.md) | Stable | 画像、高层风险评估和 evaluator |
 | [Feature](feature.md) | Stable | Binner 与 selector |
+| [Rule](rule.md) | Experimental | DSL、生成器、评估、挖掘、RuleSet 与报告 |
 | [Monitoring](monitoring.md) | Experimental | 监控 report 和报警入口 |
 | [Reporting](reporting.md) | Stable | Report 与 HTML 渲染结果 |
 | [Scoring](scoring.md) | Experimental | 评分卡与 SQL |

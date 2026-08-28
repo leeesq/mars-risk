@@ -1,0 +1,13 @@
+{
+  "seconds": 12.094351700041443,
+  "peak_rss_mb": 2806.578125,
+  "candidate_count": 4240,
+  "checksum": 130871328,
+  "phases": {
+    "generation_seconds": 11.141060200054199,
+    "evaluation_seconds": 0.9510577996261418
+  },
+  "engine": "mars",
+  "rows": 100000,
+  "features": 1000
+}

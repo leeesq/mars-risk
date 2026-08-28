@@ -1,2 +1,3 @@
+include NOTICE
 include src/mars/py.typed
 include src/mars/reporting/template/*.xlsx

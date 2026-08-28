@@ -344,7 +344,19 @@ def profile_risk(
         监督分箱时必须包含当前首个 target 的至少两个有效类别。多 target 场景只用
         首个 target 拟合一次，后续 target 复用同一分箱规则。
     feature_start_aware_reference : bool
-        是否启用 feature-start aware reference，用于 PSI 基准重锚。
+        是否启用按特征上线时间重锚的稳定性参考，默认为 `False`。启用后必须提供
+        可解析的 `time_col`；仅提供 `group_col` 不能识别上线日期。评估器先按数据中
+        实际存在的自然日计算缺失率，将日缺失率不低于 99% 视为 inactive，并把
+        “候选日前至少 90% 日期 inactive，候选日起最多 3 日内至少 2/3 日期 active”
+        的首日识别为特征上线日。这些阈值目前固定且不可配置；不存在的自然日不会
+        自动补齐，尾部不足 3 日时按剩余日期缩短确认窗口。
+
+        只有成功识别上线日的特征会改用上线首期的分箱分布计算 PSI，并从 PSI/RC
+        监控窗口中排除上线前分组；其他特征沿用默认参考。`risk_corr_baseline="total"`
+        只调整 RC 监控窗口，`"benchmark"` 在没有显式 `benchmark_df` 时可使用上线
+        首期坏率，`"first_group"` 仍使用全局首组。显式 `benchmark_df` 始终优先，
+        此参数会被忽略并记录 warning。该参数不改变分箱、IV、KS、AUC、Lift、
+        数据质量或 WOE 相关性口径。实际识别结果记录在返回报告的 `report_meta` 中。
     risk_corr_baseline : RiskCorrBaseline
         RC 的基准选择方式。
     ordered_metric_sort_by : OrderedMetricSortBy
@@ -360,6 +372,12 @@ def profile_risk(
     MarsRiskProfile
         单次风险评估结果，包含 `MarsBinningReport`、分箱器、目标列列表和元数据。
 
+    Notes
+    -----
+    `report.report_meta["feature_start_aware_reference"]` 表示本次是否实际构造出
+    feature-start reference，而不是简单回显调用参数。已识别的特征及上线日期分别
+    保存在 `feature_start_reference_features` 和 `feature_start_reference_dates` 中。
+
     Examples
     --------
     >>> import polars as pl
@@ -374,6 +392,26 @@ def profile_risk(
     ... )
     >>> profile.targets
     ['y']
+    >>> temporal_df = pl.DataFrame(
+    ...     {
+    ...         "dt": [
+    ...             "2024-01-01", "2024-01-02", "2024-01-03",
+    ...             "2024-02-15", "2024-02-16", "2024-02-17",
+    ...         ],
+    ...         "score": [None, None, None, 0.1, 0.5, 0.9],
+    ...         "y": [0, 1, 0, 0, 1, 1],
+    ...     }
+    ... )
+    >>> temporal_profile = profile_risk(
+    ...     temporal_df,
+    ...     target="y",
+    ...     features=["score"],
+    ...     time_col="dt",
+    ...     time_grain="month",
+    ...     feature_start_aware_reference=True,
+    ... )
+    >>> temporal_profile.report.report_meta["feature_start_reference_features"]
+    ['score']
     """
     from mars.analysis.evaluator import MarsBinEvaluator, MarsRiskProfile
 

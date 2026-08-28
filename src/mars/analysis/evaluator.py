@@ -132,7 +132,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
         binner_params : Dict[str, Any] | None
             构造默认分箱器时使用的参数。
         feature_start_aware_reference : bool
-            是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
+            是否默认启用按特征上线时间重锚的稳定性参考，默认为 `False`。启用后，
+            `evaluate` 必须收到可解析的 `time_col`；仅有 `group_col` 时会记录 warning
+            并回退默认参考。上线日按实际存在的自然日识别：日缺失率不低于 99% 为
+            inactive，候选日前至少 90% 日期 inactive，且候选日起最多 3 日内至少
+            2/3 日期 active。这些阈值固定且不可配置；不补齐不存在的自然日，尾部
+            不足 3 日时缩短确认窗口。显式 `benchmark_df` 优先并禁用该逻辑。
+
+            成功识别的特征使用上线首期分布作为 PSI 基准，并只在上线后计算 PSI/RC
+            趋势；其他特征沿用默认参考。RC 是否改用上线首期坏率仍由
+            `risk_corr_baseline` 决定：`"total"` 只调整监控窗口，`"benchmark"` 可
+            使用上线首期参考，`"first_group"` 仍使用全局首组。该参数不影响分箱、
+            预测力、数据质量或 WOE 相关性指标。
         risk_corr_baseline : RiskCorrBaseline
             RC 的默认基准选择方式。
         ordered_metric_sort_by : OrderedMetricSortBy
@@ -221,7 +232,21 @@ class MarsBinEvaluator(MarsBaseEstimator):
         psi_include_special : bool
             计算 PSI 时是否单独保留特殊值分布。
         feature_start_aware_reference : bool | None
-            是否按特征首次出现的分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
+            是否按特征上线时间重锚稳定性参考。传入 `None` 时沿用构造函数中的默认
+            配置，传入布尔值时仅覆盖本次评估。启用后必须有可解析的 `time_col`；
+            仅有 `group_col` 时会记录 warning 并回退默认参考。识别先按数据中实际
+            存在的自然日执行：日缺失率不低于 99% 为 inactive，候选日前至少 90%
+            日期 inactive，候选日起最多 3 日内至少 2/3 日期 active。这些阈值固定
+            且不可配置；不补齐不存在的自然日，尾部不足 3 日时缩短确认窗口。
+
+            成功识别的特征按上线日映射到 `time_grain` 或 `group_col` 分组，使用上线
+            首期分布作为 PSI 基准，并排除上线前 PSI/RC 监控分组；其他特征沿用默认
+            参考。`risk_corr_baseline="total"` 只调整 RC 监控窗口，`"benchmark"`
+            可在未传显式 benchmark 时使用上线首期坏率，`"first_group"` 仍使用全局
+            首组。显式 `benchmark_df` 优先，此参数会被忽略并记录 warning。它不影响
+            分箱、IV、KS、AUC、Lift、数据质量或 WOE 相关性。实际状态、识别特征和
+            上线日期保存在报告 `report_meta` 的 `feature_start_aware_reference`、
+            `feature_start_reference_features` 和 `feature_start_reference_dates` 中。
         risk_corr_baseline : RiskCorrBaseline | None
             本次评估使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
         ordered_metric_sort_by : OrderedMetricSortBy | None
@@ -661,7 +686,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         return run
 
     def _build_feature_start_reference(self, **kwargs: Any) -> dict[str, Any] | None:
-        """复用既有 feature-start 参考构造逻辑，并对外统一新命名。"""
+        """复用 feature-start 构造逻辑，返回特征级 PSI、RC 与监控窗口上下文。"""
         return self._build_feature_start_baseline_reference(**kwargs)
 
     @staticmethod
@@ -672,7 +697,31 @@ class MarsBinEvaluator(MarsBaseEstimator):
         sustain_window: int = 3,
         sustain_active_ratio: float = 2.0 / 3.0,
     ) -> int | None:
-        """识别特征从长期未覆盖状态切换到持续有效覆盖的首个位置。"""
+        """识别特征从长期未覆盖切换到持续有效覆盖的首个位置。
+
+        `inactive_flags` 只包含数据中实际存在的自然日，不代表连续日历；本方法不会
+        补齐日期。候选位置必须自身 active、此前 inactive 占比达到
+        `leading_inactive_ratio`，且从候选位置起最多 `sustain_window` 个观测日中，
+        active 占比达到 `sustain_active_ratio`。尾部观测日不足完整窗口时按剩余长度
+        计算所需 active 天数；序列首日没有前序历史，其前序 inactive 占比按 1.0
+        处理。
+
+        Parameters
+        ----------
+        inactive_flags : List[bool]
+            按日期升序排列的状态；`True` 表示当日缺失率达到 inactive 阈值。
+        leading_inactive_ratio : float
+            候选日前观测日需要达到的最小 inactive 比例，默认 0.90。
+        sustain_window : int
+            从候选日起检查的最大观测日数，默认 3。
+        sustain_active_ratio : float
+            确认窗口需要达到的最小 active 比例，默认 `2 / 3`。
+
+        Returns
+        -------
+        int | None
+            首个满足条件的位置；没有可确认的切换点时返回 `None`。
+        """
         if not inactive_flags:
             return None
 
@@ -729,9 +778,43 @@ class MarsBinEvaluator(MarsBaseEstimator):
         """
         基于特征上线起始日推导 PSI 基准分布覆盖表。
 
-        当存在时间列且可识别特征从长期缺失转为持续活跃时，该方法会为
-        相关特征构造独立的 expected distribution 与 bad rate 基准。
-        若时间列不可解析或没有可用起始点，则返回 ``None``。
+        每个特征先按实际存在的自然日计算缺失率；缺失率不低于 99% 的日期记为
+        inactive，再由 `_detect_feature_start_index` 使用固定的 90% 前序 inactive、
+        3 日确认窗口和 `2 / 3` active 比例识别上线日。识别成功后，只保留上线日
+        及之后的记录，并把上线日所属的首个业务分组作为特征级 PSI expected
+        distribution；有标签时同时构造该分组各正常箱的坏率，供
+        `risk_corr_baseline="benchmark"` 且没有显式 benchmark 时使用。
+
+        Parameters
+        ----------
+        df_binned : pl.DataFrame
+            已包含日期列、业务分组列及 `<feature>_bin` 分箱列的样本。
+        features : List[str]
+            需要尝试识别上线时间的特征列表。
+        dt_col : str
+            用于按自然日识别上线点的原始日期列。
+        profile_by : str | None
+            调用侧解析出的趋势分组口径；当前由 `group_col` 承载实际分组结果。
+        group_col : str
+            PSI/RC 趋势使用的业务分组列。
+        weights_col : str | None
+            可选样本权重列；提供时分布、样本量和坏样本量按权重聚合。
+        target : str
+            内部统一后的目标列名。
+        has_target : bool
+            是否存在可用于计算分箱坏率的真实目标列。
+
+        Returns
+        -------
+        Dict[str, Any] | None
+            包含特征级 `expected_dist`、`baseline_bad_rate`、有效分组、上线后监控统计
+            和上线日期的上下文；时间不可解析或没有特征满足条件时返回 `None`。
+
+        Notes
+        -----
+        不存在的自然日不会补齐。上线日在某个分组中间时，基准分组只使用上线日及
+        其后的该组记录。未识别出上线点的特征不会出现在覆盖表中，调用方继续使用
+        默认参考。
         """
         if dt_col not in df_binned.columns:
             return None
@@ -773,7 +856,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if feature_df.is_empty():
                 continue
 
-            # 先按自然日识别长期全缺失到持续活跃的切换点。
+            # 只聚合数据中实际存在的自然日，不把无记录日期补成 inactive。
             daily_missing = (
                 feature_df
                 .group_by(dt_alias)
@@ -806,7 +889,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if post_start_df.is_empty():
                 continue
 
-            # feature-start 的 PSI 基准取上线后的首个分组，而不是全局最早分组。
+            # 先截断到上线日，再取其首个业务分组，避免同组内的上线前记录污染基准。
             baseline_group = (
                 post_start_df
                 .sort(dt_alias)

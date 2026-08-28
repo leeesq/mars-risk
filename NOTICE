@@ -1,0 +1,9 @@
+MARS rule module provenance
+
+The mars.rule module was redesigned from the deimos-rule source snapshot at commit:
+e6714c5e795054e44f0c58ad7097668b4117b4a2
+
+deimos-rule is distributed under the MIT License.
+Copyright (c) 2026 deimos-rule contributors
+
+The full MIT License text is included in LICENSE.

@@ -100,7 +100,18 @@ class MarsStatsSelector(MarsBaseSelector):
         corr_thr : float | None
             已表现样本上的 WOE 相关性筛选阈值。
         feature_start_aware_reference : bool
-            是否默认启用 feature-start aware reference，用于 PSI 基准重锚。
+            是否默认启用按特征上线时间重锚的稳定性参考，默认为 `False`。启用后，
+            `fit` 必须收到可解析的 `time_col`；仅有 `group_col` 不能识别上线日期。
+            上线日按数据中实际存在的自然日识别：日缺失率不低于 99% 为 inactive，
+            候选日前至少 90% 日期 inactive，且候选日起最多 3 日内至少 2/3 日期
+            active。这些阈值固定且不可配置；不补齐不存在的自然日，尾部不足 3 日
+            时缩短确认窗口。显式 `benchmark_df` 优先并禁用该逻辑。
+
+            成功识别的特征使用上线首期分布作为 PSI 基准，并只在上线后计算 PSI/RC
+            监控指标；其他特征沿用默认参考。`risk_corr_baseline="total"` 只调整 RC
+            监控窗口，`"benchmark"` 可在没有显式 benchmark 时使用上线首期坏率，
+            `"first_group"` 仍使用全局首组。该参数只影响 Stage 4 PSI 和 Stage 5 RC，
+            不改变 Stage 1 数据质量、Stage 2/3 IV/Lift、分箱或 WOE 相关性筛选。
         risk_corr_baseline : RiskCorrBaseline
             RC 的默认基准选择方式。
         psi_include_missing : bool
@@ -245,7 +256,19 @@ class MarsStatsSelector(MarsBaseSelector):
         black_list : list[str] | None
             黑名单特征，会被强制剔除。
         feature_start_aware_reference : bool | None
-            是否按特征首次出现分组选择 PSI 基准。传入 `None` 时沿用实例初始化时保存的默认值。
+            是否按特征上线时间重锚稳定性参考。传入 `None` 时沿用构造函数中的默认
+            配置，传入布尔值时覆盖当前实例配置并用于本次筛选及后续报告。启用后
+            必须提供可解析的 `time_col`；仅有 `group_col` 不能识别上线日期。识别先
+            按数据中实际存在的自然日执行：日缺失率不低于 99% 为 inactive，候选日
+            前至少 90% 日期 inactive，候选日起最多 3 日内至少 2/3 日期 active。
+            这些阈值固定且不可配置；不补齐不存在的自然日，尾部不足 3 日时缩短窗口。
+
+            成功识别的特征按上线日映射到 `time_grain` 或 `group_col` 分组，使用上线
+            首期分布作为 PSI 基准，并排除上线前 PSI/RC 监控分组；其他特征沿用默认
+            参考。`risk_corr_baseline="total"` 只调整 RC 监控窗口，`"benchmark"`
+            可在未传显式 benchmark 时使用上线首期坏率，`"first_group"` 仍使用全局
+            首组。显式 `benchmark_df` 优先，此参数会被忽略并记录一次 warning。
+            它不影响 Stage 1 数据质量、Stage 2/3 IV/Lift、分箱或 WOE 相关性筛选。
         risk_corr_baseline : RiskCorrBaseline | None
             本次筛选使用的 RC 基准；传入 `None` 时沿用实例初始化时保存的默认值。
 
@@ -263,6 +286,11 @@ class MarsStatsSelector(MarsBaseSelector):
         -----
         ``psi_thr`` 或 ``rc_thr`` 任一非 ``None`` 时，必须提供 ``group_col`` 或
         ``time_col``。传入 benchmark 后不会把其行合并进 ``df`` 的趋势分组或 Total。
+        start-aware 的实际状态、识别特征和上线日期可通过分箱报告 `report_meta` 中的
+        `feature_start_aware_reference`、`feature_start_reference_features` 和
+        `feature_start_reference_dates` 查看。前者表示是否实际构造出 reference，
+        不是简单回显调用参数。晚接入特征若已因全量缺失率超过 `missing_thr` 在
+        Stage 1 被删除，不会进入后续 start-aware 稳定性计算。
 
         Examples
         --------
@@ -285,6 +313,35 @@ class MarsStatsSelector(MarsBaseSelector):
         ...     group_col="period",
         ... ).selected_features_
         ['age']
+        >>> temporal_df = pl.DataFrame(
+        ...     {
+        ...         "dt": [
+        ...             "2024-01-01", "2024-01-02", "2024-01-03",
+        ...             "2024-02-15", "2024-02-16", "2024-02-17",
+        ...         ],
+        ...         "score": [None, None, None, 0.1, 0.5, 0.9],
+        ...         "y": [0, 1, 0, 0, 1, 1],
+        ...     }
+        ... )
+        >>> temporal_selector = MarsStatsSelector(
+        ...     skip_fine_scan=True,
+        ...     rough_iv_thr=-1.0,
+        ...     psi_thr=100.0,
+        ...     rc_thr=None,
+        ...     corr_thr=None,
+        ...     feature_start_aware_reference=True,
+        ... )
+        >>> temporal_selector.fit(
+        ...     temporal_df,
+        ...     target="y",
+        ...     features=["score"],
+        ...     time_col="dt",
+        ...     time_grain="month",
+        ... )
+        >>> temporal_selector.get_binning_report(temporal_df).report_meta[
+        ...     "feature_start_reference_features"
+        ... ]
+        ['score']
         """
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
@@ -492,7 +549,56 @@ class MarsStatsSelector(MarsBaseSelector):
         feature_start_aware_reference: bool | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
     ) -> Union[pl.DataFrame, pd.DataFrame]:
-        """使用与 :meth:`fit` 相同的参数拟合，并转换当前数据。"""
+        """使用与 :meth:`fit` 相同的参数拟合，并转换当前数据。
+
+        Parameters
+        ----------
+        df : pl.DataFrame | pd.DataFrame
+            待筛选并转换的样本表。
+        target : str
+            二分类目标列名。
+        benchmark_df : pl.DataFrame | pd.DataFrame | None
+            可选基准样本；提供后优先用于分箱和稳定性参考，并禁用
+            `feature_start_aware_reference`。
+        features : list[str] | None
+            候选特征列；不传时从样本表自动推断。
+        feature_data_source : dict[str, list[str]] | None
+            特征来源映射，用于筛选报告的数据源标识。
+        group_col : str | None
+            已存在的趋势分组列。
+        time_col : str | None
+            原始日期列；启用 start-aware 时必须提供且能够解析。
+        time_grain : str | None
+            `time_col` 的聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
+        white_list : list[str] | None
+            尽量绕过自动剔除规则的白名单特征。
+        black_list : list[str] | None
+            强制剔除的黑名单特征。
+        feature_start_aware_reference : bool | None
+            是否按特征上线时间重锚稳定性参考。传入 `None` 时沿用构造函数配置，
+            传入布尔值时覆盖当前实例配置。识别按实际存在的自然日执行：日缺失率
+            不低于 99% 为 inactive，候选日前至少 90% 日期 inactive，候选日起最多
+            3 日内至少 2/3 日期 active；阈值固定且不可配置，不补齐不存在的日期，
+            尾部不足 3 日时缩短确认窗口。
+
+            成功识别的特征使用上线首期 PSI 基准并排除上线前 PSI/RC 监控分组；其他
+            特征沿用默认参考。RC 参考仍由 `risk_corr_baseline` 控制：`"total"` 只
+            调整监控窗口，`"benchmark"` 可使用上线首期坏率，`"first_group"` 仍
+            使用全局首组。显式 `benchmark_df` 优先并产生忽略提示。该参数不影响
+            Stage 1 数据质量、Stage 2/3 IV/Lift、分箱或 WOE 相关性筛选。
+        risk_corr_baseline : RiskCorrBaseline | None
+            本次筛选使用的 RC 基准；传入 `None` 时沿用构造函数配置。
+
+        Returns
+        -------
+        pl.DataFrame | pd.DataFrame
+            仅保留筛选结果的转换表；输出类型与 `df` 一致。
+
+        Notes
+        -----
+        该方法等价于依次调用 `fit(...)` 和 `transform(df)`。start-aware 的实际状态、
+        识别特征与上线日期可在随后生成的分箱报告 `report_meta` 中查看。
+        """
         self.fit(
             df,
             target=target,
@@ -580,7 +686,20 @@ class MarsStatsSelector(MarsBaseSelector):
         self,
         benchmark_df: pl.DataFrame | None,
     ) -> bool:
-        """有显式 benchmark 时关闭 feature-start 基准，避免重复提示。"""
+        """解析 Selector 传给 evaluator 的最终 feature-start 开关。
+
+        Parameters
+        ----------
+        benchmark_df : pl.DataFrame | None
+            已完成 schema 校验的显式基准样本。
+
+        Returns
+        -------
+        bool
+            没有显式 benchmark 时返回实例配置；否则返回 `False`。Selector 在准备
+            benchmark 时已统一记录忽略 warning，此处关闭开关可避免 evaluator 重复
+            提示，并确保 PSI/RC 使用显式 benchmark。
+        """
         return self.feature_start_aware_reference if benchmark_df is None else False
 
     @staticmethod

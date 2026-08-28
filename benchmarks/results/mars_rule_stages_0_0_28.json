@@ -1,0 +1,32 @@
+{
+  "workload": {
+    "rows": 10000,
+    "rules": 100
+  },
+  "stages": {
+    "evaluator": {
+      "median_seconds": 0.028212300036102533,
+      "peak_rss_mb": 266.75,
+      "repeats": 3,
+      "checksum": 1800
+    },
+    "iou": {
+      "median_seconds": 0.006755199749022722,
+      "peak_rss_mb": 267.24609375,
+      "repeats": 3,
+      "checksum": 5
+    },
+    "analysis": {
+      "median_seconds": 0.792102999985218,
+      "peak_rss_mb": 323.36328125,
+      "repeats": 3,
+      "checksum": 4950
+    },
+    "cascade": {
+      "median_seconds": 0.022178499959409237,
+      "peak_rss_mb": 302.5859375,
+      "repeats": 3,
+      "checksum": 1
+    }
+  }
+}

@@ -84,10 +84,11 @@ def _write_fake_sdist(dist_dir: Path) -> Path:
     sdist_path = dist_dir / f"{root}.tar.gz"
     files = {
         "LICENSE": b"license",
+        "NOTICE": b"notice",
         "MANIFEST.in": b"manifest",
         "README.md": b"readme",
         "pyproject.toml": b"project",
-        "src/mars/__init__.py": b"__version__ = '0.0.27'",
+        "src/mars/__init__.py": b"__version__ = '0.0.28'",
         "src/mars/py.typed": b"",
         "src/mars/reporting/template/mars_bin_report_linux.xlsx": b"linux-template",
         "src/mars/reporting/template/mars_bin_report_win_mac.xlsx": b"win-mac-template",

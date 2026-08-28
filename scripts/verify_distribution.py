@@ -32,6 +32,7 @@ REQUIRED_PACKAGE_FILES = {
 }
 REQUIRED_SDIST_FILES = {
     "LICENSE",
+    "NOTICE",
     "MANIFEST.in",
     "README.md",
     "pyproject.toml",

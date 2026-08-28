@@ -27,6 +27,7 @@ BASIC_SNIPPETS = [
     "data_profiling.py",
     "baseline_evaluation.py",
     "feature_selection.py",
+    "rule_mining.py",
     "monitoring.py",
     "reporting_scorecard.py",
 ]
@@ -34,6 +35,7 @@ BASIC_SNIPPETS = [
 REFERENCE_MODULES = {
     "mars.analysis": DOCS_ROOT / "reference" / "analysis.md",
     "mars.feature": DOCS_ROOT / "reference" / "feature.md",
+    "mars.rule": DOCS_ROOT / "reference" / "rule.md",
     "mars.monitoring": DOCS_ROOT / "reference" / "monitoring.md",
     "mars.reporting": DOCS_ROOT / "reference" / "reporting.md",
     "mars.scoring": DOCS_ROOT / "reference" / "scoring.md",
@@ -53,6 +55,7 @@ PROHIBITED_CONTEXT_PATTERNS = {
 MODULE_STABILITY: dict[str, tuple[str, str, str]] = {
     "Analysis": ("mars.analysis", "Stable", "analysis.md"),
     "Feature": ("mars.feature", "Stable", "feature.md"),
+    "Rule": ("mars.rule", "Experimental", "rule.md"),
     "Reporting": ("mars.reporting", "Stable", "reporting.md"),
     "Monitoring": ("mars.monitoring", "Experimental", "monitoring.md"),
     "Modeling": ("mars.modeling", "Experimental", "modeling.md"),
@@ -147,6 +150,21 @@ def test_internal_documentation_links_resolve() -> None:
     assert not failures, "\n".join(failures)
 
 
+def test_deimos_rule_migration_matrix_accounts_for_all_source_regressions() -> None:
+    """来源快照的 44 项回归必须逐项标记覆盖、替代或计划内删除。"""
+    matrix_path = DOCS_ROOT / "project" / "deimos-rule-migration.md"
+    matrix = matrix_path.read_text(encoding="utf-8")
+    rows = re.findall(
+        r"^\| (\d+) \| `test_[^`]+` \|.+\| "
+        r"(Covered|Replaced|Removed by design) \|$",
+        matrix,
+        re.M,
+    )
+
+    assert [int(number) for number, _ in rows] == list(range(1, 45))
+    assert "e6714c5e795054e44f0c58ad7097668b4117b4a2" in matrix
+
+
 @pytest.mark.parametrize(("module_name", "reference_path"), REFERENCE_MODULES.items())
 def test_public_module_exports_are_in_reference(
     module_name: str,
@@ -188,9 +206,9 @@ def test_documented_version_matches_package_metadata() -> None:
     )
     package_match = re.search(r'^__version__ = "([^"]+)"$', package_source, re.M)
     assert package_match is not None
-    assert package_match.group(1) == project_version == "0.0.27"
+    assert package_match.group(1) == project_version == "0.0.28"
 
-    required_install_command = "pip install mars-risk==0.0.27"
+    required_install_command = "pip install mars-risk==0.0.28"
     for path in [
         PROJECT_ROOT / "README.md",
         DOCS_ROOT / "index.md",

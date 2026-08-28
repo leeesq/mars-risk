@@ -1,8 +1,40 @@
 ---
-description: MARS 0.0.27 的用户可见变化、兼容性说明和升级检查项。
+description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查项。
 ---
 
 # Release Notes
+
+## 0.0.28
+
+本版本将 `deimos-rule` 来源快照 `e6714c5e795054e44f0c58ad7097668b4117b4a2` 完整重设计为
+Experimental `mars.rule` 模块，并随同一个 `mars-risk` wheel 发布。没有 `deimos` namespace、
+`Dm*` 兼容别名或旧 RuleSet JSON 读取分支。
+
+### 规则生成、验证与部署
+
+- 新增 `mine_rules()`、类型化筛选策略、五类生成器、固定长表评估、训练/验证隔离、切片稳定性、
+  精确与 IoU 去重、`ranked` / `cascade` 选择和完整候选淘汰审计。
+- 新增受限 DSL v2，明确区分 `NULL` 与浮点 `MISSING(null/NaN)`，并增加 schema 与资源预算
+  fail-closed 校验。表达式经过 AST 解析、规范化、重复条件简化和明显矛盾检测。
+- 新增严格 `schema_version=1` RuleSet artifact、同类型 `transform()`、等级命中计数、按需交互与
+  累计分析，以及 HTML/Excel 报告。
+- `cascade` 每轮在剩余训练与验证人群重新生成、筛选和审计候选；模型生成器使用显式缺失指示器，
+  浅层树的 `n_jobs` 真实控制并行训练，Optuna 改用确定性分层 CV ROC AUC。
+- 新增 explore/production profile、`exploratory`/`validated`/`temporally_validated` 资格、Wilson
+  Lift 保守界、单侧精确检验与 BH-FDR 生产硬门禁；探索 RuleSet 默认禁止部署 SQL。
+- 候选预算改为 seed 优先和生成器确定性轮询；IoU 使用批量压缩位图，切片评估使用单次分组聚合，
+  高级分析复用一次命中矩阵并支持可选 top-k bootstrap。
+- 高级分析恢复金额和客户维度的交互、累计与边际指标；报告新增结构化规则解释和 benchmark
+  HTML 构造能力。44 项来源回归的迁移状态见[Deimos Rule 迁移矩阵](deimos-rule-migration.md)。
+- 组合生成器在 500 个数值特征时直接复用 `MarsStatsSelector`；LightGBM 和 Optuna 分别复用
+  `[ml]` 与 `[tuning]`，并保持延迟导入。
+
+### 兼容性与来源
+
+- 公开入口仅为 `mars.rule`，不从根 `mars` 重复导出；模块状态为 Experimental。
+- Python 支持范围仍为 3.8–3.12；核心规则测试进入全部版本矩阵，可选后端在 Python 3.10 验证。
+- 来源和许可证记录见[规则模块来源](rule-origin.md)。旧 `deimos-rule` artifact 必须重新挖掘或
+  重新导出，不能直接载入。
 
 ## 0.0.27
 
@@ -146,5 +178,5 @@ Reporting Stable API 执行 fail-closed 收口。本版本包含明确的 API、
 
 !!! note "发布状态"
 
-    本页随 `0.0.27` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
+    本页随 `0.0.28` 源码维护。版本发布前，`main` 站点内容仅作为预览；PyPI 发布和 release tag
     通过版本一致性检查后，安装命令才表示正式可用。

@@ -82,7 +82,7 @@ jobs:
         pip install -e ".[dev,ml,tuning]"
     - name: Run modeling test suite
       run: |
-        python -m pytest -q tests/test_modeling_slicer.py tests/test_modeling_tuner.py tests/test_modeling_evaluator.py tests/test_modeling_testbench.py tests/test_modeling_pipeline.py tests/test_pipeline.py tests/test_selector.py
+        python -m pytest -q tests/test_modeling_slicer.py tests/test_modeling_tuner.py tests/test_modeling_evaluator.py tests/test_modeling_testbench.py tests/test_modeling_pipeline.py tests/test_pipeline.py tests/test_selector.py tests/test_rule_generators.py
 
   distribution:
     name: Build and inspect distributions
@@ -109,6 +109,24 @@ jobs:
         name: mars-distributions
         path: dist/*
         if-no-files-found: error
+
+  rule-performance-smoke:
+    name: Rule performance smoke
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    - name: Run small rule generation and evaluation workload
+      run: python benchmarks/benchmark_rule_mining.py --engine mars --rows 2000 --features 20 --max-candidates 200
+    - name: Run rule stage performance smoke
+      run: python benchmarks/benchmark_rule_stages.py --stage all --rows 2000 --rules 20 --repeats 1
 
   installed-wheel-smoke:
     name: Installed wheel smoke (Python ${{ matrix.python-version }})

@@ -86,6 +86,7 @@ def run_smoke(repo_root: Path, output_dir: Path) -> None:
 
     from mars.analysis import profile_risk
     from mars.feature import MarsStatsSelector
+    from mars.rule import MarsRuleMiningSpec, MarsRuleReport, MarsRuleSet, mine_rules
 
     templates = package_dir / "reporting" / "template"
     for file_name in ("mars_bin_report_linux.xlsx", "mars_bin_report_win_mac.xlsx"):
@@ -130,6 +131,61 @@ def run_smoke(repo_root: Path, output_dir: Path) -> None:
     selector.fit(df, target="target", features=["income", "utilization"])
     if not selector.selected_features_:
         raise AssertionError("MarsStatsSelector did not retain any smoke-test feature.")
+
+    rule_df = pl.DataFrame(
+        {
+            "income": list(range(100)),
+            "target": [int(value >= 80) for value in range(100)],
+            "amount": [100.0] * 100,
+            "customer": [f"c{value // 2}" for value in range(100)],
+        }
+    )
+    rule_result = mine_rules(
+        rule_df,
+        target="target",
+        validation_df=rule_df,
+        amount_col="amount",
+        customer_col="customer",
+        seed_rules=["income >= 80"],
+        generators=[],
+        spec=MarsRuleMiningSpec.production(),
+    )
+    if rule_result.status != "success" or len(rule_result.rule_set.rules) != 1:
+        raise AssertionError("Minimal rule mining did not select the deterministic rule.")
+    transformed = rule_result.rule_set.transform(rule_df)
+    if transformed["rule_hit_count"].sum() != 20:
+        raise AssertionError("Installed RuleSet transform returned incorrect hit counts.")
+    rule_json = output_dir / "rule-set.json"
+    rule_html = output_dir / "rule-report.html"
+    rule_excel = output_dir / "rule-report.xlsx"
+    rule_result.rule_set.save_json(rule_json)
+    restored = MarsRuleSet.load_json(rule_json)
+    if restored.to_dict() != rule_result.rule_set.to_dict():
+        raise AssertionError("Installed RuleSet JSON round trip changed the artifact.")
+    if restored.qualification != "validated":
+        raise AssertionError("Installed production RuleSet was not validated.")
+    if "CASE WHEN" not in restored.generate_sql():
+        raise AssertionError("Installed validated RuleSet did not generate SQL.")
+    analysis = rule_result.analyze(rule_df, bootstrap_repeats=10)
+    if "cumulative_amount_total" not in analysis.cumulative_table.columns:
+        raise AssertionError("Installed rule analysis omitted amount metrics.")
+    if "cumulative_customer_count" not in analysis.cumulative_table.columns:
+        raise AssertionError("Installed rule analysis omitted customer metrics.")
+    if analysis.bootstrap_table.is_empty():
+        raise AssertionError("Installed rule analysis omitted requested bootstrap metrics.")
+    rule_report = rule_result.to_report(analysis)
+    if "rule_explanations" not in rule_report.detail_tables:
+        raise AssertionError("Installed rule report omitted structured explanations.")
+    rule_report.write_html(rule_html)
+    rule_report.write_excel(rule_excel)
+    _assert_nonempty_html(rule_html)
+    if not rule_excel.is_file() or rule_excel.stat().st_size == 0:
+        raise AssertionError("Rule Excel report was not written.")
+    benchmark_html = MarsRuleReport.from_benchmark(
+        [{"engine": "mars", "seconds": 1.0}]
+    ).render_html()
+    if "benchmark" not in benchmark_html.lower():
+        raise AssertionError("Installed benchmark report did not render.")
 
 
 def parse_args() -> argparse.Namespace:

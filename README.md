@@ -29,16 +29,16 @@
 
 </div>
 
-MARS 接受 Pandas 或 Polars 宽表，提供数据画像、分箱评估、特征筛选、建模、监控、结构化 report、
-Excel/HTML 导出和评分卡能力。
+MARS 接受 Pandas 或 Polars 宽表，提供数据画像、分箱评估、特征筛选、规则挖掘、建模、监控、
+结构化 report、Excel/HTML 导出和评分卡能力。
 
 ## 安装
 
-MARS `0.0.27` 支持 Python 3.8–3.12。Python 3.8 使用冻结兼容依赖栈；可选的建模、
+MARS `0.0.28` 支持 Python 3.8–3.12。Python 3.8 使用冻结兼容依赖栈；可选的建模、
 调参、Notebook 和文档工具要求 Python 3.10+。
 
 ```bash
-pip install mars-risk==0.0.27
+pip install mars-risk==0.0.28
 ```
 
 从 GitHub 源码安装当前 `main` 分支：
@@ -58,10 +58,10 @@ pip install .
 建模与调参需要可选依赖：
 
 ```bash
-pip install "mars-risk[ml,tuning]==0.0.27"
+pip install "mars-risk[ml,tuning]==0.0.28"
 ```
 
-`0.0.27` 正式发布前，请从源码安装进行文档预览验收。Python 3.8 已停止官方安全维护；
+`0.0.28` 正式发布前，请从源码安装进行文档预览验收。Python 3.8 已停止官方安全维护；
 MARS 的运行兼容不代表解释器仍有安全支持。
 
 ## 最小风险评估
@@ -94,6 +94,25 @@ binner = risk_profile.binner
 完整的日期、分组、趋势和报告示例见
 [10 分钟 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。
 
+## Experimental 规则挖掘
+
+```python
+from mars.rule import mine_rules
+
+rule_result = mine_rules(
+    train_df,
+    target="target",
+    validation_df=validation_df,
+    features=["income", "utilization"],
+)
+
+scored_df = rule_result.rule_set.transform(validation_df)
+rule_result.rule_set.save_json("rules.json")
+```
+
+默认只启用组合规则和浅层树。森林、GBDT、孤立森林以及规则 DSL、验证门槛和 artifact 契约见
+[规则生成与部署](https://leeesq.github.io/mars-risk/user-guide/rule-mining/)。
+
 ## 从任务开始
 
 | 目标 | 文档 |
@@ -101,6 +120,7 @@ binner = risk_profile.binner
 | 检查缺失、分布和 PSI | [数据画像](https://leeesq.github.io/mars-risk/user-guide/data-profiling/) |
 | 使用基准规则评估当前数据 | [分箱与风险评估](https://leeesq.github.io/mars-risk/user-guide/binning-risk-evaluation/) |
 | 统计、线性或重要性筛选 | [特征筛选](https://leeesq.github.io/mars-risk/user-guide/feature-selection/) |
+| 生成、验证和部署规则 | [规则生成与部署](https://leeesq.github.io/mars-risk/user-guide/rule-mining/) |
 | 切分、调参、replay 与 Pipeline | [Modeling / Pipeline](https://leeesq.github.io/mars-risk/user-guide/modeling-pipeline/) |
 | 分布、模型分和表现覆盖率监控 | [特征与模型监控](https://leeesq.github.io/mars-risk/user-guide/monitoring/) |
 | Excel、HTML、评分卡与 SQL | [报告与评分卡](https://leeesq.github.io/mars-risk/user-guide/reports-and-exports/) |
@@ -108,7 +128,7 @@ binner = risk_profile.binner
 
 ## 稳定性
 
-Analysis、Feature、Reporting 是当前 Stable 模块。Monitoring、Modeling、Pipeline、Scoring 为
+Analysis、Feature、Reporting 是当前 Stable 模块。Rule、Monitoring、Modeling、Pipeline、Scoring 为
 Experimental；受控生产流程应固定精确版本，并为 report 字段、报警结果、评分映射、生成 SQL、
 step 契约、replay 和 artifact 路径增加契约回归。
 

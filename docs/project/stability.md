@@ -16,10 +16,11 @@ MARS 仍处于 `0.0.x` 阶段。稳定标记表示该模块已经形成推荐入
 | Scoring | Experimental | 评分映射、刻度参数和 SQL 输出仍可能调整 |
 | Modeling | Experimental | 参数、结果对象和 artifact 结构仍可能调整 |
 | Pipeline | Experimental | step 契约、结果字段和编排限制仍可能调整 |
+| Rule | Experimental | DSL、筛选策略、结果对象和 artifact 仍可能调整 |
 
 ## 升级规则
 
-- 生产流程固定精确版本，例如 `mars-risk==0.0.27`。
+- 生产流程固定精确版本，例如 `mars-risk==0.0.28`。
 - 升级前阅读[Release Notes](release-notes.md)，并在测试数据上验证依赖的字段和文件路径。
 - Experimental 模块的调用方应为关键结果对象增加契约测试。
 - `main` 文档可以作为预览部署；只有对应版本发布到 PyPI 后，安装命令才表示正式可用。

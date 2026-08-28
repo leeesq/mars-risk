@@ -7,7 +7,7 @@ description: 从安装后的空环境完成一次可运行的风险评估，并�
 本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。运行前只需要安装 MARS：
 
 ```bash
-pip install mars-risk==0.0.27
+pip install mars-risk==0.0.28
 ```
 
 ## 1. 运行完整示例
@@ -53,5 +53,6 @@ HTML 图表需要评估时已经提供有效 `time_col`。需要控制基准期�
 
 - 检查缺失、分布和 PSI：[数据画像](../user-guide/data-profiling.md)。
 - 使用基准期规则评估当前期：[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
+- 生成、独立验证并部署策略规则：[规则生成与部署](../user-guide/rule-mining.md)。
 - 监控尚未充分表现的数据：[特征与模型监控](../user-guide/monitoring.md)。
 - 查询精确签名、默认值和异常：[API Reference](../reference/index.md)。
