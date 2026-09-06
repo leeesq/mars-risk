@@ -12,6 +12,7 @@ MARS 仍处于 `0.0.x` 阶段。稳定标记表示该模块已经形成推荐入
 | Analysis | Stable | 优先保持入口、核心参数和 report 字段兼容 |
 | Feature | Stable | 优先保持 binner/selector 调用和规则序列化兼容 |
 | Monitoring | Experimental | report 字段、target 校验和报警结果仍可能调整 |
+| Agent | Experimental | Python 3.10+；工具、会话和结果契约仍可能调整；模型依赖可选 |
 | Reporting | Stable | 优先保持结构化字段和导出入口兼容 |
 | Scoring | Experimental | 评分映射、刻度参数和 SQL 输出仍可能调整 |
 | Modeling | Experimental | 参数、结果对象和 artifact 结构仍可能调整 |

@@ -13,6 +13,7 @@ description: MARS 公开 Python API 的模块索引和稳定性状态。
 | [Feature](feature.md) | Stable | Binner 与 selector |
 | [Rule](rule.md) | Experimental | DSL、生成器、评估、挖掘、RuleSet 与报告 |
 | [Monitoring](monitoring.md) | Experimental | 监控 report 和报警入口 |
+| [Agent](agent.md) | Experimental | Python 3.10+ 领域工具调用、会话和报告证据 |
 | [Reporting](reporting.md) | Stable | Report 与 HTML 渲染结果 |
 | [Scoring](scoring.md) | Experimental | 评分卡与 SQL |
 | [Modeling / Pipeline](modeling.md) | Experimental | 切分、调参、replay、评估、预测和编排 |

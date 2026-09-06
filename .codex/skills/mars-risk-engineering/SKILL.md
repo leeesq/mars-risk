@@ -43,6 +43,8 @@ description: Project-specific internal engineering workflow for the leeesq/mars-
 
 ## 实现边界
 
+- Agent 是 Python 3.10+ 可选上层模块，公开入口仅 `mars.agent`；工具通过公开领域 API 计算，
+  保留会话隔离、实际参数和报告引用。Agent 定向测试为 `python -m pytest -q tests/agent`。
 - DataFrame 转换与物化策略统一复用 `mars.compute`；不要再新增 `mars.utils.frame` 一类转发壳。
 - 可选依赖使用 `mars.utils.imports`。
 - 数值稳定性常量使用 `mars.core.constants`，禁止在源码重新散落

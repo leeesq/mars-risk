@@ -2,6 +2,10 @@
 
 ## 目录职责
 
+- `mars.agent`
+  - Python 3.10+ 的 Experimental 上层监控与分析编排，消费公开 analysis/monitoring 及结构化报告。
+  - 模型 SDK 通过可选依赖延迟加载；根 `mars` 不导入或重复导出 Agent。
+  - 不重新计算风控指标，不向模型提供任意代码执行或原始宽表读取工具。
 - `mars.core`
   - 基类、异常、内部数值常量、稳定协议。
   - 不依赖 analysis、feature、modeling、monitoring、pipeline、reporting。

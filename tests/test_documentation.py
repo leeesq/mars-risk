@@ -49,7 +49,6 @@ PROHIBITED_CONTEXT_PATTERNS = {
     "may_df": re.compile(r"\bmay_df\b"),
     "june_df": re.compile(r"\bjune_df\b"),
     "June feature review": re.compile(r"June feature review"),
-    "Agent": re.compile(r"\bAgent\b"),
 }
 
 MODULE_STABILITY: dict[str, tuple[str, str, str]] = {

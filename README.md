@@ -35,7 +35,7 @@ MARS 接受 Pandas 或 Polars 宽表，提供数据画像、分箱评估、特�
 ## 安装
 
 MARS `0.0.28` 支持 Python 3.8–3.12。Python 3.8 使用冻结兼容依赖栈；可选的建模、
-调参、Notebook 和文档工具要求 Python 3.10+。
+调参、Notebook、文档工具及 Agent 模块要求 Python 3.10+。
 
 ```bash
 pip install mars-risk==0.0.28
@@ -113,6 +113,20 @@ rule_result.rule_set.save_json("rules.json")
 默认只启用组合规则和浅层树。森林、GBDT、孤立森林以及规则 DSL、验证门槛和 artifact 契约见
 [规则生成与部署](https://leeesq.github.io/mars-risk/user-guide/rule-mining/)。
 
+## Experimental 风控分析 Agent
+
+`mars.agent` 在现有分析与监控接口之上提供数据登记、自然语言工具调用、跨轮会话与报告查询。
+完整聚合报告保留在本地，模型按需读取分页结果；普通 `import mars` 不加载模型 SDK。
+
+在包含该功能的本地源码目录安装可选依赖：
+
+```bash
+python -m pip install -e ".[agent]"
+```
+
+最低 Python 3.10。首版包含画像、分箱风险评估、监控与证据查询工具，使用示例和执行边界见
+[Agent 使用指南](docs/user-guide/agent.md)。
+
 ## 从任务开始
 
 | 目标 | 文档 |
@@ -123,12 +137,13 @@ rule_result.rule_set.save_json("rules.json")
 | 生成、验证和部署规则 | [规则生成与部署](https://leeesq.github.io/mars-risk/user-guide/rule-mining/) |
 | 切分、调参、replay 与 Pipeline | [Modeling / Pipeline](https://leeesq.github.io/mars-risk/user-guide/modeling-pipeline/) |
 | 分布、模型分和表现覆盖率监控 | [特征与模型监控](https://leeesq.github.io/mars-risk/user-guide/monitoring/) |
+| 自然语言监控、分析与报告查询 | [Agent](docs/user-guide/agent.md) |
 | Excel、HTML、评分卡与 SQL | [报告与评分卡](https://leeesq.github.io/mars-risk/user-guide/reports-and-exports/) |
 | 精确签名、默认值和异常 | [API Reference](https://leeesq.github.io/mars-risk/reference/) |
 
 ## 稳定性
 
-Analysis、Feature、Reporting 是当前 Stable 模块。Rule、Monitoring、Modeling、Pipeline、Scoring 为
+Analysis、Feature、Reporting 是当前 Stable 模块。Agent、Rule、Monitoring、Modeling、Pipeline、Scoring 为
 Experimental；受控生产流程应固定精确版本，并为 report 字段、报警结果、评分映射、生成 SQL、
 step 契约、replay 和 artifact 路径增加契约回归。
 

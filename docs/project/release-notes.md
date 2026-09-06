@@ -4,6 +4,14 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 # Release Notes
 
+## Unreleased
+
+- 新增 Experimental `mars.agent`，最低 Python 3.10，核心 MARS 的 Python 版本范围不变。
+- 新增登记数据、画像、风险评估、监控和分页报告查询六个工具，计算复用现有公开 API。
+- 新增跨轮会话、报告参数及证据引用、调用与上下文预算、结构化错误反馈。
+- OpenAI 兼容 provider 使用可选 `[agent]` extra，普通导入不加载 SDK，不自动读取数据文件或执行代码。
+- 定向回归位于 `tests/agent`，包括真实 MARS 计算对比与模拟模型协议测试，不调用线上模型。
+
 ## 0.0.28
 
 本版本将 `deimos-rule` 来源快照 `e6714c5e795054e44f0c58ad7097668b4117b4a2` 完整重设计为

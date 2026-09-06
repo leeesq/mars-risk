@@ -70,6 +70,10 @@ dependencies = [
 # 安装命令: pip install -e ".[dev]"
 [project.optional-dependencies]
 
+agent = [
+    "openai>=1.50.0,<3; python_version >= '3.10'",
+]
+
 notebook = [
     "jupyterlab>=4.0.0"
 ]

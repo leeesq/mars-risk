@@ -89,6 +89,7 @@ nav:
       - 规则生成与部署: user-guide/rule-mining.md
       - Modeling / Pipeline: user-guide/modeling-pipeline.md
       - 特征与模型监控: user-guide/monitoring.md
+      - 风控分析 Agent: user-guide/agent.md
       - 报告与评分卡: user-guide/reports-and-exports.md
   - 核心概念:
       - 数据角色与运行边界: concepts/data-and-runs.md
@@ -99,6 +100,7 @@ nav:
       - Feature: reference/feature.md
       - Rule: reference/rule.md
       - Monitoring: reference/monitoring.md
+      - Agent: reference/agent.md
       - Modeling / Pipeline: reference/modeling.md
       - Scoring: reference/scoring.md
       - Reporting: reference/reporting.md
