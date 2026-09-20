@@ -17,6 +17,7 @@ from mars.analysis._evaluation.aggregation import (
     rollup_total_stats,
 )
 from mars.analysis._evaluation.context import (
+    _resolve_evaluation_features,
     binning_requires_target,
     build_binner,
     count_observed_target_classes,
@@ -328,16 +329,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
             raise ValueError(f"Amount column '{amount_col}' was not found in dataframe.")
 
         # 未显式传 features 时，从分析上下文列之外自动推断候选特征。
-        exclude_cols = {effective_target, group_col}
-        if weights_col:
-            exclude_cols.add(weights_col)
-        if amount_col:
-            exclude_cols.add(amount_col)
-
-        if features:
-            target_features = [col for col in features if col != amount_col]
-        else:
-            target_features = [col for col in working_df.columns if col not in exclude_cols]
+        target_features = _resolve_evaluation_features(
+            working_df,
+            target=effective_target,
+            group_col=group_col,
+            features=features,
+            weights_col=weights_col,
+            amount_col=amount_col,
+        )
 
         effective_feature_data_source = feature_data_source if feature_data_source is not None else {}
         feature_source_map = normalize_feature_data_source(effective_feature_data_source, target_features)

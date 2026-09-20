@@ -101,7 +101,8 @@ class MarsPlotter:
     def _summarize_binning_metrics(df_detail: pd.DataFrame) -> tuple[float, float, float]:
         """按单个面板口径汇总 IV、KS 和 AUC。"""
         iv_value = float(df_detail["iv_bin"].sum()) if "iv_bin" in df_detail.columns else 0.0
-        ks_value = float(df_detail["ks_bin"].max()) if "ks_bin" in df_detail.columns else 0.0
+        ks_column = "ks" if "ks" in df_detail.columns else "ks_bin"
+        ks_value = float(df_detail[ks_column].max()) if ks_column in df_detail.columns else 0.0
         auc_value = float(df_detail["auc_bin"].sum()) if "auc_bin" in df_detail.columns else 0.0
         if auc_value < 0.5:
             auc_value = 1 - auc_value
@@ -449,7 +450,8 @@ class MarsPlotter:
         if has_labeled_target:
             summary_str_1 = f"{feature},  {target_name},  Total: {int(total_count)},  {time_range_label}"
             if has_observed_risk_global:
-                summary_str_2 = f"IV: {global_iv:.3f},  KS: {global_ks:.1f},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
+                ks_text = f"{global_ks:.1f}" if np.isfinite(global_ks) else "n.a."
+                summary_str_2 = f"IV: {global_iv:.3f},  KS: {ks_text},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
             else:
                 summary_str_2 = f"IV: n.a.,  KS: n.a.,  AUC: n.a.,  Missing: {miss_str},  Trend: n.a."
         else:
@@ -687,7 +689,8 @@ class MarsPlotter:
                 rc_str = f"RC:{rc_val:.2f}" if not np.isnan(rc_val) else "RC:n.a."
                 rc_color = "red" if (not np.isnan(rc_val) and rc_val < 0.7) else "#555555"
 
-                perf_text = f"IV: {iv_val:.2f},  KS: {ks_val:.1f},  AUC: {auc_val:.2f},"
+                ks_text = f"{ks_val:.1f}" if np.isfinite(ks_val) else "n.a."
+                perf_text = f"IV: {iv_val:.2f},  KS: {ks_text},  AUC: {auc_val:.2f},"
                 ax.text(0.602, 1.015, perf_text, transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color="black")
                 ax.text(0.607, 1.015, f"  PSI: {psi_val:.2f},", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="red" if psi_val > 0.1 else "black")
                 ax.text(0.837, 0.945, f" {rc_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.36, color=rc_color)
@@ -897,7 +900,7 @@ class MarsPlotter:
                 if sort_metric == "iv":
                     score = float(df_calc["iv_bin"].sum())
                 elif sort_metric == "ks":
-                    score = float(df_calc["ks_bin"].max() * 100)
+                    score = MarsPlotter._summarize_binning_metrics(df_calc)[1]
                 elif sort_metric == "auc":
                     score = float(df_calc["auc_bin"].sum())
                     if score < 0.5:

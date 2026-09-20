@@ -91,6 +91,11 @@ summary = risk_profile.report.summary_table
 binner = risk_profile.binner
 ```
 
+仅 `profile_risk()` 可通过 `ks_method="raw"` 将数值特征的最终 KS 换为原始值 KS，
+类别特征保留分箱 KS。默认 `ks_method="binned"`；raw 模式默认最多评估 50 个数值特征，
+可通过 `max_raw_ks_features` 调整，超限直接报错。计算口径与报告说明见
+[原始数值 KS](https://leeesq.github.io/mars-risk/user-guide/binning-risk-evaluation/#原始数值-ks)。
+
 完整的日期、分组、趋势和报告示例见
 [10 分钟 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。
 

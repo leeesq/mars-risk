@@ -76,6 +76,63 @@ JSON 顶层包含 `artifact_type`、`schema_version`、`binner_type`、`mars_ver
 | `trend_tables` | PSI、缺失率和坏账率等分组趋势 |
 | `missing_by_day_table` | 使用 `time_col` 计算的按日缺失趋势 |
 
+## 原始数值 KS
+
+仅 `profile_risk()` 支持以下选项，evaluator、monitor、pipeline 和 Agent 工具不增加同名参数：
+
+```python
+profile = profile_risk(
+    df,
+    target="target",
+    features=["income", "utilization"],
+    ks_method="raw",           # 默认 "binned"
+    max_raw_ks_features=50,
+)
+```
+
+raw 模式按原始数值排序，将相同取值合并，计算好坏两类经验累计分布的最大绝对差，
+再乘以 100。它直接替换数值特征的最终 `ks`；类别特征保留分箱 KS。
+默认分箱 KS 按 WOE 排序，而原始值 KS 按数值顺序计算，两者可能明显不同，不能简单理解为精度升级。
+`ordered_metric_sort_by` 在 raw 模式仍控制分箱 AUC 等指标，但不影响数值特征的最终 KS。
+
+原始值计算排除未观测标签、Null、NaN、无穷值及 `missing_values`、`special_values`。
+这只改变 KS 的样本范围，其他指标和分箱输入要求保持原样；例如无穷值使分箱器无法拟合时，
+仍需清理分箱输入或提供可拟合的 `benchmark_df`。基准样本不会混入当前数据的 KS。
+传入 `weights_col` 时使用加权累计分布，有效样本的权重必须有限且非负；零权重不贡献分布。
+过滤后缺少任一类别的正权重总量时返回空 KS，常数特征且两类有效时返回 0。
+原有全局单类别标签校验仍生效。
+
+默认最多允许 50 个数值特征，类别特征不计入。超过限制在分箱和排序前报错，可通过
+`features` 缩小范围或显式提高上限。上限必须是正整数；关闭 raw 模式时不执行数量限制。
+该限制不保证运行时间，耗时仍受行数、分组和标签数量影响。
+
+汇总表、趋势表、图表与 KS 排序统一读取最终值。raw 模式在 `detail_table` 增加重复到每个
+分箱行的最终 `ks`；`ks_bin` 仍是分箱中间值，不能用于恢复原始值 KS。
+多标签分别计算，`trend_tables` 沿用仅展示主标签的契约。
+`report_meta["ks_source_by_feature"]` 记录各特征使用的方法，
+`report_meta["raw_ks_diagnostics"]` 记录数值特征各标签、各组的有效样本数和空值原因。
+`valid_count` 包含符合样本条件的零权重行；`no_valid_samples` 表示没有有效样本，
+`insufficient_class_weight` 表示至少一类没有正权重。
+
+raw 模式的 Excel 导出使用已计算的汇总、趋势、完整明细和诊断工作表，打开后即可读取结果，
+不依赖模板透视缓存刷新。默认分箱模式仍使用原模板。
+
+### 本地性能参考
+
+2026-09-10 在 macOS、本地 `mars_env`（Python 3.11）实测。数据为随机种子 20260910 的
+10 万行标准正态数值、4 个分组、单个二分类标签，native 等频分箱、`n_jobs=1`，
+Polars 使用默认线程数。
+每种配置使用三个独立进程，下表取中位数；计时不含导入和造数，RSS 每 5 ms 采样。
+
+| 数值特征数 | 模式 | 耗时（秒） | 峰值 RSS（MiB） | 相对调用前增加的 RSS（MiB） |
+| --- | --- | --- | --- | --- |
+| 10 | binned | 0.059 | 420.3 | 134.9 |
+| 10 | raw | 0.279 | 467.8 | 184.5 |
+| 50 | binned | 0.191 | 731.9 | 414.3 |
+| 50 | raw | 1.264 | 762.4 | 453.1 |
+
+这些数值用于观察开启功能的增量，不构成性能承诺；机器、数据分布、标签数与分组数都会影响结果。
+
 ## 时间与 PSI
 
 风险趋势图必须有有效 `time_col`。`group_col` 决定面板分组，但不能替代真实日期范围。只有未传

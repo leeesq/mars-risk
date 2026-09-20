@@ -96,9 +96,55 @@ class _BinningExcelWriter:
             )
 
         return detail_df.loc[:, template_headers].copy()
+
+    def _write_raw_ks_excel(self, path: str, *, use_xlwings: bool) -> None:
+        """导出已物化的最终 KS，避免旧模板透视缓存继续展示分箱值。
+
+        raw 模式使用普通工作表，保留完整明细和诊断，不依赖 Excel 刷新缓存。
+        默认分箱模式仍沿用现有模板。两种写入引擎消费同一组结果表。
+        """
+        metric_names = {"missing": "Missing", "psi": "PSI", "iv": "IV", "ks": "KS", "auc": "AUC"}
+        tables = {
+            "综合指标": to_pandas_frame(self.summary_table),
+            "分组明细": to_pandas_frame(self.detail_table),
+            **{
+                metric_names.get(name, name): to_pandas_frame(table)
+                for name, table in self.trend_tables.items()
+            },
+            "KS口径": pd.DataFrame(
+                list(self.report_meta["ks_source_by_feature"].items()),
+                columns=["feature", "ks_method"],
+            ),
+            "KS计算诊断": pd.DataFrame(self.report_meta["raw_ks_diagnostics"]),
+        }
+        if use_xlwings:
+            import xlwings as xw
+
+            app = xw.App(visible=False, add_book=False)
+            workbook = None
+            try:
+                app.display_alerts = False
+                workbook = app.books.add()
+                for name, frame in tables.items():
+                    sheet = workbook.sheets.add(name)
+                    sheet.range("A1").options(index=False).value = frame
+                workbook.save(path)
+            finally:
+                if workbook is not None:
+                    workbook.close()
+                app.quit()
+        else:
+            with pd.ExcelWriter(path, engine="openpyxl") as writer:
+                for name, frame in tables.items():
+                    frame.to_excel(writer, sheet_name=name, index=False, freeze_panes=(1, 0))
+        logger.info("Exported raw KS report: %s", path)
+
     def write_excel(self: Any, path: str = "mars_bin_report.xlsx", engine: str = "openpyxl") -> None:
         """
         导出评估 Excel 报告。
+
+        raw KS 报告导出已计算的汇总、趋势、完整明细及 KS 诊断工作表，
+        不使用只识别分箱 KS 的模板透视缓存。
 
         Parameters
         ----------
@@ -158,6 +204,10 @@ class _BinningExcelWriter:
 
         if not use_xlwings:
             template_path = self._resolve_excel_template_path(template_name_openpyxl)
+
+        if self.report_meta.get("ks_method") == "raw":
+            self._write_raw_ks_excel(path, use_xlwings=use_xlwings)
+            return
 
         template_headers, first_col, last_col = self._read_detail_template_schema(
             template_path=template_path,

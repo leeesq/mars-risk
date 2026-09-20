@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import pandas as pd
 import polars as pl
 
+from mars.analysis._raw_ks import _apply_raw_ks, _prepare_raw_ks
 from mars.compute import OrderedMetricSortBy, RiskCorrBaseline, to_polars_frame
 from mars.reporting import MarsBinningReport
 from mars.utils.logger import logger
@@ -273,6 +274,8 @@ def profile_risk(
     feature_start_aware_reference: bool = False,
     risk_corr_baseline: RiskCorrBaseline = "total",
     ordered_metric_sort_by: OrderedMetricSortBy = "woe",
+    ks_method: Literal["binned", "raw"] = "binned",
+    max_raw_ks_features: int = 50,
     batch_size: int = 100,
     n_jobs: int | None = None,
 ) -> MarsRiskProfile:
@@ -362,6 +365,15 @@ def profile_risk(
     ordered_metric_sort_by : OrderedMetricSortBy
         KS/AUC 的排序口径。默认 `"woe"` 适合普通特征预测力评估；
         评估概率、分数或强有序变量时建议传 `"bin_index"`。
+        raw 模式下只影响分箱指标，不影响数值特征的最终 KS。
+    ks_method : Literal["binned", "raw"]
+        默认使用分箱 KS。`"raw"` 按数值特征原始值计算两类累计分布的最大绝对差，
+        乘以 100 后替换最终 KS；类别特征仍使用分箱 KS。排除未观测标签、
+        空值、NaN、无穷值、missing_values 和 special_values；沿用样本权重。
+        过滤后缺少任一类别的正权重时 KS 为空。仅此高层入口支持该选项。
+    max_raw_ks_features : int
+        正整数。raw 模式允许的最多数值特征数，默认 50；超限在分箱和排序前报错。
+        类别特征不占额度，binned 模式不执行数量限制。
     batch_size : int
         批量评估时的特征批大小。
     n_jobs : int | None
@@ -371,6 +383,11 @@ def profile_risk(
     -------
     MarsRiskProfile
         单次风险评估结果，包含 `MarsBinningReport`、分箱器、目标列列表和元数据。
+
+    Raises
+    ------
+    ValueError
+        KS 参数非法、raw 模式数值特征超限、参与计算的权重非法，或输入不符合评估契约。
 
     Notes
     -----
@@ -415,6 +432,14 @@ def profile_risk(
     """
     from mars.analysis.evaluator import MarsBinEvaluator, MarsRiskProfile
 
+    if ks_method not in ("binned", "raw"):
+        raise ValueError(f"ks_method must be 'binned' or 'raw', got {ks_method!r}.")
+    if (
+        isinstance(max_raw_ks_features, bool)
+        or not isinstance(max_raw_ks_features, int)
+        or max_raw_ks_features < 1
+    ):
+        raise ValueError("max_raw_ks_features must be a positive integer.")
     input_is_pandas = isinstance(df, pd.DataFrame)
     if target is None or target == []:
         target_list: list[str] = []
@@ -450,6 +475,24 @@ def profile_risk(
         special_values=special_values,
         n_jobs=n_jobs,
     )
+
+    raw_ks_values: pl.DataFrame | None = None
+    if ks_method == "raw":
+        raw_ks_values = _prepare_raw_ks(
+            df,
+            targets=target_list,
+            features=features,
+            group_col=group_col,
+            time_col=time_col,
+            time_grain=time_grain,
+            internal_group_col=MarsBinEvaluator.MARS_GROUP_COL,
+            weights_col=weights_col,
+            amount_col=amount_col,
+            benchmark_df=benchmark_df,
+            max_features=max_raw_ks_features,
+            missing_values=missing_values,
+            special_values=special_values,
+        )
 
     primary_evaluator = MarsBinEvaluator(
         binning_type=effective_binning_type,
@@ -566,6 +609,13 @@ def profile_risk(
             report_meta=merged_meta,
         )
         final_targets = [str(t) for t in target_list]
+
+    if raw_ks_values is not None:
+        final_report = _apply_raw_ks(
+            final_report,
+            raw_ks_values,
+            primary_target=primary_target or "dummy_target",
+        )
 
     return MarsRiskProfile(
         report=final_report,

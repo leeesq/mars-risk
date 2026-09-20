@@ -38,6 +38,19 @@ def remove_suffix(value: str, suffix: str) -> str:
     return value
 
 
+def _left_join_nulls(
+    left: pl.DataFrame, right: pl.DataFrame, *, on: list[str],
+) -> pl.DataFrame:
+    """兼容各 Polars 版本，把空分组键视为相等并保留左表行序。"""
+    kwargs = {"join_nulls" if _polars_version() < (1, 24) else "nulls_equal": True}
+    return (
+        left.with_row_index("__mars_join_order")
+        .join(right, on=on, how="left", **kwargs)
+        .sort("__mars_join_order")
+        .drop("__mars_join_order")
+    )
+
+
 def pandas_styler_map(
     styler: Any,
     function: Callable[[Any], str],

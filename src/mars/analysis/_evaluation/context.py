@@ -236,6 +236,22 @@ def prepare_group_context(
     return df.with_columns(pl.lit("Total").alias(mars_group_col)), mars_group_col
 
 
+def _resolve_evaluation_features(
+    df: pl.DataFrame,
+    *,
+    target: str,
+    group_col: str,
+    features: list[str] | None,
+    weights_col: str | None,
+    amount_col: str | None,
+) -> list[str]:
+    """统一画像预检与评估器的候选列范围，保留既有显式列选择语义。"""
+    if features:
+        return [col for col in features if col != amount_col]
+    excluded = {target, group_col, weights_col, amount_col}
+    return [col for col in df.columns if col not in excluded]
+
+
 def normalize_feature_data_source(
     feature_data_source: dict[str, list[str]] | None,
     features: list[str],
