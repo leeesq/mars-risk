@@ -48,9 +48,21 @@ def _import_all_modules() -> None:
         try:
             importlib.import_module(module_info.name)
         except Exception as exc:
+            if _is_expected_version_gated_import(module_info.name, exc):
+                continue
             failures.append(f"{module_info.name}: {type(exc).__name__}: {exc}")
     if failures:
         raise AssertionError("Recursive imports failed:\n" + "\n".join(failures))
+
+
+def _is_expected_version_gated_import(module_name: str, exc: Exception) -> bool:
+    """识别旧 Python 上明确声明不可用的可选命名空间。"""
+    return (
+        sys.version_info < (3, 10)
+        and module_name == "mars.agent"
+        and isinstance(exc, ImportError)
+        and "mars.agent requires Python >=3.10" in str(exc)
+    )
 
 
 def _sample_frame() -> pl.DataFrame:

@@ -150,7 +150,11 @@ def _apply_raw_ks(
     primary_values = values.filter(pl.col("y") == primary_target)
     if "ks" in trends and not primary_values.is_empty():
         trend = to_polars_frame(trends["ks"])
-        raw_trend = primary_values.pivot(index="feature", on="group", values="ks")
+        # Polars 会为 null pivot 键创建 ``null`` 列，却不会把对应值写入该列；报告层
+        # 已用字符串 ``null`` 表示缺失分组，因此先统一列名语义再 pivot。
+        raw_trend = primary_values.with_columns(
+            pl.col("group").fill_null("null")
+        ).pivot(index="feature", on="group", values="ks")
         columns = [col for col in trend.columns if col not in {"feature", "dtype"}]
         raw_trend = raw_trend.with_columns(
             [

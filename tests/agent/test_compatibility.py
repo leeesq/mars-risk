@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from packaging.requirements import Requirement
+from scripts import smoke_installed_package
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -77,6 +78,25 @@ def test_agent_dependency_is_optional_and_python310_gated() -> None:
     )
     assert not sdk.marker.evaluate({"python_version": "3.9"})
     assert sdk.marker.evaluate({"python_version": "3.10"})
+
+
+def test_installed_smoke_only_accepts_the_declared_agent_version_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(smoke_installed_package.sys, "version_info", (3, 8, 0))
+    expected = ImportError(
+        "mars.agent requires Python >=3.10; core MARS remains available on Python 3.8+."
+    )
+
+    assert smoke_installed_package._is_expected_version_gated_import(
+        "mars.agent", expected
+    )
+    assert not smoke_installed_package._is_expected_version_gated_import(
+        "mars.rule", expected
+    )
+    assert not smoke_installed_package._is_expected_version_gated_import(
+        "mars.agent", ImportError("unexpected dependency failure")
+    )
 
 
 def test_agent_public_exports_have_reference_documentation() -> None:

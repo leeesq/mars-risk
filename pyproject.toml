@@ -109,6 +109,7 @@ dev = [
     "hypothesis>=6.0.0",
     "ruff>=0.8.0",
     "mypy==1.13.0",
+    "numpy<2.5",
     "pydoclint>=0.8.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",

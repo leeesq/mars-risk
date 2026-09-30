@@ -53,6 +53,7 @@ def test_mypy_config_has_no_business_overrides_or_source_ignores() -> None:
 
     dev_dependencies = config["project"]["optional-dependencies"]["dev"]
     assert "mypy==1.13.0" in dev_dependencies
+    assert "numpy<2.5" in dev_dependencies
     overrides = config["tool"]["mypy"].get("overrides", [])
     overridden_modules = [
         module
