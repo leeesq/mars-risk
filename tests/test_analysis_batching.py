@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from inspect import signature
 
 import polars as pl
 import pytest
@@ -12,6 +13,13 @@ from mars.analysis import MarsBinEvaluator, MarsDataProfiler
 from mars.analysis._profiling.context import build_run_context
 from mars.analysis._profiling.pivot import generate_pivot_report
 from mars.analysis._profiling.types import ProfileComputeOptions
+
+# 旧版 Polars 使用 rtol/atol，按实际签名选择参数，保持同一浮点容差。
+_FRAME_TOLERANCES = (
+    {"rel_tol": 1e-8, "abs_tol": 1e-8}
+    if "rel_tol" in signature(assert_frame_equal).parameters
+    else {"rtol": 1e-8, "atol": 1e-8}
+)
 
 
 def sample() -> pl.DataFrame:
@@ -71,7 +79,7 @@ def test_evaluation_all_tables_match_across_batches(
         if not sort:
             sort = left.columns[:1]
         assert_frame_equal(
-            left.sort(sort), right.sort(sort), check_row_order=True, rel_tol=1e-8, abs_tol=1e-8
+            left.sort(sort), right.sort(sort), check_row_order=True, **_FRAME_TOLERANCES
         )
 
 
@@ -123,9 +131,7 @@ def test_profiler_joint_aggregation_matches_original_per_metric() -> None:
     for metric in metrics:
         prefix = "dq" if metric in {"missing", "zeros", "unique", "mode"} else "stats"
         expected = generate_pivot_report(context, options, metric)
-        assert_frame_equal(
-            report.get_table(f"{prefix}.{metric}"), expected, rel_tol=1e-8, abs_tol=1e-8
-        )
+        assert_frame_equal(report.get_table(f"{prefix}.{metric}"), expected, **_FRAME_TOLERANCES)
 
 
 @pytest.mark.parametrize("grouped", [False, True])
