@@ -18,7 +18,7 @@ from mars.analysis._profiling.context import (
     prepare_profile_data,
 )
 from mars.analysis._profiling.metrics import calculate_overview, normalize_profile_metrics
-from mars.analysis._profiling.pivot import generate_pivot_report
+from mars.analysis._profiling.pivot import generate_pivot_reports
 from mars.analysis._profiling.psi import get_psi_trend
 from mars.analysis._profiling.sparkline import compute_sparklines
 from mars.analysis._profiling.types import ProfileBinMethod, ProfileComputeOptions
@@ -391,15 +391,11 @@ class MarsDataProfiler(MarsBaseEstimator):
         sparkline_df = compute_sparklines(context, options) if enable_sparkline else pl.DataFrame()
         overview_df = calculate_overview(context, selection, options, sparkline_df)
 
-        dq_tables = {
-            metric: generate_pivot_report(context, options, metric)
-            for metric in selection.dq_metrics
-        }
-
-        stat_tables: dict[str, pl.DataFrame] = {}
-        for metric in selection.stat_metrics:
-            pivot = generate_pivot_report(context, options, metric)
-            stat_tables[metric] = pivot
+        pivots = generate_pivot_reports(
+            context, options, [*selection.dq_metrics, *selection.stat_metrics], overview_df,
+        )
+        dq_tables = {metric: pivots[metric] for metric in selection.dq_metrics}
+        stat_tables = {metric: pivots[metric] for metric in selection.stat_metrics}
 
         if (context.group_col or benchmark_pl is not None) and "psi" in selection.stat_metrics:
             psi_df = get_psi_trend(
@@ -449,6 +445,17 @@ class MarsDataProfiler(MarsBaseEstimator):
             "benchmark_row_count": benchmark_pl.height if benchmark_pl is not None else None,
             "categorical_features": list(categorical_features or []),
             "profile_config": {
+                "missing_values": list(self.missing_values),
+                "special_values": list(self.special_values),
+                "overview_batch_size": self.overview_batch_size,
+                "psi_batch_size": self.psi_batch_size,
+                "psi_remove_empty_bins": self.psi_remove_empty_bins,
+                "psi_merge_small_bins": self.psi_merge_small_bins,
+                "psi_min_bin_size": self.psi_min_bin_size,
+                "psi_cv_ignore_threshold": self.psi_cv_ignore_threshold,
+                "enable_sparkline": enable_sparkline,
+                "sparkline_sample_size": sparkline_sample_size,
+                "sparkline_bins": sparkline_bins,
                 "psi_n_bins": self.psi_n_bins,
                 "psi_bin_method": self.psi_bin_method,
                 "psi_include_missing": psi_include_missing,

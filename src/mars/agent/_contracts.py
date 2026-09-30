@@ -167,8 +167,8 @@ class MarsAgentReport:
         会话内唯一报告标识。
     kind : str
         来源工具名称。
-    dataset_id : str
-        当前数据标识。
+    dataset_id : str | None
+        当前数据标识；外部报告未登记原始数据时为 None。
     benchmark_id : str | None
         基准数据标识。
     tables : dict[str, pl.DataFrame]
@@ -179,7 +179,7 @@ class MarsAgentReport:
 
     id: str
     kind: str
-    dataset_id: str
+    dataset_id: str | None
     benchmark_id: str | None
     tables: dict[str, pl.DataFrame]
     metadata: dict[str, Any]

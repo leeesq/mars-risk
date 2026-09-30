@@ -19,14 +19,8 @@ description: Project-specific internal engineering workflow for the leeesq/mars-
 
 1. 运行 `git status --short`，识别已有修改。
 2. 使用 `rg` 搜索 public 入口、内部调用、测试、README 和 docs。
-3. 优先阅读 [架构基准与新增功能准入原则](../../../迭代进度/MARS_架构基准与新增功能准入原则.md)。
-4. 阅读 [架构边界](references/architecture.md)；涉及 API、指标或口径时再读
-   [API 与业务口径](references/api-and-metrics.md)。
-5. 涉及测试、文档、CI、benchmark、打包或发布时读取
+3. 涉及测试、文档、CI、benchmark、打包或发布时读取
    [质量与交付流程](references/quality-and-delivery.md)。
-6. 如果任务涉及 V2 规划、新功能准入或架构演进，再补读：
-   - [MARS_架构与能力演进任务清单_V2](../../../迭代进度/MARS_架构与能力演进任务清单_V2.md)
-   - [MARS_架构与能力演进任务清单_V2_详细实施步骤](../../../迭代进度/MARS_架构与能力演进任务清单_V2_详细实施步骤.md)
 
 ## API 设计
 

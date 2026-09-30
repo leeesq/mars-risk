@@ -72,7 +72,10 @@ def test_provider_formats_tool_messages_and_preserves_protocol(
     assert request["messages"][0] == {"role": "system", "content": "system rules"}
     assert request["messages"][2]["tool_calls"][0]["function"]["arguments"] == "{}"
     assert request["messages"][3]["tool_call_id"] == "call_1"
-    assert len(request["tools"]) == 6
+    assert {item["function"]["name"] for item in request["tools"]} == {
+        "list_datasets", "describe_dataset", "profile_data", "evaluate_risk",
+        "monitor_data", "get_report_table", "list_reports", "describe_report",
+    }
     assert response.tool_calls[0].arguments == {"dataset_id": "data"}
     assert response.finish_reason == "tool_calls"
     assert response.input_tokens == 10

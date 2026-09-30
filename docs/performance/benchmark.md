@@ -9,6 +9,62 @@ description: MARS 0.0.28 分箱与规则性能基准的复现方法、结果和�
 
 ## 复现命令
 
+### 完整分析链路（本地测量）
+
+新增 `benchmarks/benchmark_analysis.py` 复用既有固定种子宽表生成器与 RSS sampler。
+每次 CLI 调用是独立进程；`--source` 可指向优化前 src 快照，两侧使用同一脚本、工作负载和线程。
+结果输出放临时目录，例如 PowerShell：
+
+```powershell
+conda run -n mars python benchmarks/benchmark_analysis.py --rows 50000 --features 1001 --threads 4 --batch-size 50 --benchmark --output "$env:TEMP/analysis.json"
+conda run -n mars python benchmarks/benchmark_analysis.py --stage profile --rows 50000 --features 1001 --threads 4 --batch-size 50 --output "$env:TEMP/profile.json"
+```
+
+记录环境：2026-09-30 至 2026-10-01（Asia/Shanghai），Windows 11 10.0.26200，Intel x64
+Family 6 Model 183 Stepping 1，24 logical CPUs，Python 3.10.19、Polars 1.37.1、MARS 0.0.28，
+固定 4 个 Polars 线程。优化前为 `d3201a2` 的 src 快照，优化后为本次未提交工作树。
+随机种子 2026；50,000 行、1,001 个 Float32 特征，末批不足 50；含 NaN、特殊值 -999、
+4 个分组、样本权重和金额。分箱场景用前 25,000 行作显式基准拟合 8 箱，RC 使用默认 total。
+画像场景独立运行 missing/zeros/unique/mode/mean/std/min/max，不生成 sparkline。
+
+两侧各 3 个独立进程，中位数如下（MiB = 1024² bytes）：
+
+| 测量 | 优化前 | 优化后 |
+| --- | ---: | ---: |
+| 完整分箱评估耗时 | 11.53 s | 11.34 s |
+| 分箱评估计算阶段峰值 RSS | 1907.7 MiB | 959.9 MiB |
+| 输入准备后分箱评估峰值 RSS 增量 | 1484.4 MiB | 536.9 MiB |
+| 独立画像耗时 | 3.38 s | 2.61 s |
+| 独立画像计算阶段峰值 RSS | 498.1 MiB | 498.4 MiB |
+| 输入准备后画像峰值 RSS 增量 | 75.0 MiB | 75.5 MiB |
+
+评估各阶段中位数：
+
+| 阶段 | 优化前 | 优化后 |
+| --- | ---: | ---: |
+| 拟合与拟合诊断 | 6.163 s | 5.919 s |
+| 当前及基准转换 | 1.263 s | 1.177 s |
+| 当前样本聚合 | 1.812 s | 1.860 s |
+| 基准分布 | 1.927 s | 1.953 s |
+| 指标计算 | 0.074 s | 0.077 s |
+| 报告表构造 | 0.209 s | 0.194 s |
+
+阶段耗时不含所有输入预处理、对象装配和采样开销，不能直接相加等同总耗时。
+分箱评估主要收益是减少全量分箱宽表和显式基准长表，计算阶段峰值 RSS 约减半；耗时变化小于
+轮间波动，不宣称稳定提速。画像约减少 23% 耗时，计算阶段内存无明显收益。
+全进程峰值也包含数据生成，分别约为分箱 1907.7→959.9 MiB、独立画像 753.1→742.5 MiB；
+画像数据准备造成的峰值波动较大，不能据此宣称内存优化。
+
+sampler 每 10 ms 采样 RSS，总峰值取全程与计算阶段 sampler 观测最大值；可能漏掉更短暂峰值。
+输入准备完成后另起计算 sampler，增量相对该阶段起始 RSS。画像另起进程以避开评估后内存池。
+没有把 Polars clone 当作底层全复制。不同硬件、线程、dtype、箱数及基准策略需要重新测量；
+未验证百万行、3,000 特征或监督分箱器的大规模收益。
+
+`--tables-output` 可将小结果表保存到临时目录供数值对照；本次固定数据的 19 张画像/风险表
+已与优化前源码逐表比较（包括 schema，浮点容差 1e-6）。通常不需要在性能测量时保存表。
+
+### 既有分箱与规则基准
+
 ```bash
 python benchmarks/benchmark_binning_speed.py native \
   --rows 200000 --features 3000 --repeats 1

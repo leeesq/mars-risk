@@ -6,8 +6,14 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 分箱评估的同一 batch_size 覆盖当前/基准转换、聚合、按日缺失与特征起点参考；跨批次只保留小统计表。
+- 画像趋势在 overview_batch_size 内联合聚合多个指标，复用口径一致的 overview 统计。
+- 两类报告新增 describe/get_table/to_ai_context/get_feature，展示支持列选择、来源筛选和 Top-K。
+- Agent 新增 register_report 与已有报告目录，无原始数据的外部报告使用明确来源和独立快照。
+- WOE 并列箱按 bin_index 确定累计指标顺序；补齐特征起点参考与金额统计同时使用时的字段。
+
 - 新增 Experimental `mars.agent`，最低 Python 3.10，核心 MARS 的 Python 版本范围不变。
-- 新增登记数据、画像、风险评估、监控和分页报告查询六个工具，计算复用现有公开 API。
+- 新增登记数据、画像、风险评估、监控、报告目录/说明和分页报告查询工具，计算复用现有公开 API。
 - 新增跨轮会话、报告参数及证据引用、调用与上下文预算、结构化错误反馈。
 - OpenAI 兼容 provider 使用可选 `[agent]` extra，普通导入不加载 SDK，不自动读取数据文件或执行代码。
 - 定向回归位于 `tests/agent`，包括真实 MARS 计算对比与模拟模型协议测试，不调用线上模型。

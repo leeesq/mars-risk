@@ -33,6 +33,7 @@ from mars.analysis._evaluation.metrics import (
     ensure_woe_info,
 )
 from mars.analysis._evaluation.references import (
+    build_benchmark_risk_corr_reference,
     build_risk_corr_reference_table,
     empty_risk_corr_reference_table,
 )
@@ -40,6 +41,7 @@ from mars.analysis._evaluation.report_parts import build_binning_report_parts
 from mars.compute import (
     OrderedMetricSortBy,
     RiskCorrBaseline,
+    amount_stats_agg_exprs,
     global_distribution_expr,
     normalize_ordered_metric_sort_by,
     normalize_risk_corr_baseline,
@@ -265,6 +267,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ValueError
             当必要列缺失、分箱器配置冲突或输入数据无法评估时抛出。
         """
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError("batch_size must be a positive integer.")
         # 先把输入统一成内部 Polars 表，并解析本次画像的分组口径。
         working_df = self._ensure_polars_dataframe(df)
         benchmark_pl = (
@@ -382,64 +386,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 features=target_features,
             )
 
-        # 后续评估只消费分箱索引列，原始特征取值不再参与指标计算。
-        df_binned = active_binner.transform(
-            working_df,
-            features=target_features,
-            return_type="index",
-        )
-        benchmark_binned = (
-            active_binner.transform(
-                benchmark_prepared,
-                features=target_features,
-                return_type="index",
-            )
-            if benchmark_prepared is not None
-            else None
-        )
-        if benchmark_binned is not None:
-            expected_bin_cols = {f"{feature}_bin" for feature in target_features}
-            missing_bin_cols = sorted(expected_bin_cols - set(benchmark_binned.columns))
-            if missing_bin_cols:
-                failed_features = [remove_suffix(col, "_bin") for col in missing_bin_cols]
-                fit_failures = getattr(active_binner, "fit_failures_", {})
-                raise ValueError(
-                    "`benchmark_df` could not produce bins for active features "
-                    f"{failed_features}. Fit failures: {fit_failures}."
-                )
         missing_values = getattr(active_binner, "missing_values", None)
         if missing_values is None:
             missing_values = self.binner_params.get("missing_values")
-        missing_by_day_table = build_missing_by_day_table(
-            df=working_df,
-            features=target_features,
-            dt_col=dt_col,
-            output_kind="pandas" if isinstance(df, pd.DataFrame) else "polars",
-            missing_values=missing_values,
-        )
-
-        # 先聚合到 feature/group/bin 粒度，所有后续指标都从这张长表派生。
-        group_stats_raw = aggregate_basic_stats(
-            df_binned,
-            group_col=group_col,
-            features=target_features,
-            target_col=effective_target,
-            weights_col=weights_col,
-            amount_col=amount_col,
-            batch_size=batch_size,
-        )
-
-        ensure_woe_info(active_binner, group_stats_raw)
-
-        # PSI expected distribution 独立于 RC 基准：无 benchmark 时沿用最早分组。
-        expected_dist = get_benchmark_dist(
-            group_stats_raw=group_stats_raw,
-            benchmark_binned=benchmark_binned,
-            group_col=group_col,
-            features=target_features,
-            weights_col=weights_col,
-        )
-        feature_start_reference = None
+        use_feature_start_reference = False
         if effective_feature_start_reference:
             if benchmark_prepared is not None:
                 logger.warning(
@@ -451,22 +401,94 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     "falling back to the default reference logic."
                 )
             else:
-                # 对接入较晚的特征，按其上线后的首个稳定分组重锚 PSI 与 benchmark RC 参考。
-                feature_start_reference = self._build_feature_start_reference(
-                    df_binned=df_binned,
-                    features=target_features,
-                    dt_col=dt_col,
-                    profile_by=profile_by,
-                    group_col=group_col,
-                    weights_col=weights_col,
-                    target=effective_target,
-                    has_target=has_target,
+                use_feature_start_reference = True
+
+        # 转换、当前聚合、显式基准及上线窗口全部受同一个特征批次控制。
+        stats_frames: list[pl.DataFrame] = []
+        expected_frames: list[pl.DataFrame] = []
+        reference_frames: list[pl.DataFrame] = []
+        missing_frames: list[pl.DataFrame] = []
+        start_references: list[dict[str, Any]] = []
+        context_cols = [group_col, effective_target, weights_col, amount_col, dt_col]
+        for start in range(0, len(target_features), batch_size):
+            batch_features = target_features[start : start + batch_size]
+            projection = list(dict.fromkeys(batch_features + [c for c in context_cols if c]))
+            batch_df = working_df.select(projection)
+            df_binned = active_binner.transform(batch_df, features=batch_features, return_type="index")
+            benchmark_binned = None
+            if benchmark_prepared is not None:
+                benchmark_cols = list(dict.fromkeys(
+                    batch_features + [c for c in [weights_col, original_target] if c in benchmark_prepared.columns]
+                ))
+                benchmark_binned = active_binner.transform(
+                    benchmark_prepared.select(benchmark_cols), features=batch_features, return_type="index",
                 )
-                if feature_start_reference is not None and not feature_start_reference["expected_dist"].is_empty():
-                    expected_dist = self._merge_feature_expected_dist(
-                        default_expected_dist=expected_dist,
-                        feature_expected_dist=feature_start_reference["expected_dist"],
+                missing_bin_cols = sorted(
+                    {f"{f}_bin" for f in batch_features} - set(benchmark_binned.columns)
+                )
+                if missing_bin_cols:
+                    failed_features = [remove_suffix(col, "_bin") for col in missing_bin_cols]
+                    raise ValueError(
+                        "`benchmark_df` could not produce bins for active features "
+                        f"{failed_features}. Fit failures: {getattr(active_binner, 'fit_failures_', {})}."
                     )
+            if any(f"{f}_bin" in df_binned.columns for f in batch_features):
+                batch_stats = aggregate_basic_stats(
+                    df_binned, group_col=group_col, features=batch_features,
+                    target_col=effective_target, weights_col=weights_col,
+                    amount_col=amount_col, batch_size=batch_size,
+                )
+                stats_frames.append(batch_stats)
+                expected_frames.append(get_benchmark_dist(
+                    group_stats_raw=batch_stats, benchmark_binned=benchmark_binned,
+                    group_col=group_col, features=batch_features, weights_col=weights_col,
+                ))
+                if benchmark_binned is not None and needs_benchmark_risk_corr:
+                    reference_frames.append(build_benchmark_risk_corr_reference(
+                        benchmark_binned, has_target=has_target, features=batch_features,
+                        weights_col=weights_col, target_name=effective_target,
+                        mars_group_col=self.MARS_GROUP_COL,
+                    ))
+                if use_feature_start_reference:
+                    reference = self._build_feature_start_reference(
+                        df_binned=df_binned, features=batch_features, dt_col=dt_col,
+                        profile_by=profile_by, group_col=group_col, weights_col=weights_col,
+                        target=effective_target, has_target=has_target, amount_col=amount_col,
+                    )
+                    if reference is not None:
+                        start_references.append(reference)
+            missing = build_missing_by_day_table(
+                df=batch_df, features=batch_features, dt_col=dt_col,
+                output_kind="polars", missing_values=missing_values,
+            )
+            if isinstance(missing, pl.DataFrame):
+                missing_frames.append(missing)
+            # 只跨批次保留小统计表；避免下一批转换时仍持有上一批分箱宽表。
+            del df_binned, benchmark_binned, batch_df
+        if not stats_frames:
+            raise ValueError("No valid binned columns found in dataframe. Check your binner fit results.")
+        group_stats_raw = pl.concat(stats_frames)
+        expected_dist = pl.concat(expected_frames)
+        benchmark_reference = pl.concat(reference_frames) if reference_frames else None
+        missing_by_day_table = (
+            pl.concat(missing_frames).sort(["dtype", "feature"]) if missing_frames else None
+        )
+        if isinstance(df, pd.DataFrame) and missing_by_day_table is not None:
+            missing_by_day_table = missing_by_day_table.to_pandas()
+        feature_start_reference = None
+        if start_references:
+            feature_start_reference = {
+                key: pl.concat([ref[key] for ref in start_references], how="vertical_relaxed")
+                for key in ["expected_dist", "baseline_bad_rate", "valid_groups", "monitor_group_stats_raw"]
+            }
+            feature_start_reference["feature_start_dates"] = {
+                f: date for ref in start_references for f, date in ref["feature_start_dates"].items()
+            }
+            expected_dist = self._merge_feature_expected_dist(
+                default_expected_dist=expected_dist,
+                feature_expected_dist=feature_start_reference["expected_dist"],
+            )
+        ensure_woe_info(active_binner, group_stats_raw)
         monitor_metrics_groups = None
         monitor_metrics_total = None
 
@@ -539,7 +561,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 metrics_total=metrics_total,
                 group_col=group_col,
                 risk_corr_baseline=effective_risk_corr_baseline,
-                benchmark_binned=benchmark_binned,
+                benchmark_binned=None,
+                benchmark_reference=benchmark_reference,
                 benchmark_features=target_features,
                 benchmark_weights_col=weights_col,
                 feature_start_reference=feature_start_reference,
@@ -597,6 +620,17 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 int(benchmark_prepared.height) if benchmark_prepared is not None else None
             ),
             "binning_fit_source": binning_fit_source,
+            "features": list(target_features),
+            "weights_col": weights_col,
+            "batch_size": batch_size,
+            "ordered_metric_sort_by": effective_ordered_metric_sort_by,
+            "binning_config": active_binner.get_params(),
+            "fit_failures": dict(getattr(active_binner, "fit_failures_", {})),
+            "binning_fit_report": active_binner.get_fit_report().to_dicts(),
+            "feature_data_source": dict(feature_source_map),
+            "time_grain": time_grain,
+            "target_requested": original_target,
+            "has_target": has_target,
             "feature_count": len(target_features),
             "profile_by_input": profile_label,
             "group_col": group_col,
@@ -773,6 +807,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         weights_col: str | None,
         target: str,
         has_target: bool,
+        amount_col: str | None = None,
     ) -> Dict[str, Any] | None:
         """
         基于特征上线起始日推导 PSI 基准分布覆盖表。
@@ -802,6 +837,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             内部统一后的目标列名。
         has_target : bool
             是否存在可用于计算分箱坏率的真实目标列。
+        amount_col : str | None
+            可选金额列；监控统计与主评估共用金额聚合口径。
 
         Returns
         -------
@@ -843,8 +880,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             select_cols = [dt_alias, group_col, bin_col]
             if weights_col and weights_col in working_df.columns:
                 select_cols.append(weights_col)
-            if has_target and target in working_df.columns:
+            if (has_target or amount_col) and target in working_df.columns:
                 select_cols.append(target)
+            if amount_col:
+                select_cols.append(amount_col)
 
             feature_df = (
                 working_df
@@ -929,10 +968,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 monitor_observed_expr = monitor_count_expr.alias("observed_count")
                 monitor_bad_expr = pl.lit(0.0).alias("bad")
 
+            amount_exprs = amount_stats_agg_exprs(target, amount_col) if amount_col else []
+            amount_fields = [expr.meta.output_name() for expr in amount_exprs]
             monitor_group_stats_df = (
                 post_start_df
                 .group_by([group_col, "bin_index"])
-                .agg([monitor_count_expr, monitor_observed_expr, monitor_bad_expr])
+                .agg([monitor_count_expr, monitor_observed_expr, monitor_bad_expr, *amount_exprs])
                 .select([
                     pl.col(group_col).cast(pl.String).alias(group_col),
                     pl.lit(feature).alias("feature"),
@@ -940,6 +981,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     pl.col("count").cast(pl.Float64),
                     pl.col("observed_count").cast(pl.Float64),
                     pl.col("bad").cast(pl.Float64),
+                    *[pl.col(col) for col in amount_fields],
                 ])
             )
             if not monitor_group_stats_df.is_empty():

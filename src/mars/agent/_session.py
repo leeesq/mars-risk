@@ -225,22 +225,86 @@ class MarsAgentSession:
         finally:
             self._lock.release()
 
+    def register_report(self, report: object, *, report_id: str | None = None) -> str:
+        """直接登记画像或分箱报告的快照，无需原始宽表或重新计算。
+
+        Parameters
+        ----------
+        report : object
+            MarsProfileReport、MarsBinningReport 或持有此类 report 的 MarsRiskProfile。
+        report_id : str | None
+            可选唯一标识；限字母、数字、下划线和连字符，最长 64 字符；None 自动分配。
+
+        Returns
+        -------
+        str
+            可用于 get_report 和 Agent get_report_table 的报告标识。
+
+        Raises
+        ------
+        ValueError
+            类型不支持、标识无效或重复时抛出。
+        RuntimeError
+            会话正在运行时抛出。
+
+        Notes
+        -----
+        外部报告 dataset_id 为 None，metadata.source 记录来源；不伪造数据集。
+        表和元数据保存为独立快照，之后修改原报告不影响会话。
+
+        Examples
+        --------
+        >>> session = MarsAgentSession()
+        >>> report_id = session.register_report(profile.report)  # doctest: +SKIP
+        """
+        from mars.reporting import MarsBinningReport, MarsProfileReport
+
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("session is busy")
+        try:
+            candidate = getattr(report, "report", report)
+            if not isinstance(candidate, (MarsProfileReport, MarsBinningReport)):
+                raise ValueError("report must be MarsProfileReport, MarsBinningReport or a result containing one.")
+            if report_id is not None:
+                if not isinstance(report_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", report_id):
+                    raise ValueError("report_id must match [A-Za-z0-9_-]{1,64}")
+                if report_id in self._reports:
+                    raise ValueError(f"report_id already registered: {report_id}")
+            metadata = deepcopy(candidate.report_meta)
+            metadata["source"] = {"kind": "external_report", "report_type": type(candidate).__name__,
+                                  "dataset_id": None, "snapshot": True}
+            metadata["report_description"] = candidate.describe()
+            metadata["agent_parameters"] = deepcopy(candidate.report_meta)
+            stored = self._save_report(
+                type(candidate).__name__, None, None, candidate._query_tables(), metadata,
+                report_id=report_id,
+            )
+            return stored.id
+        finally:
+            self._lock.release()
+
     def _save_report(
         self,
         kind: str,
-        dataset_id: str,
+        dataset_id: str | None,
         benchmark_id: str | None,
         tables: dict[str, FrameLike],
         metadata: dict[str, Any],
+        *,
+        report_id: str | None = None,
     ) -> MarsAgentReport:
         """保存有确定来源的聚合结果，完整表不直接加入模型消息。"""
-        report_id = f"report_{len(self._reports) + 1}"
+        if report_id is None:
+            index = len(self._reports) + 1
+            while f"report_{index}" in self._reports:
+                index += 1
+            report_id = f"report_{index}"
         report = MarsAgentReport(
             report_id,
             kind,
             dataset_id,
             benchmark_id,
-            {name: to_polars_frame(table) for name, table in tables.items()},
+            {name: to_polars_frame(table).clone() for name, table in tables.items()},
             deepcopy(metadata),
         )
         self._reports[report_id] = report

@@ -25,6 +25,34 @@ python -m pip install -e ".[agent]"
 使用自定义 provider 或直接执行确定性工具不需要该 SDK。普通 `import mars` 和 `import mars.agent`
 不会读取凭据或创建网络连接；创建 `MarsOpenAIProvider` 时才导入 SDK。
 
+## 直接登记已有报告
+
+已完成画像或分箱评估时可以直接登记结果，不必登记原始宽表或重新计算：
+
+```python
+import polars as pl
+from mars.analysis import profile_stats
+from mars.agent import MarsAgentSession, MarsRiskAgent
+
+report = profile_stats(pl.DataFrame({"income": [1000., None, 3000.]}), metrics=["missing", "mean"])
+session = MarsAgentSession()
+report_id = session.register_report(report)
+agent = MarsRiskAgent()
+catalog = agent.execute_tool("list_reports", {}, session=session)
+page = agent.execute_tool(
+    "get_report_table",
+    {"report_id": report_id, "table": "overview", "columns": ["feature", "missing_rate"], "limit": 10},
+    session=session,
+)
+assert page.success
+```
+
+`register_report()` 支持 `MarsProfileReport`、`MarsBinningReport` 和 `MarsRiskProfile`。
+返回会话内唯一 ID，可以通过 `report_id=` 指定但不可覆盖。元数据和表保留快照；修改原报告或
+`get_report()` 返回的副本不影响会话。外部报告 `dataset_id=None`、`benchmark_id=None`，
+`metadata.source` 明确标明 external_report，原报告的参数和 describe 说明保存在 metadata 中。
+这些 ID 不代表已经登记原始数据集；Agent 的计算权限没有扩大。
+
 ## 先验证确定性工具
 
 下面的完整示例不调用模型、不需要 API Key。它与模型调用使用相同的工具参数验证和 MARS 适配链路。
@@ -74,6 +102,8 @@ finally:
 | 工具 | 主要参数 | 返回内容 |
 | --- | --- | --- |
 | `list_datasets` | 无 | 已登记 ID 和说明 |
+| `list_reports` | 可选 offset/limit | 已有报告来源和表目录 |
+| `describe_report` | report_id | 单位、实际参数和限制；可按 table/columns/parameter_keys 缩小 |
 | `describe_dataset` | `dataset_id` | 允许列的类型、角色、行数和缺失定义 |
 | `profile_data` | `dataset_id`, `metrics` | 画像报告；PSI 必须提供 `benchmark_id` |
 | `evaluate_risk` | `dataset_id`, 可选 `benchmark_id` | native/quantile 分箱评估报告 |

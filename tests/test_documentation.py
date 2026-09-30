@@ -30,6 +30,7 @@ BASIC_SNIPPETS = [
     "rule_mining.py",
     "monitoring.py",
     "reporting_scorecard.py",
+    "report_queries.py",
 ]
 
 REFERENCE_MODULES = {

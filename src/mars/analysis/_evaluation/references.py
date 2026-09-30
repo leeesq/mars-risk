@@ -149,6 +149,7 @@ def build_risk_corr_reference_table(
     feature_start_reference: dict[str, Any] | None,
     has_target: bool,
     mars_group_col: str,
+    benchmark_reference: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, str]:
     """按统一策略选择 RC 参考表。
 
@@ -176,6 +177,8 @@ def build_risk_corr_reference_table(
         当前评估是否存在目标列。
     mars_group_col : str
         evaluator 内部分组列名称。
+    benchmark_reference : pl.DataFrame | None
+        已按特征批次聚合的显式基准 RC 表，优先复用。
 
     Returns
     -------
@@ -229,6 +232,8 @@ def build_risk_corr_reference_table(
             "first_group",
         )
 
+    if benchmark_reference is not None:
+        return benchmark_reference, "benchmark_df"
     if benchmark_binned is not None:
         reference_df = build_benchmark_risk_corr_reference(
             benchmark_binned,

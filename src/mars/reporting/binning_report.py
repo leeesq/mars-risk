@@ -13,13 +13,14 @@ from mars.compute import RiskCorrBaseline, to_pandas_frame
 from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
+from mars.reporting._query import ReportFrame, _ReportQuery
 from mars.reporting._types import MarsHtmlRenderResult
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-class MarsBinningReport:
+class MarsBinningReport(_ReportQuery):
     """
     特征效能与稳定性评估报告容器。
 
@@ -229,6 +230,20 @@ class MarsBinningReport:
             分箱明细表中的真实分组列名。
         """
         return self._detail_group_col
+
+    def _query_tables(self) -> dict[str, ReportFrame]:
+        """沿用 Agent 的分箱表名，并包含已有可选附表。"""
+        tables: dict[str, ReportFrame] = {"summary": self.summary_table, "detail": self.detail_table}
+        tables.update({f"trend.{k}": v for k, v in self.trend_tables.items()})
+        for name, table in [("missing_by_day", self.missing_by_day_table),
+                            ("risk_corr_reference", self.risk_corr_reference_table)]:
+            if table is not None:
+                tables[name] = table
+        return tables
+
+    def _query_metadata(self) -> dict[str, Any]:
+        """返回分箱评估运行元数据。"""
+        return self.report_meta
 
     def get_evaluation_data(self) -> Tuple[
         Union[pl.DataFrame, pd.DataFrame],
@@ -697,7 +712,12 @@ class MarsBinningReport:
             raise
 
     def show_summary(self,
-                     features: Union[str, List[str]] | None = None
+                     features: Union[str, List[str]] | None = None,
+                     *, sort_by: str | list[str] | None = None,
+                     sort_ascending: bool = False,
+                     columns: list[str] | None = None,
+                     limit: int | None = None,
+                     sources: str | list[str] | None = None,
                      ) -> pd.io.formats.style.Styler:
         """
         展示特征汇总评分表。
@@ -706,6 +726,16 @@ class MarsBinningReport:
         ----------
         features : Union[str, List[str]] | None
             需要展示的特征名称。若为 ``None``，展示全部特征。
+        sort_by : str | list[str] | None
+            排序字段；None 保留原顺序。
+        sort_ascending : bool
+            是否升序。
+        columns : list[str] | None
+            展示字段。
+        limit : int | None
+            最大展示行数，配合排序实现 Top-K；None 保留历史默认。
+        sources : str | list[str] | None
+            已登记特征来源。
 
         Returns
         -------
@@ -725,13 +755,10 @@ class MarsBinningReport:
         >>> hasattr(report.show_summary(features="age"), "to_html")
         True
         """
-        df: pd.DataFrame = to_pandas_frame(self.summary_table).copy()
-
-        # 特征筛选逻辑
-        if features is not None:
-            if isinstance(features, str):
-                features = [features]
-            df = df[df["feature"].isin(features)]
+        df: pd.DataFrame = to_pandas_frame(self.get_table(
+            "summary", features=features, columns=columns, sort_by=sort_by,
+            descending=not sort_ascending, limit=limit, sources=sources,
+        ))
 
         # 多目标模式下，将 target 列提前，便于快速按目标查看结果。
         for t_col in ["target", "target_col", "y"]:
@@ -769,7 +796,10 @@ class MarsBinningReport:
                    features: Union[str, List[str]] | None = None,
                    group_ascending: bool = True,
                    sort_by: Union[str, List[str]] = "Total",
-                   sort_ascending: bool = False) -> pd.io.formats.style.Styler:
+                   sort_ascending: bool = False,
+                   *, columns: list[str] | None = None,
+                   limit: int | None = None,
+                   sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示指定指标的时间趋势热力图。
 
@@ -790,6 +820,12 @@ class MarsBinningReport:
             特征行的排序依据列。默认按照全局表现 (Total) 排序。
         sort_ascending : bool
             特征行的排序方向 (纵向)。默认降序 (False)，即把表现最差/最好的特征排在最上面。
+        columns : list[str] | None
+            展示字段。
+        limit : int | None
+            最大展示行数；None 保留历史默认。
+        sources : str | list[str] | None
+            按已登记特征来源筛选。
 
         Returns
         -------
@@ -812,18 +848,12 @@ class MarsBinningReport:
         if metric not in self.trend_tables:
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
 
-        # 转换为 Pandas 副本进行安全的样式处理
-        df: pd.DataFrame = to_pandas_frame(self.trend_tables[metric]).copy()
-
-        # 特征筛选逻辑
-        if features is not None:
-            if isinstance(features, str):
-                features = [features]
-            df = df[df["feature"].isin(features)]
-
-        # 行排序：紧跟 sort_by 和 sort_ascending 语义
-        if sort_by in df.columns or (isinstance(sort_by, list) and all(c in df.columns for c in sort_by)):
-            df = df.sort_values(by=sort_by, ascending=sort_ascending)
+        ordering = [sort_by] if isinstance(sort_by, str) else sort_by
+        effective_sort = ordering if all(c in self.trend_tables[metric].columns for c in ordering) else None
+        df: pd.DataFrame = to_pandas_frame(self.get_table(
+            f"trend.{metric}", features=features, columns=columns, sort_by=effective_sort,
+            descending=not sort_ascending, limit=limit, sources=sources,
+        ))
 
         # 识别列类型并重排时间切片列
         meta_cols = ["feature", "dtype"]
@@ -843,7 +873,8 @@ class MarsBinningReport:
 
         # 基础表格样式初始化
         styler = df.style.set_caption(f"<b>Trend Analysis: {metric.upper()}</b>").hide(axis="index")
-        styler = styler.set_properties(subset=["feature"], **{'text-align': 'left', 'font-weight': 'bold'})
+        if "feature" in df.columns:
+            styler = styler.set_properties(subset=["feature"], **{'text-align': 'left', 'font-weight': 'bold'})
 
         if df.empty:
             raise ValueError("Requested binning trend contains no matching rows.")

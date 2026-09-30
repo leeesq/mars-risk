@@ -19,7 +19,8 @@ from ._session import MarsAgentSession
 from ._tools import TOOLS, _MarsTools, encode_json
 
 _SYSTEM = """你是 MARS 风控监控与分析助手，用用户的语言回答。
-先通过 list_datasets 和 describe_dataset 理解登记的数据、字段角色和业务说明。
+先通过 list_reports 理解已有报告；已有结果应直接用 get_report_table 查询。
+需要新计算时通过 list_datasets 和 describe_dataset 理解登记的数据、字段角色和业务说明。
 只调用提供的工具。不能读取文件、执行代码、训练模型或修改业务决策。
 指标必须来自 MARS 工具结果，不得凭空填数。用 get_report_table 获取支持结论的具体指标，
 在回答中引用 report_id/table，并说明样本、基准、分组和实际参数。

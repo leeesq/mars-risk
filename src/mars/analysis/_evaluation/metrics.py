@@ -158,7 +158,8 @@ def calculate_metrics_from_stats(
     if effective_sort_by == "woe":
         ordered_df = (
             base_df
-            .sort([group_col, "feature", "woe"])
+            # WOE 相同的箱按索引稳定排序，避免批次或哈希聚合顺序影响箱级累计值。
+            .sort([group_col, "feature", "woe", "bin_index"])
             .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
         )
     else:

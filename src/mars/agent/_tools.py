@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 import math
+from copy import deepcopy
 from datetime import date, datetime
 from typing import Any
-
-import polars as pl
 
 from mars.analysis import profile_risk, profile_stats
 from mars.compute import FrameLike
 from mars.monitoring import MarsMonitor
+from mars.reporting._query import query_table
 
 from ._contracts import (
     MarsAgentReport,
@@ -56,6 +56,12 @@ def _tool(
 
 
 TOOLS = (
+    _tool("list_reports", "分页列出已有报告来源和表目录；用 describe_report 查询单位及实际参数。",
+          {"offset": {"type": "integer", "minimum": 0},
+           "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, []),
+    _tool("describe_report", "读取已有报告的指标单位、实际参数及限制，可按表、列和参数键缩小范围。",
+          {"report_id": _STRING, "table": _STRING, "columns": _FEATURES,
+           "parameter_keys": _FEATURES}, ["report_id"]),
     _tool("list_datasets", "列出已登记数据的标识和业务说明，不返回原始样本。", {}, []),
     _tool(
         "describe_dataset",
@@ -258,6 +264,24 @@ class _MarsTools:
 
     def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """分发工具；计算只经过 MARS 公开入口。"""
+        if name == "list_reports":
+            reports = list(self.session._reports.values())
+            offset = arguments.get("offset", 0)
+            page = reports[offset : offset + arguments.get("limit", 10)]
+            while True:
+                data = {"reports": [{"report_id": report.id, "kind": report.kind,
+                                     "source": report.metadata.get("source", {"kind": "registered_dataset", "dataset_id": report.dataset_id}),
+                                     "tables": {name: {"rows": table.height, "field_count": table.width} for name, table in report.tables.items()}}
+                                    for report in page],
+                        "offset": offset, "total_reports": len(reports),
+                        "next_offset": offset + len(page) if offset + len(page) < len(reports) else None}
+                if not page and offset < len(reports):
+                    raise _ToolInputError("One report catalog exceeds output budget; increase max_result_chars.")
+                if len(encode_json(data)) <= self.max_result_chars:
+                    return data
+                page.pop()
+        if name == "describe_report":
+            return self._describe_report(arguments)
         if name == "list_datasets":
             return {
                 "datasets": [
@@ -329,6 +353,7 @@ class _MarsTools:
                     {f"{prefix}.{key}": value for key, value in values.items()}
                 )
             metadata = dict(profile.report_meta)
+            metadata["report_description"] = profile.describe()
         elif name == "evaluate_risk":
             risk = profile_risk(
                 frame,
@@ -350,6 +375,7 @@ class _MarsTools:
                 }
             )
             metadata = dict(risk.metadata)
+            metadata["report_description"] = risk.report.describe()
         else:
             monitor = MarsMonitor(
                 binner_params={
@@ -401,7 +427,8 @@ class _MarsTools:
             "report_id": report.id,
             "dataset_id": report.dataset_id,
             "benchmark_id": report.benchmark_id,
-            "parameters": report.metadata["agent_parameters"],
+            "parameters": report.metadata.get("agent_parameters", {}),
+            "source": report.metadata.get("source", {"kind": "registered_dataset", "dataset_id": report.dataset_id}),
             "tables": {
                 name: {"rows": table.height, "columns": table.columns}
                 for name, table in report.tables.items()
@@ -413,6 +440,38 @@ class _MarsTools:
             ],
         }
 
+    def _describe_report(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """查询报告快照的说明，不重新计算，字段和参数选择经过目录校验。"""
+        report = self.session._reports.get(arguments["report_id"])
+        if report is None:
+            raise _ToolInputError("report_id does not exist in this session")
+        description = deepcopy(report.metadata.get("report_description", {}))
+        if not description:
+            description = {"report_type": report.kind,
+                           "parameters": deepcopy(report.metadata),
+                           "tables": {name: {"rows": table.height, "fields": {c: {"dtype": str(t), "unit": "unknown"} for c, t in table.schema.items()}}
+                                      for name, table in report.tables.items()}}
+        table_name = arguments.get("table")
+        columns = arguments.get("columns")
+        if columns is not None and table_name is None:
+            raise _ToolInputError("columns requires table")
+        if table_name is not None:
+            if table_name not in description["tables"]:
+                raise _ToolInputError("table does not exist; use list_reports")
+            entry = description["tables"][table_name]
+            if columns is not None:
+                if not set(columns).issubset(entry["fields"]):
+                    raise _ToolInputError("columns must exist in the report table")
+                entry["fields"] = {c: entry["fields"][c] for c in columns}
+            description["tables"] = {table_name: entry}
+        keys = arguments.get("parameter_keys")
+        if keys is not None:
+            if not set(keys).issubset(description["parameters"]):
+                raise _ToolInputError("parameter_keys must exist in report parameters")
+            description["parameters"] = {key: description["parameters"][key] for key in keys}
+        return {"report_id": report.id, "source": report.metadata.get("source", {"dataset_id": report.dataset_id}),
+                "description": description}
+
     def _read_table(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """在完整本地聚合表上筛选排序，再按输出预算分页。"""
         report = self.session._reports.get(arguments["report_id"])
@@ -421,26 +480,14 @@ class _MarsTools:
         name = arguments["table"]
         if name not in report.tables:
             raise _ToolInputError("table does not exist; use the report catalog")
-        table = report.tables[name]
         filters = arguments.get("filters", {})
-        for column, value in filters.items():
-            if column not in table.columns:
-                raise _ToolInputError("filter column is not in the report table")
-            table = table.filter(
-                pl.col(column).is_null() if value is None else pl.col(column) == value
-            )
         sort_by = arguments.get("sort_by")
-        if sort_by:
-            if sort_by not in table.columns:
-                raise _ToolInputError("sort_by column is not in the report table")
-            table = table.sort(
-                sort_by, descending=arguments.get("descending", False), nulls_last=True
-            )
         columns = arguments.get("columns")
-        if columns is not None:
-            if not set(columns).issubset(table.columns):
-                raise _ToolInputError("columns must exist in the report table")
-            table = table.select(columns)
+        try:
+            table = query_table(report.tables[name], filters=filters, sort_by=sort_by,
+                                descending=arguments.get("descending", False), columns=columns)
+        except ValueError as exc:
+            raise _ToolInputError(str(exc)) from exc
         offset = arguments.get("offset", 0)
         count = min(arguments.get("limit", 20), max(0, table.height - offset))
         while True:

@@ -10,6 +10,7 @@ import polars as pl
 from mars.compute import to_pandas_frame
 from mars.reporting._profile_excel import _ProfileExcelWriter
 from mars.reporting._profile_html import write_profile_html
+from mars.reporting._query import ReportFrame, _ReportQuery
 
 
 class ProfileData(NamedTuple):
@@ -42,7 +43,7 @@ class ProfileData(NamedTuple):
     stats_trends: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
     comparisons: Dict[str, Union[pl.DataFrame, pd.DataFrame]]
 
-class MarsProfileReport:
+class MarsProfileReport(_ReportQuery):
     """
     数据特征画像与质量评估报告容器。
 
@@ -119,6 +120,17 @@ class MarsProfileReport:
             self._metric_index[k] = "stat"
         for k in self.comparison_tables.keys():
             self._metric_index[k] = "comparison"
+
+    def _query_tables(self) -> dict[str, ReportFrame]:
+        """沿用 Agent 的画像表目录，保留每张原生结果表。"""
+        return {"overview": self.overview_table,
+                **{f"dq.{k}": v for k, v in self.dq_tables.items()},
+                **{f"stats.{k}": v for k, v in self.stats_tables.items()},
+                **{f"comparison.{k}": v for k, v in self.comparison_tables.items()}}
+
+    def _query_metadata(self) -> dict[str, Any]:
+        """返回画像运行元数据。"""
+        return self.report_meta
 
     def get_profile_data(self) -> ProfileData:
         """
@@ -325,7 +337,10 @@ class MarsProfileReport:
     def show_overview(self,
                       features: Union[str, List[str]] | None = None,
                       sort_by: Union[str, List[str]] | None = None,
-                      sort_ascending: bool = False) -> pd.io.formats.style.Styler:
+                      sort_ascending: bool = False,
+                      *, columns: list[str] | None = None,
+                      limit: int | None = None,
+                      sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示特征概览宽表。
 
@@ -337,6 +352,12 @@ class MarsProfileReport:
             排序依据列。若为 ``None``，默认先按 ``dtype`` 再按 ``missing_rate`` 排序。
         sort_ascending : bool
             是否按 ``sort_by`` 升序排列。
+        columns : list[str] | None
+            展示字段；先查询再转为 Pandas。
+        limit : int | None
+            最大展示行数；排序配合 limit 实现 Top-K，None 保留历史默认。
+        sources : str | list[str] | None
+            按已有特征来源筛选；来源未知时明确报错。
 
         Returns
         -------
@@ -360,27 +381,20 @@ class MarsProfileReport:
         >>> hasattr(report.show_overview(features="age"), "to_html")
         True
         """
-        # 转换为 Pandas 副本以进行切片
-        df = to_pandas_frame(self.overview_table).copy()
-
-        # 特征筛选逻辑
-        if features is not None:
-            if isinstance(features, str):
-                features = [features]
-            df = df[df["feature"].isin(features)]
-
         requested_sort = ["dtype"] + (
             ["missing_rate"]
             if sort_by is None
             else ([sort_by] if isinstance(sort_by, str) else sort_by)
         )
-        available_sort = [column for column in requested_sort if column in df.columns]
+        available_sort = list(dict.fromkeys(column for column in requested_sort if column in self.overview_table.columns))
+        df = to_pandas_frame(self.get_table(
+            "overview", features=features, columns=columns, sort_by=available_sort or None,
+            descending=not sort_ascending, limit=limit, sources=sources,
+        ))
         return self._get_styler(
             df,
             title="Dataset Overview",
             cmap="RdYlGn_r",
-            sort_by=available_sort or None,
-            sort_ascending=sort_ascending,
             # 指定哪些列应用“红绿灯”配色 (高值=红)
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "mode_rate"],
             fmt_as_pct=False # 概览表混合了多种类型，不强制全转百分比，由内部逻辑细分
@@ -391,7 +405,10 @@ class MarsProfileReport:
                    features: Union[str, List[str]] | None = None,
                    group_ascending: bool = True,
                    sort_by: Union[List[str], str] = "total",
-                   sort_ascending: bool = False) -> pd.io.formats.style.Styler:
+                   sort_ascending: bool = False,
+                   *, columns: list[str] | None = None,
+                   limit: int | None = None,
+                   sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示指定指标的分组趋势。
 
@@ -407,6 +424,12 @@ class MarsProfileReport:
             趋势表内部排序依据，可以是单列或多列列表。
         sort_ascending : bool
             是否按 ``sort_by`` 升序排列。
+        columns : list[str] | None
+            展示字段；先查询再转为 Pandas。
+        limit : int | None
+            最大展示行数；None 保留历史默认。
+        sources : str | list[str] | None
+            按已有特征来源筛选。
 
         Returns
         -------
@@ -438,14 +461,12 @@ class MarsProfileReport:
         vmin: float | None
         vmax: float | None
         if source_type == "dq":
-            df_raw = self.dq_tables[metric]
             # DQ 默认配置
             cmap = "RdYlGn_r"  # 红色代表高风险 (高缺失)
             fmt_pct = True     # DQ 指标通常是率 (Rate/Ratio)
             vmin, vmax = 0, 1  # 率通常在 0~1 之间
 
-        else: # source_type 为 "stat"。
-            df_raw = self.stats_tables[metric]
+        else: # 统计及比较表沿用各自的原生结果。
             # 统计指标默认配置
             cmap = "Blues"     # 蓝色代表数值高低 (中性)
             fmt_pct = False    # 统计值通常是绝对值
@@ -457,16 +478,11 @@ class MarsProfileReport:
             fmt_pct = False   # PSI 是数值不是百分比
             vmin, vmax = 0.0, 0.5 # 锚定阈值
 
-        df = to_pandas_frame(df_raw).copy()
-
-        # 特征筛选逻辑
-        if features is not None:
-            if isinstance(features, str):
-                features = [features]
-            df = df[df["feature"].isin(features)]
-
-        # 排序
-        df = df.sort_values(by=sort_by, ascending=sort_ascending)
+        prefix = {"dq": "dq", "stat": "stats", "comparison": "comparison"}[source_type]
+        df = to_pandas_frame(self.get_table(
+            f"{prefix}.{metric}", features=features, columns=columns,
+            sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
+        ))
         df = self._reorder_trend_cols(df, group_ascending=group_ascending)
 
         return self._get_styler(

@@ -31,6 +31,36 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 | `MarsMonitoringReport` | Experimental | 监控汇总、分箱统计、表现覆盖率和元数据 |
 | `MarsModelingReport` | Experimental | 多样本切片的汇总、明细、趋势和元数据 |
 
+## 查询已有报告和交给 AI
+
+画像与分箱报告提供 Stable `describe()`、`get_table()`、`to_ai_context()` 和 `get_feature()`。
+这些方法只查询已计算结果，不调用 LLM、不重新计算统计，也不修改原报告。
+
+```python
+--8<-- "docs/snippets/report_queries.py"
+```
+
+`describe()` 返回表粒度、行数、字段类型、指标单位、实际参数和限制。画像表名为 `overview`、
+`dq.<metric>`、`stats.<metric>`、`comparison.<metric>`；分箱表名为 `summary`、`detail`、
+`trend.<metric>`，可选附表为 `missing_by_day` 和 `risk_corr_reference`。没有计算的表不在目录中。
+
+`get_table()` 保持所选表的 Pandas/Polars 类型。支持 `features`、`columns`、`filters`、
+`sort_by`、`descending`、`offset`、`limit` 和 `sources`。筛选是字段到标量相等条件，或
+`{"op": "gt", "value": 0.1}`；操作符只允许 eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null。
+没有 SQL 或表达式执行入口。排序在列投影之前，排序配合 `limit` 就是 Top-K。
+`sources` 只使用已有 `feature_data_source` 或 `data_source` 列，来源未知会报错。
+
+AI JSON 默认只含 overview/summary 前 10 行，预算为 16000 个 Unicode 字符，不是 token 数。
+可以按表、特征和列缩小范围。省略的参数和行有明确引用及原因；预算连说明都容不下时抛
+`ValueError`，不会输出无效 JSON。日期使用 ISO-8601；NaN、Infinity 和 -Infinity 使用同名字符串；
+Null 使用 JSON null，0 保留数值。Null 的业务原因需要结合标签状态、诊断与计算参数解释。
+KS 是 0–100 百分制指标，缺失率和坏率是 0–1 比例，IV/PSI 是无量纲数值；币种、标签定义和观察
+窗口未登记时标为 unknown。比较前核对拟合来源、参考、权重、箱范围和指标排序；JSON 不生成归因结论。
+
+`get_feature("income", limit=100)` 返回关联表、每表省略行数和 unavailable 类别。
+`show_overview`、`show_summary`、`show_trend` 也支持 `columns`、`limit`、`sources`，复用同一查询。
+这些旧展示方法保持不传 limit 时的历史默认；新增 get_feature 与 AI 上下文有默认规模上限。
+
 ## 2. 导出 Excel 或 HTML
 
 以下代码继续使用上一步定义的 `report`：
