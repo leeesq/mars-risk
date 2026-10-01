@@ -14,7 +14,6 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from mars.agent import MarsAgentSession, MarsRiskAgent
 from mars.reporting import Report, ReportSnapshot, load_report
 from mars.reporting._query import ReportFrame
 from mars.rule import MarsRule, MarsRuleMiningResult, MarsRuleMiningSpec, MarsRuleReport, mine_rules
@@ -233,7 +232,7 @@ def test_explicit_analysis_grain_scope_and_cumulative_membership(tmp_path: Path)
         )
 
 
-def test_new_process_exports_nonfinite_and_agent_registration(tmp_path: Path) -> None:
+def test_new_process_restores_queries_nonfinite_and_exports(tmp_path: Path) -> None:
     report = _report()
     # 仅测试统计字段的非有限保存；不保存原宽表。
     details = {
@@ -295,6 +294,18 @@ r.write_excel(str(Path(sys.argv[1]).with_suffix('.xlsx')))
     assert "sample_count" in next(sheet.values)
     assert sheet.max_row == restored.get_table("evaluation").height + 1
     workbook.close()
+
+
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="mars.agent requires Python >= 3.10")
+def test_agent_registration_queries_restored_rule_report(tmp_path: Path) -> None:
+    from mars.agent import MarsAgentSession, MarsRiskAgent
+
+    report = _report()
+    path = tmp_path / "report.marsreport"
+    report.save(path)
+    identifier = report.report_id
+    del report
+    restored = load_report(path)
     session = MarsAgentSession()
     handle = session.register_report(restored)
     answer = MarsRiskAgent().execute_tool(
@@ -310,6 +321,10 @@ r.write_excel(str(Path(sys.argv[1]).with_suffix('.xlsx')))
     )
     assert answer.success and answer.data["rows"]
     assert answer.data["persistent_report_id"] == identifier
+    assert answer.data["evidence_reference"]["report_id"] == identifier
+    assert answer.data["rows"] == restored.get_table(
+        "evaluation", features=["salary"], sources=["application"], limit=2
+    ).to_dicts()
 
 
 def test_benchmark_and_relation_validation(tmp_path: Path) -> None:
