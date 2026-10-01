@@ -34,7 +34,8 @@ def build_html_styles() -> str:
             .mars-meta,.mars-nav,.mars-inline-controls { display:flex; flex-wrap:wrap; gap:10px; }
             .mars-meta { margin-top:12px; position:relative; z-index:1; }
             .mars-pill,.mars-nav a { border:1px solid var(--line); background:#f7fbff; border-radius:999px; padding:6px 12px; font-size:13px; color:#36546d; text-decoration:none; }
-            .mars-global-tools { margin-top:16px; display:grid; grid-template-columns:minmax(280px,420px) auto minmax(240px,340px) minmax(280px,1fr) minmax(180px,240px); gap:10px; align-items:start; position:relative; z-index:1; }
+            .mars-global-tools { margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:10px; align-items:start; position:relative; z-index:1; }
+            .mars-global-tools .mars-feature-jump,.mars-global-tools .mars-source-panel { min-width:0; }
             .mars-filter-input,.mars-select-group select,.mars-clear-button,.mars-mini-button { border:1px solid var(--line); border-radius:12px; background:#fff; font-size:14px; }
             .mars-filter-input { padding:10px 12px; width:100%; box-sizing:border-box; }
             .mars-search-cluster { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
