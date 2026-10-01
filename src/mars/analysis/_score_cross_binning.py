@@ -9,6 +9,7 @@ from typing import Any, Literal
 import polars as pl
 
 from mars.compute import missing_condition_expr
+from mars.feature.binning._json_codec import decode_json_value
 
 from ._evaluation.context import build_binner, normalize_binary_target_column
 from ._risk_profile import (
@@ -127,11 +128,49 @@ def _fit_score_bins(
     )
     if score not in binner.bin_cuts_:
         raise ValueError(f"Binner produced no numeric definition for {score!r}.")
-    # 算法只提供切点；Score Cross 历史右闭合同独立于 binner 的左闭 transform。
-    cuts = [float(v) for v in binner.bin_cuts_[score][1:-1]]
+    # 仅已启用约束的拟合路径做成员等价适配；显式/已保存定义和无约束历史分段不移动。
+    shared_cuts = [float(v) for v in binner.bin_cuts_[score][1:-1]]
+    serialized_params: dict[str, Any] = binner.to_dict()["params"]
+    fitted_params: dict[str, Any] = decode_json_value(serialized_params)
+    minimum = fitted_params.get("min_bin_size", 0)
+    minimum_enabled = bool(minimum > 0) and (
+        binning_type != "native"
+        or fitted_params.get("method") == "cart"
+        or fitted_params.get("merge_small_bins", False)
+    )
+    adapt_endpoints = minimum_enabled or binning_type in {"optimal", "lite_opt"}
+    cuts = shared_cuts
+    endpoint_diagnostic: dict[str, Any] | None = None
+    if adapt_endpoints:
+        cuts, counts = _right_closed_fit_cuts(
+            usable_frame.select(values.alias(score)), score, shared_cuts
+        )
+        # 只沿用引擎已有整数人数入口；机械分箱和 LiteOpt 的当前合同为全量比例。
+        integer_minimum = isinstance(minimum, int) and (
+            binning_type == "optimal" or fitted_params.get("method") == "cart"
+        )
+        threshold = minimum if integer_minimum else minimum * fit_frame.height
+        satisfied = all(count >= threshold for count in counts)
+        minimum_status = "not_enabled"
+        if minimum_enabled:
+            minimum_status = "satisfied" if satisfied else "unsatisfied"
+        endpoint_diagnostic = {
+            "adaptation": "shared_left_closed_membership",
+            "shared_cutpoints": shared_cuts,
+            "right_closed_cutpoints": cuts,
+            "reference_bin_counts": counts,
+            "minimum_enabled": minimum_enabled,
+            "minimum_count": threshold if minimum_enabled else None,
+            "denominator_row_count": fit_frame.height,
+            "minimum_status": minimum_status,
+        }
+    diagnostic = binner.fit_failures_.get(score)
+    if endpoint_diagnostic is not None and endpoint_diagnostic["minimum_status"] == "unsatisfied":
+        message = "Right-closed reference bins cannot satisfy the enabled global min_bin_size."
+        diagnostic = f"{diagnostic}; {message}" if diagnostic else message
     provenance: dict[str, Any] = {
         "binning_type": binning_type,
-        "binner_params": binner.to_dict()["params"],
+        "binner_params": serialized_params,
         "source": fit_source,
         "target": target,
         "reference_row_count": frame.height,
@@ -141,8 +180,46 @@ def _fit_score_bins(
         "observed_class_count": usable_frame[target].n_unique() if target else None,
         "requested_n_bins": binner_params["n_bins"],
         "actual_n_bins": len(cuts) + 1,
-        "diagnostic": binner.fit_failures_.get(score),
+        "diagnostic": diagnostic,
         "fitted_trend": getattr(binner, "fitted_trends_", {}).get(score),
         "closed": "right",
     }
+    if endpoint_diagnostic is not None:
+        provenance["endpoint_adaptation"] = endpoint_diagnostic
     return cuts, provenance
+
+
+def _right_closed_fit_cuts(
+    frame: pl.DataFrame, score: str, cuts: list[float]
+) -> tuple[list[float], list[int]]:
+    """用真实观测前驱适配左闭切点，保持参考集成员、标签趋势及最小箱分母。
+
+    切点命中观测值时取最大严格小于切点的参考值，不使用浮点扰动；空正常箱合并。
+    一次 Polars 聚合获取边界信息，Python 只持有与切点数同阶的结果。
+    """
+    if not cuts:
+        return [], [frame.height]
+    value = pl.col(score)
+    expressions: list[pl.Expr] = []
+    for i, cut in enumerate(cuts):
+        expressions.extend(
+            [
+                (value == cut).any().alias(f"hit_{i}"),
+                value.filter(value < cut).max().alias(f"previous_{i}"),
+                (value < cut).sum().alias(f"count_{i}"),
+            ]
+        )
+    boundaries: dict[str, Any] = frame.select(expressions).row(0, named=True)
+    adapted: list[float] = []
+    counts: list[int] = []
+    previous_count = 0
+    for i, cut in enumerate(cuts):
+        count = int(boundaries[f"count_{i}"])
+        if count <= previous_count or count >= frame.height:
+            continue
+        previous = boundaries[f"previous_{i}"]
+        adapted.append(float(previous) if boundaries[f"hit_{i}"] else cut)
+        counts.append(count - previous_count)
+        previous_count = count
+    counts.append(frame.height - previous_count)
+    return adapted, counts

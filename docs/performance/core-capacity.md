@@ -4,7 +4,7 @@ description: 核心分析与报告消费的合成规模验收、独立进程 RSS
 
 # 核心规模与报告消费验收
 
-本页记录本轮实际运行，合成数据不代表真实业务性能。起点与参考源码均为
+以下原始验收记录来自 2026-10-01，合成数据不代表真实业务性能。起点与参考源码均为
 `26d0f2d1f38c1a0483fe7c9baa2a2b68124d9909`，开始时仓库工作树干净；修复后的测量来自未提交工作树。
 参考源码由 `git archive` 提取到临时目录，harness 通过 `--source` 切换源码，并记录实际导入的
 `mars.__file__`、源码哈希与 harness 两个文件的哈希。没有覆盖参考提交之后的代码。
@@ -21,6 +21,11 @@ PyArrow 等实际版本、每轮可用内存和原生线程池见 JSON。没有�
 NumExpr 和 VECLIB 环境变量，并记录 Polars 实际线程数及 threadpoolctl 的原生线程池。
 默认每案例 300 秒、进程树 RSS 8 GiB 预算。明显超预算的保守估计会记 `not_run`；实际超限或超时
 终止 worker 与其子进程，保存阶段、退出码和有限日志，继续其他案例，不降档或无限重试。
+
+预算状态与操作系统退出状态是两项证据。直属 worker 的退出码只由其 `Popen` 对象回收；
+psutil 发现、控制并有界等待后代，不等待该直属 worker。未知退出状态保存为 null 并注明
+unknown，不补成 0 或固定非零数。自然退出后仍清理已观察到的后代；读取诊断或清理失败时
+记录原因、已完成阶段及残留进程，不让一个案例无限等待。
 
 每个案例、输入后端、预热和测量轮次都是独立 Python 进程；大型案例串行运行。预热单列，不参加
 中位数。正式 standard 与报告 large 每侧各 3 轮；只有 1 轮的扩规模诊断仅报告单次观察，
@@ -64,6 +69,19 @@ Windows 使用可写临时路径替换 `/tmp`；本轮实际解释器位于 Cond
 目标源码版本与已安装 distribution 单列，环境对照仍严格检查所有数值依赖。该修正只影响元数据校验，
 不改变采样、计时、数据或算法。Pandas 交叉基准的半样本包含端点错误另行修正后重新建立分析对照，
 原调试记录不参与正式比较。
+
+基线工具现记录明确的 workload、独立进程测量和快照消费合同，以及每轮有效算法参数、
+诊断分支、资源策略和实际参与计算的依赖。线性诊断区分包未安装、安装但导入失败、成功
+执行和明确跳过，保留 VIF/系数表的实际行数。相同输入尺寸不足以证明工作量相同。
+源码及 harness 哈希只用于溯源；生产优化前后的 commit 无需相同，注释或日志变化也不会
+单独使对照失效。更改 fixture、测量口径或消费工作时需更新对应合同，不能只保持旧标识。
+
+`comparison` 区分可比较、不可比较、执行失败、语义不一致和有目的的资源策略对照。
+诊断或工作量不同时保留具体差异路径，不生成常规提速比例或退化结论。线程、batch_size、
+n_jobs 等资源策略的刻意变化需用 `--comparison-purpose` 说明目的，输出中保留差异，
+不会当作完全同配置对照。历史 JSON 缺少新合同字段时明确标注兼容信息不足，不猜测补齐，
+也不覆盖旧轮次。2026-10-01 正式线性对照的双方均记录 `optional_diagnostics=available`；
+本次加固不据此推翻已经发布的性能记录。
 
 | 案例 | smoke | standard | large | 实际计算路径 |
 | --- | --- | --- | --- | --- |
@@ -274,6 +292,79 @@ Python 3.12（Pandas 3.0.3、Polars 1.42.0）报告、规则、交叉、批次�
 1 deselected。没有可用 Python 3.9 解释器，其语法按 3.9 AST 检查、CI 保留真实版本矩阵，
 不能描述为本机完整运行过 3.9。Ruff、154 个生产文件的 Mypy、公共与私有 docstring 检查、
 严格 MkDocs 构建通过；私有 docstring 检查仍有六条既有提示。
+
+## 2026-10-02 审查修复验证
+
+本节记录 `b73491c80617c24767f289921cc7924f71c9737f` 上的本轮修复工作树，
+与前文 2026-10-01 的性能记录分别保留。开始时本地 HEAD、远端 main 一致，工作树干净；
+没有覆盖后续提交，也没有修改历史结果 JSON。原 Linux CI 的两个 worker 用例曾把被
+psutil 提前回收的直属进程记为退出码 0；本轮由 Popen 独占直属进程的回收。
+
+行为回归先确认缺陷，再验证最终行为：
+
+| 场景 | 修复后的实际结果 |
+| --- | --- |
+| 受控正常／异常退出 | 分别保留退出码 0／7，异常退出与预算判定分别记录 |
+| timeout／memory_budget_exceeded | Windows 实测退出码 1、`exit_status=known`；后代停止、无残留 PID，`deliberate_wait` 阶段与诊断保留；不固定 Linux 信号码 |
+| 重复值右闭最小箱复现 | 切点由共享左闭 `[2.0]` 转为参考样本真实前值 `[1.0]`；最终正常箱人数 4、6，`actual_n_bins=2`，约束诊断为 satisfied |
+| 自定义 `inf`／`-inf` 缺失 | 首算、提取直接复用、相同配置显式复用，以及保存后新进程加载复用均为正常箱 2、missing 1、invalid 0；统计与政策回放相同 |
+| key／feature 同列快照 | Polars／Pandas 保存前后均能筛选、分页和生成证据；最小复现证据为 `feature=x, mean=2.0`，原统计行不展开 |
+
+最小箱检查仅针对拟合参考样本。显式切点和固定定义复用保持固定，OOT 不重新约束占比。
+无法完成约束的拟合保留失败／未满足诊断。默认 native 分箱原本未开启
+`merge_small_bins` 的路径不增加边界适配扫描，既有容量 workload 的计算路径与报告形状未改变。
+
+本地环境为 Windows 11、Intel i7-14650HX（24 个逻辑处理器）、约 63.7 GiB 内存。
+各解释器使用当前源码；Python 3.8 的 psutil 7.2.2 从现有环境复制至临时依赖目录，
+使用其兼容 ABI，不卸载或替换系统依赖。Python 3.10 的 DLL 导入需在获准的沙箱外进程执行。
+
+基础套件命令为 `python -m pytest -q -m "not docs_ml and not optional_ml"`，
+同时指定独立临时目录、禁用 pytest 缓存。Python 3.10 指定 `tests` 收集目录，
+避开既有忽略产物的目录 ACL；仓库所有测试文件均位于该目录。
+
+| Python | Pandas／Polars | 最终基础套件 |
+| --- | --- | --- |
+| 3.8.20 | 2.0.3／1.8.2 | 706 passed、13 skipped、7 deselected |
+| 3.10.19 | 2.3.3／1.37.1 | 833 passed、1 skipped、7 deselected |
+| 3.11.15 | 3.0.3／1.42.0 | 793 passed、5 skipped、7 deselected |
+| 3.12.13 | 3.0.3／1.42.0 | 795 passed、3 skipped、7 deselected |
+
+不同环境安装的可选依赖不同，适用用例数因此不同。基础套件后补强的 worker 清理诊断
+在四个版本各重跑 `tests/test_core_capacity_benchmark.py`，均为 35 passed。
+Python 3.12 的五个 Score Cross 定向模块为 113 passed，四个报告／规则／快照定向模块为
+91 passed。最后补强的非有限缺失配置复用回归为 2 passed；四个导出临时目录用例也已复验。
+初次并行运行基础套件暴露了四个旧导出测试共享 `tests/_artifacts` 的竞态，现改用各自
+`tmp_path` 并保留原断言；错误源码搜索路径和目录权限造成的早期运行失败分别纠正后重跑，
+未把这些失败计为通过，也未削弱原有业务断言。
+
+统一容量入口实际执行以下 smoke，均包含独立预热、测量、保存和冷消费者验证：
+
+```bash
+python benchmarks/benchmark_core_capacity.py --case rule_report correlation_short --backend polars --scale smoke --repeats 1 --output <tmp>/report-smoke.json
+python benchmarks/benchmark_core_capacity.py --case score_cross linear_selection --backend pandas --scale smoke --repeats 1 --output <tmp>/analysis-smoke.json
+```
+
+四个案例全部 passed。线性筛选实际执行 VIF／系数各 8 行，statsmodels 0.14.6 成功导入；
+关闭的 stepwise 分支明确记录跳过。另以原提交源码和修复源码执行相同
+`correlation_short / polars / smoke` 对照，七个阶段均为 comparable，
+表内容、schema 与顺序摘要一致，源码溯源哈希变化不会误拒绝。
+这是一轮正确性与比较工具验收，不能据此宣称提速。
+
+同一解释器内受控模拟 statsmodels 导入失败，400×8 输入的 VIF／系数由各 8 行变为
+跳过且为空；比较结果为 incomparable，保留依赖与诊断差异原因，不输出常规耗时比例。
+workload、有效参数、测量合同和实际参与依赖变化均有拒绝回归；明确比较目的的资源策略
+变化单独标记。执行失败、语义不一致与不可比较分别报告。旧基线缺少新兼容字段时说明
+信息不足；已发布正式线性对照两侧的诊断均为 available，原数字未重写或宣布失效。
+
+Ruff 全范围检查、Mypy（157 个生产文件）、公共 pydoclint、私有 docstring 检查及
+严格 MkDocs 构建通过；私有检查保留六条既有提示。`git diff --check` 通过。
+离线探索器的实际 Node JavaScript 行为测试随定向／基础套件执行；未做真实浏览器交互验收。
+本轮没有无条件重跑 standard／large，未新增大型二进制产物或重做历史性能结论。
+
+原始日志、smoke JSON、对照 JSON、参考源码与站点构建保存在本机独立临时目录
+`mars-review-20261002-l9zhqkcb`；Python 3.10 的运行使用独立临时目录。
+没有本地 Python 3.9 或普通 Linux 环境，原远端失败已核对，但修复后的 Linux CI 尚待新提交实跑；
+这些环境不能记为本轮通过。`docs_ml`／`optional_ml` 标记套件没有在本轮单独执行。
 
 ## 原始结果索引
 

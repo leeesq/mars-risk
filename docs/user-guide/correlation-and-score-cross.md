@@ -99,7 +99,7 @@ report.get_table("cells", filters={"target": "fpd7", "group": "OOT", "x_bin": "b
 | `binning_type` | `native`（默认）、`optimal`、`lite_opt`；不支持历史 `opt` 别名 |
 | `method` | `quantile`、`uniform`、`cart`；None 使用对应引擎的实际默认值，最优引擎按现有规则映射预分箱方法 |
 | `n_bins` | 整数 1–100，或同时覆盖两个原始 score ID 的整数映射；特殊箱不占正常箱数 |
-| `min_bin_size` | 按共享引擎约束；native CART 整数为人数、浮点为比例，最优引擎使用比例；实际配置随定义保存 |
+| `min_bin_size` | 按共享引擎的有效样本及分母约束拟合参考集；native CART 整数为人数、浮点为比例，最优引擎使用比例；实际配置随定义保存 |
 | `monotonic_trend` | 共用引擎的趋势约束；native 不执行趋势约束，沿用现有警告 |
 | `missing_values` | 共享缺失语义；可用全轴列表或按 score ID 提供列表，保存后继续复用 |
 | `special_values` | 按 score ID 指定有限特殊值，优先于概率域检查，特殊箱无 risk_rank |
@@ -119,6 +119,12 @@ report.get_table("cells", filters={"target": "fpd7", "group": "OOT", "x_bin": "b
 目标、实际引擎参数、实际箱数及诊断；`get_score_bin_definitions` 将这些来源随定义返回。
 保存定义复用时 `fit_performed=False`，历史 `binning_target`/`fitted_targets` 仍明确记录。
 `binning_reference` 可来自任何用户指定的参考集，TRAIN/VAL/TEST/OOT 只是普通组名。
+
+已启用约束的自动拟合路径会将共享引擎的左闭切点适配为右闭定义，保留拟合参考样本的箱成员；切点恰好命中
+观测值时使用其前一个真实观测值作为右闭上界，不添加 epsilon。已启用的最小箱约束按最终
+右闭赋箱独立检查，实际箱数减少或无法满足的情况随 `fit` 记录。约束只针对拟合参考集，
+固定定义用于 OOT、独立验证集或其他数据时不重新拟合，也不强制新数据保持原箱占比。
+未启用约束的 native 自动路径沿用原来的右闭切点行为。
 
 默认概率示例需要 `application_bad_prob`、`behavior_bad_prob` 两个 0–1 字段；评估输入有
 `bad`、`later`、`cohort`，参考集还需有监督标签 `bad`：
@@ -146,6 +152,10 @@ saved_bins = get_score_bin_definitions(report)
 确定同样的标签。无界端点用 null + unbounded 标记，不写 JSON Infinity。
 null/NaN 为 missing；非有限/无法数值化分为 invalid。概率域外值进入 invalid；普通分无
 [0,1] 限制。`special_values={ID: [有限值]}` 单独成箱，显式特殊值优先于概率域检查。
+显式 `missing_values` 优先于非法值判断，因此声明的 `inf`/`-inf` 进入 missing；未声明的
+无穷值仍进入 invalid。提取定义及 `.marsreport` 加载后复用会恢复合法的受限浮点标签，
+重新传入语义相同的缺失配置可继续复用，真正冲突的配置报错；不会修改调用方的定义。
+`describe`、AI 上下文及文件清单仍使用标准 JSON 的 `$mars` 浮点标签。
 
 | 表 | 粒度/含义 |
 | --- | --- |

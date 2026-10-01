@@ -25,6 +25,21 @@ import psutil
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "1"
+MEASUREMENT_CONTRACT = {
+    "id": "independent-process-stages-rss-v1",
+    "rss_interval_seconds": 0.01,
+    "timers": "perf_counter; nested stages are not additive; imports excluded from stage timers",
+    "aggregation": "one excluded warmup; independent-process median seconds and maximum sampled RSS",
+    "tree_rss": "sum including descendants; shared memory may be counted more than once",
+    "table_signature": "Polars hash_rows(seed=42), 50000-row batches, schema/order/value check",
+}
+DEPENDENCY_MODULES = {
+    "numpy": "numpy", "pandas": "pandas", "polars": "polars", "pyarrow": "pyarrow",
+    "scikit-learn": "sklearn", "psutil": "psutil", "scipy": "scipy",
+    "statsmodels": "statsmodels", "optbinning": "optbinning", "ortools": "ortools",
+    "joblib": "joblib", "ruptures": "ruptures", "xlsxwriter": "xlsxwriter",
+    "openpyxl": "openpyxl", "jinja2": "jinja2", "threadpoolctl": "threadpoolctl",
+}
 THREAD_KEYS = (
     "POLARS_MAX_THREADS",
     "OMP_NUM_THREADS",
@@ -164,6 +179,39 @@ def _context(report: Any, queries: dict[str, Any], budget: int) -> dict[str, Any
     }
 
 
+def _dependency_state(name: str, module: str, unavailable: bool = False) -> dict[str, Any]:
+    """区分未安装、未参与导入、成功导入和生产入口已尝试但导入失败。"""
+    try:
+        version = importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return {"version": None, "status": "not_installed"}
+    return {
+        "version": version,
+        "status": "import_failed" if unavailable else "imported" if module in sys.modules else "not_imported",
+    }
+
+
+def _execution_parameters(parameters: Any) -> tuple[Any, dict[str, Any]]:
+    """从实际配置中分出资源策略，避免把 batch/线程策略误当算法变更。"""
+    resources: dict[str, Any] = {}
+
+    def split(value: Any, path: str) -> Any:
+        if isinstance(value, dict):
+            result = {}
+            for key, item in value.items():
+                location = f"{path}.{key}" if path else key
+                if key in {"batch_size", "overview_batch_size", "n_jobs"}:
+                    resources[location] = item
+                else:
+                    result[key] = split(item, location)
+            return result
+        if isinstance(value, list):
+            return [split(item, f"{path}[{index}]") for index, item in enumerate(value)]
+        return value
+
+    return split(parameters, ""), resources
+
+
 def _consume(path: Path, config_path: Path, meter: Measurement, loops: int) -> None:
     """新解释器只读取快照与查询配置，不导入 fixture、拟合或挖掘代码。"""
     from mars.reporting import load_report
@@ -173,6 +221,13 @@ def _consume(path: Path, config_path: Path, meter: Measurement, loops: int) -> N
     meter.result["fixture_module_imported"] = False
     config = json.loads(config_path.read_text(encoding="utf-8"))
     report = meter.run("load", lambda: load_report(path))
+    meter.result["execution_contract"] = {
+        "workload_id": "core-capacity-snapshot-consumer-v1",
+        "workload": {"report_type": report.report_type, "loops": loops},
+        "algorithm_parameters": {"query": config["query"], "ai": config["ai"], "export": config["export"]},
+        "diagnostics": {"fixture_import": "forbidden", "snapshot_correctness": "full-table-signatures"},
+        "resource_strategy": {},
+    }
     assert report.report_id == config["report_id"]
     assert report.describe() == config["description"]
     signatures = meter.run(
@@ -355,22 +410,85 @@ def _environment(source: Path) -> dict[str, Any]:
     }
 
 
-def _stop_tree(process: subprocess.Popen[Any]) -> None:
-    """终止本轮进程树；先挂起父进程，避免终止期间继续派生。"""
+def _stop_tree(
+    process: subprocess.Popen[Any], descendants: list[psutil.Process] | None = None
+) -> dict[str, Any]:
+    """有界清理已发现的后代；直属 worker 仅由其 Popen 回收真实退出状态。"""
+    cleanup: dict[str, Any] = {"errors": [], "descendant_pids": [], "remaining_pids": []}
+    children = {child.pid: child for child in descendants or []}
+    parent = None
     try:
-        parent = psutil.Process(process.pid)
-        parent.suspend()
-        children = parent.children(recursive=True)
-        for child in reversed(children):
+        if process.poll() is None:
+            parent = psutil.Process(process.pid)
             try:
-                child.kill()
+                parent.suspend()
             except psutil.NoSuchProcess:
-                pass
-        parent.kill()
-        psutil.wait_procs([parent, *children], timeout=5)
+                parent = None
+            except psutil.Error as exc:
+                cleanup["errors"].append(f"parent suspend: {type(exc).__name__}: {exc}")
+            if parent is not None:
+                children.update({child.pid: child for child in parent.children(recursive=True)})
     except psutil.NoSuchProcess:
         pass
-    process.wait(timeout=10)
+    except (psutil.Error, OSError) as exc:
+        cleanup["errors"].append(f"descendant discovery: {type(exc).__name__}: {exc}")
+    # 父进程自然退出后，缓存后代可能继续派生；先冻结各存活后代再补查其进程树。
+    pending = list(children.values())
+    discovered: set[int] = set()
+    while pending:
+        child = pending.pop()
+        if child.pid in discovered:
+            continue
+        discovered.add(child.pid)
+        try:
+            child.suspend()
+            for descendant in child.children(recursive=True):
+                if descendant.pid not in children:
+                    children[descendant.pid] = descendant
+                    pending.append(descendant)
+        except psutil.NoSuchProcess:
+            pass
+        except (psutil.Error, OSError) as exc:
+            cleanup["errors"].append(
+                f"descendant discovery: {child.pid} suspend/children: {type(exc).__name__}: {exc}"
+            )
+    cleanup["descendant_pids"] = sorted(children)
+    for child in reversed(list(children.values())):
+        try:
+            child.kill()
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.Error as exc:
+            cleanup["errors"].append(f"descendant {child.pid} kill: {type(exc).__name__}: {exc}")
+    # psutil 不等待直属 worker，避免 POSIX waitpid 抢走 Popen 的退出状态。
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
+    except OSError as exc:
+        cleanup["errors"].append(f"worker kill: {type(exc).__name__}: {exc}")
+    try:
+        process.wait(timeout=5)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        cleanup["errors"].append(f"worker wait: {type(exc).__name__}: {exc}")
+    if children:
+        try:
+            _, alive = psutil.wait_procs(list(children.values()), timeout=5)
+            # 僵尸已停止执行；非直属后代的最终回收由其 OS 父进程负责。
+            for child in alive:
+                try:
+                    if child.is_running() and child.status() != psutil.STATUS_ZOMBIE:
+                        cleanup["remaining_pids"].append(child.pid)
+                except psutil.NoSuchProcess:
+                    pass
+        except psutil.Error as exc:
+            cleanup["errors"].append(f"descendants wait: {type(exc).__name__}: {exc}")
+    cleanup["worker_exit_status"] = "known" if process.returncode is not None else "unknown"
+    cleanup["descendant_status"] = "unknown" if any(
+        error.startswith(("parent suspend:", "descendant discovery:", "descendants wait:"))
+        for error in cleanup["errors"]
+    ) else "incomplete" if cleanup["remaining_pids"] else "stopped"
+    return cleanup
 
 
 def _launch(command: list[str], result_path: Path, timeout: float, budget: int) -> dict[str, Any]:
@@ -378,44 +496,85 @@ def _launch(command: list[str], result_path: Path, timeout: float, budget: int) 
     start = time.perf_counter()
     main_peak = tree_peak = 0
     status = None
+    descendants: dict[int, psutil.Process] = {}
+    diagnostic_errors: list[str] = []
+    cleanup: dict[str, Any] | None = None
+
+    def record_error(message: str) -> None:
+        """同一诊断错误最多记录一次，长时间 worker 不积累重复错误。"""
+        if message not in diagnostic_errors:
+            diagnostic_errors.append(message)
+
+    def running() -> bool:
+        """Popen 查询失败也触发有界清理，不能遗留无主 worker。"""
+        nonlocal status, cleanup
+        try:
+            return process.poll() is None
+        except OSError as exc:
+            record_error(f"worker poll: {type(exc).__name__}: {exc}")
+            status = "failed"
+            cleanup = _stop_tree(process, list(descendants.values()))
+            return False
     log_path = result_path.with_suffix(".log")
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(command, stdout=log, stderr=log)
-        while process.poll() is None:
+        while running():
             try:
                 parent = psutil.Process(process.pid)
                 main_rss = parent.memory_info().rss
                 tree_rss = main_rss
                 for child in parent.children(recursive=True):
+                    descendants[child.pid] = child
                     try:
                         tree_rss += child.memory_info().rss
                     except psutil.NoSuchProcess:
                         pass
+                    except psutil.Error as exc:
+                        record_error(f"descendant RSS: {type(exc).__name__}: {exc}")
                 main_peak = max(main_peak, main_rss)
                 tree_peak = max(tree_peak, tree_rss)
             except psutil.NoSuchProcess:
                 pass
+            except psutil.Error as exc:
+                record_error(f"worker RSS: {type(exc).__name__}: {exc}")
+                status = "failed"
             if time.perf_counter() - start > timeout:
                 status = "timeout"
             elif tree_peak > budget:
                 status = "memory_budget_exceeded"
             if status:
-                _stop_tree(process)
+                cleanup = _stop_tree(process, list(descendants.values()))
                 break
             time.sleep(0.01)
+        if cleanup is None and descendants:
+            cleanup = _stop_tree(process, list(descendants.values()))
     try:
         result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
         if not isinstance(result, dict):
             raise ValueError("worker diagnostics must be a JSON object")
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         result = {"status": "failed", "stage": "result_decode", "reason": str(exc)}
+        record_error(f"result diagnostics: {type(exc).__name__}: {exc}")
+    try:
+        with log_path.open("rb") as log:
+            log.seek(0, os.SEEK_END)
+            log.seek(max(0, log.tell() - 10000))
+            log_tail = log.read().decode("utf-8", errors="replace")[-2500:]
+    except OSError as exc:
+        log_tail = ""
+        record_error(f"log diagnostics: {type(exc).__name__}: {exc}")
     result.update(
         exit_code=process.returncode,
+        exit_status="known" if process.returncode is not None else "unknown",
         process_wall_seconds=time.perf_counter() - start,
         process_main_rss_observed_peak_bytes=main_peak,
         process_tree_rss_observed_peak_bytes=tree_peak,
-        log_tail=log_path.read_text(encoding="utf-8", errors="replace")[-2500:],
+        log_tail=log_tail,
     )
+    if cleanup is not None:
+        result["cleanup"] = cleanup
+    if diagnostic_errors:
+        result["diagnostic_errors"] = diagnostic_errors
     result.setdefault("stage", "startup")
     if status or process.returncode != 0:
         result.update(
@@ -426,6 +585,10 @@ def _launch(command: list[str], result_path: Path, timeout: float, budget: int) 
         result.update(status="failed", reason="worker exited without completion")
     elif "status" not in result:
         result.update(status="failed", reason="worker exited without diagnostics")
+    if cleanup and (cleanup["descendant_status"] != "stopped" or cleanup["worker_exit_status"] == "unknown"):
+        result.update(status=status or "failed", reason=status or "process tree cleanup incomplete")
+    if diagnostic_errors and result["status"] == "passed":
+        result.update(status="failed", reason="worker diagnostic collection failed")
     return result
 
 
@@ -459,6 +622,9 @@ def _parser() -> argparse.ArgumentParser:
         "--consumer-source", type=Path, help="可选：用另一份源码消费快照，验证旧快照恢复"
     )
     parser.add_argument("--baseline-json", type=Path)
+    parser.add_argument(
+        "--comparison-purpose", help="资源策略刻意改变时说明对照目的；工作量/测量合同仍须相同"
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--consume", type=Path, help=argparse.SUPPRESS)
@@ -498,6 +664,18 @@ def _worker(args: argparse.Namespace) -> int:
         from threadpoolctl import threadpool_info
 
         meter.result["effective_native_threadpools"] = threadpool_info()
+    if "environment" in meter.result:
+        unavailable = meter.result.get("linear_dependency_state", {}).get("status") in (
+            "not_installed", "import_failed"
+        )
+        states = {
+            name: _dependency_state(name, module, unavailable=name == "statsmodels" and unavailable)
+            for name, module in DEPENDENCY_MODULES.items()
+        }
+        meter.result["environment"]["participating_dependencies"] = {
+            name: state for name, state in states.items()
+            if state["status"] == "imported" or name == "statsmodels" and args.case == "linear_selection"
+        }
     _write(args.output, meter.result)
     return 0 if meter.result["status"] == "passed" else 1
 
@@ -525,6 +703,139 @@ def _summary(rounds: list[dict[str, Any]]) -> dict[str, Any]:
             (r["process_tree_rss_observed_peak_bytes"] for r in rounds), default=0
         ),
     }
+
+
+def _comparison_state(round_: dict[str, Any]) -> dict[str, Any]:
+    """比较生产和冷消费的有效路径，源码与 DLL 路径只作溯源。"""
+    contract = round_.get("execution_contract")
+    environment = round_.get("environment", {})
+    required = {"workload_id", "workload", "algorithm_parameters", "diagnostics", "resource_strategy"}
+    consumer = _comparison_state(round_["consumer"]) if "consumer" in round_ else None
+    if (
+        not isinstance(contract, dict) or not required.issubset(contract)
+        or "participating_dependencies" not in environment
+        or consumer is not None and consumer.get("missing_contract")
+    ):
+        return {"missing_contract": True}
+    return {
+        "execution_contract": contract,
+        "environment": {key: environment.get(key) for key in (
+            "python", "platform", "cpu", "logical_cpus", "physical_cpus", "memory_total_bytes",
+            "container_limits", "participating_dependencies",
+        )},
+        "resources": {
+            "polars_threads": environment.get("polars_threads"),
+            "threads_environment": environment.get("threads_environment"),
+            "native_threadpools": [{key: pool.get(key) for key in (
+                "internal_api", "prefix", "num_threads", "architecture",
+            )} for pool in round_.get("effective_native_threadpools", [])],
+        },
+        "consumer": consumer,
+    }
+
+
+def _compare_execution_state(
+    old: Any, new: Any, path: str, reasons: list[str], resources: list[dict[str, Any]]
+) -> None:
+    """报告具体合同差异路径；资源策略由调用方检查显式对照目的。"""
+    if old == new:
+        return
+    if path.endswith(".resource_strategy") or path.endswith(".resources"):
+        resources.append({"path": path, "baseline": old, "current": new})
+    elif isinstance(old, dict) and isinstance(new, dict):
+        for key in sorted(set(old) | set(new)):
+            _compare_execution_state(old.get(key), new.get(key), f"{path}.{key}", reasons, resources)
+    else:
+        reasons.append(f"effective execution differs: {path} (baseline={old!r}, current={new!r})")
+
+
+def _compare_baseline(baseline: dict[str, Any], result: dict[str, Any]) -> None:
+    """保留历史轮次；只有实际工作、测量和环境可比时才计算普通性能比例。"""
+    comparisons: list[dict[str, Any]] = []
+    for item in result["cases"]:
+        before = next((old for old in baseline["cases"] if (
+            old["case"] == item["case"] and old["backend"] == item["backend"]
+        )), None)
+        entry: dict[str, Any] = {"case": item["case"], "backend": item["backend"]}
+        reasons: list[str] = []
+        resources: list[dict[str, Any]] = []
+        if before is None:
+            entry.update(status="incomparable", reasons=["baseline case/backend absent"])
+            comparisons.append(entry)
+            continue
+        entry.update(baseline_case_status=before["status"], current_case_status=item["status"])
+        if before["status"] != "passed" or item["status"] != "passed":
+            entry.update(status="execution_failed", reasons=["at least one case did not pass execution/semantic checks"])
+            comparisons.append(entry)
+            continue
+        if not baseline.get("measurement_contract", {}).get("id") or not result.get("measurement_contract", {}).get("id"):
+            reasons.append("measurement contract absent; historical result has insufficient compatibility information")
+        elif baseline["measurement_contract"] != result["measurement_contract"]:
+            reasons.append("measurement contract differs")
+        for key in ("timeout", "memory_budget_mib", "diagnostic_loops"):
+            if baseline["parameters"].get(key) != result["parameters"].get(key):
+                reasons.append(f"measurement/protection parameter differs: {key}")
+        before_workload, before_resources = _execution_parameters(before["workload"])
+        current_workload, current_resources = _execution_parameters(item["workload"])
+        _compare_execution_state(before_workload, current_workload, "case.workload", reasons, resources)
+        _compare_execution_state(before_resources, current_resources, "case.resource_strategy", reasons, resources)
+        old_rounds = [before.get("warmup", {}), *before["rounds"]]
+        new_rounds = [item.get("warmup", {}), *item["rounds"]]
+        reference = _comparison_state(old_rounds[0])
+
+        if reference.get("missing_contract"):
+            reasons.append("baseline execution/dependency contract absent")
+        for side, rounds in (("baseline", old_rounds), ("current", new_rounds)):
+            for index, round_ in enumerate(rounds):
+                state = _comparison_state(round_)
+                if state.get("missing_contract"):
+                    reasons.append(f"{side} round {index}: execution/dependency contract absent")
+                else:
+                    _compare_execution_state(reference, state, f"{side}.round[{index}]", reasons, resources)
+        old_stages = before.get("summary", {}).get("stages", {})
+        new_stages = item.get("summary", {}).get("stages", {})
+        if not old_stages or set(old_stages) != set(new_stages):
+            reasons.append("measured stage set differs or no completed measurement")
+        purpose = result["parameters"].get("comparison_purpose")
+        if resources and not purpose:
+            reasons.append("resource strategy differs; provide --comparison-purpose for an intentional strategy comparison")
+        if reasons:
+            entry.update(status="incomparable", reasons=list(dict.fromkeys(reasons)))
+            if resources:
+                entry["resource_differences"] = resources
+            comparisons.append(entry)
+            continue
+        # 有意义的完整表验收保持原有口径，错误结果不被包装成性能退化。
+        digest_check = item["case"].startswith("correlation") or item["case"] in ("rule_report", "rule_bridge")
+        if digest_check:
+            old_tables = before["rounds"][0]["tables"]
+            if any(round_["tables"].keys() != old_tables.keys() or any(
+                round_["tables"][name][key] != table[key]
+                for name, table in old_tables.items() for key in ("sha256", "schema", "rows", "columns")
+            ) for round_ in item["rounds"]):
+                entry.update(status="semantic_mismatch", reasons=["baseline table/schema/order/value signatures differ"])
+                comparisons.append(entry)
+                continue
+        item["baseline_semantic_check"] = (
+            "full table/schema/order digests" if digest_check else "independent numeric references and focused regressions"
+        )
+        for name, current in new_stages.items():
+            old = old_stages[name]
+            if old["median_seconds"] <= 0 or old["highest_observed_rss_bytes"] <= 0:
+                comparisons.append({**entry, "stage": name, "status": "incomparable", "reasons": ["baseline metric is nonpositive"]})
+                continue
+            stage_entry = {
+                **entry, "stage": name,
+                "status": "resource_strategy_comparison" if resources else "comparable",
+                "time_ratio": current["median_seconds"] / old["median_seconds"],
+                "rss_ratio": current["highest_observed_rss_bytes"] / old["highest_observed_rss_bytes"],
+                "review_trigger": current["median_seconds"] > old["median_seconds"] * 1.2
+                or current["highest_observed_rss_bytes"] > old["highest_observed_rss_bytes"] * 1.15,
+            }
+            if resources:
+                stage_entry.update(resource_differences=resources, purpose=purpose)
+            comparisons.append(stage_entry)
+    result["comparison"] = comparisons
 
 
 def main() -> int:
@@ -575,6 +886,7 @@ def main() -> int:
             "limits": "sampling protection may miss brief peaks; nested timers are not additive",
             "statistics": "independent-process medians and maxima; no P95; warmups excluded",
         },
+        "measurement_contract": MEASUREMENT_CONTRACT,
         "cases": [],
     }
     with destination.open("x", encoding="utf-8") as reserved:
@@ -676,92 +988,7 @@ def main() -> int:
                 _write(destination, result)
     if args.baseline_json:
         baseline = json.loads(args.baseline_json.read_text(encoding="utf-8"))
-        if any(
-            baseline["parameters"][k] != result["parameters"][k]
-            for k in (
-                "scale",
-                "seed",
-                "threads",
-                "diagnostic_loops",
-                "memory_budget_mib",
-                "timeout",
-            )
-        ):
-            raise ValueError("baseline workload/measurement parameters differ")
-        comparisons = []
-        for item in result["cases"]:
-            before = next(
-                (
-                    b
-                    for b in baseline["cases"]
-                    if b["case"] == item["case"] and b["backend"] == item["backend"]
-                ),
-                None,
-            )
-            if (
-                before
-                and before.get("summary", {}).get("stages")
-                and item.get("summary", {}).get("stages")
-            ):
-                if before["workload"] != item["workload"]:
-                    raise ValueError("baseline dimensions differ")
-                before_environment = before["warmup"]["environment"]
-                after_environment = item["warmup"]["environment"]
-                for key in (
-                    "python",
-                    "dependencies",
-                    "platform",
-                    "cpu",
-                    "memory_total_bytes",
-                    "polars_threads",
-                ):
-                    old_value = before_environment[key]
-                    new_value = after_environment[key]
-                    if key == "dependencies":
-                        # --source 比较的目标包可能遮盖已安装旧 distribution；环境只比较计算依赖。
-                        old_value = {k: v for k, v in old_value.items() if k != "mars-risk"}
-                        new_value = {k: v for k, v in new_value.items() if k != "mars-risk"}
-                    if old_value != new_value:
-                        raise ValueError(f"baseline environment differs: {key}")
-                if item["case"].startswith("correlation") or item["case"] in (
-                    "rule_report",
-                    "rule_bridge",
-                ):
-                    old_tables = before["rounds"][0]["tables"]
-                    for current_round in item["rounds"]:
-                        for name, old_table in old_tables.items():
-                            for key in ("sha256", "schema", "rows", "columns"):
-                                if current_round["tables"][name][key] != old_table[key]:
-                                    raise AssertionError(f"baseline table differs: {name}/{key}")
-                item["baseline_semantic_check"] = (
-                    "full table/schema/order digests"
-                    if (
-                        item["case"].startswith("correlation")
-                        or item["case"] in ("rule_report", "rule_bridge")
-                    )
-                    else "independent numeric references and focused regressions"
-                )
-                for name, current in item["summary"]["stages"].items():
-                    if name not in before["summary"]["stages"]:
-                        continue
-                    old = before["summary"]["stages"][name]
-                    comparisons.append(
-                        {
-                            "case": item["case"],
-                            "backend": item["backend"],
-                            "stage": name,
-                            "baseline_case_status": before["status"],
-                            "current_case_status": item["status"],
-                            "time_ratio": current["median_seconds"] / old["median_seconds"],
-                            "rss_ratio": current["highest_observed_rss_bytes"]
-                            / old["highest_observed_rss_bytes"],
-                            "review_trigger": current["median_seconds"]
-                            > old["median_seconds"] * 1.2
-                            or current["highest_observed_rss_bytes"]
-                            > old["highest_observed_rss_bytes"] * 1.15,
-                        }
-                    )
-        result["comparison"] = comparisons
+        _compare_baseline(baseline, result)
         _write(destination, result)
     print(destination)
     return 0 if all(c["status"] == "passed" for c in result["cases"]) else 1

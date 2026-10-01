@@ -1189,7 +1189,9 @@ def test_evaluator_rejects_empty_benchmark_df() -> None:
         )
 
 
-def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
+def test_evaluation_report_can_write_excel(
+    sample_credit_df: pl.DataFrame, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
     report, _ = _profile_risk_report(
         sample_credit_df,
         target="target",
@@ -1200,7 +1202,7 @@ def test_evaluation_report_can_write_excel(sample_credit_df, caplog):
         n_bins=3,
     )
 
-    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir = tmp_path
     artifacts_dir.mkdir(exist_ok=True)
     output_path = artifacts_dir / "evaluation_report.xlsx"
     if output_path.exists():
@@ -1386,7 +1388,9 @@ def test_evaluation_report_excel_hides_amount_detail_columns(
         workbook.close()
 
 
-def test_evaluation_report_can_write_html(sample_credit_df, caplog):
+def test_evaluation_report_can_write_html(
+    sample_credit_df: pl.DataFrame, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
     report, _ = _profile_risk_report(
         _with_biz_dt(sample_credit_df),
         target="target",
@@ -1398,7 +1402,7 @@ def test_evaluation_report_can_write_html(sample_credit_df, caplog):
         n_bins=3,
     )
 
-    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir = tmp_path
     artifacts_dir.mkdir(exist_ok=True)
     output_path = artifacts_dir / "evaluation_report.html"
     if output_path.exists():
@@ -1544,8 +1548,10 @@ def test_evaluation_report_produces_missing_and_lift_trend_tables(sample_credit_
     assert missing_df["feature"].isin(["income", "utilization"]).all()
 
 
-def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
-    df = _with_biz_dt(sample_credit_df).with_columns(
+def test_multi_target_html_includes_target_switchers(
+    sample_credit_df: pl.DataFrame, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    df: pl.DataFrame = _with_biz_dt(sample_credit_df).with_columns(
         (pl.col("utilization") >= 0.45).cast(pl.Int8).alias("target_alt")
     )
 
@@ -1560,7 +1566,7 @@ def test_multi_target_html_includes_target_switchers(sample_credit_df, caplog):
         n_bins=3,
     )
 
-    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir = tmp_path
     artifacts_dir.mkdir(exist_ok=True)
     output_path = artifacts_dir / "evaluation_report_multi.html"
     if output_path.exists():
@@ -1685,8 +1691,10 @@ def test_summary_table_includes_missing_and_lift_monitor_columns(sample_credit_d
     assert income_row["lift_max"] == pytest.approx(1.3636363, rel=1e-6)
 
 
-def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(sample_credit_df, caplog):
-    df = sample_credit_df.with_columns(
+def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(
+    sample_credit_df: pl.DataFrame, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    df: pl.DataFrame = sample_credit_df.with_columns(
         pl.Series("biz_dt", _daily_datetimes("2024-01-01", periods=sample_credit_df.height))
     )
 
@@ -1702,7 +1710,7 @@ def test_evaluation_report_html_includes_missing_by_day_and_data_source_filter(s
         n_bins=3,
     )
 
-    artifacts_dir = Path(__file__).resolve().parent / "_artifacts"
+    artifacts_dir = tmp_path
     artifacts_dir.mkdir(exist_ok=True)
     output_path = artifacts_dir / "evaluation_report_with_day.html"
     if output_path.exists():
