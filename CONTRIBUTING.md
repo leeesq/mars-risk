@@ -51,6 +51,27 @@ python -m twine check dist/*
 
 Modeling、Pipeline 或 Notebook 示例还需要安装 `ml,tuning` extra 并执行文档集成测试。
 
+### 离线报告的真实浏览器验收
+
+使用 Python >=3.10 的独立开发环境安装 `.[dev,browser]`，复用本机 Chrome（`--channel chrome`），
+或运行 `python -m playwright install chromium` 后使用 `--channel chromium`。
+浏览器不是 MARS 核心安装依赖。下面的 `<tmp>` 是独立可写目录，产物不提交到仓库：
+
+```bash
+python tests/browser/fixtures.py --phase generate --output <tmp>
+python tests/browser/fixtures.py --phase export --output <tmp>
+python tests/browser/score_cross.py --manifest <tmp>/manifest.json --output <tmp>/browser --channel chrome
+python tests/browser/representatives.py --output <tmp> --channel chrome
+python -m mkdocs build --strict --site-dir <tmp>/docs/site
+python tests/browser/docs.py --site-dir <tmp>/docs/site --output <tmp>/docs --channel chrome
+```
+
+两次夹具命令必须分别运行；第二个进程只加载 `.marsreport`，不读取原始宽表或重新拟合。
+Score Cross 通过 `file://` 操作真实页面，数字与公共 Python API 对照；文档入口自行启动并关闭
+本地 HTTP 预览。脚本保存截图和 JSON 日志，失败以非零退出码返回。
+浏览器/依赖缺失是未完成验收，不能由 Node 或静态测试代替。
+本轮实际结果与限制见[浏览器验收记录](docs/performance/correlation-score-cross.md#2026-10-02-真实浏览器验收)。
+
 发布产物必须只构建一次。普通 CI 和 Release 都会把同一份 wheel 分别安装到全新 Python 3.8
 与 3.12 环境，从仓库外运行 `scripts/smoke_installed_package.py`；PyPI job 只能上传两端均已
 验证的 artifact，不得重新构建。Mypy 固定为 1.13.0，并统一按 Python 3.8 语法目标检查；
