@@ -91,6 +91,7 @@ nav:
       - 特征与模型监控: user-guide/monitoring.md
       - 风控分析 Agent: user-guide/agent.md
       - 报告与评分卡: user-guide/reports-and-exports.md
+      - 相关性与模型分交叉: user-guide/correlation-and-score-cross.md
   - 核心概念:
       - 数据角色与运行边界: concepts/data-and-runs.md
       - Report 与 Artifact: concepts/reports-and-artifacts.md
@@ -106,6 +107,7 @@ nav:
       - Reporting: reference/reporting.md
       - Report 对象: reference/report-objects.md
   - 示例:
+      - 模型分交叉与保存后回放: demos/correlation_and_score_cross.ipynb
       - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
   - 项目:
       - 稳定性与兼容性: project/stability.md
@@ -113,5 +115,6 @@ nav:
       - 规则模块来源: project/rule-origin.md
       - Deimos 迁移矩阵: project/deimos-rule-migration.md
       - 性能基准: performance/benchmark.md
+      - 相关性与交叉报告验证: performance/correlation-score-cross.md
       - FAQ: faq.md
       - 贡献文档: project/contributing.md

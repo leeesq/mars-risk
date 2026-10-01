@@ -27,3 +27,17 @@ description: Reporting stable API：画像、分箱报告和 HTML 渲染结果�
 ::: mars.reporting.load_report
 
 ::: mars.reporting.snapshot_report
+
+## 可携带相关性证据
+
+使用方式与保存后的专用操作见[相关性与模型分交叉](../user-guide/correlation-and-score-cross.md)。
+
+::: mars.reporting.CorrelationReport
+    options:
+      inherited_members: true
+
+::: mars.reporting.get_correlation_matrix
+
+::: mars.reporting.get_related_features
+
+::: mars.reporting.show_correlation_matrix

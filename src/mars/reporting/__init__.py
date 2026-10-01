@@ -3,6 +3,12 @@
 from ._artifact import Report, ReportSnapshot, load_report, snapshot_report
 from ._types import MarsHtmlRenderResult
 from .binning_report import MarsBinningReport
+from .correlation import (
+    CorrelationReport,
+    get_correlation_matrix,
+    get_related_features,
+    show_correlation_matrix,
+)
 from .profile_report import MarsProfileReport, ProfileData
 
 __all__ = [
@@ -14,4 +20,8 @@ __all__ = [
     "ReportSnapshot",
     "load_report",
     "snapshot_report",
+    "CorrelationReport",
+    "get_correlation_matrix",
+    "get_related_features",
+    "show_correlation_matrix",
 ]

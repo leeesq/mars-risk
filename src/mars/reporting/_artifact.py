@@ -257,6 +257,11 @@ class ReportSnapshot(_ReportQuery):
         --------
         >>> restored.write_html("restored.html")  # doctest: +SKIP
         """
+        if self.report_type == "score_cross":
+            from mars.analysis.score_cross_view import write_score_cross_html
+
+            write_score_cross_html(self, path, report_name=report_name)
+            return
         from ._profile_html import write_profile_html
 
         write_profile_html(self, path=path, report_name=report_name)

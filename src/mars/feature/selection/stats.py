@@ -350,6 +350,7 @@ class MarsStatsSelector(MarsBaseSelector):
         ... ]
         ['score']
         """
+        self._reset_correlation()
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
@@ -392,6 +393,16 @@ class MarsStatsSelector(MarsBaseSelector):
             col for col in source_features if col in X.columns and col not in exclude_cols
         ]
         self.feature_metadata = normalize_metadata(feature_metadata, candidate_features, self.feature_data_source)
+        self._corr_input_features = list(candidate_features)
+        self._corr_parameters = {
+            "representation": "woe", "method": "pearson", "input_row_count": X.height,
+            "prepared_row_count": X.height, "target": target, "target_aware_transform": True,
+            "target_rule": "normalized binary target non-null", "cleaning_field_pool": [],
+            "missing_policy": "Stage 3 WOE null filled with 0; no additional imputation",
+            "numeric_conversion": "Stage 3 binner WOE transform", "threshold": self.corr_thr,
+            "operator": ">", "priority_metric": "IV", "tie_rule": "descending IV then ascending feature ID",
+            "white_list": list(self.white_list),
+        }
         self.business_context = normalize_business_context(business_context)
         self._feature_source_map = {f: m.get("data_source") or "UNMAPPED" for f, m in self.feature_metadata.items()}
         valid_white_list = [
@@ -521,6 +532,9 @@ class MarsStatsSelector(MarsBaseSelector):
                                 {"corr": self.corr_thr},
                                 prev_count, len(current_features))
 
+        if not current_features and self.corr_thr is not None and self._corr_status != "computed":
+            self._corr_status = "skipped_no_candidates"
+
         # 执行特征集终态覆盖映射
         selected_set = set(current_features)
         selected_set.update(valid_white_list)
@@ -538,6 +552,7 @@ class MarsStatsSelector(MarsBaseSelector):
                 self._stage3_binner.prune(self.selected_features_)
             self.clear_cache()
 
+        self._finish_correlation()
         self._is_fitted = True
         self.show_summary()
         return self
@@ -1381,7 +1396,9 @@ class MarsStatsSelector(MarsBaseSelector):
 
     def _filter_corr(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """仅在已表现样本上执行目标感知的 WOE 共线性惩罚计算。"""
+        self._corr_candidates = list(features)
         if len(features) < 2:
+            self._corr_status = "skipped_insufficient_candidates"
             return features
         if self.target is None:
             raise ValueError("Selector target is unavailable for WOE correlation filtering.")
@@ -1396,6 +1413,13 @@ class MarsStatsSelector(MarsBaseSelector):
             return_type="woe",
         )
         corr_matrix_df = df_woe.select(woe_cols).fill_null(0.0).corr()
+        self._corr_matrix = corr_matrix_df.to_numpy()
+        self._corr_status = "computed"
+        self._corr_parameters.update(
+            correlation_row_count=observed_df.height, cleaning_field_pool=list(features),
+            woe_source="Stage 3 fitted binner", binning_fit_source=self._binning_fit_source,
+            binning_params=self.binning_params if not self.skip_fine_scan else self.rough_binning_params,
+        )
 
         corr_matrix_with_names = corr_matrix_df.with_columns(
             feature_name=pl.Series(woe_cols)
@@ -1412,12 +1436,16 @@ class MarsStatsSelector(MarsBaseSelector):
         for feat in sorted_feats:
             if self._should_bypass_filter(feat):
                 kept_features_set.add(feat)
+                self._record_correlation(feat, None, "protect", None,
+                                         self._feature_iv_dict.get(feat, 0.0), None, protected=True)
                 continue
 
             if feat in dropped_features:
                 continue
 
             kept_features_set.add(feat)
+            self._record_correlation(feat, None, "keep", None,
+                                     self._feature_iv_dict.get(feat, 0.0), None)
             self._register_feature_decision(feat, "Selected", "Corr_Filter", "Independent", self._feature_iv_dict.get(feat, 0))
 
             target_woe_name = f"{feat}_woe"
@@ -1432,6 +1460,10 @@ class MarsStatsSelector(MarsBaseSelector):
                     orig_f = other_feat_woe[:-4]
                     if orig_f not in dropped_features and not self._should_bypass_filter(orig_f):
                         dropped_features.add(orig_f)
+                        self._record_correlation(orig_f, feat, "drop",
+                                                 float(high_corr_row.get_column(other_feat_woe)[0]),
+                                                 self._feature_iv_dict.get(orig_f, 0.0),
+                                                 self._feature_iv_dict.get(feat, 0.0))
                         self._register_feature_decision(orig_f, "Dropped", "Corr_Filter", f"Correlated with '{feat}'", corr_val)
 
         return [f for f in features if f in kept_features_set]

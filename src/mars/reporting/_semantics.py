@@ -93,6 +93,51 @@ for _metric, _meaning in {
     )
 
 
+_DEFINITIONS.update({
+    "feature_a": ("identifier", "无序特征对按固定候选顺序存储的左端原始 ID"),
+    "feature_b": ("identifier", "无序特征对按固定候选顺序存储的右端原始 ID"),
+    "trigger_feature": ("identifier", "真实筛选分支中导致当前决定的特征原始 ID；保留事件可为空"),
+    "peer_feature": ("identifier", "与中心查询特征相对的另一端原始 ID"),
+    "sample_count": ("count", "该格子或范围全部真实样本整数人数，包含特殊箱"),
+    "observed_sample_count": ("count", "规范化二元标签非空的有表现整数人数；无标签为未请求"),
+    "bad_sample_count": ("count", "有表现样本中 label=1 的整数人数"),
+    "good_sample_count": ("count", "有表现整数人数减坏人数"),
+    "weight_sum": ("weight", "该范围全部样本权重和"),
+    "observed_weight_sum": ("weight", "有表现样本权重和，加权风险的实际分母"),
+    "bad_weight_sum": ("weight", "有表现坏样本权重和"),
+    "observed_amt": ("unknown_business_unit", "good_amt+bad_amt，有表现非负金额分母，币种见 business_context"),
+    "correlation": ("correlation", "有符号相关系数；raw/WOE、方法、样本准备见 parameters"),
+    "abs_correlation": ("correlation", "abs(correlation)，原生排序用物化派生值"),
+    "diagonal": ("correlation", "引擎实际对角值，未定义不合成 1"),
+    "sample_share": ("ratio", "样本数/同标签同范围全部样本数，含所有特殊箱"),
+    "observed_coverage": ("ratio", "有表现整数样本数/全部整数样本数"),
+    "bad_rate": ("ratio", "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"),
+    "row_bad_rate": ("ratio", "同标签、同范围、同 X 分段边际的同口径坏率"),
+    "delta_vs_row": ("ratio_difference", "格子坏率减 X 边际坏率；小数差值，展示乘 100 为百分点"),
+    "lift_vs_row": ("dimensionless", "同口径格子坏率/X 边际坏率；零分母不可用"),
+    "lift_vs_overall": ("dimensionless", "同口径格子或边际坏率/总体坏率；零分母不可用"),
+    "unweighted_ci_lower": ("ratio", "未加权整数 bad/n 的 Wilson 下界；非加权坏率区间"),
+    "unweighted_ci_upper": ("ratio", "未加权整数 bad/n 的 Wilson 上界；非加权坏率区间"),
+    "bad_sample_share": ("ratio", "区域坏人数/原样本范围有表现坏人数"),
+    "retained_count_delta": ("count", "候选实际留存人数减基准实际留存人数"),
+    "retained_share_delta": ("ratio_difference", "候选样本留存率减基准样本留存率；未声称等覆盖"),
+    "bad_rate_delta": ("ratio_difference", "候选留存坏率减基准留存坏率；同权重/标签口径"),
+    "good_sample_share": ("ratio", "区域好人数/原样本范围有表现好人数"),
+    "risk_rank": ("ordinal", "正常分段低风险到高风险的 1 起始顺序；特殊箱为 null"),
+    "x_risk_rank": ("ordinal", "X 轴正常分段低风险到高风险顺序；特殊箱为 null"),
+    "y_risk_rank": ("ordinal", "Y 轴正常分段低风险到高风险顺序；特殊箱为 null"),
+    "bin_id": ("identifier", "保存的稳定分段 ID，不因展示方向改变"),
+    "x_bin": ("identifier", "X 轴固定 bin_id，区间见 bins"),
+    "y_bin": ("identifier", "Y 轴固定 bin_id，区间见 bins"),
+    "lower": ("score_unit", "原始分段数值下界；null 与 lower_unbounded 一起解释"),
+    "upper": ("score_unit", "原始分段数值上界；null 与 upper_unbounded 一起解释"),
+    "status": ("state", "valid/low_sample/empty/unobserved/not_requested/invalid_denominator/unavailable；不是风险结论"),
+    "sample_status": ("state", "empty 或 populated；与是否请求标签分开"),
+    "unweighted_ci_status": ("state", "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested"),
+    "weighted_ci_status": ("state", "加权置信区间 unsupported，未请求 not_requested"),
+})
+
+
 def _definition(column: str) -> dict[str, str]:
     """映射显式登记的指标变体；其余字段明确标为未知。"""
     aliases = {

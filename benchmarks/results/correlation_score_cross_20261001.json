@@ -1,0 +1,269 @@
+{
+  "environment": {
+    "python": "3.12.13",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "polars": "1.42.0",
+    "scipy": "1.18.0",
+    "pyarrow": "24.0.0",
+    "polars_threads": 4,
+    "seed": 20261001,
+    "matrix_calls_linear_fit": 1,
+    "baseline_matrix_calls_linear_fit": 2,
+    "baseline_revision": "4b3c88f5af3145619a35028202356d702e83cfba",
+    "baseline_selected_order_matches": true,
+    "blas_threads_env": "4",
+    "rss_sampling": "10ms process RSS; observed peak, allocator reuse affects deltas; single run, no speedup claim",
+    "package_version": "0.0.28",
+    "worktree": "uncommitted correlation/score-cross implementation"
+  },
+  "correlation": [
+    {
+      "rows": 1500,
+      "features": 500,
+      "pairs": 124750,
+      "compute": {
+        "seconds": 0.004999799999495735,
+        "rss_baseline_bytes": 297168896,
+        "rss_observed_peak_bytes": 300371968,
+        "rss_observed_delta_bytes": 3203072
+      },
+      "construction": {
+        "seconds": 0.0627604999972391,
+        "rss_baseline_bytes": 294346752,
+        "rss_observed_peak_bytes": 313413632,
+        "rss_observed_delta_bytes": 19066880
+      },
+      "save": {
+        "seconds": 0.012440099999366794,
+        "rss_baseline_bytes": 303906816,
+        "rss_observed_peak_bytes": 319438848,
+        "rss_observed_delta_bytes": 15532032
+      },
+      "load": {
+        "seconds": 0.031002499999885913,
+        "rss_baseline_bytes": 319414272,
+        "rss_observed_peak_bytes": 326500352,
+        "rss_observed_delta_bytes": 7086080
+      },
+      "peers20": {
+        "seconds": 0.004995899998903042,
+        "rss_baseline_bytes": 326475776,
+        "rss_observed_peak_bytes": 328704000,
+        "rss_observed_delta_bytes": 2228224
+      },
+      "submatrix30": {
+        "seconds": 0.026207200000499142,
+        "rss_baseline_bytes": 328679424,
+        "rss_observed_peak_bytes": 329175040,
+        "rss_observed_delta_bytes": 495616
+      },
+      "matrix_display30_html": {
+        "seconds": 0.07559870000113733,
+        "rss_baseline_bytes": 329150464,
+        "rss_observed_peak_bytes": 331042816,
+        "rss_observed_delta_bytes": 1892352
+      },
+      "file_bytes": 1949606
+    },
+    {
+      "rows": 1500,
+      "features": 1000,
+      "pairs": 499500,
+      "compute": {
+        "seconds": 0.015473100000235718,
+        "rss_baseline_bytes": 343023616,
+        "rss_observed_peak_bytes": 364109824,
+        "rss_observed_delta_bytes": 21086208
+      },
+      "construction": {
+        "seconds": 0.2253947999997763,
+        "rss_baseline_bytes": 340082688,
+        "rss_observed_peak_bytes": 422055936,
+        "rss_observed_delta_bytes": 81973248
+      },
+      "save": {
+        "seconds": 0.018134699999791337,
+        "rss_baseline_bytes": 355983360,
+        "rss_observed_peak_bytes": 372633600,
+        "rss_observed_delta_bytes": 16650240
+      },
+      "load": {
+        "seconds": 0.029548300000897143,
+        "rss_baseline_bytes": 372609024,
+        "rss_observed_peak_bytes": 380317696,
+        "rss_observed_delta_bytes": 7708672
+      },
+      "peers20": {
+        "seconds": 0.005618200000753859,
+        "rss_baseline_bytes": 379666432,
+        "rss_observed_peak_bytes": 379817984,
+        "rss_observed_delta_bytes": 151552
+      },
+      "submatrix30": {
+        "seconds": 0.029400000003079185,
+        "rss_baseline_bytes": 379793408,
+        "rss_observed_peak_bytes": 379830272,
+        "rss_observed_delta_bytes": 36864
+      },
+      "matrix_display30_html": {
+        "seconds": 0.0650857000000542,
+        "rss_baseline_bytes": 379805696,
+        "rss_observed_peak_bytes": 380129280,
+        "rss_observed_delta_bytes": 323584
+      },
+      "file_bytes": 7694612
+    }
+  ],
+  "cross": [
+    {
+      "rows": 200000,
+      "unused_columns": 50,
+      "input_columns": 55,
+      "actual_converted_columns": [
+        [
+          "x",
+          "y",
+          "bad",
+          "late",
+          "split"
+        ]
+      ],
+      "fit_and_joint_aggregate": {
+        "seconds": 0.18966010000076494,
+        "rss_baseline_bytes": 396054528,
+        "rss_observed_peak_bytes": 426217472,
+        "rss_observed_delta_bytes": 30162944
+      },
+      "axis_fits": [
+        {
+          "seconds": 0.003381700000318233,
+          "rss_baseline_bytes": 400519168,
+          "rss_observed_peak_bytes": 400650240,
+          "rss_observed_delta_bytes": 131072
+        },
+        {
+          "seconds": 0.0037728999996033963,
+          "rss_baseline_bytes": 400625664,
+          "rss_observed_peak_bytes": 400650240,
+          "rss_observed_delta_bytes": 24576
+        }
+      ],
+      "report_construction": [
+        {
+          "seconds": 0.0009621999997762032,
+          "rss_baseline_bytes": 426217472,
+          "rss_observed_peak_bytes": 426242048,
+          "rss_observed_delta_bytes": 24576
+        }
+      ],
+      "phase_note": "outer total includes nested fit/construction timers and their RSS sampler setup; other processing includes projection, assignment, aggregate and marginals",
+      "save": {
+        "seconds": 0.008470000000670552,
+        "rss_baseline_bytes": 408997888,
+        "rss_observed_peak_bytes": 409219072,
+        "rss_observed_delta_bytes": 221184
+      },
+      "load": {
+        "seconds": 0.017305900000792462,
+        "rss_baseline_bytes": 409194496,
+        "rss_observed_peak_bytes": 409243648,
+        "rss_observed_delta_bytes": 49152
+      },
+      "query20": {
+        "seconds": 0.000583500001084758,
+        "rss_baseline_bytes": 409219072,
+        "rss_observed_peak_bytes": 409247744,
+        "rss_observed_delta_bytes": 28672
+      },
+      "replay": {
+        "seconds": 0.012242299999343231,
+        "rss_baseline_bytes": 409223168,
+        "rss_observed_peak_bytes": 409530368,
+        "rss_observed_delta_bytes": 307200
+      },
+      "notebook_html": {
+        "seconds": 0.02209700000094017,
+        "rss_baseline_bytes": 409505792,
+        "rss_observed_peak_bytes": 410357760,
+        "rss_observed_delta_bytes": 851968
+      },
+      "raw_input_deleted_before_load_and_replay": true
+    },
+    {
+      "rows": 1000000,
+      "unused_columns": 0,
+      "input_columns": 5,
+      "actual_converted_columns": [
+        [
+          "x",
+          "y",
+          "bad",
+          "late",
+          "split"
+        ]
+      ],
+      "fit_and_joint_aggregate": {
+        "seconds": 0.2923774000009871,
+        "rss_baseline_bytes": 459968512,
+        "rss_observed_peak_bytes": 614031360,
+        "rss_observed_delta_bytes": 154062848
+      },
+      "axis_fits": [
+        {
+          "seconds": 0.015247100000124192,
+          "rss_baseline_bytes": 501886976,
+          "rss_observed_peak_bytes": 509915136,
+          "rss_observed_delta_bytes": 8028160
+        },
+        {
+          "seconds": 0.016318999998475192,
+          "rss_baseline_bytes": 501886976,
+          "rss_observed_peak_bytes": 501911552,
+          "rss_observed_delta_bytes": 24576
+        }
+      ],
+      "report_construction": [
+        {
+          "seconds": 0.0009805000008782372,
+          "rss_baseline_bytes": 614031360,
+          "rss_observed_peak_bytes": 614055936,
+          "rss_observed_delta_bytes": 24576
+        }
+      ],
+      "phase_note": "outer total includes nested fit/construction timers and their RSS sampler setup; other processing includes projection, assignment, aggregate and marginals",
+      "save": {
+        "seconds": 0.007963999996718485,
+        "rss_baseline_bytes": 579665920,
+        "rss_observed_peak_bytes": 579829760,
+        "rss_observed_delta_bytes": 163840
+      },
+      "load": {
+        "seconds": 0.018011100000876468,
+        "rss_baseline_bytes": 579805184,
+        "rss_observed_peak_bytes": 579833856,
+        "rss_observed_delta_bytes": 28672
+      },
+      "query20": {
+        "seconds": 0.0005839000004925765,
+        "rss_baseline_bytes": 579809280,
+        "rss_observed_peak_bytes": 579833856,
+        "rss_observed_delta_bytes": 24576
+      },
+      "replay": {
+        "seconds": 0.01242889999775798,
+        "rss_baseline_bytes": 579809280,
+        "rss_observed_peak_bytes": 579846144,
+        "rss_observed_delta_bytes": 36864
+      },
+      "notebook_html": {
+        "seconds": 0.01994090000152937,
+        "rss_baseline_bytes": 579821568,
+        "rss_observed_peak_bytes": 579862528,
+        "rss_observed_delta_bytes": 40960
+      },
+      "raw_input_deleted_before_load_and_replay": true
+    }
+  ]
+}

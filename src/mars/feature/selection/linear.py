@@ -11,7 +11,8 @@ import polars as pl
 
 from mars.core.constants import DIVISION_EPSILON
 from mars.feature.selection.base import _MarsXYSelector
-from mars.utils.imports import require_optional_module
+from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
+from mars.utils.imports import optional_import, require_optional_module
 
 
 class MarsLinearSelector(_MarsXYSelector):
@@ -154,6 +155,9 @@ class MarsLinearSelector(_MarsXYSelector):
             raise ValueError("MarsLinearSelector requires a binary target with both classes present.")
 
         features = [feature for feature in candidate_features if feature in clean.columns]
+        self._corr_parameters.update(prepared_row_count=len(clean), cleaning_field_pool=features,
+                                     numeric_conversion="pandas.to_numeric(errors='coerce')",
+                                     missing_policy="complete deletion on entire numeric requested pool and target; inf -> NaN")
         return clean.loc[:, features], clean[target_col].astype(int), features
 
     @staticmethod
@@ -172,10 +176,15 @@ class MarsLinearSelector(_MarsXYSelector):
         features: list[str],
     ) -> list[str]:
         """在高度相关的特征对中剔除一侧特征。"""
+        self._corr_candidates = list(features)
         if not self.enable_corr_filter or len(features) <= 1:
+            self._corr_status = "skipped_disabled" if not self.enable_corr_filter else "skipped_insufficient_candidates"
             return list(features)
 
-        corr = X.loc[:, features].corr(method=self.corr_method).abs()
+        corr = X.loc[:, features].corr(method=self.corr_method)
+        self._corr_matrix = corr.to_numpy(copy=False)
+        self._corr_status = "computed"
+        self._corr_parameters["correlation_row_count"] = len(X)
         strengths = self._target_strength(X, y, features)
         dropped: set[str] = set()
         for left_idx, left_feature in enumerate(features):
@@ -184,7 +193,8 @@ class MarsLinearSelector(_MarsXYSelector):
             for right_feature in features[left_idx + 1 :]:
                 if right_feature in dropped:
                     continue
-                value = float(corr.loc[left_feature, right_feature])
+                signed = float(corr.loc[left_feature, right_feature])
+                value = abs(signed)
                 if pd.isna(value) or value < self.corr_thr:
                     continue
                 drop_feature = (
@@ -193,6 +203,9 @@ class MarsLinearSelector(_MarsXYSelector):
                     else left_feature
                 )
                 dropped.add(drop_feature)
+                trigger = left_feature if drop_feature == right_feature else right_feature
+                self._record_correlation(drop_feature, trigger, "drop", signed,
+                                         strengths[drop_feature], strengths[trigger])
                 self._register_decision(
                     drop_feature,
                     status="Dropped",
@@ -203,6 +216,9 @@ class MarsLinearSelector(_MarsXYSelector):
                 )
                 if drop_feature == left_feature:
                     break
+        for feature in features:
+            if feature not in dropped:
+                self._record_correlation(feature, None, "keep", None, strengths[feature], None)
         return [feature for feature in features if feature not in dropped]
 
     @staticmethod
@@ -228,6 +244,9 @@ class MarsLinearSelector(_MarsXYSelector):
     def _apply_vif_filter(self, X: pd.DataFrame, features: list[str]) -> list[str]:
         """迭代剔除 VIF 最高且超过阈值的特征。"""
         if not self.enable_vif_filter or len(features) <= 1:
+            if not self.enable_vif_filter and not self._linear_diagnostics_available:
+                self.vif_table_ = pd.DataFrame(columns=["feature", "vif"])
+                return list(features)
             self.vif_table_ = self._compute_vif_table(X, features)
             return list(features)
 
@@ -421,6 +440,8 @@ class MarsLinearSelector(_MarsXYSelector):
         y: Any,
         *,
         features: Sequence[str] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> MarsLinearSelector:
         """
         执行相关性、VIF 与可选 stepwise 线性特征筛选。
@@ -433,6 +454,10 @@ class MarsLinearSelector(_MarsXYSelector):
             二分类目标数组。
         features : Sequence[str] | None
             本次参与筛选的特征列；不传时使用输入表中的全部候选列。
+        feature_metadata : FeatureMetadata | None
+            既有原始 ID 到展示名、来源、单位和业务描述的元数据。
+        business_context : dict[str, Any] | None
+            JSON 业务语义；未提供的样本单位、训练集含义保持 unknown。
 
         Returns
         -------
@@ -447,7 +472,25 @@ class MarsLinearSelector(_MarsXYSelector):
         >>> selector.selected_features_
         ['age']
         """
+        self._reset_correlation()
+        self._linear_diagnostics_available = optional_import("statsmodels") is not None
+        self.coef_table_ = pd.DataFrame()
+        self.vif_table_ = pd.DataFrame()
+        self.stepwise_history_ = pd.DataFrame()
         self.report_records_ = []
+        self._corr_input_features = list(features) if features is not None else list(X.columns)
+        self.feature_metadata = normalize_metadata(feature_metadata, self._corr_input_features)
+        self.business_context = normalize_business_context(business_context)
+        self._corr_parameters = {
+            "representation": "raw", "method": self.corr_method, "input_row_count": len(X),
+            "target": getattr(y, "name", None) or "unknown", "target_aware_transform": False,
+            "target_rule": "numeric non-null, finite; complete rows on cleaning pool",
+            "threshold": self.corr_thr, "operator": ">=", "priority_metric": "absolute target Spearman",
+            "tie_rule": "left candidate retained on >= strength; legacy NaN candidates excluded before corr",
+            "white_list": [],
+            "checked_max_corr_scope": "all other correlation candidates including dropped features",
+            "optional_diagnostics": "available" if self._linear_diagnostics_available else "statsmodels_unavailable; disabled VIF/Logit diagnostics skipped",
+        }
         X_numeric, target_series, features = self._prepare_xy(X, y, features)
         self.n_features_in_ = len(features)
 
@@ -470,12 +513,12 @@ class MarsLinearSelector(_MarsXYSelector):
 
         selected = self._apply_corr_filter(X_numeric, target_series, features)
         if self.enable_corr_filter:
-            corr_frame = X_numeric.loc[:, features].corr(method=self.corr_method).abs()
+            corr_frame = self._corr_matrix
             for feature in selected:
                 other_features = [item for item in features if item != feature]
                 max_corr = (
-                    float(corr_frame.loc[feature, other_features].max())
-                    if other_features
+                    float(np.nanmax(np.abs(corr_frame[features.index(feature), [features.index(f) for f in other_features]])))
+                    if other_features and corr_frame is not None
                     else 0.0
                 )
                 self._register_decision(
@@ -484,7 +527,7 @@ class MarsLinearSelector(_MarsXYSelector):
                     stage="corr",
                     reason="within_threshold",
                     value=max_corr,
-                    desc=f"Maximum absolute {self.corr_method} correlation stayed below threshold.",
+                    desc=f"Feature survived correlation decisions; maximum absolute {self.corr_method} correlation is over all original candidates, including dropped features.",
                 )
 
         selected = self._apply_vif_filter(X_numeric, selected)
@@ -526,7 +569,7 @@ class MarsLinearSelector(_MarsXYSelector):
                 desc="Feature survived linear selector filters.",
             )
 
-        if self.coef_table_.empty and self.selected_features_:
+        if self.coef_table_.empty and self.selected_features_ and self._linear_diagnostics_available:
             _, result = self._fit_logit_score(X_numeric, target_series, self.selected_features_)
             if result is not None:
                 params = result.params.reindex(["const", *self.selected_features_])
@@ -543,5 +586,6 @@ class MarsLinearSelector(_MarsXYSelector):
                     ]
                 )
 
+        self._finish_correlation()
         self._is_fitted = True
         return self

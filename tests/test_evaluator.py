@@ -47,6 +47,10 @@ def test_reporting_public_exports_are_the_only_report_class_surface() -> None:
         "ReportSnapshot",
         "load_report",
         "snapshot_report",
+        "CorrelationReport",
+        "get_correlation_matrix",
+        "get_related_features",
+        "show_correlation_matrix",
     ]
     assert "MarsBinningReport" not in mars.analysis.__all__
     assert "MarsProfileReport" not in mars.analysis.__all__

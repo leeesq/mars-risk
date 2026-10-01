@@ -9,6 +9,7 @@ import pandas as pd
 import polars as pl
 
 from mars.core.base import MarsBaseEstimator
+from mars.reporting.correlation import CorrelationReport, _correlation_report
 from mars.utils.logger import logger
 
 
@@ -201,6 +202,67 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         """检查当前筛选器是否已完成拟合。"""
         if not self._is_fitted:
             raise ValueError(f"{self.__class__.__name__} is not fitted yet. Call 'fit' first.")
+
+    def _reset_correlation(self) -> None:
+        """每次 fit 前清空状态，失败的重拟合不能访问上次快照。"""
+        self._is_fitted = False
+        self._corr_report: CorrelationReport | None = None
+        self._corr_matrix: Any = None
+        self._corr_candidates: list[str] = []
+        self._corr_input_features: list[str] = []
+        self._corr_events: list[dict[str, Any]] = []
+        self._corr_parameters: dict[str, Any] = {}
+        self._corr_status = "skipped_disabled"
+
+    def _record_correlation(
+        self, feature: str, trigger: str | None, action: str, signed: float | None,
+        feature_priority: float | None, trigger_priority: float | None,
+        *, protected: bool = False,
+    ) -> None:
+        """在真实分支处记录事件，避免从文本理由反向解析决策。"""
+        self._corr_events.append({
+            "event_order": len(self._corr_events), "feature": feature, "trigger_feature": trigger,
+            "action": action, "correlation": signed,
+            "abs_correlation": abs(signed) if signed is not None else None,
+            "threshold": self.corr_thr, "operator": self._corr_parameters["operator"],
+            "priority_metric": self._corr_parameters["priority_metric"],
+            "feature_priority": feature_priority, "trigger_priority": trigger_priority,
+            "tie_rule": self._corr_parameters["tie_rule"], "white_list_protected": protected,
+        })
+
+    def _finish_correlation(self) -> None:
+        """固定独立快照，释放不再使用的 signed dense 结果。"""
+        self._corr_report = _correlation_report(self)
+        self._corr_matrix = None
+
+    def get_correlation_report(self) -> CorrelationReport:
+        """返回本次成功拟合的独立相关性快照，不改变 get_report 的决策表返回值。
+
+        Returns
+        -------
+        CorrelationReport
+            完整相关阶段候选结果及真实事件。关闭或候选不足时状态明确为 skipped。
+            表查询的 features 匹配任一端点，sources 匹配任一端点来源，两条件采用交集。
+
+        Raises
+        ------
+        ValueError
+            未拟合、最新 fit 失败或该 selector 不支持相关性报告。
+
+        Notes
+        -----
+        保存后可用 reporting 的 get_related_features、get_correlation_matrix 和
+        show_correlation_matrix；不需要原始数据，也不触发新的相关计算。
+
+        Examples
+        --------
+        >>> selector.get_correlation_report().get_table("pairs", limit=5)  # doctest: +SKIP
+        """
+        self._check_is_fitted()
+        report = getattr(self, "_corr_report", None)
+        if report is None:
+            raise ValueError("This selector has no correlation report.")
+        return CorrelationReport(report._tables, report.describe())
 
 
 class _MarsXYSelector(MarsBaseSelector, ABC):

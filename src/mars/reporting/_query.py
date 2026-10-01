@@ -287,17 +287,41 @@ class _ReportQuery:
         from mars.compute import to_pandas_frame
 
         result = to_pandas_frame(frame).copy()
-        if "feature" in result.columns and any(
-            m.get("display_name") for m in self.feature_metadata.values()
-        ):
-            result.insert(
-                1,
-                "display_name",
-                result["feature"].map(
-                    lambda f: self.feature_metadata.get(f, {}).get("display_name") or f
-                ),
-            )
+        for role in ("feature", "feature_a", "feature_b", "peer_feature", "trigger_feature"):
+            if role in result.columns:
+                display = "display_name" if role == "feature" else f"{role}_display_name"
+                if display not in result.columns:
+                    result[display] = result[role].map(
+                        lambda f: self.feature_metadata.get(f, {}).get("display_name") or f
+                    )
         return result
+
+    def _role_table(
+        self, name: str, features: str | list[str] | None, sources: str | list[str] | None
+    ) -> ReportFrame:
+        """角色内采用并集，特征条件与来源条件采用交集；旧表仍沿用单特征契约。"""
+        frame = self._query_tables()[name]
+        entry = getattr(self, "_description", {}).get("tables", {}).get(name, {})
+        roles = entry.get("feature_roles")
+        scope = entry.get("feature_scope")
+        if roles is None and scope is None:
+            allowed = self._source_features(sources)
+            requested = _names(features, "features")
+            if allowed is not None:
+                requested = allowed if requested is None else [f for f in requested if f in allowed]
+            return query_table(frame, features=requested, _copy_result=False)
+        for selected in (_names(features, "features"), self._source_features(sources)):
+            if selected is None:
+                continue
+            if scope is not None:
+                if not set(scope).intersection(selected):
+                    frame = frame.head(0)
+            elif roles:
+                if isinstance(frame, pl.DataFrame):
+                    frame = frame.filter(pl.any_horizontal([pl.col(c).is_in(selected) for c in roles]))
+                else:
+                    frame = frame.loc[frame[list(roles)].isin(selected).any(axis=1)]
+        return frame
 
     def _query_metadata(self) -> dict[str, Any]:
         """读取两类报告各自保存的元数据。"""
@@ -497,7 +521,8 @@ class _ReportQuery:
         name : str
             describe 目录中的规范表名。
         features : str | list[str] | None
-            特征名称，None 为全部。
+            原始特征 ID，None 为全部。单特征表匹配 feature；角色表匹配任一端点，
+            多 ID 采用并集；报告级 scope 匹配任一声明模型分，不复制格子行。
         columns : list[str] | None
             投影字段；在筛选、排序之后投影。
         filters : dict[str, Any] | None
@@ -511,7 +536,8 @@ class _ReportQuery:
         limit : int | None
             非负最大行数；None 不限制。排序配合 limit 实现 Top-K。
         sources : str | list[str] | None
-            已登记的特征来源名称；来源未知时明确报错。
+            已登记来源；角色表匹配任一端点来源，独立于 features，条件间采用交集。
+            来源未知时报错；旧单特征表仍采用同一 feature 的来源条件。
 
         Returns
         -------
@@ -530,13 +556,8 @@ class _ReportQuery:
         tables = self._query_tables()
         if name not in tables:
             raise ValueError(f"Unknown table {name!r}. Available: {list(tables)}")
-        allowed = self._source_features(sources)
-        if allowed is not None:
-            requested = _names(features, "features")
-            features = allowed if requested is None else [f for f in requested if f in allowed]
         return query_table(
-            tables[name],
-            features=features,
+            self._role_table(name, features, sources),
             columns=columns,
             filters=filters,
             sort_by=sort_by,
@@ -570,15 +591,9 @@ class _ReportQuery:
         """
         options = {"offset": 0, "limit": 10, **query}
         page = self.get_table(name, **options)
-        features = options.get("features")
-        allowed = self._source_features(options.get("sources"))
-        if allowed is not None:
-            requested = _names(features, "features")
-            features = allowed if requested is None else [f for f in requested if f in allowed]
         # 计数只筛选原生表；Pandas 未筛选整表时不生成副本。
         matched = query_table(
-            self._query_tables()[name],
-            features=features,
+            self._role_table(name, options.get("features"), options.get("sources")),
             filters=options.get("filters"),
             _copy_result=False,
         )
@@ -728,15 +743,14 @@ class _ReportQuery:
                 "truncated": page["truncated"],
             }
             payload["evidence"].append(item)
-            selected_features = (
-                frame["feature"].to_list()
-                if isinstance(frame, pl.DataFrame) and "feature" in frame.columns
-                else frame["feature"].tolist()
-                if "feature" in frame.columns
-                else _names(options.get("features"), "features") or []
-            )
+            roles = entry.get("feature_roles", {"feature": "feature"})
+            selected_features = list(entry.get("feature_scope", []))
+            for role in roles:
+                if role in frame.columns:
+                    selected_features.extend(frame[role].to_list() if isinstance(frame, pl.DataFrame) else frame[role].tolist())
+            selected_features.extend(_names(options.get("features"), "features") or [])
             description["feature_metadata"].update(
-                {f: deepcopy(self.feature_metadata.get(f, {})) for f in selected_features}
+                {f: deepcopy(self.feature_metadata.get(f, {})) for f in selected_features if isinstance(f, str)}
             )
             if page["omitted_rows"]:
                 omitted.append(
@@ -892,7 +906,8 @@ class _ReportQuery:
         omitted_rows: dict[str, int] = {}
         matched = False
         for name, table in self._query_tables().items():
-            if "feature" in table.columns:
+            entry = getattr(self, "_description", {}).get("tables", {}).get(name, {})
+            if "feature" in table.columns or entry.get("feature_roles") or entry.get("feature_scope"):
                 page = self.query_page(name, features=feature, limit=limit)
                 matched = matched or page["total_rows"] > 0
                 results[name] = page["data"]
