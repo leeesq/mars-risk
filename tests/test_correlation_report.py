@@ -22,6 +22,31 @@ from mars.reporting import (
 )
 
 
+def test_long_names_keep_complete_enum_pairs_and_unavailable_diagonal() -> None:
+    names = [f"credit_bureau_monthly_rolling_application_risk_{i}" for i in range(60)]
+    selector = MarsLinearSelector()
+    selector._reset_correlation()
+    selector._corr_candidates = names
+    selector._corr_input_features = names
+    matrix = np.eye(60)
+    matrix[0, 1] = matrix[1, 0] = -0.75
+    matrix[-1, :] = matrix[:, -1] = np.nan
+    selector._corr_matrix = matrix
+    selector._corr_status = "computed"
+    selector._finish_correlation()
+    selector._is_fitted = True
+    report = selector.get_correlation_report()
+    pairs = report.get_table("pairs")
+    assert pairs.height == 60 * 59 // 2
+    assert isinstance(pairs.schema["feature_a"], pl.Enum)
+    assert pairs.schema["feature_a"].categories.to_list() == names
+    assert pairs["correlation"].null_count() == 59
+    actual = get_correlation_matrix(report, [names[0], names[1], names[-1]])
+    np.testing.assert_allclose(
+        actual.to_numpy(), matrix[np.ix_([0, 1, 59], [0, 1, 59])], equal_nan=True
+    )
+
+
 def test_linear_reuses_signed_matrix_and_preserves_complete_pool(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

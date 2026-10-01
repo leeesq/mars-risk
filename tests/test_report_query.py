@@ -129,7 +129,10 @@ def test_ai_serializes_date_null_zero_and_nonfinite_with_evidence(
     )
     rows = json.loads(special.to_ai_context())["evidence"][0]["rows"]
     assert [row["mean"] for row in rows] == [
-        None, {"$mars": "float", "value": "nan"}, {"$mars": "float", "value": "inf"}, 0.0,
+        None,
+        {"$mars": "float", "value": "nan"},
+        {"$mars": "float", "value": "inf"},
+        0.0,
     ]
 
 
@@ -160,6 +163,30 @@ def test_profile_navigation_recognizes_quality_trends() -> None:
         {},
     )
     assert "trend" not in report.get_feature("x")["unavailable"]
+
+
+def test_context_keeps_last_evidence_with_scope_or_rejects_budget() -> None:
+    report = MarsProfileReport(
+        pl.DataFrame({"feature": ["x"], "mean": [1.5]}),
+        {},
+        {},
+        feature_metadata={"x": {"data_source": "bank", "description": "业务定义" * 100}},
+        report_meta={"weights_col": "weight", "group_col": "cohort"},
+        business_context={"labels": {"bad": {"definition": "逾期", "performance_window": "90天"}}},
+    )
+    for budget in (2500, 3000, 5000):
+        try:
+            context = report.to_ai_context(max_chars=budget)
+        except ValueError as exc:
+            assert "max_chars" in str(exc)
+        else:
+            payload = json.loads(context)
+            assert payload["evidence"][0]["rows"] == [{"feature": "x", "mean": 1.5}]
+            assert payload["description"]["parameters"]["weights_col"] == "weight"
+            assert (
+                payload["description"]["business_context"]["labels"]["bad"]["definition"] == "逾期"
+            )
+            assert len(context) <= budget
 
 
 def test_display_uses_small_native_query_and_projection(

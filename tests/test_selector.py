@@ -522,7 +522,8 @@ def test_stats_selector_rough_bins_use_benchmark_but_metrics_use_df() -> None:
     assert selector._stage3_binner.bin_woes_["x"]
 
 
-def test_stats_selector_fine_bins_use_benchmark() -> None:
+@pytest.mark.parametrize("fine_jobs", [None, 2])
+def test_stats_selector_fine_bins_use_benchmark(fine_jobs: int | None) -> None:
     rng = np.random.default_rng(2029)
     benchmark_values = np.linspace(0.0, 1.0, 120)
     evaluation_values = np.linspace(100.0, 101.0, 120)
@@ -540,6 +541,13 @@ def test_stats_selector_fine_bins_use_benchmark() -> None:
             "target": np.tile([0, 1], 60),
         }
     )
+    fine_params: dict[str, Any] = {
+        "n_bins": 3,
+        "min_bin_size": 0.05,
+        "time_limit": 1,
+    }
+    if fine_jobs is not None:
+        fine_params["n_jobs"] = fine_jobs
     selector = MarsStatsSelector(
         skip_rough_scan=True,
         iv_thr=-1.0,
@@ -547,11 +555,8 @@ def test_stats_selector_fine_bins_use_benchmark() -> None:
         psi_thr=None,
         rc_thr=None,
         corr_thr=None,
-        binning_params={
-            "n_bins": 3,
-            "min_bin_size": 0.05,
-            "time_limit": 1,
-        },
+        binning_params=fine_params,
+        n_jobs=1,
     )
 
     selector.fit(
@@ -562,6 +567,7 @@ def test_stats_selector_fine_bins_use_benchmark() -> None:
     )
     finite_cuts = [cut for cut in selector._stage3_binner.bin_cuts_["x"] if np.isfinite(cut)]
 
+    assert selector._stage3_binner.n_jobs == (1 if fine_jobs is None else fine_jobs)
     assert finite_cuts
     assert max(finite_cuts) < 2.0
     assert selector._feature_iv_dict["x"] == pytest.approx(0.0, abs=1e-9)

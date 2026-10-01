@@ -1270,8 +1270,12 @@ def _build_rule_explanations(result: MarsRuleMiningResult) -> pl.DataFrame:
         "validation" if result.metadata.get("validation_status") == "independent" else "in_sample"
     )
     target: str = str(result.metadata["target"])
+    selected_ids: List[str] = [rule.rule_id for rule in result.rule_set.rules]
     hit_rows: pl.DataFrame = result.evaluation.overall_table.filter(
-        (pl.col("dataset") == dataset) & (pl.col("target") == target) & (pl.col("group") == "hit")
+        (pl.col("dataset") == dataset)
+        & (pl.col("target") == target)
+        & (pl.col("group") == "hit")
+        & pl.col("rule_id").is_in(selected_ids)
     )
     metrics_by_rule: Dict[str, Dict[str, Any]] = {
         str(row["rule_id"]): row for row in hit_rows.to_dicts()

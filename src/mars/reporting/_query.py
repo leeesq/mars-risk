@@ -676,7 +676,8 @@ class _ReportQuery:
         limit : int
             每表非负整数行数上限；AI 上下文不接受无界的 None。
         max_chars : int
-            最终 JSON 的 Unicode 字符预算，不等于 token 数。
+            最终 JSON 的 Unicode 字符预算，不等于 token 数。非空查询至少保留一条完整证据；
+            必要字段口径和查询范围无法同时容纳时明确拒绝。
         sources : str | list[str] | None
             来源筛选。
         sort_by : str | list[str] | None
@@ -691,12 +692,13 @@ class _ReportQuery:
         Returns
         -------
         str
-            标准 JSON；定义仅出现一次，省略记录包含数量、原因及继续查询定位。
+            标准 JSON；定义仅出现一次，相同 null 口径存放在表级 field_defaults，
+            字段定义继承该默认值。省略记录包含数量、原因及继续查询定位。
 
         Raises
         ------
         ValueError
-            查询无效或预算无法容纳最小必要说明时抛出。
+            查询无效或预算无法同时容纳最小必要说明及非空查询的一条证据时抛出。
 
         Examples
         --------
@@ -739,6 +741,7 @@ class _ReportQuery:
             "budget": {"max_chars": max_chars, "unit": "unicode_characters"},
         }
         omitted = payload["omitted"]
+        evidence_features: dict[str, list[set[str]]] = {}
         for name in selected:
             options: dict[str, Any] = dict(
                 features=features,
@@ -779,6 +782,19 @@ class _ReportQuery:
                 }
             else:
                 entry["fields"] = {c: entry["fields"][c] for c in frame.columns}
+                # 相同 null 口径在表级定义一次；字段名、单位和指标定义仍逐列保留。
+                definitions = list(entry["fields"].values())
+                if (
+                    len(definitions) > 1
+                    and definitions[0].get("null")
+                    and all(
+                        definition.get("null") == definitions[0]["null"]
+                        for definition in definitions
+                    )
+                ):
+                    entry["field_defaults"] = {"null": definitions[0]["null"]}
+                    for definition in definitions:
+                        definition.pop("null")
             description["tables"][name] = entry
             rows = table_rows(frame)
             item = {
@@ -794,8 +810,15 @@ class _ReportQuery:
             payload["evidence"].append(item)
             roles = entry.get("feature_roles", {"feature": "feature"})
             selected_features = list(entry.get("feature_scope", []))
+            fixed_features = set(selected_features) | set(
+                _names(options.get("features"), "features") or []
+            )
+            row_features = [set(fixed_features) for _ in rows]
             for role in roles:
                 if role in frame.columns:
+                    for index, value in enumerate(frame[role]):
+                        if isinstance(value, str):
+                            row_features[index].add(value)
                     selected_features.extend(
                         frame[role].to_list()
                         if isinstance(frame, pl.DataFrame)
@@ -819,8 +842,18 @@ class _ReportQuery:
                 members = query_table(
                     self._query_tables()[relation["table"]],
                     filters={relation["key"]: {"op": "in", "value": list(set(ids))}},
-                    columns=[relation["feature"]],
+                    columns=[relation["key"], relation["feature"]],
                 )
+                membership: dict[Any, set[str]] = {}
+                for key, feature in (
+                    members.iter_rows()
+                    if isinstance(members, pl.DataFrame)
+                    else members.itertuples(index=False, name=None)
+                ):
+                    membership.setdefault(key, set()).add(feature)
+                for role in relation["roles"]:
+                    for index, key in enumerate(identities[role]):
+                        row_features[index].update(membership.get(key, set()))
                 selected_features.extend(
                     members[relation["feature"]].to_list()
                     if isinstance(members, pl.DataFrame)
@@ -833,6 +866,7 @@ class _ReportQuery:
                     if isinstance(f, str)
                 }
             )
+            evidence_features[name] = row_features
             if page["omitted_rows"]:
                 omitted.append(
                     {
@@ -929,9 +963,23 @@ class _ReportQuery:
                     row.pop(column)
                 wide_item["truncated"] = True
                 continue
-            if candidates:
+            if candidates and any(len(item["rows"]) > 1 for item in candidates):
                 item = max(candidates, key=lambda entry: len(_encode(entry["rows"])))
+                if len(item["rows"]) == 1:
+                    item = max(
+                        (entry for entry in candidates if len(entry["rows"]) > 1),
+                        key=lambda entry: len(_encode(entry["rows"])),
+                    )
                 item["rows"].pop()
+                evidence_features[item["reference"]].pop()
+                retained = set().union(
+                    *(scope for scopes in evidence_features.values() for scope in scopes)
+                )
+                description["feature_metadata"] = {
+                    feature: entry
+                    for feature, entry in description["feature_metadata"].items()
+                    if feature in retained
+                }
                 item["returned_rows"] -= 1
                 item["next_offset"] = item["query"]["offset"] + item["returned_rows"]
                 item["truncated"] = True
@@ -939,6 +987,52 @@ class _ReportQuery:
                 m["rows"] += 1
                 m["continue_at"]["offset"] = item["next_offset"]
                 continue
+            if candidates:
+                # 口径、实际参数及标签范围与最后一条证据一起保留。先省略重复导航和
+                # 业务长描述，省略定位指向完整 describe；不能先删光证据再释放说明预算。
+                descriptive = [
+                    entry
+                    for entry in description["feature_metadata"].values()
+                    if "description" in entry
+                ]
+                if descriptive:
+                    for entry in descriptive:
+                        entry.pop("description")
+                    omitted.append(
+                        {
+                            "reference": "describe.feature_metadata.*.description",
+                            "count": len(descriptive),
+                            "reason": "description_budget",
+                        }
+                    )
+                    continue
+                optional_block = next(
+                    (
+                        key
+                        for key in (
+                            "default_ai_queries",
+                            "operations",
+                            "public_functions",
+                            "saved_operations",
+                        )
+                        if description.get(key)
+                    ),
+                    None,
+                )
+                if optional_block is not None:
+                    value = description.pop(optional_block)
+                    omitted.append(
+                        {
+                            "reference": f"describe.{optional_block}",
+                            "count": len(value),
+                            "reason": "description_budget",
+                        }
+                    )
+                    continue
+                raise ValueError(
+                    "max_chars cannot contain minimum report description and one evidence row; "
+                    "increase budget or project fewer fields."
+                )
             # 无证据可裁剪后只能省略整个说明块；必需身份、目录、计数和引用保留。
             block = next(
                 (

@@ -55,12 +55,12 @@ jobs:
       if: matrix.python-version == '3.8'
       run: |
         python -m pip install --upgrade "pip<25"
-        python -m pip install -c constraints/python38.txt -e . pytest
+        python -m pip install -c constraints/python38.txt -e . pytest "psutil>=5.9.0"
     - name: Install Python 3.9 dependency-boundary stack
       if: matrix.python-version == '3.9'
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -e . pytest
+        python -m pip install -e . pytest "psutil>=5.9.0"
     - name: Verify package imports
       run: |
         python -m compileall -q src/mars
@@ -127,6 +127,11 @@ jobs:
       run: python benchmarks/benchmark_rule_mining.py --engine mars --rows 2000 --features 20 --max-candidates 200
     - name: Run rule stage performance smoke
       run: python benchmarks/benchmark_rule_stages.py --stage all --rows 2000 --rules 20 --repeats 1
+    - name: Run isolated core report capacity smoke
+      run: |
+        python benchmarks/benchmark_core_capacity.py --case rule_report --scale smoke --backend polars --repeats 1 --output "$RUNNER_TEMP/core-rule.json"
+        python benchmarks/benchmark_core_capacity.py --case correlation_short --scale smoke --backend polars --repeats 1 --output "$RUNNER_TEMP/core-correlation.json"
+        python benchmarks/benchmark_core_capacity.py --case score_cross --scale smoke --backend pandas --repeats 1 --output "$RUNNER_TEMP/core-cross.json"
 
   installed-wheel-smoke:
     name: Installed wheel smoke (Python ${{ matrix.python-version }})

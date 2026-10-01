@@ -134,10 +134,23 @@ def test_queries_do_not_recompute_and_budget_is_final_json(monkeypatch: pytest.M
     monkeypatch.setattr("mars.rule.workflow.mine_rules", forbidden)
     monkeypatch.setattr("mars.rule.workflow.analyze_rule_set", forbidden)
     report.get_feature("salary")
+    # 全字段口径与至少一条证据无法放进该预算时拒绝；显式投影仍可有效消费。
+    with pytest.raises(ValueError, match="one evidence row"):
+        report.to_ai_context(
+            queries={"evaluation": {"features": "salary", "limit": 100}}, max_chars=7000
+        )
     text = report.to_ai_context(
-        queries={"evaluation": {"features": "salary", "limit": 100}}, max_chars=7000
+        queries={
+            "evaluation": {
+                "features": "salary",
+                "limit": 100,
+                "columns": ["rule_id", "sample_count", "event_rate", "lift"],
+            }
+        },
+        max_chars=7000,
     )
     payload = json.loads(text)
+    assert payload["evidence"][0]["returned_rows"] > 0
     assert len(text) <= 7000 and payload["omitted"]
     assert payload["evidence"][0]["report_id"] == report.report_id
     assert "candidates" not in [
@@ -322,9 +335,12 @@ def test_agent_registration_queries_restored_rule_report(tmp_path: Path) -> None
     assert answer.success and answer.data["rows"]
     assert answer.data["persistent_report_id"] == identifier
     assert answer.data["evidence_reference"]["report_id"] == identifier
-    assert answer.data["rows"] == restored.get_table(
-        "evaluation", features=["salary"], sources=["application"], limit=2
-    ).to_dicts()
+    assert (
+        answer.data["rows"]
+        == restored.get_table(
+            "evaluation", features=["salary"], sources=["application"], limit=2
+        ).to_dicts()
+    )
 
 
 def test_benchmark_and_relation_validation(tmp_path: Path) -> None:

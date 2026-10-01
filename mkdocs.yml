@@ -120,6 +120,7 @@ nav:
       - 规则模块来源: project/rule-origin.md
       - Deimos 迁移矩阵: project/deimos-rule-migration.md
       - 性能基准: performance/benchmark.md
+      - 核心规模与报告消费验收: performance/core-capacity.md
       - 相关性与交叉报告验证: performance/correlation-score-cross.md
       - FAQ: faq.md
       - 贡献文档: project/contributing.md

@@ -19,24 +19,32 @@ def _correlation_report(selector: Any) -> CorrelationReport:
     matrix = selector._corr_matrix
     n = len(candidates)
     a, b = np.triu_indices(n, 1) if matrix is not None else (np.array([], dtype=int),) * 2
-    names = np.asarray(candidates, dtype=str)
     values = matrix[a, b] if matrix is not None else np.array([], dtype=float)
-    pairs = pl.DataFrame(
-        {
-            "feature_a": names[a],
-            "feature_b": names[b],
-            "correlation": values,
-            "abs_correlation": np.abs(values),
-            "status": np.where(np.isfinite(values), "valid", "unavailable"),
-        }
-    ).with_columns(
-        [
-            pl.when(pl.col(c).is_finite()).then(pl.col(c)).otherwise(None).alias(c)
-            for c in ("correlation", "abs_correlation")
-        ]
+    # 直接以物理索引构造 Enum，避免平方级复制长名称的 NumPy Unicode 数组。
+    # 空候选仍沿用 String schema；规范上三角、类别顺序和实际系数不变。
+    endpoint_dtype = pl.Enum(candidates) if n else pl.String
+    pairs = (
+        pl.DataFrame(
+            {
+                "feature_a": pl.Series(a.astype(np.uint32)).cast(endpoint_dtype),
+                "feature_b": pl.Series(b.astype(np.uint32)).cast(endpoint_dtype),
+                "correlation": values,
+            }
+        )
+        .with_columns(
+            pl.col("correlation").abs().alias("abs_correlation"),
+            pl.when(pl.col("correlation").is_finite())
+            .then(pl.lit("valid"))
+            .otherwise(pl.lit("unavailable"))
+            .alias("status"),
+        )
+        .with_columns(
+            [
+                pl.when(pl.col(c).is_finite()).then(pl.col(c)).otherwise(None).alias(c)
+                for c in ("correlation", "abs_correlation")
+            ]
+        )
     )
-    if n:
-        pairs = pairs.with_columns(pl.col("feature_a", "feature_b").cast(pl.Enum(candidates)))
     catalog: list[dict[str, Any]] = []
     for feature in selector._corr_input_features:
         i = candidates.index(feature) if feature in candidates else None

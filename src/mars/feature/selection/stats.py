@@ -142,7 +142,8 @@ class MarsStatsSelector(MarsBaseSelector):
         batch_size : int | None
             批量评估时的特征批大小。
         n_jobs : int
-            并行任务数，含义遵循 joblib 约定。
+            并行任务数，含义遵循 joblib 约定；精筛分箱默认继承该值，
+            显式 ``binning_params['n_jobs']`` 优先。
         """
         super().__init__()
 
@@ -1169,6 +1170,7 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.evaluator import MarsBinEvaluator
 
         binner_params = {
+            "n_jobs": self.n_jobs,
             **self.binning_params,
             "missing_values": self.missing_values,
             "special_values": self.special_values,

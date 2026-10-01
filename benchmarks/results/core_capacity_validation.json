@@ -1,0 +1,121 @@
+{
+  "recorded_at_utc": "2026-10-01T16:22:58.160302+00:00",
+  "commit": "26d0f2d1f38c1a0483fe7c9baa2a2b68124d9909",
+  "worktree": "modified; measured source SHA256 is in individual rounds",
+  "harness_sha256": "f95e90836495cf71050829b42d282e4ca2131b0389c379178a935cabee87871e",
+  "workloads_sha256": "f4d85ce67ad9395b940a4f7640d1f3020a2200b5fc50307d9d69b0e8ebe05c9f",
+  "checks": [
+    {
+      "name": "Python 3.10.19 base regression",
+      "command": "python -m pytest -q tests -m \"not docs_ml and not optional_ml\"",
+      "interpreter": "D:/my_download_program/anaconda3/envs/mars/python.exe",
+      "status": "passed",
+      "passed": 708,
+      "skipped": 1,
+      "deselected": 7,
+      "seconds": 91.1
+    },
+    {
+      "name": "Python 3.8.20 frozen-dependency base regression",
+      "command": "python -m pytest -q tests -m \"not docs_ml and not optional_ml\"",
+      "interpreter": "D:/my_download_program/anaconda3/envs/mars38/python.exe",
+      "status": "passed",
+      "passed": 583,
+      "skipped": 11,
+      "deselected": 7,
+      "seconds": 70.07,
+      "note": "Explicit current src PYTHONPATH; psutil 7.2.2 cp37-abi3 from installed modern runtime staged into an owned temporary dependency directory because old OpenSSL pip TLS failed. This directory is removed after checks; CI installs psutil explicitly."
+    },
+    {
+      "name": "Python 3.12.13 current-dependency focused regression",
+      "command": "python -m pytest -q tests/test_core_capacity_benchmark.py tests/test_correlation_report.py tests/test_report_query.py tests/test_rule_portable_report.py tests/test_score_cross.py tests/test_analysis_batching.py tests/test_selector.py -m \"not optional_ml\"",
+      "interpreter": "D:/my_download_program/anaconda3/envs/mars312/python.exe",
+      "status": "passed",
+      "passed": 127,
+      "deselected": 1,
+      "seconds": 29.48
+    },
+    {
+      "name": "Ruff",
+      "command": "python -m ruff check src tests scripts docs/snippets benchmarks/benchmark_core_capacity.py benchmarks/benchmark_core_workloads.py",
+      "status": "passed",
+      "note": "Existing ignored benchmarks/_artifacts notebooks were not changed or included."
+    },
+    {
+      "name": "production Mypy",
+      "command": "python -m mypy src/mars",
+      "status": "passed",
+      "source_files": 154
+    },
+    {
+      "name": "benchmark Mypy",
+      "command": "python -m mypy benchmarks/benchmark_core_capacity.py benchmarks/benchmark_core_workloads.py --follow-imports=silent --ignore-missing-imports",
+      "status": "passed",
+      "source_files": 2,
+      "note": "External psutil/threadpoolctl stubs unavailable; production type configuration unchanged."
+    },
+    {
+      "name": "public docstrings",
+      "command": "pydoclint src/mars",
+      "status": "passed"
+    },
+    {
+      "name": "private docstrings",
+      "command": "python scripts/check_private_docstrings.py",
+      "status": "passed",
+      "existing_warnings": 6
+    },
+    {
+      "name": "MkDocs strict",
+      "command": "python -m mkdocs build --strict --site-dir <owned temporary directory>",
+      "status": "passed",
+      "seconds": 6.38
+    },
+    {
+      "name": "Python 3.8/3.9 AST grammar",
+      "status": "passed",
+      "files": [
+        "benchmarks/benchmark_core_capacity.py",
+        "benchmarks/benchmark_core_workloads.py",
+        "tests/test_core_capacity_benchmark.py"
+      ],
+      "note": "No Python 3.9 interpreter available; grammar validation is not an executed 3.9 test suite."
+    },
+    {
+      "name": "standard full batch table consistency",
+      "status": "passed",
+      "rows": 50000,
+      "features": 200,
+      "backends": [
+        "pandas",
+        "polars"
+      ],
+      "batch_sizes": [
+        50,
+        100
+      ],
+      "rtol": 1e-08,
+      "atol": 1e-08,
+      "raw_evidence": "core_capacity_diagnostics.json / runs / batch_consistency"
+    },
+    {
+      "name": "standard selection semantic equality",
+      "status": "passed",
+      "raw_evidence": "core_capacity_diagnostics.json / selection_semantic_check",
+      "selected_order": "exact",
+      "audit_rows": 599,
+      "maximum_absolute_float_difference": 3.686287386450715e-18
+    },
+    {
+      "name": "diff whitespace",
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "limitations": [
+    "Performance measurements use Python 3.10 only; cross-version tests do not establish cross-environment speed comparisons.",
+    "optional_ml and docs_ml were excluded from base suites.",
+    "Large expansion measured one round with warmup, primarily Polars; all larger Pandas conversions have not been measured.",
+    "Standard millisecond-scale review triggers remain listed; only representative large consumption triggers received additional paired reruns."
+  ]
+}
