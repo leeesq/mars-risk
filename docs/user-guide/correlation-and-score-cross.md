@@ -4,6 +4,8 @@
 Parquet 格式，保留身份、原生表、稳定顺序和业务语义；没有 pickle、个体数据或模型。
 所有机器比例用小数，`delta_vs_row` 为小数差，展示时转为百分点。
 
+<span id="相关性报告"></span>
+
 ## 相关性报告
 
 `MarsLinearSelector.fit(X, y, features=..., feature_metadata=..., business_context=...)`
@@ -53,6 +55,8 @@ peer 来源，另一端统一命名为 `peer_feature`，返回最终状态及真
 
 每次 fit 先重置缓存，失败后不能读上次报告。相关关闭、无候选、候选不足分别记录
 skipped 状态；未计算的对角为空值。仅在 fit 成功后固定快照并释放 dense 缓存。
+
+<span id="固定分段交叉"></span>
 
 ## 固定分段交叉
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "MARS Risk Engineering"
-  short_description: "Internal engineering workflow for the MARS risk library"
-  default_prompt: "Use $mars-risk-engineering to review and improve the internal mars-risk project safely."
+  short_description: "开发与审查 MARS 核心分析、公共报告和外部 Agent 契约，按影响验证交付"
+  default_prompt: "使用 $mars-risk-engineering 完成 MARS 本身的实现或审查，核对核心分析与公共报告契约、暂停模块适配，并按实际影响验证和交付。"

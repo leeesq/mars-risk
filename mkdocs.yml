@@ -1,5 +1,5 @@
 site_name: MARS
-site_description: 面向信用风控分析与建模的 Polars-first Python 工具库
+site_description: 面向人和 AI Agent 的风控分析工具箱
 site_url: https://leeesq.github.io/mars-risk/
 repo_url: https://github.com/leeesq/mars-risk
 repo_name: leeesq/mars-risk
@@ -8,6 +8,7 @@ copyright: Copyright &copy; 2026 Christian Li and Tina
 theme:
   name: material
   language: zh
+  font: false
   custom_dir: docs/overrides
   logo: assets/mars-logo.svg
   favicon: assets/mars-logo.svg
@@ -82,19 +83,22 @@ nav:
       - 安装: getting-started/installation.md
       - 10 分钟 Quickstart: getting-started/quickstart.md
       - 核心 API 约定: getting-started/api-conventions.md
-  - 使用指南:
+  - 分析与筛选:
       - 数据画像: user-guide/data-profiling.md
       - 分箱与风险评估: user-guide/binning-risk-evaluation.md
       - 特征筛选: user-guide/feature-selection.md
-      - 规则生成与部署: user-guide/rule-mining.md
-      - Modeling / Pipeline: user-guide/modeling-pipeline.md
-      - 特征与模型监控: user-guide/monitoring.md
-      - 风控分析 Agent: user-guide/agent.md
-      - 报告与评分卡: user-guide/reports-and-exports.md
       - 相关性与模型分交叉: user-guide/correlation-and-score-cross.md
-  - 核心概念:
+      - 规则挖掘（Experimental）: user-guide/rule-mining.md
       - 数据角色与运行边界: concepts/data-and-runs.md
+  - 报告与 AI:
+      - 报告查询与导出: user-guide/reports-and-exports.md
+      - 外部 Agent、保存恢复与业务元数据: user-guide/external-agents.md
+      - 可选内置 Agent（Experimental）: user-guide/agent.md
       - Report 与 Artifact: concepts/reports-and-artifacts.md
+  - 其他模块（暂停迭代）:
+      - 建模／Pipeline: user-guide/modeling-pipeline.md
+      - 监控: user-guide/monitoring.md
+      - 评分卡: user-guide/scorecard.md
   - API Reference:
       - 总览: reference/index.md
       - Analysis: reference/analysis.md

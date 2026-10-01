@@ -1,8 +1,11 @@
 ---
-description: 读取结构化 report，导出 Excel/HTML，并从分箱规则构建评分卡和部署 SQL。
+description: 查询、展示、导出与保存公共分析报告；保留评分卡旧章节入口。
 ---
 
-# 报告与评分卡
+# 报告查询与导出
+
+外部 Agent、业务元数据、证据与跨会话使用见[外部 Agent 指南](external-agents.md)。
+评分卡另见[评分卡](scorecard.md)，本页旧章节及锚点继续保留。
 
 !!! info "Reporting：Stable"
 
@@ -103,6 +106,9 @@ fragment = report.render_risk_trends_html(
 `fragment.html` 是可嵌入现有模板的 HTML 片段；资产模式同时返回已写入的图片路径。
 
 ## 4. 构建评分卡
+
+评分卡为 Experimental，暂时停止功能迭代；现有转换与部署能力继续保留。
+必要的正确性、运行修复与上游适配继续处理，规则见[稳定性](../project/stability.md)。
 
 !!! warning "Scoring：Experimental"
 

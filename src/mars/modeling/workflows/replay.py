@@ -12,7 +12,12 @@ from mars.modeling.contracts.replay_result import MarsModelReplayResult
 from mars.modeling.contracts.specs import ModelingSpec, ReplaySpec
 from mars.modeling.contracts.tuning_result import MarsModelTuningResult
 from mars.modeling.evaluation import MarsModelEvaluator
-from mars.modeling.evaluation.metrics import MetricCallable, MetricDirection
+from mars.modeling.evaluation.metrics import (
+    MetricCallable,
+    MetricDirection,
+    normalize_metric_directions,
+    resolve_metric_names,
+)
 from mars.modeling.inference.predictor import ModelPredictor
 from mars.modeling.workflows._backend_factory import build_backend_from_spec
 from mars.modeling.workflows._spec_builder import build_modeling_spec
@@ -140,7 +145,9 @@ class MarsModelReplayRunner:
         custom_metrics : Mapping[str, MetricCallable] | None
             replay 重训时使用的自定义指标函数字典。
         metric_directions : Mapping[str, MetricDirection] | None
-            指标排序方向；会影响 Top-K trial 选择和自定义指标 replay。
+            本次指标方向覆盖；逐项覆盖历史配置，其余沿用历史及项目默认。
+            ``None`` 表示未提供覆盖，空映射表示不覆盖任何项，两者均保留历史。
+            最终配置同时用于 Top-K 和 backend，并记录在结果中。
         training_metric : str | None
             模型后端训练期监控指标。
         backend_metric : Any | None
@@ -193,6 +200,26 @@ class MarsModelReplayRunner:
             optimize_metric=(optimize_metric or spec.optimize_metric).lower(),
         )
 
+        # 在选择候选前统一解析方向；显式覆盖不能丢失其他历史指标。
+        directions: dict[str, str] = {
+            str(key).lower(): value
+            for key, value in tuning_result.metric_directions.items()
+        }
+        if metric_directions is not None:
+            directions.update({str(key).lower(): value for key, value in metric_directions.items()})
+        metric_names: list[str] = list(dict.fromkeys([
+            *resolve_metric_names(custom_metrics),
+            *tuning_result.metric_names,
+            *directions,
+            replay_spec.sort_metric,
+            replay_spec.optimize_metric,
+        ]))
+        # 历史文件保存为字符串；类型转换不跳过公共解析器的非法值校验。
+        resolved_directions: dict[str, MetricDirection] = normalize_metric_directions(
+            metric_names,
+            cast(Mapping[str, MetricDirection], directions),
+        )
+
         history_df = tuning_result.history_table.copy()
         valid_df = history_df[
             (history_df["trial_state"] == "COMPLETE") & history_df["is_valid"]
@@ -217,10 +244,7 @@ class MarsModelReplayRunner:
         if not cols_to_mean:
             raise ValueError(f"No ranking columns were found for sort_metric={replay_spec.sort_metric!r}.")
 
-        metric_direction = dict(getattr(tuning_result, "metric_directions", {}) or {}).get(
-            replay_spec.sort_metric,
-            "maximize",
-        )
+        metric_direction = resolved_directions[replay_spec.sort_metric]
         valid_df["custom_mean_score"] = valid_df[cols_to_mean].mean(axis=1)
         if trial_nums is not None:
             requested_trial_nums = [int(trial_num) for trial_num in trial_nums]
@@ -255,18 +279,13 @@ class MarsModelReplayRunner:
                 .copy()
             )
 
-        restored_metric_directions: dict[str, MetricDirection] = {
-            key: cast(MetricDirection, value)
-            for key, value in dict(tuning_result.metric_directions).items()
-            if value in {"maximize", "minimize"}
-        }
         backend = self._build_backend(
             df,
             optimize_metric=replay_spec.optimize_metric,
             seed=spec.seed,
             metric_params=metric_params or tuning_result.training_config.get("metric_params"),
             custom_metrics=custom_metrics,
-            metric_directions=metric_directions or restored_metric_directions,
+            metric_directions=resolved_directions,
             training_metric=training_metric or tuning_result.training_config.get("training_metric"),
             backend_metric=backend_metric,
         )
@@ -394,4 +413,5 @@ class MarsModelReplayRunner:
             reports=reports,
             importance_tables=importance_tables,
             diagnostic_tables=diagnostic_tables,
+            metric_directions={key: str(value) for key, value in resolved_directions.items()},
         )

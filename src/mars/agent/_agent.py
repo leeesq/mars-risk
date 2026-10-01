@@ -7,6 +7,7 @@ from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
 
+from ._budget import MarsAgentComputeBudget
 from ._contracts import (
     MarsAgentMessage,
     MarsAgentProvider,
@@ -16,7 +17,7 @@ from ._contracts import (
     MarsAgentToolResult,
 )
 from ._session import MarsAgentSession
-from ._tools import TOOLS, _MarsTools, encode_json
+from ._tools import _budget_tools, _MarsTools, encode_json
 
 _SYSTEM = """你是 MARS 风控监控与分析助手，用用户的语言回答。
 先通过 list_reports 理解已有报告；已有结果应直接用 get_report_table 查询。
@@ -51,6 +52,8 @@ class MarsRiskAgent:
         系统提示、工具定义和消息的序列化字符上限，不是精确 token 预算。
     max_result_chars : int
         单次工具 data 的序列化字符上限；表格通过分页控制大小。
+    compute_budget : MarsAgentComputeBudget | None
+        单次计算的规模上限；None 使用默认预算。独立于输出字符预算和报告查询。
 
     Raises
     ------
@@ -71,6 +74,7 @@ class MarsRiskAgent:
         max_tool_calls: int = 24,
         max_context_chars: int = 100_000,
         max_result_chars: int = 16_000,
+        compute_budget: MarsAgentComputeBudget | None = None,
     ) -> None:
         for name, value, minimum in (
             ("max_iterations", max_iterations, 1),
@@ -85,11 +89,12 @@ class MarsRiskAgent:
         self._max_tool_calls = max_tool_calls
         self._max_context_chars = max_context_chars
         self._max_result_chars = max_result_chars
+        self._compute_budget = compute_budget or MarsAgentComputeBudget()
 
     @property
     def tools(self) -> tuple[MarsAgentTool, ...]:
         """返回模型可调用工具的独立副本。"""
-        return deepcopy(TOOLS)
+        return _budget_tools(self._compute_budget)
 
     def execute_tool(
         self,
@@ -124,7 +129,7 @@ class MarsRiskAgent:
             raise RuntimeError("session is busy")
         try:
             call = MarsAgentToolCall(uuid4().hex, name, deepcopy(arguments))
-            return _MarsTools(session, self._max_result_chars).execute(call)
+            return _MarsTools(session, self._max_result_chars, self._compute_budget).execute(call)
         finally:
             session._lock.release()
 
@@ -173,7 +178,7 @@ class MarsRiskAgent:
         """在本地副本上组织工具配对，仅将完整的轮次提交到会话。"""
         messages = list(session.messages) + [MarsAgentMessage("user", prompt)]
         results: list[MarsAgentToolResult] = []
-        executor = _MarsTools(session, self._max_result_chars)
+        executor = _MarsTools(session, self._max_result_chars, self._compute_budget)
         input_tokens = output_tokens = iterations = 0
         status, text = (
             "max_iterations",
@@ -183,7 +188,7 @@ class MarsRiskAgent:
         if provider is None:
             raise ValueError("provider is required")
         for _ in range(self._max_iterations):
-            size = len(_SYSTEM) + len(encode_json([asdict(tool) for tool in TOOLS]))
+            size = len(_SYSTEM) + len(encode_json([asdict(tool) for tool in self.tools]))
             size += len(encode_json([asdict(message) for message in messages]))
             if size > self._max_context_chars:
                 status, text = (

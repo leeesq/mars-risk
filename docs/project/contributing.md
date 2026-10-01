@@ -4,6 +4,9 @@ description: 为 MARS 补充公共能力和文档时需要满足的内容与验�
 
 # 贡献文档
 
+按变更实际影响选择验证；纯文档修改无需重训练或大规模 benchmark。
+暂停模块的投入和下游适配规则见[稳定性](stability.md#暂停模块的下游适配)。
+
 完整开发规范见仓库根目录的
 [CONTRIBUTING.md](https://github.com/leeesq/mars-risk/blob/main/CONTRIBUTING.md)。
 

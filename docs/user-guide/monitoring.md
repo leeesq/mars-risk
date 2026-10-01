@@ -4,6 +4,10 @@ description: 使用固定或基准期分箱规则监控特征分布、模型分�
 
 # 特征与模型监控
 
+监控暂时停止功能迭代，现有入口与使用文档保留。只处理必要的正确性、运行修复和上游适配。
+Experimental 说明接口成熟度，与暂停独立。可借助编程型 AI、MARS 分析与报告能力及自己的模型工具构建定制流程。
+本模块直接适配上游，规则见[稳定性](../project/stability.md#暂停模块的下游适配)。
+
 !!! warning "Experimental"
 
     Monitoring 的 report 字段、target 校验和报警结果仍可能调整。受控生产使用应固定

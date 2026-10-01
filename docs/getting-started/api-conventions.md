@@ -33,6 +33,10 @@ Stable API 默认 fail-closed：缺列、缺少必需指标、空报告和导出
 
 ## 结构化结果
 
+公共 Report 同时服务人工分析与外部 Agent：目录、筛选／投影／分页、实际参数、状态、证据和
+`.marsreport` 保存恢复见[外部 Agent 指南](../user-guide/external-agents.md)。
+Reporting 属于当前核心；监控、建模（含 Pipeline）、评分卡暂停功能迭代并直接适配核心接口。
+
 工作流优先返回 report 或结果对象，而不是只写文件。调用方可以先读取表格，再决定是否导出：
 
 | 字段 | 常见用途 |

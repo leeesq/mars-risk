@@ -4,10 +4,10 @@ description: 从安装后的空环境完成一次可运行的风险评估，并�
 
 # 10 分钟 Quickstart
 
-本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。运行前只需要安装 MARS：
+本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。本文新能力对应当前源码；[安装指南](installation.md)区分源码与已发布版本：
 
 ```bash
-pip install mars-risk==0.0.28
+pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
 ## 1. 运行完整示例
@@ -50,6 +50,8 @@ HTML 图表需要评估时已经提供有效 `time_col`。需要控制基准期�
 进入[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
 
 ## 下一步
+
+- 查询、保存并交给其他 Agent：[外部 Agent 指南](../user-guide/external-agents.md)。
 
 - 检查缺失、分布和 PSI：[数据画像](../user-guide/data-profiling.md)。
 - 使用基准期规则评估当前期：[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。

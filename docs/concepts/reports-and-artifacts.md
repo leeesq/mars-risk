@@ -12,11 +12,11 @@ Report 保存汇总表、明细表、趋势表和元数据。它适合在 Python
 也可以按需导出 Excel、HTML 和图表资产。
 
 导出不是读取结果的前置步骤。对自动化流程，优先消费公共 `describe/get_table/query_page`
-接口；画像和分箱报告可通过 `save/load_report` 保存为含 JSON 清单及 Parquet 完整统计表的
+接口；画像、分箱、相关性及模型分交叉报告可通过 `save/load_report` 保存为含 JSON 清单及 Parquet 完整统计表的
 单个 `.marsreport` 文件。恢复的 `ReportSnapshot` 不需要原始数据和分析器，可被外部 Agent
 直接查询，也可登记到 `MarsAgentSession`。持久报告标识在恢复后保持不变，AI 上下文是受预算
 限制的摘要。业务元数据、实际参数及计算状态的完整说明见
-[可携带的公共分析报告](../user-guide/reports-and-exports.md#portable-analysis-reports)。对人工交付，再调用
+[外部 Agent 指南](../user-guide/external-agents.md)。对人工交付，再调用
 `write_excel()` 或 `write_html()`。
 
 ## HTML 与 Excel

@@ -4,6 +4,8 @@ description: Experimental Python 3.10+ Agent、会话、Provider 和结果对象
 
 # Agent
 
+::: mars.agent.MarsAgentComputeBudget
+
 Experimental，最低 Python 3.10。仅从 `mars.agent` 导入；普通 MARS 不加载此模块。
 完整示例见 [风控分析 Agent](../user-guide/agent.md)。
 

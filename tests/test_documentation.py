@@ -23,6 +23,8 @@ DOCS_ROOT = PROJECT_ROOT / "docs"
 SNIPPETS_ROOT = DOCS_ROOT / "snippets"
 
 BASIC_SNIPPETS = [
+    "minimal_report.py",
+    "external_candidate_selection.py",
     "quickstart.py",
     "data_profiling.py",
     "baseline_evaluation.py",
@@ -209,7 +211,8 @@ def test_documented_version_matches_package_metadata() -> None:
     assert package_match is not None
     assert package_match.group(1) == project_version == "0.0.28"
 
-    required_install_command = "pip install mars-risk==0.0.28"
+    # main 的新能力从源码安装，不能用未发布版本的 PyPI 命令充当可用性证明。
+    required_install_command = 'pip install "git+https://github.com/leeesq/mars-risk.git"'
     for path in [
         PROJECT_ROOT / "README.md",
         DOCS_ROOT / "index.md",
@@ -287,19 +290,22 @@ def test_readme_restores_dynamic_python_and_download_badges() -> None:
     assert 'href="https://pepy.tech/project/mars-risk"' in readme
 
 
-def test_brand_hero_uses_complete_visual_asset_stack() -> None:
-    """README 和网站首页必须保留完整的四层品牌首屏。"""
+def test_brand_hero_preserves_identity_and_complete_badges() -> None:
+    """保留 Logo、英文全称与六类徽章，定位用可搜索的文字。"""
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     homepage = (DOCS_ROOT / "index.md").read_text(encoding="utf-8")
     for asset_name in [
         "mars-logo.svg",
         "mars-wordmark.svg",
-        "mars-tagline.svg",
-        "mars-workflow.svg",
     ]:
         assert f'docs/assets/{asset_name}' in readme
         assert f'assets/{asset_name}' in homepage
     assert "mars-home-hero--compact" not in homepage
+    for text in (readme, homepage):
+        assert "面向人和 AI Agent 的风控分析工具箱" in text
+        assert "数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘" in text
+        for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
+            assert f'alt="{label}"' in text
 
 
 def test_docs_workflow_deploys_pages_after_main_validation() -> None:

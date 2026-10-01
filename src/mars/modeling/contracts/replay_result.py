@@ -38,6 +38,8 @@ class MarsModelReplayResult:
         追加预测列后的数据。
     reports : dict
         每个 replay 模型对应的评估报告。
+    metric_directions : dict
+        本次候选排序与 backend 共用的最终指标方向。
 
     Examples
     --------
@@ -62,6 +64,7 @@ class MarsModelReplayResult:
     reports: Dict[str, MarsModelingReport]
     importance_tables: Dict[str, pd.DataFrame]
     diagnostic_tables: Dict[str, Dict[str, pd.DataFrame]] = field(default_factory=dict)
+    metric_directions: Dict[str, str] = field(default_factory=dict)
 
     def export_artifact(self, path: str, include_scored_df: bool = False) -> Path:
         """
@@ -154,6 +157,7 @@ class MarsModelReplayResult:
 
         metadata = {
             "artifact_type": "mars_model_replay_result",
+            "metric_directions": self.metric_directions,
             "model_type": self.model_type,
             "include_scored_df": bool(scored_df_file),
             "table_schemas": {
@@ -293,4 +297,5 @@ class MarsModelReplayResult:
             reports=reports,
             importance_tables=importance_tables,
             diagnostic_tables=diagnostic_tables,
+            metric_directions=dict(metadata.get("metric_directions", {})),
         )

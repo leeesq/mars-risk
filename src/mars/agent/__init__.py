@@ -8,6 +8,7 @@ if sys.version_info < (3, 10):
     )
 
 from ._agent import MarsRiskAgent
+from ._budget import MarsAgentComputeBudget
 from ._contracts import (
     MarsAgentMessage,
     MarsAgentProvider,
@@ -22,6 +23,7 @@ from ._provider import MarsOpenAIProvider
 from ._session import MarsAgentSession
 
 __all__ = [
+    "MarsAgentComputeBudget",
     "MarsRiskAgent",
     "MarsAgentSession",
     "MarsOpenAIProvider",

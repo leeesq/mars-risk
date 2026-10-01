@@ -13,6 +13,7 @@ from mars.monitoring import MarsMonitor
 from mars.reporting._query import query_table
 from mars.reporting._serialization import encode, json_safe, table_rows
 
+from ._budget import MarsAgentComputeBudget, _ComputeBudgetExceeded, check_compute_budget
 from ._contracts import (
     MarsAgentReport,
     MarsAgentTool,
@@ -26,12 +27,11 @@ _FEATURES = {
     "type": "array",
     "items": _STRING,
     "minItems": 1,
-    "maxItems": 200,
     "uniqueItems": True,
 }
 _COMMON = {
     "dataset_id": _STRING,
-    "features": _FEATURES,
+    "features": {**_FEATURES, "maxItems": 200},
     "benchmark_id": _STRING,
     "group_col": _STRING,
     "psi_include_missing": {"type": "boolean"},
@@ -140,6 +140,17 @@ TOOLS = (
 )
 
 
+def _budget_tools(budget: MarsAgentComputeBudget) -> tuple[MarsAgentTool, ...]:
+    """生成本运行器独立的 schema，查询工具不受计算特征数上限约束。"""
+    tools: tuple[MarsAgentTool, ...] = deepcopy(TOOLS)
+    for tool in tools:
+        if tool.name in {"profile_data", "evaluate_risk", "monitor_data"}:
+            tool.parameters["properties"]["features"]["maxItems"] = budget.max_features
+            if "n_bins" in tool.parameters["properties"]:
+                tool.parameters["properties"]["n_bins"]["maximum"] = budget.max_bins
+    return tools
+
+
 class _ToolInputError(ValueError):
     """可向模型返回的参数或数据角色错误，不包含原始样本内容。"""
 
@@ -176,7 +187,7 @@ def _validate(value: Any, schema: dict[str, Any], path: str = "arguments") -> No
             if isinstance(child, dict):
                 _validate(item, child, f"{path}.{key}")
     elif isinstance(value, list):
-        if not schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", 200):
+        if not schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", len(value)):
             raise _ToolInputError(f"{path}: invalid item count")
         for item in value:
             _validate(item, schema.get("items", {}), path)
@@ -205,19 +216,30 @@ def encode_json(value: Any) -> str:
 class _MarsTools:
     """依赖会话的同步工具执行器，首版顺序执行以保留明确的数据依赖。"""
 
-    def __init__(self, session: MarsAgentSession, max_result_chars: int) -> None:
+    def __init__(
+        self, session: MarsAgentSession, max_result_chars: int,
+        compute_budget: MarsAgentComputeBudget | None = None,
+    ) -> None:
         self.session = session
         self.max_result_chars = max_result_chars
+        self.compute_budget = compute_budget or MarsAgentComputeBudget()
+        self.tools = _budget_tools(self.compute_budget)
 
     def execute(self, call: MarsAgentToolCall) -> MarsAgentToolResult:
         """验证输入、执行工具并将可恢复失败转换为结构化反馈。"""
-        tool = next((item for item in TOOLS if item.name == call.name), None)
+        tool = next((item for item in self.tools if item.name == call.name), None)
         if tool is None:
             return self._error(
                 call, "UNKNOWN_TOOL", "Only registered MARS tools are available."
             )
         try:
-            _validate(call.arguments, tool.parameters)
+            schema: dict[str, Any] = deepcopy(tool.parameters)
+            if call.name in {"profile_data", "evaluate_risk", "monitor_data"}:
+                # schema 告知模型预算，运行时在默认值解析后统一返回结构化规模错误。
+                schema["properties"]["features"].pop("maxItems", None)
+                if "n_bins" in schema["properties"]:
+                    schema["properties"]["n_bins"].pop("maximum", None)
+            _validate(call.arguments, schema)
             data = self._dispatch(call.name, call.arguments)
             if len(encode_json(data)) > self.max_result_chars:
                 if "report_id" in data and "tables" in data:
@@ -235,6 +257,11 @@ class _MarsTools:
                     "Result exceeds output budget; request fewer fields.",
                 )
             return MarsAgentToolResult(call.id, call.name, True, data)
+        except _ComputeBudgetExceeded as exc:
+            return MarsAgentToolResult(
+                call.id, call.name, False, data=exc.details,
+                error_code="COMPUTE_BUDGET_EXCEEDED", error_message=str(exc),
+            )
         except _ToolInputError as exc:
             return self._error(call, "INVALID_ARGUMENTS", str(exc))
         except Exception as exc:
@@ -309,7 +336,7 @@ class _MarsTools:
     def _calculate(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """校验注册角色与基准范围，保存计算参数和完整报告。"""
         dataset = self._dataset(arguments["dataset_id"])
-        features = arguments.get("features", list(dataset.features))
+        features: list[str] = arguments.get("features", list(dataset.features))
         if not set(features).issubset(dataset.features):
             raise _ToolInputError("features must be registered analysis columns")
         group_col = arguments.get("group_col")
@@ -332,16 +359,37 @@ class _MarsTools:
                 raise _ToolInputError(
                     "current and benchmark must use the same missing_values"
                 )
-        common = {
+        n_bins: int = arguments.get("n_bins", 5)
+        budget_record: dict[str, Any] = check_compute_budget(
+            self.compute_budget,
+            name,
+            dataset,
+            benchmark,
+            features,
+            group_col,
+            n_bins,
+            arguments.get("metrics", []),
+        )
+        # 通过预算后才投影计算输入；不保留额外宽表副本。
+        columns: list[str] = list(dict.fromkeys([
+            *features,
+            *([group_col] if group_col else []),
+            *([dataset.time_col] if dataset.time_col else []),
+            *([dataset.target] if dataset.target else []),
+        ]))
+        benchmark_frame: FrameLike | None = (
+            benchmark.frame.select([c for c in columns if c in benchmark.frame.columns])
+            if benchmark else None
+        )
+        common: dict[str, Any] = {
             "features": features,
-            "benchmark_df": benchmark.frame.clone() if benchmark else None,
+            "benchmark_df": benchmark_frame,
             "group_col": group_col,
             "time_col": dataset.time_col,
             "psi_include_missing": arguments.get("psi_include_missing", False),
             "psi_include_special": arguments.get("psi_include_special", False),
         }
-        frame = dataset.frame.clone()
-        n_bins = arguments.get("n_bins", 5)
+        frame: FrameLike = dataset.frame.select([c for c in columns if c in dataset.frame.columns])
         metadata: dict[str, Any]
         tables: dict[str, FrameLike]
         if name == "profile_data":
@@ -400,6 +448,8 @@ class _MarsTools:
             if report.target_observation_table is not None:
                 tables["target_observation"] = report.target_observation_table
             metadata = dict(report.metadata)
+        metadata["agent_compute_budget"] = budget_record
+        metadata["agent_output_budget"] = {"max_result_chars": self.max_result_chars}
         metadata["agent_parameters"] = {
             **arguments,
             "features": features,

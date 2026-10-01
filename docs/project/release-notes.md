@@ -6,6 +6,15 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 定位统一为“面向人和 AI Agent 的风控分析工具箱”；README、首页与导航增加外部 Agent 入口。
+- Monitoring、Modeling／Pipeline、Scoring 暂停功能迭代，保留功能、必要修复与直接上游适配。
+- replay 在候选选择前统一合并方向，本次逐项覆盖优先于历史；None／空映射都保留历史。
+  `MarsModelReplayResult.metric_directions` 及 artifact 增加实际方向记录。旧 artifact 未记录方向时
+  读为 `{}`（未知，不伪造历史方向）；其他表、模型格式不变。
+- 内置 Agent 新增 `MarsAgentComputeBudget`，默认与显式 features 同等检查；超预算返回
+  `COMPUTE_BUDGET_EXCEEDED`。原来省略 features 触发无限制计算的调用需缩小范围或调整预算。
+  公共分析 API、报告查询和 `.marsreport` 格式不变。
+
 - 画像、分箱分析和 StatsSelector 接受统一 `feature_metadata` 与 `business_context`；支持中文名、业务定义、来源、单位及多标签窗口。旧来源参数保留薄适配，冲突明确报错。
 - Stable `mars.reporting.Report` 公共契约与 `ReportSnapshot` 支持检索、分页证据和单文件 `.marsreport` 保存恢复；外部 Agent 无需内部会话即可查询。
 - 趋势上下文将日期作为维度，只定义一次指标；`queries` 支持异构表查询，最终 JSON 按字符预算裁剪完整字段、行或说明块。
