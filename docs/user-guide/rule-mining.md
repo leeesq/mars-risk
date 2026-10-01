@@ -149,3 +149,14 @@ RuleSet JSON 固定 `artifact_type="mars_rule_set"`、`schema_version=1` 和
 未知等级引用均 fail closed。`generate_sql()` 只承诺 ANSI SQL `CASE WHEN` 命中列、等级计数和
 总命中数；默认要求至少 `validated`。含 `IS MISSING` 的规则只有在调用方声明
 `missing_policy="normalized_to_null"` 时才允许导出，表示 SQL 上游已完成 NaN→NULL 规范化。
+
+## 公共报告与外部 Agent
+
+`result.to_report(feature_metadata=..., business_context=...)` 支持公共 describe/get_table、
+query_page、search_features/get_feature、to_ai_context 和 save。
+多特征规则用 AST 成员桥接查询，不按特征重复存储指标；来源参数使用业务特征来源，
+与 candidates.sources 的生成器来源分开。原报告和 load_report 恢复后的通用快照共享查询。
+no_rules 保留审计；显式高级分析的合法零行标为 computed_empty，未执行标为 not_computed。
+规则 sample_count/coverage 以对应目标已表现样本为口径，不能混用交叉报告全样本人数。
+快照不是 RuleSet JSON，不取得新样本 transform 或部署能力。
+完整可运行示例、目录口径和外部 Agent Prompt 见[规则报告与外部 Agent](rule-reports-and-agents.md)。

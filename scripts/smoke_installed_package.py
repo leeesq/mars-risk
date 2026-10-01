@@ -98,6 +98,7 @@ def run_smoke(repo_root: Path, output_dir: Path) -> None:
 
     from mars.analysis import profile_risk
     from mars.feature import MarsStatsSelector
+    from mars.reporting import load_report
     from mars.rule import MarsRuleMiningSpec, MarsRuleReport, MarsRuleSet, mine_rules
 
     templates = package_dir / "reporting" / "template"
@@ -185,9 +186,22 @@ def run_smoke(repo_root: Path, output_dir: Path) -> None:
         raise AssertionError("Installed rule analysis omitted customer metrics.")
     if analysis.bootstrap_table.is_empty():
         raise AssertionError("Installed rule analysis omitted requested bootstrap metrics.")
-    rule_report = rule_result.to_report(analysis)
+    rule_report = rule_result.to_report(
+        analysis, feature_metadata={"income": {"data_source": "application"}}
+    )
     if "rule_explanations" not in rule_report.detail_tables:
         raise AssertionError("Installed rule report omitted structured explanations.")
+    rule_snapshot = output_dir / "rule-report.marsreport"
+    rule_report.save(rule_snapshot)
+    portable_rule = load_report(rule_snapshot)
+    if portable_rule.report_id != rule_report.report_id:
+        raise AssertionError("Installed rule report round trip changed its identity.")
+    evidence = portable_rule.query_page(
+        "evaluation", features="income", sources="application", limit=1
+    )
+    if evidence["returned_rows"] != 1 or evidence["reference"]["report_id"] != rule_report.report_id:
+        raise AssertionError("Installed rule report lost feature relations or references.")
+    portable_rule.to_ai_context(queries={"evaluation": {"limit": 1}}, max_chars=12000)
     rule_report.write_html(rule_html)
     rule_report.write_excel(rule_excel)
     _assert_nonempty_html(rule_html)

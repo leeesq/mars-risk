@@ -12,6 +12,7 @@ import polars as pl
 
 from mars import __version__ as mars_version
 from mars.compute import FrameLike, to_polars_frame
+from mars.reporting._metadata import FeatureMetadata
 from mars.rule._dsl import expression_to_polars, parse_expression
 from mars.rule.analysis import MarsRuleAnalysis, analyze_rule_set
 from mars.rule.contracts import (
@@ -122,14 +123,15 @@ class MarsRuleMiningResult:
             max_pairs=max_pairs,
             bootstrap_repeats=bootstrap_repeats,
             confidence_level=confidence_level or self.spec.confidence_level,
-            random_state=(
-                self.spec.random_state if random_state is None else random_state
-            ),
+            random_state=(self.spec.random_state if random_state is None else random_state),
         )
 
     def to_report(
         self,
         analysis: MarsRuleAnalysis | None = None,
+        *,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> MarsRuleReport:
         """构造不产生文件副作用的结构化报告。
 
@@ -137,11 +139,19 @@ class MarsRuleMiningResult:
         ----------
         analysis : MarsRuleAnalysis | None
             显式执行的高级分析；不传时省略相关 section。
+        feature_metadata : FeatureMetadata | None
+            英文特征 ID 对应的中文名、业务来源、定义和单位。
+        business_context : dict[str, Any] | None
+            标签、样本、币种及发现证据说明；不改变实际计算参数。
 
         Returns
         -------
         MarsRuleReport
-            可进一步导出 HTML 或 Excel 的报告。
+            满足公共 Report 契约，可查询、保存及导出 HTML 或 Excel 的报告。
+
+        Examples
+        --------
+        >>> report = result.to_report(feature_metadata={"income": {"data_source": "application"}})  # doctest: +SKIP
         """
         summary: pl.DataFrame = pl.DataFrame(
             [
@@ -156,25 +166,54 @@ class MarsRuleMiningResult:
             ]
         )
         detail_tables: Dict[str, pl.DataFrame] = {
+            "rules": _build_rule_definitions(self),
             "candidates": self.candidate_table,
             "evaluation": self.evaluation.overall_table,
+            "slices": self.evaluation.slice_table,
+            "rule_explanations": _build_rule_explanations(self),
         }
-        explanations: pl.DataFrame = _build_rule_explanations(self)
-        if not explanations.is_empty():
-            detail_tables["rule_explanations"] = explanations
-        if not self.evaluation.slice_table.is_empty():
-            detail_tables["slices"] = self.evaluation.slice_table
+        analysis_states = {
+            "slices": ("computed" if self.evaluation.slice_table.height else "computed_empty")
+            if self.metadata.get("time_col") or self.metadata.get("group_col")
+            else "not_computed",
+            "interactions": "not_computed",
+            "cumulative": "not_computed",
+            "bootstrap": "not_computed",
+        }
         if analysis is not None:
-            if not analysis.interaction_table.is_empty():
-                detail_tables["interactions"] = analysis.interaction_table
-            if not analysis.cumulative_table.is_empty():
-                detail_tables["cumulative"] = analysis.cumulative_table
-            if not analysis.bootstrap_table.is_empty():
+            detail_tables["interactions"] = analysis.interaction_table
+            detail_tables["cumulative"] = analysis.cumulative_table
+            for name, table in (
+                ("interactions", analysis.interaction_table),
+                ("cumulative", analysis.cumulative_table),
+            ):
+                analysis_states[name] = "computed" if table.height else "computed_empty"
+            if analysis.metadata.get("bootstrap_repeats", 0):
                 detail_tables["bootstrap"] = analysis.bootstrap_table
+                analysis_states["bootstrap"] = (
+                    "computed" if analysis.bootstrap_table.height else "computed_empty"
+                )
         return MarsRuleReport(
             summary_table=summary,
             detail_tables=detail_tables,
-            metadata=dict(self.metadata),
+            metadata={
+                **self.metadata,
+                "validation_summary": dict(self.rule_set.validation_summary),
+                "slice_definition": {
+                    "kind": "group"
+                    if self.metadata.get("group_col")
+                    else "time"
+                    if self.metadata.get("time_col")
+                    else "not_computed",
+                    "column": self.metadata.get("group_col") or self.metadata.get("time_col"),
+                    "group_precedes_time": True,
+                    "overall_value": "__overall__",
+                },
+                "analysis_states": analysis_states,
+                "advanced_analysis": dict(analysis.metadata) if analysis is not None else None,
+            },
+            feature_metadata=feature_metadata,
+            business_context=business_context,
         )
 
 
@@ -498,6 +537,7 @@ def mine_rules(
         "customer_col": customer_col,
         "generation_errors": generation_errors,
         "generator_diagnostics": _generator_diagnostics(active_generators),
+        "generators": [type(generator).__name__ for generator in active_generators],
         "elapsed_seconds": elapsed,
         "resolved_spec": resolved_spec.to_dict(),
     }
@@ -562,9 +602,7 @@ def _generate_candidates(
         raise ValueError(
             f"唯一 seed 规则数 {len(unique_seeds)} 超过 max_candidates={max_candidates}。"
         )
-    generated: List[MarsRule] = [
-        rule for stream in generator_streams for rule in stream
-    ] + seeds
+    generated: List[MarsRule] = [rule for stream in generator_streams for rule in stream] + seeds
     unique, sources, duplicate_counts = _merge_rule_sources(generated)
     unique_map: Dict[str, MarsRule] = {rule.rule_id: rule for rule in unique}
     selected_ids: Set[str] = {rule.rule_id for rule in unique_seeds}
@@ -653,9 +691,7 @@ def _mine_rules_cascade(
             on_generator_error=spec.on_generator_error,
             max_candidates=spec.max_candidates,
         )
-        generation_errors.extend(
-            {**error, "round": round_index} for error in round_errors
-        )
+        generation_errors.extend({**error, "round": round_index} for error in round_errors)
         selected_ids: Set[str] = {rule.rule_id for rule in selected}
         unique_rules = [rule for rule in unique_rules if rule.rule_id not in selected_ids]
         if not unique_rules:
@@ -831,9 +867,7 @@ def _mine_rules_cascade(
             grade_filter,
             primary_target=target,
         )
-        grades[str(grade)] = tuple(
-            rule_id for rule_id in grade_ids if rule_id in selected_id_set
-        )
+        grades[str(grade)] = tuple(rule_id for rule_id in grade_ids if rule_id in selected_id_set)
     final_selected_ids: Set[str] = {rule.rule_id for rule in selected}
     _, final_validation_diagnostics = _select_validation_ids(
         validation_evaluation,
@@ -900,6 +934,7 @@ def _mine_rules_cascade(
         "customer_col": customer_col,
         "generation_errors": generation_errors,
         "generator_diagnostics": _generator_diagnostics(generators),
+        "generators": [type(generator).__name__ for generator in generators],
         "elapsed_seconds": elapsed,
         "cascade_rounds": len(selected),
         "resolved_spec": spec.to_dict(),
@@ -1082,8 +1117,7 @@ def _resolve_qualification(
     if spec.profile == "explore":
         return "exploratory"
     temporal_assessed: bool = bool(selected_ids) and all(
-        bool(diagnostics.get(rule_id, {}).get("temporal_assessed"))
-        for rule_id in selected_ids
+        bool(diagnostics.get(rule_id, {}).get("temporal_assessed")) for rule_id in selected_ids
     )
     return "temporally_validated" if temporal_assessed else "validated"
 
@@ -1097,14 +1131,12 @@ def _build_validation_summary(
 ) -> Dict[str, Any]:
     """构造可序列化的资格验证摘要。"""
     slice_counts: List[int] = [
-        int(diagnostics.get(rule_id, {}).get("time_slice_count") or 0)
-        for rule_id in selected_ids
+        int(diagnostics.get(rule_id, {}).get("time_slice_count") or 0) for rule_id in selected_ids
     ]
     pass_rates: List[float] = [
         float(value)
         for rule_id in selected_ids
-        if (value := diagnostics.get(rule_id, {}).get("time_slice_pass_rate"))
-        is not None
+        if (value := diagnostics.get(rule_id, {}).get("time_slice_pass_rate")) is not None
     ]
     return {
         "profile": spec.profile,
@@ -1149,9 +1181,7 @@ def _iou_deduplicate(
             mask_count: int = int(_POPCOUNT_TABLE[mask].sum())
             duplicate: bool = False
             for kept_mask, kept_count in zip(kept_masks, kept_counts):
-                intersection: int = int(
-                    _POPCOUNT_TABLE[np.bitwise_and(mask, kept_mask)].sum()
-                )
+                intersection: int = int(_POPCOUNT_TABLE[np.bitwise_and(mask, kept_mask)].sum())
                 union: int = mask_count + kept_count - intersection
                 iou: float = intersection / union if union else 0.0
                 if iou >= threshold:
@@ -1181,20 +1211,67 @@ def _optional_metadata_column(metadata: Mapping[str, Any], key: str) -> str | No
     return str(value) if value else None
 
 
+def _build_rule_definitions(result: MarsRuleMiningResult) -> pl.DataFrame:
+    """保留最终顺序、等级和实际入选轮次，不向定义表复制统计。"""
+    rows: List[Dict[str, Any]] = []
+    audit = result.candidate_table
+    for rank, rule in enumerate(result.rule_set.rules, start=1):
+        selected = (
+            audit.filter((pl.col("rule_id") == rule.rule_id) & (pl.col("status") == "selected"))
+            if "rule_id" in audit.columns
+            else pl.DataFrame()
+        )
+        row = selected.row(0, named=True) if selected.height else {}
+        rows.append(
+            {
+                "rule_id": rule.rule_id,
+                "expression": rule.expression,
+                "rank": rank,
+                "source": rule.source,
+                "labels": list(rule.labels),
+                "grades": [
+                    grade for grade, ids in result.rule_set.grades.items() if rule.rule_id in ids
+                ],
+                "generation_round": row.get("generation_round"),
+                "selection_round": row.get("selection_round"),
+            }
+        )
+    return pl.DataFrame(
+        rows,
+        schema={
+            "rule_id": pl.String,
+            "expression": pl.String,
+            "rank": pl.Int64,
+            "source": pl.String,
+            "labels": pl.List(pl.String),
+            "grades": pl.List(pl.String),
+            "generation_round": pl.Int64,
+            "selection_round": pl.Int64,
+        },
+    )
+
+
 def _build_rule_explanations(result: MarsRuleMiningResult) -> pl.DataFrame:
     """把最终验证指标整理为稳定的中文规则解释表。"""
     if not result.rule_set.rules or result.evaluation.overall_table.is_empty():
-        return pl.DataFrame()
+        return pl.DataFrame(
+            schema={
+                "rank": pl.Int64,
+                "rule_id": pl.String,
+                "expression": pl.String,
+                "dataset": pl.String,
+                "target": pl.String,
+                "slice": pl.String,
+                "group": pl.String,
+                "explanation": pl.String,
+            }
+        )
     dataset: str = (
-        "validation"
-        if result.metadata.get("validation_status") == "independent"
-        else "in_sample"
+        "validation" if result.metadata.get("validation_status") == "independent" else "in_sample"
     )
     target: str = str(result.metadata["target"])
     hit_rows: pl.DataFrame = result.evaluation.overall_table.filter(
-        (pl.col("dataset") == dataset)
-        & (pl.col("target") == target)
-        & (pl.col("group") == "hit")
+        (pl.col("dataset") == dataset) & (pl.col("target") == target) & (pl.col("group") == "hit")
     )
     metrics_by_rule: Dict[str, Dict[str, Any]] = {
         str(row["rule_id"]): row for row in hit_rows.to_dicts()
@@ -1216,13 +1293,17 @@ def _build_rule_explanations(result: MarsRuleMiningResult) -> pl.DataFrame:
             f"事件数 {_format_metric(event_count, 0)}，"
             f"事件率 {_format_metric(event_rate, 2, percent=True)}，"
             f"Lift {_format_metric(lift, 3)}，"
-            f"95% 保守区间 [{_format_metric(lift_ci_lower, 3)}, "
+            f"{result.spec.confidence_level:.0%} 保守区间 [{_format_metric(lift_ci_lower, 3)}, "
             f"{_format_metric(lift_ci_upper, 3)}]，"
             f"q 值 {_format_metric(q_value, 4)}。"
         )
         rows.append(
             {
                 "rank": rank,
+                "dataset": dataset,
+                "target": target,
+                "slice": metrics.get("slice", "Total"),
+                "group": "hit",
                 "rule_id": rule.rule_id,
                 "expression": rule.expression,
                 "source": rule.source,

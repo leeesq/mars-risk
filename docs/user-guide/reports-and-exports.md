@@ -31,6 +31,7 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 | --- | --- | --- |
 | `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables`、`comparison_tables`、`report_meta` |
 | `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
+| `MarsRuleReport` | Experimental | `summary_table`、`detail_tables`、`metadata`；公共查询、桥接关联、保存恢复 |
 | `MarsMonitoringReport` | Experimental | 监控汇总、分箱统计、表现覆盖率和元数据 |
 | `MarsModelingReport` | Experimental | 多样本切片的汇总、明细、趋势和元数据 |
 
@@ -38,6 +39,10 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 
 画像与分箱报告提供 Stable `describe()`、`get_table()`、`to_ai_context()` 和 `get_feature()`。
 这些方法只查询已计算结果，不调用 LLM、不重新计算统计，也不修改原报告。
+
+规则报告也满足公共 Report 契约，summary 为挖掘级汇总；成员特征查询通过轻量桥接，
+不复制规则指标。候选、切片、显式高级分析与 no_rules 状态说明见
+[规则报告与外部 Agent](rule-reports-and-agents.md)。
 
 ```python
 --8<-- "docs/snippets/report_queries.py"
@@ -53,7 +58,8 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 没有 SQL 或表达式执行入口。排序在列投影之前，排序配合 `limit` 就是 Top-K。
 `sources` 使用统一 `feature_metadata` 中的来源，旧来源参数通过薄适配合并；未知来源会报错。
 
-AI JSON 默认只含 overview/summary 前 10 行，预算为 16000 个 Unicode 字符，不是 token 数。
+画像/分箱 AI JSON 默认只含 overview/summary 前 10 行；规则报告默认 summary 一行和最多三条
+最终验证证据，不默认输出 expression。预算为 16000 个 Unicode 字符，不是 token 数。
 可以按表、特征和列缩小范围。省略的参数和行有明确引用及原因；预算连说明都容不下时抛
 `ValueError`，不会输出无效 JSON。日期使用 ISO-8601；浮点非有限值使用带类型的 `$mars` 标记；
 Null 使用 JSON null，0 保留数值。Null 的业务原因需要结合标签状态、诊断与计算参数解释。

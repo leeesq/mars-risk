@@ -304,6 +304,37 @@ class _ReportQuery:
         entry = getattr(self, "_description", {}).get("tables", {}).get(name, {})
         roles = entry.get("feature_roles")
         scope = entry.get("feature_scope")
+        relation = entry.get("feature_relation")
+        if entry.get("feature_query") == "unsupported" and (
+            features is not None or sources is not None
+        ):
+            raise ValueError(
+                f"Table {name!r} does not support features/sources queries; inspect describe()."
+            )
+        if relation is not None:
+            # 桥接表只产生成员 ID 集合，以布尔筛选保留统计行，绝不展开指标。
+            bridge = self._query_tables()[relation["table"]]
+            for selected in (_names(features, "features"), self._source_features(sources)):
+                if selected is None:
+                    continue
+                members = query_table(
+                    bridge,
+                    filters={relation["feature"]: {"op": "in", "value": selected}},
+                    columns=[relation["key"]],
+                    _copy_result=False,
+                )
+                ids = (
+                    members[relation["key"]].unique().to_list()
+                    if isinstance(members, pl.DataFrame)
+                    else members[relation["key"]].unique().tolist()
+                )
+                if isinstance(frame, pl.DataFrame):
+                    frame = frame.filter(
+                        pl.any_horizontal([pl.col(c).is_in(ids) for c in relation["roles"]])
+                    )
+                else:
+                    frame = frame.loc[frame[list(relation["roles"])].isin(ids).any(axis=1)]
+            return frame
         if roles is None and scope is None:
             allowed = self._source_features(sources)
             requested = _names(features, "features")
@@ -318,7 +349,9 @@ class _ReportQuery:
                     frame = frame.head(0)
             elif roles:
                 if isinstance(frame, pl.DataFrame):
-                    frame = frame.filter(pl.any_horizontal([pl.col(c).is_in(selected) for c in roles]))
+                    frame = frame.filter(
+                        pl.any_horizontal([pl.col(c).is_in(selected) for c in roles])
+                    )
                 else:
                     frame = frame.loc[frame[list(roles)].isin(selected).any(axis=1)]
         return frame
@@ -523,6 +556,7 @@ class _ReportQuery:
         features : str | list[str] | None
             原始特征 ID，None 为全部。单特征表匹配 feature；角色表匹配任一端点，
             多 ID 采用并集；报告级 scope 匹配任一声明模型分，不复制格子行。
+            关系表通过目录的桥接成员筛选原统计行，不按特征展开规则指标。
         columns : list[str] | None
             投影字段；在筛选、排序之后投影。
         filters : dict[str, Any] | None
@@ -538,6 +572,7 @@ class _ReportQuery:
         sources : str | list[str] | None
             已登记来源；角色表匹配任一端点来源，独立于 features，条件间采用交集。
             来源未知时报错；旧单特征表仍采用同一 feature 的来源条件。
+            规则来源指成员特征的业务来源，不是候选生成器来源；可与 features 命中不同成员。
 
         Returns
         -------
@@ -631,7 +666,7 @@ class _ReportQuery:
         Parameters
         ----------
         tables : list[str] | None
-            表目录名称；默认第一张表，queries 给定时默认其键。
+            表目录名称；默认采用目录的 default_ai_queries，未声明时第一张表；queries 给定时默认其键。
         features : str | list[str] | None
             原始英文标识。
         columns : list[str] | None
@@ -639,7 +674,7 @@ class _ReportQuery:
         filters : dict[str, Any] | None
             get_table 的筛选条件。
         limit : int
-            每表行数上限。
+            每表非负整数行数上限；AI 上下文不接受无界的 None。
         max_chars : int
             最终 JSON 的 Unicode 字符预算，不等于 token 数。
         sources : str | list[str] | None
@@ -676,9 +711,16 @@ class _ReportQuery:
         ):
             raise ValueError("queries must map available table names to get_table options.")
         selected = _names(tables, "tables")
+        defaults = (
+            getattr(self, "_description", {}).get("default_ai_queries", {})
+            if tables is None and queries is None
+            else {}
+        )
         selected = (
             list(queries)
             if selected is None and queries
+            else list(defaults)
+            if defaults
             else list(available)[:1]
             if selected is None
             else selected
@@ -709,6 +751,13 @@ class _ReportQuery:
                 offset=offset,
             )
             options.update((queries or {}).get(name, {}))
+            if type(options["limit"]) is not int or options["limit"] < 0:
+                raise ValueError("AI context limit must be a non-negative integer.")
+            for key, value in defaults.get(name, {}).items():
+                if key == "limit":
+                    options[key] = min(options[key], value)
+                elif options.get(key) is None:
+                    options[key] = value
             page = self.query_page(name, **options)
             frame = page["data"]
             entry = table_definitions[name]
@@ -747,10 +796,42 @@ class _ReportQuery:
             selected_features = list(entry.get("feature_scope", []))
             for role in roles:
                 if role in frame.columns:
-                    selected_features.extend(frame[role].to_list() if isinstance(frame, pl.DataFrame) else frame[role].tolist())
+                    selected_features.extend(
+                        frame[role].to_list()
+                        if isinstance(frame, pl.DataFrame)
+                        else frame[role].tolist()
+                    )
             selected_features.extend(_names(options.get("features"), "features") or [])
+            relation = entry.get("feature_relation")
+            if relation is not None:
+                identities = (
+                    frame
+                    if all(role in frame.columns for role in relation["roles"])
+                    else self.get_table(name, **{**options, "columns": list(relation["roles"])})
+                )
+                ids: list[Any] = []
+                for role in relation["roles"]:
+                    ids.extend(
+                        identities[role].to_list()
+                        if isinstance(identities, pl.DataFrame)
+                        else identities[role].tolist()
+                    )
+                members = query_table(
+                    self._query_tables()[relation["table"]],
+                    filters={relation["key"]: {"op": "in", "value": list(set(ids))}},
+                    columns=[relation["feature"]],
+                )
+                selected_features.extend(
+                    members[relation["feature"]].to_list()
+                    if isinstance(members, pl.DataFrame)
+                    else members[relation["feature"]].tolist()
+                )
             description["feature_metadata"].update(
-                {f: deepcopy(self.feature_metadata.get(f, {})) for f in selected_features if isinstance(f, str)}
+                {
+                    f: deepcopy(self.feature_metadata.get(f, {}))
+                    for f in selected_features
+                    if isinstance(f, str)
+                }
             )
             if page["omitted_rows"]:
                 omitted.append(
@@ -884,14 +965,14 @@ class _ReportQuery:
         Parameters
         ----------
         feature : str
-            单个特征名称。
+            稳定英文特征 ID；已知但无证据时返回 evidence_status=no_evidence。
         limit : int
             每表最大行数，默认 100；完整表可继续 get_table 分页。
 
         Returns
         -------
         dict[str, Any]
-            tables、omitted_rows 和 unavailable；返回原生 DataFrame，不自动渲染。
+            tables、omitted_rows、unavailable 和 evidence_status；返回原生 DataFrame，不自动渲染。
 
         Raises
         ------
@@ -907,12 +988,17 @@ class _ReportQuery:
         matched = False
         for name, table in self._query_tables().items():
             entry = getattr(self, "_description", {}).get("tables", {}).get(name, {})
-            if "feature" in table.columns or entry.get("feature_roles") or entry.get("feature_scope"):
+            if (
+                "feature" in table.columns
+                or entry.get("feature_roles")
+                or entry.get("feature_scope")
+                or entry.get("feature_relation")
+            ):
                 page = self.query_page(name, features=feature, limit=limit)
                 matched = matched or page["total_rows"] > 0
                 results[name] = page["data"]
                 omitted_rows[name] = page["omitted_rows"]
-        if not matched:
+        if not matched and feature not in self.feature_metadata:
             raise ValueError(f"Unknown feature: {feature!r}.")
         unavailable = [
             kind
@@ -935,4 +1021,5 @@ class _ReportQuery:
             "tables": results,
             "omitted_rows": omitted_rows,
             "unavailable": unavailable,
+            "evidence_status": "available" if matched else "no_evidence",
         }

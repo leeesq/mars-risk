@@ -180,6 +180,27 @@ class ReportSnapshot(_ReportQuery):
         _validate_description(description)
         if set(tables) != set(description["tables"]):
             raise ValueError("ReportSnapshot tables differ from the public directory.")
+        for name, entry in description["tables"].items():
+            relation = entry.get("feature_relation")
+            if relation is None:
+                continue
+            if (
+                not isinstance(relation, dict)
+                or set(relation) != {"table", "key", "feature", "roles"}
+                or any(not isinstance(relation[c], str) for c in ("table", "key", "feature"))
+                or relation["table"] not in tables
+                or not isinstance(relation["roles"], dict)
+                or not relation["roles"]
+                or any(
+                    not isinstance(c, str) or not isinstance(role, str)
+                    for c, role in relation["roles"].items()
+                )
+                or any(c not in tables[name].columns for c in relation["roles"])
+                or any(
+                    relation[c] not in tables[relation["table"]].columns for c in ("key", "feature")
+                )
+            ):
+                raise ValueError(f"Invalid feature_relation for table {name!r}.")
         self._tables = {name: _copy_frame(table) for name, table in tables.items()}
         self._description: dict[str, Any] = json_safe(description)
         self.report_id = description["report_id"]

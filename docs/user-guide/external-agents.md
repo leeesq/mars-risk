@@ -124,6 +124,7 @@ Null 使用 JSON null；非有限浮点使用 `$mars` 类型标记；数值 0 �
 | 画像／分箱 | 已有统计表、业务字典、状态与趋势 | 不能重算新样本或新分箱 |
 | 相关性 | 专用邻居、子矩阵、筛选证据与矩阵展示 | 不重新计算另一方法／另一缺失口径 |
 | 模型分交叉 | 已保存格子、边际、箱定义及支持的规则回放 | 无个体行；不能区分格子内个体或改变原始聚合维度 |
+| 规则报告（Experimental） | 候选审计、验证、解释、按规则/特征/业务来源关联查询及显式高级分析 | 不重建 RuleSet 部署资格，不 transform 新样本；规则指标不按特征展开 |
 | 其他领域对象 | 仅其已实现的公共契约或专用 artifact 能力 | RuleSet／模型 artifact 不等于通用报告快照 |
 
 恢复后的展示使用 `restored.show_table("summary", limit=10)`，导出使用
@@ -144,6 +145,10 @@ Null 使用 JSON null；非有限浮点使用 `$mars` 类型标记；数值 0 �
 具体查询与规则配置见[相关性与模型分交叉](correlation-and-score-cross.md)。
 
 ## 完整示例 { #完整示例 }
+
+[规则报告与外部 Agent 完整案例](rule-reports-and-agents.md)演示模型分交叉 → 开发候选 →
+独立 production 验证 → 两类快照 → 新进程分页追问与证据复核，
+提供无 API Key 的确定性验收及可直接交给外部编程 Agent 的任务 Prompt。
 
 - [报告查询源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/report_queries.py)：筛选、投影与上下文。
 - [跨进程报告源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/portable_reports.py)：业务字典、重名搜索、新进程恢复与人工导出。

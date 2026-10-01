@@ -116,6 +116,7 @@ JSON 摘要可粘贴到其他对话框；完整 `.marsreport` 供具备 Python�
 | 相关性邻居和矩阵 | [相关性分析](https://leeesq.github.io/mars-risk/user-guide/correlation-and-score-cross/#相关性报告) |
 | 双模型分客群与策略 | [模型分交叉](https://leeesq.github.io/mars-risk/user-guide/correlation-and-score-cross/#固定分段交叉) |
 | 规则生成与验证 | [规则挖掘（Experimental）](https://leeesq.github.io/mars-risk/user-guide/rule-mining/) |
+| 规则证据与外部 Agent 完整案例 | [规则报告、独立验证与快照消费](docs/user-guide/rule-reports-and-agents.md)（当前 main，Rule 仍为 Experimental） |
 | 查询、导出、保存与恢复 | [公共报告](https://leeesq.github.io/mars-risk/user-guide/reports-and-exports/) |
 | 交给外部 Agent 继续使用 | [外部 Agent](https://leeesq.github.io/mars-risk/user-guide/external-agents/) |
 | 可选自然语言工具调用 | [内置 Agent（Experimental）](https://leeesq.github.io/mars-risk/user-guide/agent/) |

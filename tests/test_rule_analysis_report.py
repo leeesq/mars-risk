@@ -90,7 +90,8 @@ def test_report_omits_analysis_until_explicitly_supplied(tmp_path: Path) -> None
     assert "<script>alert" not in html
     assert "&lt;script&gt;alert" in html
     assert "cumulative" in report_with_analysis.detail_tables
-    assert "interactions" not in report_with_analysis.detail_tables
+    assert report_with_analysis.detail_tables["interactions"].is_empty()
+    assert report_with_analysis.describe()["tables"]["interactions"]["state"] == "computed_empty"
     assert "rule_explanations" in report_with_analysis.detail_tables
     assert "Lift" in report_with_analysis.detail_tables["rule_explanations"]["explanation"][0]
 

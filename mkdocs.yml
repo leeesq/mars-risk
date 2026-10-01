@@ -89,6 +89,7 @@ nav:
       - 特征筛选: user-guide/feature-selection.md
       - 相关性与模型分交叉: user-guide/correlation-and-score-cross.md
       - 规则挖掘（Experimental）: user-guide/rule-mining.md
+      - 规则报告与外部 Agent: user-guide/rule-reports-and-agents.md
       - 数据角色与运行边界: concepts/data-and-runs.md
   - 报告与 AI:
       - 报告查询与导出: user-guide/reports-and-exports.md
