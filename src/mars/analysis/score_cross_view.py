@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,13 @@ import polars as pl
 from mars.reporting._artifact import Report
 from mars.reporting._serialization import encode
 
-from .score_cross import get_score_bin_definitions
+from ._score_cross_expression import (
+    _EXPRESSION_JAVASCRIPT,
+    _EXPRESSION_LIMITS,
+    _score_rule_examples,
+)
+from ._score_cross_html import SCORE_CROSS_HTML
+from .score_cross import _COUNTS, get_score_bin_definitions
 
 
 def get_score_cell(
@@ -198,7 +205,7 @@ def write_score_cross_html(
     report_name: str = "MARS Score Cross",
     policy_reports: list[Report] | None = None,
 ) -> None:
-    """导出只含聚合数据的离线可交互 HTML，支持查询、指标切换、详情和已回放规则比较。
+    """导出真实聚合证据的离线矩阵、双向梯度和安全分箱规则交互。
 
     Parameters
     ----------
@@ -214,7 +221,8 @@ def write_score_cross_html(
     Returns
     -------
     None
-        写入自包含 HTML；无 CDN、远程请求或个体明细。
+        写入自包含 HTML；使用保存分箱、行列边际及包含特殊箱的 overall。
+        点击或键盘选择不改变规则；规则只匹配常规完整分箱，独立应用或清除。
 
     Raises
     ------
@@ -225,7 +233,14 @@ def write_score_cross_html(
     --------
     >>> write_score_cross_html(restored, "cross.html", policy_reports=[replay])  # doctest: +SKIP
     """
-    get_score_bin_definitions(report)
+    definitions: dict[str, dict[str, Any]] = get_score_bin_definitions(report)
+    bins: pl.DataFrame = report.get_table("bins")
+    normal_counts: dict[str, int] = {
+        axis: bins.filter((pl.col("axis") == axis) & (pl.col("kind") == "normal")).height
+        for axis in ("x", "y")
+    }
+    parameters: dict[str, Any] = report.describe()["parameters"]
+    cell_columns: list[str] = report.get_table("cells").columns
     policies: list[dict[str, Any]] = []
     for policy in policy_reports or []:
         if (
@@ -239,45 +254,30 @@ def write_score_cross_html(
                 "tables": {n: policy.get_table(n).to_dicts() for n in policy.describe()["tables"]},
             }
         )
-    payload = {
+    payload: dict[str, Any] = {
         "description": report.describe(),
         "tables": {n: report.get_table(n).to_dicts() for n in report.describe()["tables"]},
         "policies": policies,
+        "bin_definitions": definitions,
+        "expression_limits": _EXPRESSION_LIMITS,
+        "rule_examples": _score_rule_examples(normal_counts["x"], normal_counts["y"]),
+        "rule_contract": {
+            "count_fields": [field for field in _COUNTS if field in cell_columns],
+            "weighted": parameters["weights_col"] is not None,
+            "sample_share_denominator": "overall.sample_count including special bins",
+            "lift_denominator": "overall.bad_rate including special bins",
+        },
     }
     serialized = encode(payload).replace("<", "\\u003c").replace("&", "\\u0026")
-    html = """<!doctype html><html lang="zh"><meta charset="utf-8"><title>__TITLE__</title>
-<style>body{font-family:system-ui;margin:24px;color:#222}table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #aaa;padding:10px}button,select,input{margin:6px;padding:6px}td.cell{cursor:pointer}.low{outline:2px dashed #777}pre{white-space:pre-wrap;max-height:500px;overflow:auto}.changed{box-shadow:inset 0 0 0 4px #9b32a8}</style>
-<h1>__TITLE__</h1><p id="names"></p><label>样本范围<select id="scope"></select></label>
-<label>着色<select id="metric"><option>bad_rate</option><option>delta_vs_row</option><option>sample_share</option></select></label>
-<label><input type="checkbox" id="special">展开特殊箱</label><label>固定色标绝对上限（小数）<input id="scale" type="number" min="0.000001" step="0.01" value="1"></label>
-<p id="note"></p><div id="matrix"></div><h2>格子详情与同 X 分段梯度</h2><pre id="details">点击格子查看区间、人数、覆盖、Wilson 区间、状态和证据。</pre><div id="gradient"></div>
-<h2>历史规则回放</h2><p>紫框表示基准与候选决策不同的格子。实际样本留存差异见 changes；扩量区域不代表放量安全。</p><select id="policy"></select><div id="policyTables"></div>
-<details><summary>口径、状态与固定分段</summary><pre id="semantics"></pre></details>
-<script type="application/json" id="data">__DATA__</script><script>
-const data=JSON.parse(document.getElementById('data').textContent),t=data.tables,d=data.description;
-const $=id=>document.getElementById(id), same=(r,s)=>['target','group','period'].every(k=>r[k]===s[k]);
-const put=(el,v)=>el.textContent=String(v), json=v=>JSON.stringify(v,null,2);
-const fmt=v=>v===null?'—':(100*v).toFixed(2)+'%';
-function table(rows,el){el.replaceChildren();if(!rows.length)return;const tab=document.createElement('table'),head=tab.insertRow();Object.keys(rows[0]).forEach(k=>put(head.appendChild(document.createElement('th')),k));rows.forEach(r=>{const tr=tab.insertRow();Object.values(r).forEach(v=>put(tr.insertCell(),typeof v==='object'?json(v):v===null?'—':v));});el.appendChild(tab);}
-const scopeRows=t.overall;scopeRows.forEach((s,i)=>{const o=document.createElement('option');o.value=i;put(o,json({target:s.target,group:s.group,period:s.period}));$('scope').appendChild(o);});
-put($('names'),['x','y'].map(a=>{const id=d.parameters['score_'+a];return a.toUpperCase()+'='+((d.feature_metadata[id]||{}).display_name||id)+' ['+id+']';}).join('; '));
-put($('semantics'),json(d));
-const none=document.createElement('option');none.value=-1;put(none,'无规则比较');$('policy').appendChild(none);
-data.policies.forEach((p,i)=>{const o=document.createElement('option');o.value=i;put(o,json(p.description.parameters.candidate));$('policy').appendChild(o);});
-function render(){if(!scopeRows.length){put($('note'),'empty input; no actual scopes');return;}
-const s=scopeRows[Number($('scope').value)],metric=$('metric').value,expand=$('special').checked,scale=Number($('scale').value)||1;
-const xs=t.bins.filter(b=>b.axis==='x'&&(expand||b.kind==='normal')),ys=t.bins.filter(b=>b.axis==='y'&&(expand||b.kind==='normal'));
-const all=t.cells.filter(r=>same(r,s)),cells=all.filter(r=>xs.some(b=>b.bin_id===r.x_bin)&&ys.some(b=>b.bin_id===r.y_bin));
-const omitted=all.filter(r=>!cells.includes(r)).reduce((n,r)=>n+r.sample_count,0);
-put($('note'),'两轴低风险→高风险；未展示特殊样本='+omitted+'；总体 n='+s.sample_count+'；有表现='+s.observed_sample_count+'；风险='+fmt(s.bad_rate)+'；空/未表现为 —，低样本为虚线框；delta 单位 pp，其他比例 %；固定色标 '+(metric==='delta_vs_row'?'±':'0..')+scale);
-const p=data.policies[Number($('policy').value)],dec=p?p.tables.cell_decisions.filter(r=>same(r,s)):[];
-const tab=document.createElement('table'),head=tab.insertRow();put(head.appendChild(document.createElement('th')),'X / Y');ys.forEach(b=>put(head.appendChild(document.createElement('th')),b.bin_id+' rank='+b.risk_rank));put(head.appendChild(document.createElement('th')),'TOTAL bad_rate');
-xs.forEach(x=>{const tr=tab.insertRow();put(tr.appendChild(document.createElement('th')),x.bin_id+' rank='+x.risk_rank);ys.forEach(y=>{const r=cells.find(c=>c.x_bin===x.bin_id&&c.y_bin===y.bin_id),td=tr.insertCell();td.className='cell'+(r.status==='low_sample'?' low':'');const v=r[metric];put(td,(v===null?'—':(v*100).toFixed(2)+(metric==='delta_vs_row'?'pp':'%'))+' | n='+r.observed_sample_count+' | '+r.status);td.style.backgroundColor=v===null?'#eee':'rgba('+(metric==='delta_vs_row'&&v<0?'45,100,200':'210,60,45')+','+(0.08+0.65*Math.min(1,Math.max(0,Math.abs(v)/scale)))+')';const decision=dec.find(c=>c.x_bin===x.bin_id&&c.y_bin===y.bin_id);if(decision&&decision.baseline_pass!==decision.candidate_pass)td.classList.add('changed');td.onclick=()=>{put($('details'),json({reference:{report_id:d.report_id,table:'cells',dimensions:{target:s.target,group:s.group,period:s.period,x_bin:x.bin_id,y_bin:y.bin_id}},x_interval:x,y_interval:y,statistics:r}));table(all.filter(c=>c.x_bin===x.bin_id).map(c=>({y_bin:c.y_bin,y_risk_rank:c.y_risk_rank,bad_rate:c.bad_rate,observed_sample_count:c.observed_sample_count,delta_vs_row:c.delta_vs_row,status:c.status})),$('gradient'));};});const margin=t.row_summary.find(r=>same(r,s)&&r.x_bin===x.bin_id);put(tr.insertCell(),fmt(margin.bad_rate));});
-const last=tab.insertRow();put(last.appendChild(document.createElement('th')),'TOTAL bad_rate');ys.forEach(y=>put(last.insertCell(),fmt(t.column_summary.find(r=>same(r,s)&&r.y_bin===y.bin_id).bad_rate)));put(last.insertCell(),fmt(s.bad_rate));$('matrix').replaceChildren(tab);
-$('policyTables').replaceChildren();if(p){['changes','summary','regions','axis_regions'].forEach(name=>{if(!p.tables[name])return;const h=document.createElement('h3');put(h,name);$('policyTables').appendChild(h);const el=document.createElement('div');$('policyTables').appendChild(el);table(p.tables[name].filter(r=>same(r,s)),el);});}}
-['scope','metric','special','scale','policy'].forEach(id=>$(id).addEventListener('change',render));render();
-</script></html>"""
-    Path(path).write_text(
-        html.replace("__TITLE__", escape(report_name)).replace("__DATA__", serialized),
-        encoding="utf-8",
+    replacements: dict[str, str] = {
+        "TITLE": escape(report_name),
+        "DATA": serialized,
+        "EXPRESSION_JS": _EXPRESSION_JAVASCRIPT,
+    }
+    # 单次替换固定模板标记；用户文本中的同名字符串不能被再次展开。
+    html = re.sub(
+        r"__(TITLE|DATA|EXPRESSION_JS)__",
+        lambda match: replacements[match[1]],
+        SCORE_CROSS_HTML,
     )
+    Path(path).write_text(html, encoding="utf-8")

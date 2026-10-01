@@ -4,19 +4,26 @@ from __future__ import annotations
 
 from copy import deepcopy
 from statistics import NormalDist
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
 from mars._compat import _left_join_nulls
-from mars.compute import amount_stats_agg_exprs, binary_stats_agg_exprs
+from mars.compute import amount_stats_agg_exprs, binary_stats_agg_exprs, missing_condition_expr
 from mars.reporting._artifact import Report, ReportSnapshot
 from mars.reporting._metadata import FeatureMetadata
 from mars.reporting._result import _result_report
 
 from ._evaluation.context import normalize_binary_target_column, prepare_group_context
+from ._risk_profile import _normalize_profile_risk_binning_type, _ProfileRiskMonotonicTrend
+from ._score_cross_binning import _fit_score_bins, _score_binning_params
+from ._score_cross_expression import (
+    _EXPRESSION_LIMITS,
+    _evaluate_score_expression,
+    _parse_score_expression,
+)
 
 _SCOPE = ["target", "group", "period"]
 _COUNTS = [
@@ -48,6 +55,7 @@ def _axis_definition(
     cuts: list[float],
     specials: list[float],
     probability: bool,
+    missing_values: list[Any] | None = None,
 ) -> dict[str, Any]:
     """纯配置校验，不扫描样本；显式切点和保存定义走同一条路径。"""
     if direction not in {"higher_risk", "lower_risk"}:
@@ -60,7 +68,7 @@ def _axis_definition(
     points = sorted(set(float(c) for c in cuts))
     if not np.isfinite(points).all():
         raise ValueError("cutpoints must be finite numbers; unbounded endpoints are implicit.")
-    return {
+    definition: dict[str, Any] = {
         "score": score,
         "direction": direction,
         "cutpoints": points,
@@ -69,6 +77,11 @@ def _axis_definition(
         "closed": "right",
         "actual_n_bins": len(points) + 1,
     }
+    if missing_values is not None:
+        if not isinstance(missing_values, list):
+            raise ValueError("missing_values must be a list or map score IDs to lists.")
+        definition["missing_values"] = deepcopy(missing_values)
+    return definition
 
 
 def _fit_axis(
@@ -78,19 +91,29 @@ def _fit_axis(
     n_bins: int,
     specials: list[float],
     probability: bool,
+    *,
+    binning_type: str = "native",
+    binner_params: dict[str, Any] | None = None,
+    target: str | None = None,
+    fit_source: str = "current_input",
 ) -> dict[str, Any]:
-    """只用无标签有限分数拟合一次分位点；重复值从不拆分。"""
+    """共享分箱器拟合一次；固定定义保留 Score Cross 的右闭端点合同。"""
     _axis_definition(score, direction, [], specials, probability)
-    values = frame[score].cast(pl.Float64, strict=False).to_numpy()
-    valid = np.isfinite(values) & ~np.isin(values, np.asarray(specials, dtype=float))
-    if probability:
-        valid &= (values >= 0) & (values <= 1)
-    values = values[valid]
-    if not len(values):
-        raise ValueError(f"No valid reference scores for {score!r}; supply explicit cutpoints.")
-    quantiles = np.unique(np.quantile(values, np.arange(1, n_bins) / n_bins))
-    points = quantiles[(quantiles > values.min()) & (quantiles < values.max())].tolist()
-    return _axis_definition(score, direction, points, specials, probability)
+    effective_params = binner_params or {"n_bins": n_bins, "special_values": specials}
+    points, provenance = _fit_score_bins(
+        frame,
+        score,
+        probability=probability,
+        binning_type=binning_type,
+        binner_params=effective_params,
+        target=target,
+        fit_source=fit_source,
+    )
+    definition = _axis_definition(
+        score, direction, points, specials, probability, effective_params.get("missing_values")
+    )
+    definition["fit"] = provenance
+    return definition
 
 
 def _bins(definitions: dict[str, dict[str, Any]]) -> pl.DataFrame:
@@ -108,6 +131,7 @@ def _bins(definitions: dict[str, dict[str, Any]]) -> pl.DataFrame:
                     "bin_id": f"b{i}",
                     "raw_order": i,
                     "risk_rank": rank,
+                    "display_label": f"{axis.upper()}{rank}",
                     "kind": "normal",
                     "lower": points[i - 1] if i else None,
                     "upper": points[i] if i < len(points) else None,
@@ -129,6 +153,7 @@ def _bins(definitions: dict[str, dict[str, Any]]) -> pl.DataFrame:
                     "bin_id": kind,
                     "raw_order": n + i,
                     "risk_rank": None,
+                    "display_label": kind,
                     "kind": kind if kind in {"missing", "invalid"} else "special",
                     "lower": None,
                     "upper": None,
@@ -151,7 +176,9 @@ def _bins(definitions: dict[str, dict[str, Any]]) -> pl.DataFrame:
     ).sort(["axis", "risk_rank", "raw_order"], nulls_last=True)
 
 
-def _assign(definition: dict[str, Any], axis: str) -> pl.Expr:
+def _assign(
+    definition: dict[str, Any], axis: str, dtype: pl.DataType | None = None
+) -> pl.Expr:
     """精确复用右闭固定边界，特殊和非法值不进入正常风险等级。"""
     original = pl.col(definition["score"])
     score = original.cast(pl.Float64, strict=False)
@@ -162,7 +189,10 @@ def _assign(definition: dict[str, Any], axis: str) -> pl.Expr:
     for point in definition["cutpoints"]:
         index = index + (score > point).cast(pl.Int64)
     # 显式特殊值优先于概率域检查，但缺失和非有限值始终分开。
-    expression = pl.when(original.is_null() | score.is_nan()).then(pl.lit("missing"))
+    missing = missing_condition_expr(
+        original, dtype=dtype, missing_values=definition.get("missing_values")
+    ) | score.is_nan()
+    expression = pl.when(missing).then(pl.lit("missing"))
     for i, value in enumerate(definition["special_values"]):
         expression = expression.when(score == value).then(pl.lit(f"s{i}"))
     return (
@@ -262,6 +292,24 @@ def _sum(frame: pl.DataFrame, keys: list[str]) -> pl.DataFrame:
     )
 
 
+def _lift_status() -> pl.Expr:
+    """区分不可用 Lift 的原因；有效零风险在整体率为正时仍为 valid。"""
+    return (
+        pl.when(pl.col("target").is_null())
+        .then(pl.lit("not_requested"))
+        .when(pl.col("sample_count") == 0)
+        .then(pl.lit("empty"))
+        .when(pl.col("bad_rate").is_null())
+        .then(pl.col("status"))
+        .when(pl.col("overall_bad_rate").is_null())
+        .then(pl.col("overall_status"))
+        .when(pl.col("overall_bad_rate") <= 0)
+        .then(pl.lit("invalid_denominator"))
+        .otherwise(pl.lit("valid"))
+        .alias("lift_status")
+    )
+
+
 def _marginals(cells: pl.DataFrame, parameters: dict[str, Any]) -> dict[str, pl.DataFrame]:
     """总体与边际来自唯一格子统计，全部包含特殊箱。"""
     overall = _derive(_sum(cells, _SCOPE), parameters)
@@ -271,6 +319,7 @@ def _marginals(cells: pl.DataFrame, parameters: dict[str, Any]) -> dict[str, pl.
         *_SCOPE,
         pl.col("sample_count").alias("scope_sample_count"),
         pl.col("bad_rate").alias("overall_bad_rate"),
+        pl.col("status").alias("overall_status"),
     )
     outputs: dict[str, pl.DataFrame] = {}
     for name, frame in (
@@ -282,6 +331,7 @@ def _marginals(cells: pl.DataFrame, parameters: dict[str, Any]) -> dict[str, pl.
         frame = _left_join_nulls(frame, baseline, on=_SCOPE).with_columns(
             _ratio(pl.col("sample_count"), pl.col("scope_sample_count")).alias("sample_share"),
             _ratio(pl.col("bad_rate"), pl.col("overall_bad_rate")).alias("lift_vs_overall"),
+            _lift_status(),
         )
         if name == "cells":
             frame = _left_join_nulls(
@@ -305,14 +355,22 @@ def cross_scores(
     targets: list[str] | None = None,
     cutpoints: dict[str, list[float]] | None = None,
     binning_reference: pl.DataFrame | pd.DataFrame | None = None,
-    n_bins: int = 5,
+    n_bins: int | dict[str, int] = 5,
     bin_definitions: dict[str, dict[str, Any]] | None = None,
+    binning_type: Literal["native", "optimal", "lite_opt"] = "native",
+    method: Literal["quantile", "uniform", "cart"] | None = None,
+    min_bin_size: float | int | None = None,
+    monotonic_trend: _ProfileRiskMonotonicTrend | None = None,
+    binner_params: dict[str, Any] | None = None,
+    binning_target: str | None = None,
+    n_jobs: int | None = None,
     group_col: str | None = None,
     time_col: str | None = None,
     time_grain: str | None = None,
     weights_col: str | None = None,
     amount_col: str | None = None,
     special_values: dict[str, list[float]] | None = None,
+    missing_values: list[Any] | dict[str, list[Any]] | None = None,
     probability_scores: list[str] | None = None,
     min_observed: int = 30,
     confidence_level: float = 0.95,
@@ -337,11 +395,29 @@ def cross_scores(
     cutpoints : dict[str, list[float]] | None
         两个原始 ID 的有限切点；区间右闭，无界覆盖 reference 范围外的有限分。
     binning_reference : pl.DataFrame | pd.DataFrame | None
-        无监督分位点 reference；不传时全量当前输入各拟合一次，绝不猜训练分组。
-    n_bins : int
-        请求正常段数，默认 5；重复分位点合并，常量退化为一个段。
+        用户指定的拟合参考集；不传时当前输入各轴拟合一次，绝不猜训练分组。
+        监督分箱须在此参考集中提供 binning_target；跨组、周期和评估目标复用定义。
+    n_bins : int | dict[str, int]
+        请求正常段数，默认 5；也可按两个原始 score ID 指定不同箱数。实际箱数可能减少。
     bin_definitions : dict[str, dict[str, Any]] | None
         get_score_bin_definitions 的保存定义，使用时不拟合；与 reference/cutpoints 互斥。
+    binning_type : Literal["native", "optimal", "lite_opt"]
+        复用 profile_risk 的共享分箱引擎；默认 native。显式切点/保存定义不接受拟合配置。
+    method : Literal["quantile", "uniform", "cart"] | None
+        native 为等频、等宽或树；optimal/lite_opt 为预分箱方法。None 使用引擎默认值，
+        native 默认 quantile。自定义区间使用 cutpoints，不支持 method="custom"。
+    min_bin_size : float | int | None
+        透传共享分箱器的最小箱大小约束；None 使用引擎默认值。native CART 支持整数人数。
+    monotonic_trend : _ProfileRiskMonotonicTrend | None
+        复用 profile_risk 趋势配置；监督最优分箱默认 auto_asc_desc，native 发警告并忽略。
+    binner_params : dict[str, Any] | None
+        复用 profile_risk 高级参数解析，如 native 的 cart_params、merge_small_bins、
+        remove_empty_bins。公开参数和 prebinning_method 不可放入此映射。
+    binning_target : str | None
+        CART/optimal/lite_opt 的唯一拟合标签；None 默认首个 targets，并保存实际标签。
+        可显式选择独立标签，参考集上校验 0/1/缺失及两个有效类别；不随评估目标重拟合。
+    n_jobs : int | None
+        共享分箱器并行参数；None 使用引擎默认值，-1 或正整数。
     group_col : str | None
         既有分组字段；与时间同时提供时只保留实际 group/period 组合。
     time_col : str | None
@@ -354,6 +430,8 @@ def cross_scores(
         复用金额 helper：null/NaN/负值不贡献金额；非有限非缺失金额报错。
     special_values : dict[str, list[float]] | None
         每个 score 的显式有限特殊值，单独保存为特殊箱，不混入风险等级。
+    missing_values : list[Any] | dict[str, list[Any]] | None
+        共享缺失值语义；一个列表应用于两轴，或按原始 score ID 指定。随定义保存、加载复用。
     probability_scores : list[str] | None
         明确声明为 [0,1] 概率的 score；域外值进入 invalid，普通分不限制域。
     min_observed : int
@@ -393,8 +471,15 @@ def cross_scores(
         raise ValueError("Scores must differ and targets must be unique non-score fields.")
     if any(score_directions.get(s) not in {"higher_risk", "lower_risk"} for s in scores):
         raise ValueError("Explicit higher_risk/lower_risk direction required for both scores.")
-    if type(n_bins) is not int or not 1 <= n_bins <= 100:
-        raise ValueError("n_bins must be an integer between 1 and 100.")
+    requested_bins: dict[str, int]
+    if isinstance(n_bins, dict):
+        if set(n_bins) != set(scores):
+            raise ValueError("n_bins mapping must define both score IDs.")
+        requested_bins = dict(n_bins)
+    else:
+        requested_bins = {s: n_bins for s in scores}
+    if any(type(v) is not int or not 1 <= v <= 100 for v in requested_bins.values()):
+        raise ValueError("n_bins must contain integers between 1 and 100.")
     if type(min_observed) is not int or min_observed < 0 or not 0 < confidence_level < 1:
         raise ValueError("Invalid min_observed or confidence_level.")
     if type(max_scopes) is not int or max_scopes < 1:
@@ -405,9 +490,55 @@ def cross_scores(
         raise ValueError("cutpoints must define both score IDs.")
     if set(probability_scores or []) - set(scores) or set(special_values or {}) - set(scores):
         raise ValueError("Probability/special configurations must name the two scores.")
+    if isinstance(missing_values, dict) and set(missing_values) - set(scores):
+        raise ValueError("missing_values mapping must name the two scores.")
+    missing_by_score: dict[str, list[Any] | None] = {
+        s: missing_values.get(s) if isinstance(missing_values, dict) else missing_values
+        for s in scores
+    }
+    if any(v is not None and not isinstance(v, list) for v in missing_by_score.values()):
+        raise ValueError("missing_values must be a list or map score IDs to lists.")
+    kind = _normalize_profile_risk_binning_type(binning_type)
+    automatic = cutpoints is None and bin_definitions is None
+    fitting_options = (
+        kind != "native"
+        or method is not None
+        or min_bin_size is not None
+        or monotonic_trend is not None
+        or binner_params is not None
+        or binning_target is not None
+        or n_jobs is not None
+    )
+    if not automatic and fitting_options:
+        raise ValueError("Fitting options cannot accompany explicit cutpoints or saved definitions.")
+    supervised = automatic and (kind in {"optimal", "lite_opt"} or method == "cart")
+    fit_target = binning_target or (labels[0] if supervised and labels else None)
+    if supervised and fit_target is None:
+        raise ValueError("Supervised binning requires binning_target or a first targets label.")
+    if binning_target is not None and (not supervised or binning_target in scores):
+        raise ValueError("binning_target must be a non-score label for supervised binning.")
+    effective_params: dict[str, dict[str, Any]] = {}
+    if automatic:
+        for score in scores:
+            effective_params[score] = _score_binning_params(
+                binning_type=kind,
+                method=method,
+                n_bins=requested_bins[score],
+                min_bin_size=min_bin_size,
+                monotonic_trend=monotonic_trend,
+                missing_values=missing_by_score[score],
+                special_values=(special_values or {}).get(score, []),
+                binner_params=binner_params,
+                n_jobs=n_jobs,
+            )
     columns = list(
         dict.fromkeys(
-            [*scores, *labels, *[c for c in (group_col, time_col, weights_col, amount_col) if c]]
+            [
+                *scores,
+                *labels,
+                *([fit_target] if fit_target and binning_reference is None else []),
+                *[c for c in (group_col, time_col, weights_col, amount_col) if c],
+            ]
         )
     )
     reserved = {"__cross_group", "__cross_period", "x_bin", "y_bin"}
@@ -445,19 +576,31 @@ def cross_scores(
     if scopes.height > max_scopes:
         raise ValueError(f"Actual scopes {scopes.height} exceed max_scopes={max_scopes}.")
     if bin_definitions is None:
-        reference = (
-            _project(binning_reference, scores)
+        fit_source = (
+            "explicit_cutpoints"
+            if cutpoints is not None
+            else "reference"
             if binning_reference is not None
-            else frame.select(scores)
+            else "current_input"
+        )
+        reference_columns = [*scores, *([fit_target] if fit_target else [])]
+        reference = (
+            _project(binning_reference, reference_columns)
+            if binning_reference is not None
+            else frame.select(reference_columns)
         )
         definitions = {
             axis: _fit_axis(
                 reference,
                 score,
                 score_directions[score],
-                n_bins,
+                requested_bins[score],
                 (special_values or {}).get(score, []),
                 score in (probability_scores or []),
+                binning_type=kind,
+                binner_params=effective_params[score],
+                target=fit_target,
+                fit_source=fit_source,
             )
             if cutpoints is None
             else _axis_definition(
@@ -466,16 +609,10 @@ def cross_scores(
                 cutpoints[score],
                 (special_values or {}).get(score, []),
                 score in (probability_scores or []),
+                missing_by_score[score],
             )
             for axis, score in zip(("x", "y"), scores)
         }
-        fit_source = (
-            "explicit_cutpoints"
-            if cutpoints is not None
-            else "reference"
-            if binning_reference is not None
-            else "current_input"
-        )
     else:
         definitions = deepcopy(bin_definitions)
         if set(definitions) != {"x", "y"}:
@@ -494,12 +631,27 @@ def cross_scores(
                 d["cutpoints"],
                 d["special_values"],
                 d["probability"],
+                d.get("missing_values"),
             )
-            if validated != d:
+            if {k: v for k, v in d.items() if k != "fit"} != validated:
                 raise ValueError("Invalid or inconsistent saved bin definition.")
+            if "fit" in d and (
+                not isinstance(d["fit"], dict)
+                or d["fit"].get("actual_n_bins") != d["actual_n_bins"]
+                or d["fit"].get("closed") != "right"
+            ):
+                raise ValueError("Invalid saved bin fitting provenance.")
+            if special_values is not None and special_values.get(score, []) != d["special_values"]:
+                raise ValueError("special_values differ from saved definitions.")
+            if probability_scores is not None and (score in probability_scores) != d["probability"]:
+                raise ValueError("probability_scores differ from saved definitions.")
+            if missing_values is not None and (missing_by_score[score] or []) != d.get("missing_values", []):
+                raise ValueError("missing_values differ from saved definitions.")
         fit_source = "saved_definition"
     bins = _bins(definitions)
-    frame = frame.with_columns([_assign(definitions[axis], axis) for axis in ("x", "y")])
+    frame = frame.with_columns(
+        [_assign(definitions[axis], axis, frame.schema[score]) for axis, score in zip(("x", "y"), scores)]
+    )
     keys = ["__cross_group", "__cross_period", "x_bin", "y_bin"]
     expressions = [pl.len().cast(pl.Int64).alias("sample_count")]
     if weights_col:
@@ -603,13 +755,22 @@ def cross_scores(
     cells = pl.concat(chunks).sort(
         [*_SCOPE, "x_risk_rank", "y_risk_rank", "x_bin", "y_bin"], nulls_last=True
     )
+    fitted_targets = {axis: d.get("fit", {}).get("target") for axis, d in definitions.items()}
+    common_target = fitted_targets["x"] if fitted_targets["x"] == fitted_targets["y"] else None
     parameters = {
         "score_x": score_x,
         "score_y": score_y,
         "score_directions": score_directions,
         "targets": labels,
         "requested_n_bins": n_bins,
+        "actual_n_bins": {d["score"]: d["actual_n_bins"] for d in definitions.values()},
         "bin_definitions": definitions,
+        "binning_type": kind if automatic else None,
+        "binning_target": common_target,
+        "fitted_targets": fitted_targets,
+        "fit_performed": automatic,
+        "binning_parameters": {axis: d.get("fit") for axis, d in definitions.items()},
+        "binning_reference_policy": "explicit reference or current input; fitted once per axis across all scopes/targets",
         "fit_source": fit_source,
         "input_row_count": len(df),
         "projected_columns": columns,
@@ -626,7 +787,7 @@ def cross_scores(
         "bad_rate_denominator": "observed_weight_sum" if weights_col else "observed_sample_count",
         "confidence_interval": "unweighted integer Wilson; weighted CI unsupported",
         "amount_policy": "existing helper: nonnegative amounts contribute; negative/null/NaN contribute zero; infinity rejected",
-        "score_missing_policy": "null/NaN -> missing; nonfinite/nonnumeric/probability domain violation -> invalid",
+        "score_missing_policy": "null/NaN/custom missing_values -> missing; nonfinite/nonnumeric/probability domain violation -> invalid",
         "ratio_unit": "fraction; delta fraction difference",
         "sample_semantics": "historical sample retention; population extrapolation unknown",
     }
@@ -699,6 +860,7 @@ def _policy_mask(
         "and": {"x_max_risk_rank", "y_max_risk_rank"},
         "or": {"x_max_risk_rank", "y_max_risk_rank"},
         "staircase": {"steps"},
+        "expression": {"expression"},
     }
     if kind not in fields or set(rule) - (common | fields[kind]) or not fields[kind].issubset(rule):
         raise ValueError(
@@ -707,6 +869,20 @@ def _policy_mask(
     if rule.get("missing_score", "reject") != "reject":
         raise ValueError(
             "Only missing_score='reject' is supported; explicit specials may be accepted."
+        )
+    if kind == "expression":
+        if "accepted_special_bins" in rule and rule["accepted_special_bins"] != {}:
+            raise ValueError("分箱表达式只覆盖正常箱；特殊箱请使用已有显式 policy 策略。")
+        ast = _parse_score_expression(
+            rule["expression"], definitions["x"]["actual_n_bins"], definitions["y"]["actual_n_bins"]
+        )
+        return pl.Series(
+            "pass",
+            [
+                _evaluate_score_expression(ast, x, y)
+                for x, y in cells.select("x_risk_rank", "y_risk_rank").iter_rows()
+            ],
+            dtype=pl.Boolean,
         )
     specials = rule.get("accepted_special_bins", {})
     if not isinstance(specials, dict) or set(specials) - {"x", "y"}:
@@ -782,10 +958,14 @@ def _partition_summary(
         pl.col("sample_count").alias("original_sample_count"),
         pl.col("observed_sample_count").alias("original_observed_count"),
         pl.col("bad_sample_count").alias("original_bad_count"),
+        pl.col("bad_rate").alias("overall_bad_rate"),
+        pl.col("status").alias("overall_status"),
     )
     summary = _left_join_nulls(summary, totals, on=_SCOPE)
     return summary.with_columns(
         _ratio(pl.col("sample_count"), pl.col("original_sample_count")).alias("sample_share"),
+        _ratio(pl.col("bad_rate"), pl.col("overall_bad_rate")).alias("lift_vs_overall"),
+        _lift_status(),
         (pl.col("observed_sample_count") - pl.col("bad_sample_count")).alias("good_sample_count"),
         _ratio(pl.col("bad_sample_count"), pl.col("original_bad_count")).alias("bad_sample_share"),
         _ratio(
@@ -808,10 +988,14 @@ def evaluate_score_policy(
     report : Report
         score_cross 报告，支持 load_report 的通用快照；不需要原样本。
     candidate : dict[str, Any]
-        type 为 x_only/y_only/and/or/staircase。统一规则使用 x/y_max_risk_rank；
+        type 为 x_only/y_only/and/or/staircase/expression。统一规则使用 x/y_max_risk_rank；
         staircase 使用 steps={实际 X bin_id: {action: accept, y_max_risk_rank: 整数}}，
         整段拒绝为 {action: reject}，未列出的 X 段拒绝。missing_score 默认 reject，
         accepted_special_bins 可显式接受特殊箱。仅依赖的轴影响通过条件。
+        expression 使用 expression="X <= X2 AND Y <= Y3"；编号为保存的正常箱风险
+        序位，支持同轴标签或整数、比较符及大小写不敏感的 AND/OR，AND 优先于 OR。
+        括号覆盖优先级；最多 240 字符、96 词元、12 层括号。只覆盖完整正常箱集合，
+        不接受连续阈值或隐含特殊箱；不产生自动审批语义。
     baseline : dict[str, Any] | None
         显式基准规则；None 为全原样本基准，记录为 all_samples。
 
@@ -831,6 +1015,8 @@ def evaluate_score_policy(
     --------
     >>> replay = evaluate_score_policy(restored,
     ...     {"type": "and", "x_max_risk_rank": 3, "y_max_risk_rank": 3})  # doctest: +SKIP
+    >>> expression = evaluate_score_policy(restored,
+    ...     {"type": "expression", "expression": "X <= X2 AND Y >= Y3"})  # doctest: +SKIP
     """
     if report.report_type != "score_cross":
         raise ValueError("Expected a score_cross report.")
@@ -915,6 +1101,18 @@ def evaluate_score_policy(
         replay_precision="exact whole saved bins only",
         comparison="historical sample retention; coverage differences explicit",
     )
+    # 保存限定 AST 供机器核验；可回放的 candidate 本身保留原输入契约，不要求原始数据。
+    for name, rule in (("candidate", candidate), ("baseline", baseline)):
+        if rule is not None and rule["type"] == "expression":
+            parameters[f"{name}_expression_ast"] = _parse_score_expression(
+                rule["expression"], definitions["x"]["actual_n_bins"], definitions["y"]["actual_n_bins"]
+            )
+            parameters["expression_syntax"] = {
+                "version": 1,
+                "limits": dict(_EXPRESSION_LIMITS),
+                "normal_bins_only": True,
+                "ordering": "saved risk_rank ascending, stable across target/group/period",
+            }
     return _result_report(
         "score_policy",
         tables,
@@ -928,6 +1126,18 @@ def evaluate_score_policy(
             if name != "bins"
         },
         scope_roles={"score_x": parameters["score_x"], "score_y": parameters["score_y"]},
+        definitions={
+            "lift_status": "Lift 状态：valid 包括有效零；empty、unobserved、not_requested、invalid_denominator 表示不可用原因",
+            "overall_status": "当前 target/group/period 整体坏账率状态；含全部特殊箱",
+        },
+        grains={
+            "summary": "target/group/period/rule/retained",
+            "regions": "target/group/period/baseline_pass/candidate_pass",
+            "changes": "target/group/period",
+            "cell_decisions": "target/group/period/x_bin/y_bin",
+            "axis_regions": "target/group/period/x_pass/y_pass",
+            "bins": "axis/bin_id",
+        },
     )
 
 
@@ -955,7 +1165,7 @@ class ScoreCrossReport(ReportSnapshot):
         Parameters
         ----------
         candidate : dict[str, Any]
-            声明式 x_only/y_only/and/or/staircase 规则，格式见 evaluate_score_policy。
+            声明式 x_only/y_only/and/or/staircase/expression 规则，格式见 evaluate_score_policy。
         baseline : dict[str, Any] | None
             显式基准；None 为 all_samples。缺失默认拒绝，仅依赖轴影响通过条件。
 

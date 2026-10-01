@@ -61,7 +61,7 @@ skipped 状态；未计算的对角为空值。仅在 fit 成功后固定快照�
 ## 固定分段交叉
 
 ```python
-from mars.analysis import cross_scores, get_score_cell, show_score_matrix
+from mars.analysis import cross_scores, get_score_bin_definitions, get_score_cell, show_score_matrix
 
 report = cross_scores(
     df, score_x="score_main", score_y="prob_aux", targets=["fpd7", "mob1_dpd7"],
@@ -86,12 +86,64 @@ report.get_table("cells", filters={"target": "fpd7", "group": "OOT", "x_bin": "b
 分段配置互斥：显式 `cutpoints={两个原始ID: 切点列表}`、`binning_reference` 或
 `bin_definitions=get_score_bin_definitions(previous_report)`。无配置时全量当前输入各轴
 拟合一次，`fit_source=current_input`，不会猜哪个分组是训练集。所有 target/分组/月共用
-同一份 bins。默认 5 段，可指定 10 段；重复点合并，常量一个有效段。不同报告默认分位箱
-不能直接比较，应显式复用保存定义。没有有效 reference 分数时须给显式切点。
+同一份 bins。默认请求 5 段，也可用 `n_bins={"score_main": 4, "prob_aux": 6}`；
+实际正常箱数记录在定义及 `parameters.actual_n_bins`，重复值、常量、小样本或合并可减少箱数。
+不同报告不能假定分位箱可比，应复用保存定义。没有有效 reference 分数时须给显式切点。
+
+### 与 profile_risk 共用分箱
+
+自动路径使用 `profile_risk` 的配置解析和现有分箱器，不在 Score Cross 重写分位点、等宽或树。
+
+| 参数 | 行为 |
+| --- | --- |
+| `binning_type` | `native`（默认）、`optimal`、`lite_opt`；不支持历史 `opt` 别名 |
+| `method` | `quantile`、`uniform`、`cart`；None 使用对应引擎的实际默认值，最优引擎按现有规则映射预分箱方法 |
+| `n_bins` | 整数 1–100，或同时覆盖两个原始 score ID 的整数映射；特殊箱不占正常箱数 |
+| `min_bin_size` | 按共享引擎约束；native CART 整数为人数、浮点为比例，最优引擎使用比例；实际配置随定义保存 |
+| `monotonic_trend` | 共用引擎的趋势约束；native 不执行趋势约束，沿用现有警告 |
+| `missing_values` | 共享缺失语义；可用全轴列表或按 score ID 提供列表，保存后继续复用 |
+| `special_values` | 按 score ID 指定有限特殊值，优先于概率域检查，特殊箱无 risk_rank |
+| `binner_params` | native 可透传 `cart_params`、`merge_small_bins`、`remove_empty_bins`；已有但不适用的参数警告忽略，未知或重复公开控制项报错 |
+| `binning_target` | 监督拟合目标；默认首个 `targets`，也可明确指定参考集中的另一列。保存实际目标，不随页面切换重拟合 |
+| `n_jobs` | 共用分箱器的并行参数；不更改报告的 scope 定义 |
+
+`method="custom"` 不是公开方法。自定义走 `cutpoints`，保存复用走 `bin_definitions`。
+公开 method、n_bins 等控制项不能重复塞进 `binner_params`，`prebinning_method` 也不能用来
+绕过高层 method 契约；冲突项按 `profile_risk` 的原规则报错。
+这两条无拟合路径不能附带 method、非默认引擎、监督目标或其他拟合配置；明确报错，不静默猜优先级。
+`n_bins` 的旧默认和显式切点调用兼容，实际箱数以切点/定义为准。
+
+监督路径（native cart、optimal、lite_opt）在所选参考集中验证 0/1 标签，剔除未表现标签并检查
+各轴可用分数样本是否具备两个类别；全好/全坏仍可用于报告评估，但不满足监督拟合要求。
+拟合过程不使用评估 `weights_col` 重新定义树目标。每轴定义的 `fit` 保存参考/可用样本数、
+目标、实际引擎参数、实际箱数及诊断；`get_score_bin_definitions` 将这些来源随定义返回。
+保存定义复用时 `fit_performed=False`，历史 `binning_target`/`fitted_targets` 仍明确记录。
+`binning_reference` 可来自任何用户指定的参考集，TRAIN/VAL/TEST/OOT 只是普通组名。
+
+默认概率示例需要 `application_bad_prob`、`behavior_bad_prob` 两个 0–1 字段；评估输入有
+`bad`、`later`、`cohort`，参考集还需有监督标签 `bad`：
+
+```python
+report = cross_scores(
+    df, score_x="application_bad_prob", score_y="behavior_bad_prob",
+    score_directions={"application_bad_prob": "higher_risk", "behavior_bad_prob": "higher_risk"},
+    probability_scores=["application_bad_prob", "behavior_bad_prob"],
+    targets=["bad", "later"], group_col="cohort",
+    binning_reference=df_reference, binning_type="native", method="cart", binning_target="bad",
+    n_bins={"application_bad_prob": 4, "behavior_bad_prob": 6}, min_bin_size=0.05,
+    binner_params={"cart_params": {"max_depth": 3}, "merge_small_bins": True},
+)
+saved_bins = get_score_bin_definitions(report)
+```
+
+方法路径、参数透传与一次拟合由 `tests/test_score_cross_binning.py` 覆盖。普通 score 和混合方向
+仍支持；风险方向及概率身份必须显式声明，不能由字段名推断。
 
 正常箱 `b0...` 按原数值顺序定义为右闭区间 `(lower,upper]`，外端无界，覆盖 reference
 范围外有限分数。`bins` 另存 risk_rank，展示与规则均低风险→高风险，高分低风险的轴
-顺序反转，但 bin_id 和切点不反转。无界端点用 null + unbounded 标记，不写 JSON Infinity。
+顺序反转，但 bin_id 和切点不反转。`bins.display_label` 是稳定的 X1/Y1 等展示编号，与
+真实 bin_id、risk_rank 和端点同表保存；空组不删箱、不重新编号。旧快照按已保存 risk_rank
+确定同样的标签。无界端点用 null + unbounded 标记，不写 JSON Infinity。
 null/NaN 为 missing；非有限/无法数值化分为 invalid。概率域外值进入 invalid；普通分无
 [0,1] 限制。`special_values={ID: [有限值]}` 单独成箱，显式特殊值优先于概率域检查。
 
@@ -104,14 +156,20 @@ null/NaN 为 missing；非有限/无法数值化分为 invalid。概率域外值
 | bins | axis/bin_id；区间、开闭、方向、风险顺序、拟合来源 |
 
 边际和总体从原始整数计数相加后重算，绝不平均格子坏率/Lift/区间。
-sample_share 包含全部特殊箱；observed_coverage=有表现人数/全部人数；bad_rate=坏人数/
-有表现人数。Lift 的基准同标签同范围，零基准返回 null。min_observed 只标注 low_sample，
+sample_share 包含全部特殊箱；折叠特殊箱不会重新归一化正常格占比。
+行/列边际也包括另一轴的隐藏特殊箱，页面基线直接读边际表。
+observed_coverage=有表现人数/全部人数；bad_rate=坏人数/有表现人数。
+Δ 始终为格子坏率减同 X 行坏率，内部小数差只在显示时乘 100 成 pp。
+Lift 的基准是同 target/group/period 的真实 overall，零或未观测基准返回 null；
+有效零分子且基准正数时为 0.00×。`lift_status` 与 `overall_status` 可独立查询，Lift 表示
+相对整体风险倍数，不是模型提升幅度。min_observed 只标注 low_sample，
 不删除数值。空格子为 empty，非空无表现为 unobserved，有表现无坏样本是有效 0，
 无 target 为 not_requested（风险与标签计数空值），全好/全坏标签均支持。
 
 `weights_col` 沿用有限非负权重，零权重允许；bad_rate 全程为 bad_weight_sum/
 observed_weight_sum，格子/边际/总体/规则均一致。仍保留真实整数人数，区间明确命名
-unweighted_ci_lower/upper，为默认 95% Wilson；加权区间标记 unsupported，不使用权重
+unweighted_ci_lower/upper，为默认 95% Wilson（`confidence_level` 可配置）；加权页面明确写
+“未加权 Wilson”，加权区间标记 unsupported，不使用权重
 总和冒充二项样本量。`amount_col` 复用既有金额 helper：非负金额贡献 tot/good/bad_amt，
 null/NaN/负值不贡献金额；无限或非数值金额报错，口径写入参数。金额坏率分母为
 good_amt+bad_amt，独立于权重风险口径。
@@ -155,6 +213,31 @@ policy = evaluate_score_policy(restored, candidate, baseline=baseline)
 粗交叉不能插值或按比例估计精确结果。规则随报告保存固定原区间与父 report_id。
 回放不修改父报告、不自动写文件、不选择最优策略或部署。
 
+### 正常分箱表达式与离线规则
+
+```python
+rule = {"type": "expression", "expression": "X <= X2 AND (Y <= Y3 OR Y = Y5)"}
+policy = evaluate_score_policy(restored, rule)
+policy.get_table("summary", filters={"rule": "candidate", "retained": True})
+policy.get_table("cell_decisions")
+policy.save("expression-policy.marsreport")
+```
+
+X/Y、AND/OR 和同轴标签大小写不敏感。支持 `< <= = == != >= >`；AND 优先于 OR，
+括号覆盖优先级。标签右侧允许整数简写；`X <= 2` 等于 `X <= X2`，表示固定风险顺序的
+前两行，不能解释成原始概率阈值 2。跨轴标签、非整数、越界、未知词元或源码均报中文错误。
+上限为 240 字符、96 词元、12 层括号，严格解析成限定 AST 后显式解释，不执行用户代码。
+正常箱表达式排除任一轴的特殊箱，OR 重叠只计一次；底层旧 policy 的显式特殊箱策略仍保留。
+非单调命中集合是分箱诊断集合，不自动映射为低风险通过门槛或业务审批。
+
+表达式、解析 AST、限制、固定定义及父 report_id 随派生报告保存，机器可查询同一 summary，
+包含人数、表现覆盖、bad_rate、真实总体 Lift 和状态。页面结果也只加总已有格子证据，使用
+同一个 overall 分母；命中空箱与无命中显示 empty，未观测、零权重分母及有效零分别保留语义。
+
+离线页面只提供两个镜像阶梯复制示例；5×5 时分别为 8 格，实际 NxM 会生成合法缩减表达式
+及准确格数。复制只写剪贴板，不填入或应用。新输入无效时上一条已应用规则保留并明示；
+目标、组、真实周期切换保留表达式和当前格子，恢复正常视图只清规则边框与汇总。
+
 summary 保存候选/基准的 retained/rejected 人数、占比、表现覆盖、风险、好坏数量及其
 原样本好坏分母比例；regions 是基准通过×候选通过四区域（包括空区域），changes 明示
 实际留存人数/覆盖/风险差。AND/OR 另有 axis_regions，区分 X通过/Y拒绝的精筛候选区
@@ -178,8 +261,21 @@ bin_id 定位。未知业务字段保持 unknown。
 Notebook `show_score_matrix` 默认显示正常箱，标注特殊样本省略数，提供风险/row delta/
 全体样本占比着色及重算边际；匹配多范围时选择首个并在 caption 说明。Excel 包含所有
 公共表与元数据，比例保持小数。离线 HTML 自包含无 CDN，切换范围、指标、特殊箱、
-色标，点击格子看完整区间与证据、同 X 分段梯度，以及显式预回放规则的覆盖差/四区域/
-决策差异。HTML 仅有聚合结果；新增规则使用公共 Python API 回放后再导出。
+色标。紧凑矩阵逐格显示人数、全 scope 占比、坏率及 Lift；键盘箭头或点击只选格。
+侧栏显示真实区间、X 行基线、Δ、覆盖、Wilson 和证据；两图分别固定 X 沿 Y、固定 Y 沿 X，
+采用真实行/列边际参考线，空/未观测断线，有效零保留在 0。
+规则输入和结果区独立，内侧命中边框保留热力颜色和选中外框。显式预回放 policy 的原统计
+仍在折叠区可查。页面没有月份数据时不会制造月份控件，也不声称已经验证跨月或 OOT 稳定性。
+旧保存报告可重导出新页面，无需原始明细、浏览器状态或重新拟合；已有字段/格式保持可读。
+
+从已有报告运行重导出与可选规则，而不生成教程合成数据：
+
+```bash
+python docs/snippets/correlation_and_score_cross.py --report path/to/existing.marsreport --output output/score-cross-review --rule "X <= X2 AND Y <= Y3"
+```
+
+输出自包含 HTML、既有 Excel、独立 policy 快照和分页证据 JSON；该路径由
+`tests/test_score_cross_portable_ui.py` 验证。HTML 可直接离线打开，无 CDN/字体/遥测/服务器请求。
 
 完整可运行示例：[correlation_and_score_cross.py](../snippets/correlation_and_score_cross.py)。
 执行：`python docs/snippets/correlation_and_score_cross.py --output examples/output/score-reports`。

@@ -20,6 +20,7 @@ from mars.analysis import (
 )
 from mars.feature import MarsLinearSelector, MarsStatsSelector
 from mars.reporting import (
+    Report,
     get_correlation_matrix,
     get_related_features,
     load_report,
@@ -186,12 +187,37 @@ def run(output: Path) -> None:
     assert get_score_bin_definitions(reused) == definitions
 
 
+def export_saved(report_path: Path, output: Path, expression: str | None = None) -> None:
+    """从已有真实报告重导出离线视图和可查询规则；无需原始样本或分箱器。"""
+    output.mkdir(parents=True, exist_ok=True)
+    report = load_report(report_path)
+    policies: list[Report] = []
+    if expression is not None:
+        policy = evaluate_score_policy(report, {"type": "expression", "expression": expression})
+        policy.save(output / "score-policy.marsreport", overwrite=True)
+        policy.write_excel(str(output / "score-policy.xlsx"))
+        policies.append(policy)
+    write_score_cross_html(report, output / "score-cross.html", policy_reports=policies)
+    report.write_excel(str(output / "score-cross.xlsx"))
+    context: str = report.to_ai_context(
+        queries={"overall": {"limit": 10}, "bins": {"limit": 10}}, max_chars=24000
+    )
+    (output / "report-evidence.json").write_text(context, encoding="utf-8")
+
+
 def main() -> None:
-    """运行合成示例，默认产物保存到 examples/output/score-reports。"""
+    """指定 --report 时重导出已有报告，否则运行原有合成教程。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("examples/output/score-reports"))
+    parser.add_argument("--report", type=Path, help="已有 score_cross .marsreport，无需原始数据")
+    parser.add_argument("--rule", help="可选正常分箱表达式，例如 X <= X2 AND Y <= Y3")
     args = parser.parse_args()
-    run(args.output)
+    if args.rule is not None and args.report is None:
+        parser.error("--rule 需要 --report，避免把规则应用到另一份报告。")
+    if args.report is not None:
+        export_saved(args.report, args.output, args.rule)
+    else:
+        run(args.output)
 
 
 if __name__ == "__main__":

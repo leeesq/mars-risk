@@ -123,7 +123,8 @@ TOOLS = (
             "sources": _FEATURES,
             "filters": {
                 "type": "object",
-                "maxProperties": 4,
+                # Score Cross 证据需要 target/group/period 加两个箱或规则维度。
+                "maxProperties": 8,
                 "additionalProperties": {
                     "type": ["string", "number", "boolean", "null", "object"],
                     "additionalProperties": True,

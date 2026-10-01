@@ -103,3 +103,20 @@ python benchmarks/benchmark_correlation_score_cross.py
 未验证超过 1,000 特征、超过 1,000,000 行、超过 55 列的性能，也未在 Python 3.9–3.11 或其他操作系统重复本轮完整验证。相关性报告的完整关系存储仍为 O(p²)。规则回放精度限于完整固定分段；加权二项置信区间不支持，报告明确使用 unweighted 字段表示整数 bad/n 的 Wilson 区间。
 
 本记录生成时 README 未修改，没有 commit、push、发布或部署；后续提交与推送按用户授权单独执行。
+
+## 2026-10-02 Score Cross 接入复核
+
+本轮复用上述报告体系，接入共享画像分箱器、安全分箱表达式和离线交互。没有重新测量上述性能数字，也没有将附件的合成统计写入计算代码。
+
+- Windows 现有 `mars312` 环境，Python 3.12.13 / Polars 1.42.0：默认测试 **761 passed、3 skipped、7 deselected**，92.25 秒。命令为 `python -m pytest -q -p no:cacheprovider -m "not docs_ml and not optional_ml"`，另外指定独立 basetemp。设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`，避免 Windows GBK 父进程解码 UTF-8 子进程输出的环境冲突。
+- Windows 现有 `mars38` 环境，Python 3.8.20 / Polars 1.8.2：五个 Score Cross 测试模块 **102 passed、2 skipped**；两项独立 Agent 测试按既有 Python >=3.10 支持范围跳过。未在此环境重新运行完整仓库测试。
+- 新测试覆盖实际 native / optimal / lite_opt 分箱路径、非 TRAIN 参考集、监督目标、每轴一次拟合、右闭切点、单箱退化、保存定义无拟合复用，以及方向、特殊箱、权重、金额、多个实际 scope、Wilson 和旧快照回放。
+- 表达式 Python/JavaScript 结果对照与导出脚本的 Node 语法检查通过；五维独立 Agent 查询、跨进程加载后 HTML/Excel 导出及 policy 回放通过。这些是计算、脚本和产物检查，不是实际浏览器交互检查。
+- Ruff、Mypy（157 个源文件）、pydoclint、私有 docstring 检查通过；私有检查仍有 6 项历史长度提示。严格 MkDocs 构建、wheel/sdist 构建、分发内容校验和 Twine 元数据检查通过；没有发布包或升级依赖。
+- 未运行 `docs_ml` / `optional_ml` 标记测试及其他 Python 版本的本地完整测试。
+
+本地验收产物位于忽略目录 `output/score-cross-acceptance/`：手工计数的加权、多目标、多组、月份及特殊箱测试报告 `weighted-scopes.marsreport`，加载后导出的 `score-cross.html` / Excel，以及独立 policy 和证据 JSON。它是明确标识的测试夹具，不代表真实业务收益。
+
+另从仓库已有 `output/agent-rule-case/score-cross.marsreport` 加载并重导出至 `output/score-cross-review-existing/`，没有重新生成输入数据；已有快照保留原来的模拟数据来源说明。两类 HTML 都来自实际 ScoreCrossReport / ReportSnapshot，而非样板网页的固定计数。
+
+附件 `MARS-score-cross-prototype.html` 在当前 Windows 工作区存在、可读，内容标识 Visual Prototype 05；Library 版本 4 是独立编号。受支持浏览器工具实际尝试打开其 `file://` 地址后，被安全策略拒绝（仅允许 HTTP/HTTPS，且禁止绕过）。因此附件和最终 HTML 的真实浏览器打开、离线点击、剪贴板、控制台、1440/1280/390px 与 200% 缩放检查均为 **未运行**，没有生成或声称存在验收截图。HTML 的自包含资源和禁止外网连接 CSP 已由代码/产物测试检查；不能据此宣称完成浏览器离线验收。

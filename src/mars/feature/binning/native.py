@@ -261,8 +261,8 @@ class MarsNativeBinner(MarsBinnerBase):
                 min_val = stats_dict[f"{c}_min"]
                 max_val = stats_dict[f"{c}_max"]
 
-                # 防御全空列或零方差常量列
-                if min_val is None or max_val is None or min_val == max_val:
+                # 单箱请求无需切分，仍继续统一拟合诊断、特殊箱和 WOE 管道。
+                if self.n_bins == 1 or min_val is None or max_val is None or min_val == max_val:
                     self.bin_cuts_[c] = [float('-inf'), float('inf')]
                     continue
 

@@ -113,6 +113,10 @@ _DEFINITIONS.update({
     "observed_coverage": ("ratio", "有表现整数样本数/全部整数样本数"),
     "bad_rate": ("ratio", "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"),
     "row_bad_rate": ("ratio", "同标签、同范围、同 X 分段边际的同口径坏率"),
+    "overall_bad_rate": ("ratio", "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters"),
+    "scope_sample_count": ("count", "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母"),
+    "candidate_bad_rate": ("ratio", "候选规则留存完整分箱的同口径坏率；权重口径见 parameters"),
+    "baseline_bad_rate": ("ratio", "基准规则留存完整分箱的同口径坏率；权重口径见 parameters"),
     "delta_vs_row": ("ratio_difference", "格子坏率减 X 边际坏率；小数差值，展示乘 100 为百分点"),
     "lift_vs_row": ("dimensionless", "同口径格子坏率/X 边际坏率；零分母不可用"),
     "lift_vs_overall": ("dimensionless", "同口径格子或边际坏率/总体坏率；零分母不可用"),
@@ -124,6 +128,7 @@ _DEFINITIONS.update({
     "bad_rate_delta": ("ratio_difference", "候选留存坏率减基准留存坏率；同权重/标签口径"),
     "good_sample_share": ("ratio", "区域好人数/原样本范围有表现好人数"),
     "risk_rank": ("ordinal", "正常分段低风险到高风险的 1 起始顺序；特殊箱为 null"),
+    "display_label": ("category", "保存的固定展示编号 X1/Y1 等，按 risk_rank 排序；不表示原始分数阈值"),
     "x_risk_rank": ("ordinal", "X 轴正常分段低风险到高风险顺序；特殊箱为 null"),
     "y_risk_rank": ("ordinal", "Y 轴正常分段低风险到高风险顺序；特殊箱为 null"),
     "bin_id": ("identifier", "保存的稳定分段 ID，不因展示方向改变"),
@@ -135,6 +140,8 @@ _DEFINITIONS.update({
     "sample_status": ("state", "empty 或 populated；与是否请求标签分开"),
     "unweighted_ci_status": ("state", "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested"),
     "weighted_ci_status": ("state", "加权置信区间 unsupported，未请求 not_requested"),
+    "overall_status": ("state", "同 target/group/period 全样本总体坏率的状态，包含特殊箱"),
+    "lift_status": ("state", "相对整体风险倍数的 valid/empty/unobserved/not_requested/invalid_denominator 等状态；有效零分子仍为 valid"),
 })
 
 

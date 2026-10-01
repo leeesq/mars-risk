@@ -6,6 +6,12 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- Score Cross 自动分箱复用 `profile_risk` 的 native/optimal/lite_opt 引擎与配置解析，
+  支持 quantile/uniform/cart、每轴箱数及明确监督拟合目标；旧切点与保存定义继续无拟合复用。
+- Score Cross 离线 HTML 接入固定风险编号矩阵、双向梯度、完整区间证据及受限正常分箱规则。
+  `evaluate_score_policy` 增加可保存的 expression 类型，沿用既有规则聚合与特殊箱策略。
+  新增显示标签和 Lift 状态是加法字段；旧 `.marsreport` 仍可查询、重导出和回放，无格式升级。
+
 - 定位统一为“面向人和 AI Agent 的风控分析工具箱”；README、首页与导航增加外部 Agent 入口。
 - Monitoring、Modeling／Pipeline、Scoring 暂停功能迭代，保留功能、必要修复与直接上游适配。
 - replay 在候选选择前统一合并方向，本次逐项覆盖优先于历史；None／空映射都保留历史。
