@@ -363,8 +363,31 @@ Ruff 全范围检查、Mypy（157 个生产文件）、公共 pydoclint、私有
 
 原始日志、smoke JSON、对照 JSON、参考源码与站点构建保存在本机独立临时目录
 `mars-review-20261002-l9zhqkcb`；Python 3.10 的运行使用独立临时目录。
-没有本地 Python 3.9 或普通 Linux 环境，原远端失败已核对，但修复后的 Linux CI 尚待新提交实跑；
-这些环境不能记为本轮通过。`docs_ml`／`optional_ml` 标记套件没有在本轮单独执行。
+没有本地 Python 3.9 或普通 Linux 环境；随后通过下面的远端运行补齐，不能将其写成本机通过。
+本地没有单独执行 `docs_ml`／`optional_ml` 标记套件。
+
+### 远端 Linux CI 补验
+
+修复提交 `a99e0fc53f0864936a5e8200034df4838ad75ec7` 已推送到独立分支
+`codex/review-fixes-capacity-20261002`，见 [草稿 PR #2](https://github.com/leeesq/mars-risk/pull/2)。
+现有 Ubuntu CI [run 36910816160](https://github.com/leeesq/mars-risk/actions/runs/36910816160)
+的 11 个任务全部 success，没有取消或跳过版本矩阵：
+
+| Python | CI 基础套件 |
+| --- | --- |
+| 3.8.18 | 710 passed、13 skipped、7 deselected |
+| 3.9.25 | 710 passed、13 skipped、7 deselected |
+| 3.10.21 | 799 passed、3 skipped、7 deselected |
+| 3.11.16 | 799 passed、3 skipped、7 deselected |
+| 3.12.14 | 799 passed、3 skipped、7 deselected |
+
+五个版本均实际执行最终 worker 回归，原 timeout／memory_budget_exceeded 用例保留
+真实 known 非零退出状态、后代不再运行和诊断保留断言。日志没有打印具体操作系统退出码，
+因此不推断或写死 Linux 信号码。规则、相关性、模型分交叉的隔离容量 smoke 全部 passed；
+quality、modeling（110 passed）、distribution、两版 installed-wheel smoke 也全部 success。
+[Docs run 36910816417](https://github.com/leeesq/mars-risk/actions/runs/36910816417)
+为 43 passed，严格构建通过；PR 条件下部署任务 skipped，未部署站点。
+本地基础套件与远端依赖组合不同，以上各自记录实际通过数，不用其中一组替代另一组。
 
 ## 原始结果索引
 
