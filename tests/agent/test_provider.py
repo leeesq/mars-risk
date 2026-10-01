@@ -75,6 +75,7 @@ def test_provider_formats_tool_messages_and_preserves_protocol(
     assert {item["function"]["name"] for item in request["tools"]} == {
         "list_datasets", "describe_dataset", "profile_data", "evaluate_risk",
         "monitor_data", "get_report_table", "list_reports", "describe_report",
+        "search_report_features", "get_report_context",
     }
     assert response.tool_calls[0].arguments == {"dataset_id": "data"}
     assert response.finish_reason == "tool_calls"

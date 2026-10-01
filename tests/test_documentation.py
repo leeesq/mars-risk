@@ -31,6 +31,7 @@ BASIC_SNIPPETS = [
     "monitoring.py",
     "reporting_scorecard.py",
     "report_queries.py",
+    "portable_reports.py",
 ]
 
 REFERENCE_MODULES = {

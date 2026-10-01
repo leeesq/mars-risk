@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import math
 from copy import deepcopy
-from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 
 from mars.analysis import profile_risk, profile_stats
 from mars.compute import FrameLike
 from mars.monitoring import MarsMonitor
 from mars.reporting._query import query_table
+from mars.reporting._serialization import encode, json_safe, table_rows
 
 from ._contracts import (
     MarsAgentReport,
@@ -56,6 +56,12 @@ def _tool(
 
 
 TOOLS = (
+    _tool("search_report_features", "按英文标识、中文名、定义和来源检索已有报告，重复名返回候选。",
+          {"report_id": _STRING, "query": {"type": "string", "maxLength": 1000}, "sources": _FEATURES,
+           "limit": {"type": "integer", "minimum": 0, "maximum": 50}}, ["report_id"]),
+    _tool("get_report_context", "取得预算内上下文，完整报告可通过分页查询继续读取。",
+          {"report_id": _STRING, "tables": _FEATURES, "features": _FEATURES,
+           "queries": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": True}}}, ["report_id"]),
     _tool("list_reports", "分页列出已有报告来源和表目录；用 describe_report 查询单位及实际参数。",
           {"offset": {"type": "integer", "minimum": 0},
            "limit": {"type": "integer", "minimum": 1, "maximum": 50}}, []),
@@ -113,11 +119,14 @@ TOOLS = (
             "report_id": _STRING,
             "table": _STRING,
             "columns": _FEATURES,
+            "features": _FEATURES,
+            "sources": _FEATURES,
             "filters": {
                 "type": "object",
                 "maxProperties": 4,
                 "additionalProperties": {
-                    "type": ["string", "number", "boolean", "null"],
+                    "type": ["string", "number", "boolean", "null", "object"],
+                    "additionalProperties": True,
                     "maxLength": 256,
                 },
             },
@@ -185,22 +194,12 @@ def _validate(value: Any, schema: dict[str, Any], path: str = "arguments") -> No
 
 def _json_value(value: Any) -> Any:
     """规范化聚合表的日期及非有限值，保证严格 JSON 序列化。"""
-    if isinstance(value, dict):
-        return {str(key): _json_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_value(item) for item in value]
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
+    return json_safe(value)
 
 
 def encode_json(value: Any) -> str:
     """序列化 JSON 边界对象，不允许 NaN 或 Infinity 字面量。"""
-    return json.dumps(_json_value(value), ensure_ascii=False, allow_nan=False)
+    return encode(value)
 
 
 class _MarsTools:
@@ -280,6 +279,18 @@ class _MarsTools:
                 if len(encode_json(data)) <= self.max_result_chars:
                     return data
                 page.pop()
+        if name in {"search_report_features", "get_report_context"}:
+            public = self.session._public_reports.get(arguments["report_id"])
+            if public is None:
+                raise _ToolInputError("report does not implement the public report contract")
+            options = {k: v for k, v in arguments.items() if k != "report_id"}
+            try:
+                if name == "search_report_features":
+                    return {"report_id": arguments["report_id"], "persistent_report_id": public.report_id,
+                            "candidates": public.search_features(**options)}
+                return cast(dict[str, Any], json.loads(public.to_ai_context(max_chars=self.max_result_chars, **options)))
+            except ValueError as exc:
+                raise _ToolInputError(str(exc)) from exc
         if name == "describe_report":
             return self._describe_report(arguments)
         if name == "list_datasets":
@@ -341,17 +352,11 @@ class _MarsTools:
                 frame,
                 metrics=metrics,
                 missing_values=list(dataset.missing_values),
+                feature_metadata=dataset.feature_metadata,
+                business_context=dataset.business_context,
                 **common,
             )
-            tables = {"overview": profile.overview_table}
-            for prefix, values in (
-                ("dq", profile.dq_tables),
-                ("stats", profile.stats_tables),
-                ("comparison", profile.comparison_tables),
-            ):
-                tables.update(
-                    {f"{prefix}.{key}": value for key, value in values.items()}
-                )
+            tables = {name: profile.get_table(name) for name in profile.describe()["tables"]}
             metadata = dict(profile.report_meta)
             metadata["report_description"] = profile.describe()
         elif name == "evaluate_risk":
@@ -362,18 +367,11 @@ class _MarsTools:
                 method="quantile",
                 n_bins=n_bins,
                 missing_values=list(dataset.missing_values),
+                feature_metadata=dataset.feature_metadata,
+                business_context=dataset.business_context,
                 **common,
             )
-            tables = {
-                "summary": risk.report.summary_table,
-                "detail": risk.report.detail_table,
-            }
-            tables.update(
-                {
-                    f"trend.{key}": value
-                    for key, value in risk.report.trend_tables.items()
-                }
-            )
+            tables = {name: risk.report.get_table(name) for name in risk.report.describe()["tables"]}
             metadata = dict(risk.metadata)
             metadata["report_description"] = risk.report.describe()
         else:
@@ -425,6 +423,7 @@ class _MarsTools:
         """返回报告来源与表目录，指标值必须通过分页查询获得。"""
         return {
             "report_id": report.id,
+            "persistent_report_id": report.metadata.get("report_description", {}).get("report_id"),
             "dataset_id": report.dataset_id,
             "benchmark_id": report.benchmark_id,
             "parameters": report.metadata.get("agent_parameters", {}),
@@ -480,36 +479,43 @@ class _MarsTools:
         name = arguments["table"]
         if name not in report.tables:
             raise _ToolInputError("table does not exist; use the report catalog")
-        filters = arguments.get("filters", {})
-        sort_by = arguments.get("sort_by")
-        columns = arguments.get("columns")
-        try:
-            table = query_table(report.tables[name], filters=filters, sort_by=sort_by,
-                                descending=arguments.get("descending", False), columns=columns)
-        except ValueError as exc:
-            raise _ToolInputError(str(exc)) from exc
-        offset = arguments.get("offset", 0)
-        count = min(arguments.get("limit", 20), max(0, table.height - offset))
+        options = {key: value for key, value in arguments.items() if key not in {"report_id", "table"}}
+        options.setdefault("offset", 0)
+        options.setdefault("limit", 20)
+        public = self.session._public_reports.get(report.id)
+        requested_limit = options["limit"]
         while True:
-            end = offset + count
+            try:
+                if public is not None:
+                    page = public.query_page(name, **options)
+                    frame = page["data"]
+                    rows = table_rows(frame)
+                    total = page["total_rows"]
+                    reference = page["reference"]
+                else:
+                    # 监控报告保留现有口径，通过共享原生查询执行兼容适配。
+                    table = query_table(report.tables[name], filters=options.get("filters"),
+                                        sort_by=options.get("sort_by"), descending=options.get("descending", False),
+                                        features=options.get("features"), columns=options.get("columns"))
+                    frame = table.slice(options["offset"], options["limit"])
+                    rows, total = table_rows(frame), table.height
+                    reference = {"report_id": None, "table": name, "query": dict(options)}
+            except ValueError as exc:
+                raise _ToolInputError(str(exc)) from exc
+            end = options["offset"] + len(rows)
             data = {
-                "report_id": report.id,
-                "reference": f"{report.id}/{name}",
-                "table": name,
-                "filters": filters,
-                "sort_by": sort_by,
-                "descending": arguments.get("descending", False),
-                "columns": table.columns,
-                "total_rows": table.height,
-                "offset": offset,
-                "returned_rows": count,
-                "next_offset": end if end < table.height else None,
-                "rows": _json_value(table.slice(offset, count).to_dicts()),
+                "report_id": report.id, "persistent_report_id": reference["report_id"],
+                "reference": f"{report.id}/{name}", "evidence_reference": reference,
+                "table": name, "filters": options.get("filters", {}),
+                "sort_by": options.get("sort_by"), "descending": options.get("descending", False),
+                "columns": list(frame.columns), "total_rows": total, "offset": options["offset"],
+                "returned_rows": len(rows), "next_offset": end if end < total else None,
+                "truncated": end < total, "omitted_rows": max(total - end, 0),
+                "omission_reason": "output_budget" if options["limit"] < requested_limit else "pagination" if end < total else None,
+                "rows": _json_value(rows),
             }
             if len(encode_json(data)) <= self.max_result_chars:
                 return data
-            if count <= 1:
-                raise _ToolInputError(
-                    "one report row exceeds output budget; narrow the requested table"
-                )
-            count = max(1, count // 2)
+            if options["limit"] <= 1:
+                raise _ToolInputError("one report row exceeds output budget; narrow the requested columns")
+            options["limit"] = max(1, options["limit"] // 2)

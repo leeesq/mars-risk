@@ -8,6 +8,7 @@ from typing import Any, List, Union
 import pandas as pd
 
 from mars.compute import to_pandas_frame
+from mars.reporting._metadata import export_report_semantics
 
 
 class _ProfileExcelWriter:
@@ -82,6 +83,9 @@ class _ProfileExcelWriter:
         try:
             with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
                 wrote_any = False
+                for sheet_name, frame in export_report_semantics(self).items():
+                    frame.to_excel(writer, sheet_name=sheet_name, index=False)
+                    wrote_any = True
                 if self.report_meta:
                     metadata = pd.DataFrame(
                         [
@@ -178,7 +182,7 @@ class _ProfileExcelWriter:
         df_pd = self._reorder_trend_cols(df_pd, group_ascending=group_ascending)
 
         # 动态识别趋势列范围，避免依赖固定列位置。
-        meta_and_stat = {"feature", "dtype", "distribution", "mode_value", "total"}
+        meta_and_stat = {"feature", "display_name", "dtype", "distribution", "mode_value", "total"}
         time_cols = [c for c in df_pd.columns if c not in meta_and_stat]
 
         if not time_cols:
@@ -188,7 +192,7 @@ class _ProfileExcelWriter:
 
         # PSI 专用三色阶 (红绿灯)
         if metric == "psi":
-            meta_cols = ["feature", "dtype", "distribution", "mode_value"]
+            meta_cols = ["feature", "display_name", "dtype", "distribution", "mode_value"]
             start_col = 0
             for i, col in enumerate(df_pd.columns):
                 if col not in meta_cols:
@@ -227,7 +231,7 @@ class _ProfileExcelWriter:
 
         # 元数据排除列表
         exclude_meta: List[str] = [
-            "feature", "dtype",
+            "feature", "display_name", "dtype",
             "distribution",
             "mode_value"
             ]

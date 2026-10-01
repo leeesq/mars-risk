@@ -22,7 +22,6 @@ from mars.analysis._evaluation.context import (
     build_binner,
     count_observed_target_classes,
     normalize_binary_target_column,
-    normalize_feature_data_source,
     prepare_benchmark_frame,
     prepare_group_context,
     resolve_date_bounds,
@@ -49,6 +48,7 @@ from mars.compute import (
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
 from mars.reporting import MarsBinningReport
+from mars.reporting._metadata import FeatureMetadata, normalize_metadata
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -186,6 +186,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         time_col: str | None = None,
         time_grain: str | None = None,
         feature_data_source: dict[str, list[str]] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
         weights_col: str | None = None,
         amount_col: str | None = None,
         binner: MarsBinnerBase | None = None,
@@ -218,6 +220,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
             仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
         feature_data_source : dict[str, list[str]] | None
             特征来源映射，只对本次 active features 生效，用于报告中保留来源分层。
+        feature_metadata : FeatureMetadata | None
+            以英文标识为键的完整业务字典或含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文，多标签信息按 labels 中的目标字段组织。
         weights_col : str | None
             样本权重列名。
         amount_col : str | None
@@ -298,6 +304,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         # 评估标签与拟合标签独立：表现期未成熟时仍可复用 benchmark 的监督分箱规则。
         has_target = target is not None and target in working_df.columns
+        target_available = has_target
         if has_target:
             working_df = normalize_binary_target_column(working_df, effective_target)
             observed_classes = count_observed_target_classes(working_df, effective_target)
@@ -343,7 +350,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         )
 
         effective_feature_data_source = feature_data_source if feature_data_source is not None else {}
-        feature_source_map = normalize_feature_data_source(effective_feature_data_source, target_features)
+        metadata = normalize_metadata(feature_metadata, target_features, effective_feature_data_source)
+        feature_source_map = {f: m.get("data_source") or "UNMAPPED" for f, m in metadata.items()}
 
         if binner is not None and self.binner_params:
             raise ValueError("`binner` and evaluator-level `binner_params` cannot be provided together.")
@@ -588,11 +596,12 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 stats_long
                 .filter((pl.col("bin_index") >= 0) & (pl.col(group_col) == "Total"))
                 .group_by("feature")
-                .agg(pl.corr("bin_index", "bad_rate", method="spearman").fill_nan(1.0).alias("mono"))
+                .agg(pl.corr("bin_index", "bad_rate", method="spearman").fill_nan(None).alias("mono"),
+                     pl.len().alias("normal_bins"), pl.col("bad_rate").drop_nulls().n_unique().alias("rate_values"))
             )
         else:
-            # 无标签模式没有坏率序列，单调性只保留中性占位值。
-            monotonicity_df = pl.DataFrame({"feature": target_features, "mono": [1.0] * len(target_features)})
+            # 无标签模式明确未计算，不能使用完全单调的数值占位。
+            monotonicity_df = pl.DataFrame({"feature": target_features, "mono": [None] * len(target_features)}, schema={"feature": pl.String, "mono": pl.Float64})
 
         # 报告对象只做结构化承载；各类导出和绘图入口在 reporting 层继续消费这些表。
         report = self._format_report(
@@ -600,7 +609,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             metrics_groups,
             metrics_total,
             group_col,
-            monotonicity_df,
+            monotonicity_df.select("feature", "mono"),
             binner=active_binner,
             target_name=effective_target,
             feature_source_map=feature_source_map,
@@ -631,6 +640,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "time_grain": time_grain,
             "target_requested": original_target,
             "has_target": has_target,
+            "target_available": target_available,
             "feature_count": len(target_features),
             "profile_by_input": profile_label,
             "group_col": group_col,
@@ -710,6 +720,95 @@ class MarsBinEvaluator(MarsBaseEstimator):
             else:
                 report._trend_dict = {}
 
+        report._initialize_semantics(metadata, business_context, feature_source_map)
+        report.source = {"kind": "analysis", "producer": "mars", "input_provenance": "caller_provided_dataframe"}
+        if target_available and not has_target:
+            # 全未表现标签仍使用真实目标标识，计算路径继续沿用无标签口径。
+            if isinstance(report._detail, pd.DataFrame):
+                report._detail["y"] = original_target
+            else:
+                report._detail = report._detail.with_columns(pl.lit(original_target).alias("y"))
+        # 状态按特征/目标/分组保存，不为每个统计单元格建立对象。
+        status_rows: list[dict[str, Any]] = []
+        observation = stats_long.group_by("feature", group_col, maintain_order=True).agg(
+            pl.col("observed_count").sum().alias("observed"),
+            pl.col("bad").sum().alias("bad"),
+        )
+        for row in observation.to_dicts():
+            observed = row["observed"]
+            status_rows.append(
+                {
+                    "feature": row["feature"],
+                    "target": original_target,
+                    "group": row[group_col],
+                    "metric": "risk_metrics",
+                    "status": "not_computed"
+                    if not target_available
+                    else "unobserved"
+                    if not has_target or not observed
+                    else "computed",
+                    "reason": "no_target"
+                    if not target_available
+                    else "no_observed_labels"
+                    if not has_target or not observed
+                    else None,
+                }
+            )
+            if has_target and observed and (not row["bad"] or row["bad"] == observed):
+                status_rows.append(
+                    {
+                        "feature": row["feature"],
+                        "target": original_target,
+                        "group": row[group_col],
+                        "metric": "class_separation",
+                        "status": "undefined",
+                        "reason": "single_observed_class",
+                    }
+                )
+        mono_by_feature = {row["feature"]: row for row in monotonicity_df.to_dicts()}
+        for feature in target_features:
+            row = mono_by_feature.get(feature, {})
+            defined = row.get("mono") is not None
+            reason = (
+                None
+                if defined
+                else "no_target"
+                if not target_available
+                else "no_observed_labels"
+                if not has_target
+                else "insufficient_normal_bins"
+                if row.get("normal_bins", 0) < 2
+                else "constant_or_missing_bad_rate"
+            )
+            status_rows.append(
+                {
+                    "feature": feature,
+                    "target": original_target,
+                    "group": "Total",
+                    "metric": "mono",
+                    "status": "computed"
+                    if defined
+                    else "not_computed"
+                    if not target_available
+                    else "unobserved"
+                    if not has_target
+                    else "undefined",
+                    "reason": reason,
+                }
+            )
+        report._calculation_status = self._format_output(
+            pl.DataFrame(
+                status_rows,
+                schema={
+                    "feature": pl.String,
+                    "target": pl.String,
+                    "group": pl.String,
+                    "metric": pl.String,
+                    "status": pl.String,
+                    "reason": pl.String,
+                },
+            )
+        )
         run = MarsRiskProfile(
             report=report,
             binner=active_binner,

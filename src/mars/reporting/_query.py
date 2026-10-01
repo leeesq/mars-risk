@@ -2,111 +2,44 @@
 
 from __future__ import annotations
 
-import json
-import math
 import operator
 from copy import deepcopy
 from datetime import date, datetime
-from typing import Any, Union
+from pathlib import Path
+from typing import Any, Dict, Union, cast
+from uuid import uuid4
 
-import numpy as np
 import pandas as pd
 import polars as pl
 
 from mars._compat import polars_is_in
+from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
+from mars.reporting._semantics import _definition
+from mars.reporting._serialization import JSON_RULES, table_rows
+from mars.reporting._serialization import encode as _encode
+from mars.reporting._serialization import json_safe as _json_safe
 
 ReportFrame = Union[pl.DataFrame, pd.DataFrame]
 
-# 定义来自 compute/binning、profiling/metrics；业务单位未登记时不能推断。
-_DEFINITIONS: dict[str, tuple[str, str]] = {
-    "missing": ("ratio", "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"),
-    "zeros": ("ratio", "原始零值数/全样本数，非数值字段为 0"),
-    "unique": ("ratio", "原始不同值数/全样本数，含缺失；overview 超百万行使用近似去重"),
-    "mode": ("ratio", "原始最高频值数/全样本数，含缺失"),
-    "pct": ("ratio", "箱样本量/分组全样本量，配置权重时为权重和之比"),
-    "bad_rate": ("ratio", "bad/observed_count；未表现标签不计入分母"),
-    "base_br": ("ratio", "RC 参考箱的 bad/observed_count"),
-    "cum_bad_rate": ("ratio", "累计 bad/累计 observed_count"),
-    "amt_bad_rate": ("ratio", "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空"),
-    "ks": ("points_0_100", "排序后累计坏样本与好样本分布最大绝对差 ×100"),
-    "ks_bin": ("points_0_100", "当前箱累计坏样本与好样本分布绝对差 ×100"),
-    "auc": ("ratio", "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"),
-    "auc_bin": ("ratio", "分箱 ROC 梯形面积贡献；汇总行进行 AUC 归一"),
-    "iv": ("dimensionless", "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"),
-    "iv_bin": ("dimensionless", "(bad_dist-good_dist)×WOE"),
-    "woe": ("dimensionless", "稳定化的 ln(bad_dist/good_dist)"),
-    "psi": ("dimensionless", "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"),
-    "psi_bin": ("dimensionless", "当前箱 PSI 贡献；缺失箱和特殊箱由参数控制"),
-    "lift": ("dimensionless", "箱坏率/总体坏率，复用稳定化规则"),
-    "lift_min": ("dimensionless", "Total 正常箱 Lift 的最小值"),
-    "lift_max": ("dimensionless", "Total 正常箱 Lift 的最大值"),
-    "lift_amt": ("dimensionless", "箱金额坏率/总体金额坏率，复用稳定化规则"),
-    "risk_corr": ("correlation", "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数"),
-    "mono": ("correlation", "Total 正常箱索引与坏率的 Spearman 相关系数；无法定义时沿用历史占位 1"),
-    "count": ("count_or_weight", "全样本数；配置 weights_col 时为样本权重和"),
-    "observed_count": ("count_or_weight", "已表现标签样本数或权重和；无标签时未计算"),
-    "bad": ("count_or_weight", "已表现坏样本数或权重和"),
-    "good": ("count_or_weight", "observed_count-bad"),
-    "total_count": ("count_or_weight", "分组全样本数或权重和"),
-    "cum_count": ("count_or_weight", "按分箱索引展示顺序的累计全样本量或权重和"),
-    "cum_observed_count": ("count_or_weight", "按分箱索引展示顺序的累计已表现样本量或权重和"),
-    "cum_bad": ("count_or_weight", "按分箱索引展示顺序的累计坏样本量或权重和"),
-    "avg_amt": (
-        "unknown_business_unit",
-        "tot_amt/count；配置样本权重时 count 为权重和；业务币种未知",
-    ),
-    "observed_amt": ("unknown_business_unit", "已表现样本金金额和；业务币种未知"),
-    "tot_amt": ("unknown_business_unit", "全样本金金额和；业务币种未知"),
-    "good_amt": ("unknown_business_unit", "好样本金金额和；业务币种未知"),
-    "bad_amt": ("unknown_business_unit", "坏样本金金额和；业务币种未知"),
-    "unseen": ("ratio", "当前有效类别中不在基准有效类别的样本比例"),
-    "unseen_rate": ("ratio", "当前有效类别中不在基准有效类别的样本比例"),
-    "feature": ("identifier", "原输入特征名称"),
-    "dtype": ("type", "原输入字段的数据类型"),
-    "data_source": ("category", "调用方登记的特征来源；未映射字段可能标为 UNMAPPED"),
-    "source": ("category", "已保存的参考来源，例如 total、first_group 或 benchmark_df"),
-    "bin_index": ("index", "分箱规则索引；缺失和特殊箱为负，汇总行由 bin_type 标识"),
-    "bin_label": ("category", "来自拟合分箱规则的箱标签"),
-    "bin_type": ("category", "正常、缺失、特殊或汇总箱类型"),
-    "trend": ("category", "Total 正常箱 WOE 形态；无标签时未计算"),
-    "y": ("identifier", "目标列标识；真实目标及无标签状态见参数"),
-    "target": ("identifier", "真实目标列标识"),
-    "mode_value": ("original_value", "原始最高频取值的字符串表示，含缺失"),
-    "distribution": ("display", "已有 sparkline 展示；抽样配置见参数，不用于精确统计"),
-}
-for _metric, _meaning in {
-    "mean": "非加权有效值均值",
-    "median": "有效值中位数",
-    "sum": "有效值和，空有效集沿用 0",
-    "std": "有效值样本标准差（ddof=1）",
-    "min": "有效值最小值",
-    "max": "有效值最大值",
-    "p25": "有效值 25% 分位数（nearest 插值）",
-    "p75": "有效值 75% 分位数（nearest 插值）",
-    "skew": "有效值偏度（bias=True）",
-    "kurtosis": "有效值超额峰度（fisher=True, bias=True）",
-}.items():
-    _DEFINITIONS[_metric] = (
-        "dimensionless" if _metric in {"skew", "kurtosis"} else "unknown_business_unit",
-        f"{_meaning}；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算",
-    )
 
-
-def _definition(column: str) -> dict[str, str]:
-    """映射显式登记的指标变体；其余字段明确标为未知。"""
-    name = column
-    for suffix in ["_rate", "_min", "_max"]:
-        if name.endswith(suffix) and name not in _DEFINITIONS:
-            name = name[: -len(suffix)]
-            break
-    if name == "rc":
-        name = "risk_corr"
-    unit, meaning = _DEFINITIONS.get(name, ("unknown", "描述字段或未登记指标；含义未知"))
-    if name != column and column.endswith("_max"):
-        meaning += "；跨有效分组最大值"
-    elif name != column and column.endswith("_min"):
-        meaning += "；跨有效分组最小值"
-    return {"unit": unit, "meaning": meaning}
+def _filter_value(frame: ReportFrame, column: str, value: Any) -> Any:
+    """按真实字段类型解析 ISO 日期引用；普通字符串列不做转换。"""
+    if isinstance(value, list):
+        return [_filter_value(frame, column, item) for item in value]
+    if not isinstance(value, (str, date, datetime)):
+        return value
+    dtype = frame.schema[column] if isinstance(frame, pl.DataFrame) else frame[column].dtype
+    try:
+        if isinstance(frame, pl.DataFrame):
+            if dtype == pl.Date and isinstance(value, str):
+                return date.fromisoformat(value)
+            if isinstance(dtype, pl.Datetime) and isinstance(value, str):
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        elif pd.api.types.is_datetime64_any_dtype(dtype):
+            return pd.Timestamp(value)
+    except ValueError as exc:
+        raise ValueError(f"Filter requires an ISO-8601 value for {column!r}.") from exc
+    return value
 
 
 def _names(value: str | list[str] | None, parameter: str) -> list[str] | None:
@@ -133,6 +66,7 @@ def query_table(
     descending: bool = False,
     offset: int = 0,
     limit: int | None = None,
+    _copy_result: bool = True,
 ) -> ReportFrame:
     """在原生表上执行受校验的筛选、排序、投影和分页，并返回独立容器。"""
     if (
@@ -182,6 +116,7 @@ def query_table(
             "is_not_null",
         }:
             raise ValueError(f"Unsupported filter operator: {op!r}.")
+        value = _filter_value(result, column, value)
         series = pl.col(column) if isinstance(result, pl.DataFrame) else result[column]
         if op in {"in", "not_in"}:
             if not isinstance(value, list) or any(isinstance(v, (dict, list)) for v in value):
@@ -216,47 +151,153 @@ def query_table(
             if isinstance(result, pl.DataFrame)
             else result.sort_values(ordering, ascending=not descending, kind="stable")
         )
-    if projected is not None:
-        if not projected:
-            raise ValueError("columns must not be empty.")
-        result = (
-            result.select(projected)
-            if isinstance(result, pl.DataFrame)
-            else result.loc[:, projected]
-        )
+    if projected is not None and not projected:
+        raise ValueError("columns must not be empty.")
     if isinstance(result, pl.DataFrame):
-        return result.slice(offset, limit).clone()
-    return result.iloc[offset : None if limit is None else offset + limit].copy()
-
-
-def _json_safe(value: Any) -> Any:
-    """日期转 ISO，非有限数保留字符串标记，空值为 null，未知对象拒绝序列化。"""
-    if value is None or value is pd.NA or value is pd.NaT:
-        return None
-    if isinstance(value, np.datetime64):
-        return None if np.isnat(value) else np.datetime_as_string(value)
-    if isinstance(value, np.generic):
-        return _json_safe(value.item())
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, float) and not math.isfinite(value):
-        return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
-    if isinstance(value, dict):
-        return {str(k): _json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value]
-    if isinstance(value, (str, int, float, bool)):
-        return value
-    raise ValueError(f"Unsupported context value type: {type(value).__name__}.")
-
-
-def _encode(value: Any) -> str:
-    """输出标准紧凑 JSON，不允许裸 NaN。"""
-    return json.dumps(_json_safe(value), ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        page = result.slice(offset, limit)
+        return (page.select(projected) if projected is not None else page).clone()
+    page = result.iloc[offset : None if limit is None else offset + limit]
+    if projected is not None:
+        page = page.loc[:, projected]
+    return page.copy() if _copy_result else page
 
 
 class _ReportQuery:
     """两个领域报告共享的轻量结果查询，不持有原始数据。"""
+
+    def _initialize_semantics(
+        self,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
+        legacy: dict[str, str] | None = None,
+    ) -> None:
+        """集中保存业务定义；稳定英文标识不进入统计计算。"""
+        features: list[str] = []
+        inferred: dict[str, str] = dict(legacy or {})
+        for table in self._query_tables().values():
+            if "feature" not in table.columns:
+                continue
+            values = (
+                table["feature"].unique(maintain_order=True).to_list()
+                if isinstance(table, pl.DataFrame)
+                else table["feature"].unique().tolist()
+            )
+            features.extend(f for f in values if isinstance(f, str) and f not in features)
+            if "data_source" in table.columns:
+                rows = (
+                    table.select("feature", "data_source").unique().to_dicts()
+                    if isinstance(table, pl.DataFrame)
+                    else table[["feature", "data_source"]].drop_duplicates().to_dict("records")
+                )
+                for row in rows:
+                    feature, source = row["feature"], row["data_source"]
+                    if isinstance(source, str) and source != "UNMAPPED":
+                        if inferred.get(feature) not in (None, source):
+                            raise ValueError(f"Conflicting data_source for feature {feature!r}.")
+                        inferred[feature] = source
+        self.feature_metadata = normalize_metadata(
+            feature_metadata, features, inferred, legacy_direction="feature_to_source"
+        )
+        self.feature_data_source = {
+            f: m.get("data_source") or "UNMAPPED" for f, m in self.feature_metadata.items()
+        }
+        self.business_context = {
+            "label_definition": "unknown",
+            "observation_window": "unknown",
+            "currency": "unknown",
+            **normalize_business_context(business_context),
+        }
+        self.business_context_source = {
+            key: "user_provided" if key in (business_context or {}) else "unknown"
+            for key in self.business_context
+        }
+        self.report_id = str(uuid4())
+        self.format_version = 1
+        self.source: dict[str, Any] = {"kind": "provided_statistics", "producer": "unknown"}
+        self.report_type = type(self).__name__
+
+    def search_features(
+        self,
+        query: str = "",
+        *,
+        sources: str | list[str] | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """按英文标识、显示名、定义和来源检索，重复中文名返回所有候选。
+
+        Parameters
+        ----------
+        query : str
+            不区分大小写的包含查询；空字符串匹配全部。
+        sources : str | list[str] | None
+            来源筛选，语义同 get_table。
+        limit : int
+            非负返回数量上限。
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            明确包含 feature 和原始业务元数据的候选列表。
+
+        Raises
+        ------
+        ValueError
+            查询或数量无效时抛出。
+
+        Examples
+        --------
+        >>> report.search_features("月收入")  # doctest: +SKIP
+        """
+        if not isinstance(query, str) or type(limit) is not int or limit < 0:
+            raise ValueError("query must be a string and limit a non-negative integer.")
+        allowed = self._source_features(sources)
+        needle = query.casefold()
+        return [
+            {"feature": f, **deepcopy(m)}
+            for f, m in self.feature_metadata.items()
+            if (allowed is None or f in allowed)
+            and any(needle in str(v).casefold() for v in [f, *m.values()] if v is not None)
+        ][:limit]
+
+    def save(self, path: str | Path, *, overwrite: bool = False) -> None:
+        """逐表保存完整报告为单个 JSON/Parquet ZIP 产物。
+
+        Parameters
+        ----------
+        path : str | Path
+            目标文件；父目录必须存在。
+        overwrite : bool
+            默认拒绝覆盖；True 原子替换已存在文件。
+
+        Notes
+        -----
+        编码失败传播 ValueError；拒绝覆盖传播 FileExistsError；I/O 失败传播 OSError。
+        失败不会留下可误认为完整报告的半成品。
+
+        Examples
+        --------
+        >>> report.save("analysis.marsreport")  # doctest: +SKIP
+        """
+        from ._artifact import save_report
+
+        save_report(self, path, overwrite=overwrite)
+
+    def _display_frame(self, frame: ReportFrame) -> pd.DataFrame:
+        """仅对已缩小的展示表附加可读名称，不污染原始统计行。"""
+        from mars.compute import to_pandas_frame
+
+        result = to_pandas_frame(frame).copy()
+        if "feature" in result.columns and any(
+            m.get("display_name") for m in self.feature_metadata.values()
+        ):
+            result.insert(
+                1,
+                "display_name",
+                result["feature"].map(
+                    lambda f: self.feature_metadata.get(f, {}).get("display_name") or f
+                ),
+            )
+        return result
 
     def _query_metadata(self) -> dict[str, Any]:
         """读取两类报告各自保存的元数据。"""
@@ -271,15 +312,9 @@ class _ReportQuery:
         names = _names(sources, "sources")
         if names is None:
             return None
-        source_map: dict[str, str] = getattr(self, "feature_data_source", {})
-        main = next(iter(self._query_tables().values()))
-        if not source_map and {"feature", "data_source"}.issubset(main.columns):
-            rows = (
-                main.select("feature", "data_source").to_dicts()
-                if isinstance(main, pl.DataFrame)
-                else main[["feature", "data_source"]].to_dict("records")
-            )
-            source_map = {r["feature"]: r["data_source"] for r in rows}
+        source_map: dict[str, str] = {
+            f: m.get("data_source") or "UNMAPPED" for f, m in self.feature_metadata.items()
+        }
         if not source_map:
             raise ValueError("Feature source information is unknown in this report.")
         unknown = set(names) - set(source_map.values())
@@ -307,6 +342,13 @@ class _ReportQuery:
                 metric = "missing"
             tables[name] = {
                 "rows": len(frame),
+                "index": {
+                    "kind": type(frame.index).__name__,
+                    "names": list(frame.index.names),
+                    "queryable": False,
+                }
+                if isinstance(frame, pd.DataFrame)
+                else None,
                 "grain": "target/feature/group/bin"
                 if name == "detail"
                 else (
@@ -328,6 +370,23 @@ class _ReportQuery:
                     for c, dtype in schema.items()
                 },
             }
+            for column, field in tables[name]["fields"].items():
+                if name in {
+                    "detail",
+                    "risk_corr_reference",
+                } and column == self._query_metadata().get("group_col"):
+                    field.update(unit="dimension", meaning="实际计算分组字段；取值保留原始分组标识")
+                if field["unit"] == "count_or_weight":
+                    field["unit"] = (
+                        "weight_sum" if self._query_metadata().get("weights_col") else "count"
+                    )
+                if (
+                    column in {"avg_amt", "tot_amt", "observed_amt", "bad_amt", "good_amt"}
+                    and self.business_context.get("currency", "unknown") != "unknown"
+                ):
+                    field["business_currency"] = self.business_context["currency"]
+            if name == "calculation_status":
+                tables[name]["grain"] = "target/feature/group/metric"
             if name == "summary":
                 tables[name]["grain"] = "target/feature" if "target" in frame.columns else "feature"
             if name == "overview" or name == "comparison.schema":
@@ -373,21 +432,50 @@ class _ReportQuery:
                         field.update(
                             unit="unknown", meaning="计算状态、原因或字段类型，不是 unseen rate"
                         )
-        return {
-            "report_type": type(self).__name__,
-            "tables": tables,
-            "parameters": deepcopy(self._query_metadata()),
-            "business_context": {
-                "label_definition": "unknown",
-                "observation_window": "unknown",
-                "currency": "unknown",
-            },
-            "limitations": [
-                "只组织已有统计，未计算表不在目录中；失败和跳过见 parameters.diagnostics / fit_failures。",
-                "Null 不是数值 0；风险指标需结合标签表现状态，样本分布使用全样本。",
-                "比较前核对样本范围、权重、缺失/特殊箱、拟合来源、排序口径及参考来源；关联不代表因果。",
-            ],
-        }
+        context = deepcopy(self.business_context)
+        labels = context.setdefault("labels", {})
+        targets = self._query_metadata().get("targets") or [
+            self._query_metadata().get("target_requested")
+        ]
+        for target in targets:
+            if target:
+                labels[target] = {
+                    "definition": "unknown",
+                    "positive_class": "unknown",
+                    "negative_class": "unknown",
+                    "performance_window": "unknown",
+                    **labels.get(target, {}),
+                }
+        return cast(
+            Dict[str, Any],
+            _json_safe(
+                {
+                    "report_type": self.report_type,
+                    "report_id": self.report_id,
+                    "format_version": self.format_version,
+                    "feature_metadata": deepcopy(self.feature_metadata),
+                    "source": deepcopy(self.source),
+                    "context_source": {
+                        "business_context": deepcopy(self.business_context_source),
+                        "parameters": "calculation",
+                    },
+                    "serialization": deepcopy(JSON_RULES),
+                    "tables": tables,
+                    "calculation_state": {
+                        "table": "calculation_status" if "calculation_status" in tables else None,
+                        "diagnostics": "parameters.diagnostics/fit_failures/raw_ks_diagnostics",
+                        "scope": "feature/target/group/metric; profile status contains exceptional outcomes only, not all trend cells",
+                    },
+                    "parameters": deepcopy(self._query_metadata()),
+                    "business_context": context,
+                    "limitations": [
+                        "只组织已有统计，未计算表不在目录中；失败和跳过见 parameters.diagnostics / fit_failures。",
+                        "Null 不是数值 0；风险指标需结合标签表现状态，样本分布使用全样本。",
+                        "比较前核对样本范围、权重、缺失/特殊箱、拟合来源、排序口径及参考来源；关联不代表因果。",
+                    ],
+                }
+            ),
+        )
 
     def get_table(
         self,
@@ -457,6 +545,57 @@ class _ReportQuery:
             limit=limit,
         )
 
+    def query_page(self, name: str, **query: Any) -> dict[str, Any]:
+        """按 get_table 参数取得分页证据、总匹配数及持久引用。
+
+        Parameters
+        ----------
+        name : str
+            公共表目录中的表名。
+        **query : Any
+            get_table 的关键字参数；默认 offset=0、limit=10。
+
+        Returns
+        -------
+        dict[str, Any]
+            原生 data、计数、截断原因、next_offset 和可重放的 reference。
+
+        Notes
+        -----
+        查询无效时传播 get_table 的 ValueError。
+
+        Examples
+        --------
+        >>> page = report.query_page("summary", limit=5)  # doctest: +SKIP
+        """
+        options = {"offset": 0, "limit": 10, **query}
+        page = self.get_table(name, **options)
+        features = options.get("features")
+        allowed = self._source_features(options.get("sources"))
+        if allowed is not None:
+            requested = _names(features, "features")
+            features = allowed if requested is None else [f for f in requested if f in allowed]
+        # 计数只筛选原生表；Pandas 未筛选整表时不生成副本。
+        matched = query_table(
+            self._query_tables()[name],
+            features=features,
+            filters=options.get("filters"),
+            _copy_result=False,
+        )
+        total = len(matched)
+        offset = options["offset"]
+        remaining = max(total - offset - len(page), 0)
+        return {
+            "data": page,
+            "total_rows": total,
+            "returned_rows": len(page),
+            "truncated": remaining > 0,
+            "omitted_rows": remaining,
+            "omission_reason": "pagination" if remaining else None,
+            "next_offset": offset + len(page) if remaining else None,
+            "reference": {"report_id": self.report_id, "table": name, "query": deepcopy(options)},
+        }
+
     def to_ai_context(
         self,
         *,
@@ -466,119 +605,263 @@ class _ReportQuery:
         filters: dict[str, Any] | None = None,
         limit: int = 10,
         max_chars: int = 16000,
+        sources: str | list[str] | None = None,
+        sort_by: str | list[str] | None = None,
+        descending: bool = False,
+        offset: int = 0,
+        queries: dict[str, dict[str, Any]] | None = None,
     ) -> str:
-        """生成可复制或写入文件的紧凑 JSON 上下文，不调用 LLM。
+        """生成问题相关的预算内摘要；完整报告仍是可分页的事实依据。
 
         Parameters
         ----------
         tables : list[str] | None
-            规范表名列表；默认仅 overview 或 summary。
+            表目录名称；默认第一张表，queries 给定时默认其键。
         features : str | list[str] | None
-            按特征缩小范围。
+            原始英文标识。
         columns : list[str] | None
-            所选表共同的字段投影。
+            共同列投影；宽趋势可按日期列选择范围。
         filters : dict[str, Any] | None
-            与 get_table 相同的筛选条件。
+            get_table 的筛选条件。
         limit : int
-            每表最大行数，默认 10。
+            每表行数上限。
         max_chars : int
-            完整 JSON 字符预算，默认 16000；不等于 token 数。
+            最终 JSON 的 Unicode 字符预算，不等于 token 数。
+        sources : str | list[str] | None
+            来源筛选。
+        sort_by : str | list[str] | None
+            排序列。
+        descending : bool
+            是否降序。
+        offset : int
+            每表起始位置。
+        queries : dict[str, dict[str, Any]] | None
+            每表的 get_table 参数覆盖共同参数，支持异构表查询。
 
         Returns
         -------
         str
-            有效 JSON；省略项明确记录，日期为 ISO，非有限数为 NaN/Infinity/-Infinity 字符串，空值为 null。
+            标准 JSON；定义仅出现一次，省略记录包含数量、原因及继续查询定位。
 
         Raises
         ------
         ValueError
-            参数无效、预算无法容纳说明或值无法序列化时抛出。
+            查询无效或预算无法容纳最小必要说明时抛出。
 
         Examples
         --------
-        >>> import json
-        >>> json.loads(report.to_ai_context(features="age"))  # doctest: +SKIP
+        >>> report.to_ai_context(queries={"summary": {"limit": 3}})  # doctest: +SKIP
         """
-        if type(max_chars) is not int or max_chars < 512 or type(limit) is not int or limit < 0:
-            raise ValueError("max_chars must be >= 512 and limit must be non-negative integers.")
+        if type(max_chars) is not int or max_chars < 512:
+            raise ValueError("max_chars must be an integer >= 512.")
         available = self._query_tables()
+        if queries is not None and (
+            not isinstance(queries, dict)
+            or any(name not in available or not isinstance(q, dict) for name, q in queries.items())
+        ):
+            raise ValueError("queries must map available table names to get_table options.")
         selected = _names(tables, "tables")
-        selected = list(available)[:1] if selected is None else selected
+        selected = (
+            list(queries)
+            if selected is None and queries
+            else list(available)[:1]
+            if selected is None
+            else selected
+        )
         if not selected or any(name not in available for name in selected):
             raise ValueError(f"tables must select names from {list(available)}.")
         description = self.describe()
-        omitted: list[dict[str, Any]] = []
-        # 大型参数值保留定位信息，避免特征列表吃掉整个预算；完整说明始终可 describe。
-        for key, value in description["parameters"].items():
-            if len(_encode(value)) > max_chars // 8:
-                description["parameters"][key] = {
-                    "status": "omitted",
-                    "reference": f"report_meta.{key}",
-                }
-                omitted.append({"reference": f"report_meta.{key}", "reason": "description_budget"})
-        for name, table in description["tables"].items():
-            if name not in selected:
-                table["field_count"] = len(table.pop("fields"))
-            elif columns is not None:
-                table["fields"] = {c: v for c, v in table["fields"].items() if c in columns}
+        table_definitions = description["tables"]
+        description["tables"] = {}
+        description["feature_metadata"] = {}
         payload: dict[str, Any] = {
             "description": description,
             "evidence": [],
-            "omitted": omitted,
-            "serialization": {
-                "date": "ISO-8601",
-                "non_finite": "NaN/Infinity/-Infinity strings",
-                "null": "missing or uncomputed; see parameters",
-                "zero": "numeric zero",
-            },
+            "omitted": [],
+            "serialization": description.pop("serialization", deepcopy(JSON_RULES)),
             "budget": {"max_chars": max_chars, "unit": "unicode_characters"},
         }
+        omitted = payload["omitted"]
         for name in selected:
-            queried = self.get_table(name, features=features, columns=columns, filters=filters)
-            page = query_table(queried, limit=limit)
-            rows = page.to_dicts() if isinstance(page, pl.DataFrame) else page.to_dict("records")
-            payload["evidence"].append(
+            options: dict[str, Any] = dict(
+                features=features,
+                columns=columns,
+                filters=filters,
+                limit=limit,
+                sources=sources,
+                sort_by=sort_by,
+                descending=descending,
+                offset=offset,
+            )
+            options.update((queries or {}).get(name, {}))
+            page = self.query_page(name, **options)
+            frame = page["data"]
+            entry = table_definitions[name]
+            wide = name.startswith(("trend.", "dq.", "stats.")) or name == "missing_by_day"
+            identifiers = {"feature", "dtype", "data_source", "target"}
+            # 日期是维度，指标定义仅保存一次；证据仍使用原表列名以便精确重放。
+            if wide:
+                dimension_fields = [c for c in frame.columns if c not in identifiers]
+                definition = (
+                    entry["fields"].get(dimension_fields[0], {}) if dimension_fields else {}
+                )
+                entry = {
+                    "rows": entry["rows"],
+                    "grain": entry["grain"],
+                    "target": entry.get("target", "unknown"),
+                    "value_definition": definition,
+                    "dimension": "column names are group/date identifiers",
+                    "fields": {c: entry["fields"][c] for c in frame.columns if c in identifiers},
+                }
+            else:
+                entry["fields"] = {c: entry["fields"][c] for c in frame.columns}
+            description["tables"][name] = entry
+            rows = table_rows(frame)
+            item = {
+                "reference": name,
+                "report_id": self.report_id,
+                "query": page["reference"]["query"],
+                "total_rows": page["total_rows"],
+                "returned_rows": len(rows),
+                "rows": rows,
+                "next_offset": page["next_offset"],
+                "truncated": page["truncated"],
+            }
+            payload["evidence"].append(item)
+            selected_features = (
+                frame["feature"].to_list()
+                if isinstance(frame, pl.DataFrame) and "feature" in frame.columns
+                else frame["feature"].tolist()
+                if "feature" in frame.columns
+                else _names(options.get("features"), "features") or []
+            )
+            description["feature_metadata"].update(
+                {f: deepcopy(self.feature_metadata.get(f, {})) for f in selected_features}
+            )
+            if page["omitted_rows"]:
+                omitted.append(
+                    {
+                        "reference": name,
+                        "report_id": self.report_id,
+                        "rows": page["omitted_rows"],
+                        "reason": "row_limit",
+                        "next_offset": page["next_offset"],
+                    }
+                )
+        # 大型说明块独立裁剪；每次省略完整参数值并保留 describe 定位。
+        for key, value in list(description["parameters"].items()):
+            if len(_encode(value)) > max_chars // 8:
+                description["parameters"].pop(key)
+                omitted.append(
+                    {
+                        "reference": f"describe.parameters.{key}",
+                        "count": 1,
+                        "reason": "description_budget",
+                    }
+                )
+
+        for feature, entry in description["feature_metadata"].items():
+            for key, value in list(entry.items()):
+                if len(_encode(value)) > max_chars // 8:
+                    entry.pop(key)
+                    omitted.append(
+                        {
+                            "reference": f"describe.feature_metadata.{feature}.{key}",
+                            "count": 1,
+                            "reason": "description_budget",
+                        }
+                    )
+        if len(_encode(description["business_context"])) > max_chars // 3:
+            count = len(description["business_context"])
+            description["business_context"] = {}
+            omitted.append(
                 {
-                    "reference": name,
-                    "query": {
-                        "table": name,
-                        "features": features,
-                        "columns": columns,
-                        "filters": filters,
-                        "offset": 0,
-                    },
-                    "total_rows": len(queried),
-                    "returned_rows": len(rows),
-                    "rows": rows,
+                    "reference": "describe.business_context",
+                    "count": count,
+                    "reason": "description_budget",
                 }
             )
-            if len(queried) > len(rows):
-                omitted.append(
-                    {"reference": name, "rows": len(queried) - len(rows), "reason": "row_limit"}
-                )
-        # 逐表移除完整行并记录数量，绝不截断 JSON 文本。
-        while len(_encode(payload)) > max_chars:
-            candidates = [item for item in payload["evidence"] if item["rows"]]
-            if not candidates:
-                raise ValueError(
-                    "max_chars cannot contain report description; increase budget or narrow tables/columns."
-                )
-            item = max(candidates, key=lambda entry: len(_encode(entry["rows"])))
-            item["rows"].pop()
-            item["returned_rows"] -= 1
-            marker = next(
+
+        def marker(item: dict[str, Any], kind: str, locator: Any) -> dict[str, Any]:
+            """累计预算省略计数，避免为每个日期或行添加对象。"""
+            found = next(
                 (
                     m
                     for m in omitted
-                    if m.get("reference") == item["reference"]
-                    and m.get("reason") == "output_budget"
+                    if m.get("reference") == item["reference"] and m.get("kind") == kind
                 ),
                 None,
             )
-            if marker is None:
-                marker = {"reference": item["reference"], "rows": 0, "reason": "output_budget"}
-                omitted.append(marker)
-            marker["rows"] += 1
+            if found is None:
+                found = {
+                    "reference": item["reference"],
+                    "report_id": self.report_id,
+                    "kind": kind,
+                    "reason": "output_budget",
+                    "rows" if kind == "rows" else "columns": 0,
+                    "continue_at": locator,
+                }
+                omitted.append(found)
+            return found
+
+        while len(_encode(payload)) > max_chars:
+            candidates = [item for item in payload["evidence"] if item["rows"]]
+            # 宽表先移除末尾完整时间段，保证单特征仍有有效证据。
+            wide_items = [
+                item
+                for item in candidates
+                if item["reference"].startswith(("trend.", "dq.", "stats."))
+                or item["reference"] == "missing_by_day"
+            ]
+            wide_item = max(wide_items, key=lambda item: len(_encode(item["rows"])), default=None)
+            dimensions = (
+                [
+                    c
+                    for c in wide_item["rows"][0]
+                    if c not in {"feature", "dtype", "data_source", "target"}
+                ]
+                if wide_item
+                else []
+            )
+            if wide_item is not None and len(dimensions) > 1:
+                column = dimensions[-1]
+                m = marker(
+                    wide_item, "columns", {"column": column, "query": "get_table(columns=...)"}
+                )
+                m["columns"] += 1
+                m["continue_at"]["column"] = column
+                for row in wide_item["rows"]:
+                    row.pop(column)
+                wide_item["truncated"] = True
+                continue
+            if candidates:
+                item = max(candidates, key=lambda entry: len(_encode(entry["rows"])))
+                item["rows"].pop()
+                item["returned_rows"] -= 1
+                item["next_offset"] = item["query"]["offset"] + item["returned_rows"]
+                item["truncated"] = True
+                m = marker(item, "rows", {"offset": item["next_offset"]})
+                m["rows"] += 1
+                m["continue_at"]["offset"] = item["next_offset"]
+                continue
+            # 无证据可裁剪后只能省略整个说明块；必需身份、目录、计数和引用保留。
+            block = next(
+                (
+                    key
+                    for key in ("parameters", "feature_metadata", "business_context", "limitations")
+                    if description.get(key)
+                ),
+                None,
+            )
+            if block is None:
+                raise ValueError(
+                    "max_chars cannot contain minimum report description; increase budget."
+                )
+            count = len(description[block])
+            description[block] = {} if block != "limitations" else []
+            omitted.append(
+                {"reference": f"describe.{block}", "count": count, "reason": "description_budget"}
+            )
         return _encode(payload)
 
     def get_feature(self, feature: str, *, limit: int = 100) -> dict[str, Any]:
@@ -607,12 +890,14 @@ class _ReportQuery:
         """
         results: dict[str, ReportFrame] = {}
         omitted_rows: dict[str, int] = {}
+        matched = False
         for name, table in self._query_tables().items():
             if "feature" in table.columns:
-                matched = self.get_table(name, features=feature)
-                results[name] = query_table(matched, limit=limit)
-                omitted_rows[name] = max(len(matched) - len(results[name]), 0)
-        if not any(len(table) for table in results.values()):
+                page = self.query_page(name, features=feature, limit=limit)
+                matched = matched or page["total_rows"] > 0
+                results[name] = page["data"]
+                omitted_rows[name] = page["omitted_rows"]
+        if not matched:
             raise ValueError(f"Unknown feature: {feature!r}.")
         unavailable = [
             kind
@@ -630,6 +915,8 @@ class _ReportQuery:
         ]
         return {
             "feature": feature,
+            "report_id": self.report_id,
+            "metadata": deepcopy(self.feature_metadata.get(feature, {})),
             "tables": results,
             "omitted_rows": omitted_rows,
             "unavailable": unavailable,

@@ -13,6 +13,7 @@ from mars.compute import RiskCorrBaseline, to_pandas_frame
 from mars.reporting._binning_excel import _BinningExcelWriter
 from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
+from mars.reporting._metadata import FeatureMetadata
 from mars.reporting._query import ReportFrame, _ReportQuery
 from mars.reporting._types import MarsHtmlRenderResult
 
@@ -69,6 +70,8 @@ class MarsBinningReport(_ReportQuery):
         missing_by_day_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
         risk_corr_reference_table: Union[pl.DataFrame, pd.DataFrame] | None = None,
         report_meta: Dict[str, Any] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> None:
         """
         初始化报告容器。
@@ -95,6 +98,10 @@ class MarsBinningReport(_ReportQuery):
             报告内部保存的 RC 参考坏率表，供图表与明细复用同一口径。
         report_meta : Dict[str, Any] | None
             报告元信息，例如目标列、绘图配置或上下文标签。
+        feature_metadata : FeatureMetadata | None
+            以英文标识为键的业务字典，或含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文，多标签定义按 labels 中的目标字段组织。
         """
         # 直接存储原始数据，不再强制命名为 _pl，以支持多种类型
         self._summary = summary_table
@@ -107,6 +114,8 @@ class MarsBinningReport(_ReportQuery):
         self._missing_by_day = missing_by_day_table
         self._risk_corr_reference = risk_corr_reference_table
         self._report_meta = report_meta or {}
+        self._calculation_status: ReportFrame | None = None
+        self._initialize_semantics(feature_metadata, business_context, feature_data_source)
 
     @property
     def summary_table(self) -> Union[pl.DataFrame, pd.DataFrame]:
@@ -235,6 +244,8 @@ class MarsBinningReport(_ReportQuery):
         """沿用 Agent 的分箱表名，并包含已有可选附表。"""
         tables: dict[str, ReportFrame] = {"summary": self.summary_table, "detail": self.detail_table}
         tables.update({f"trend.{k}": v for k, v in self.trend_tables.items()})
+        if getattr(self, "_calculation_status", None) is not None:
+            tables["calculation_status"] = self._calculation_status
         for name, table in [("missing_by_day", self.missing_by_day_table),
                             ("risk_corr_reference", self.risk_corr_reference_table)]:
             if table is not None:
@@ -760,6 +771,7 @@ class MarsBinningReport(_ReportQuery):
             descending=not sort_ascending, limit=limit, sources=sources,
         ))
 
+        df = self._display_frame(df)
         # 多目标模式下，将 target 列提前，便于快速按目标查看结果。
         for t_col in ["target", "target_col", "y"]:
             if t_col in df.columns:
@@ -855,8 +867,9 @@ class MarsBinningReport(_ReportQuery):
             descending=not sort_ascending, limit=limit, sources=sources,
         ))
 
+        df = self._display_frame(df)
         # 识别列类型并重排时间切片列
-        meta_cols = ["feature", "dtype"]
+        meta_cols = ["feature", "display_name", "dtype"]
         special_cols = ["Total"]
         time_cols = [c for c in df.columns if c not in meta_cols + special_cols]
 

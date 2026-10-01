@@ -10,6 +10,7 @@ from typing import Any, List, Tuple
 import pandas as pd
 
 from mars.compute import to_pandas_frame
+from mars.reporting._metadata import export_report_semantics
 from mars.utils.logger import logger
 
 
@@ -117,6 +118,7 @@ class _BinningExcelWriter:
             ),
             "KS计算诊断": pd.DataFrame(self.report_meta["raw_ks_diagnostics"]),
         }
+        tables.update(export_report_semantics(self))
         if use_xlwings:
             import xlwings as xw
 
@@ -250,6 +252,9 @@ class _BinningExcelWriter:
                 if last_used_row > table_last_row:
                     worksheet.range(f"{table_last_row + 1}:{last_used_row}").delete()
 
+                for name, frame in export_report_semantics(self).items():
+                    sheet = workbook.sheets.add(name)
+                    sheet.range("A1").options(index=False).value = frame
                 workbook.save(path)
                 logger.info("Exported binning report via xlwings: %s", path)
             except Exception as exc:
@@ -291,6 +296,11 @@ class _BinningExcelWriter:
             if worksheet.max_row > table_last_row:
                 worksheet.delete_rows(table_last_row + 1, worksheet.max_row - table_last_row)
 
+            for name, frame in export_report_semantics(self).items():
+                sheet = workbook.create_sheet(name)
+                sheet.append(list(frame.columns))
+                for record in frame.where(pd.notna(frame), None).itertuples(index=False, name=None):
+                    sheet.append(list(record))
             workbook.save(path)
             logger.info("Exported binning report via openpyxl: %s", path)
         finally:

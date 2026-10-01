@@ -257,25 +257,9 @@ def normalize_feature_data_source(
     features: list[str],
 ) -> dict[str, str]:
     """将数据源到特征列表的映射标准化为特征到数据源的字典。"""
-    feature_set = set(features)
-    if not feature_data_source:
-        return {feature: "UNMAPPED" for feature in features}
-
-    normalized: dict[str, str] = {}
-    mapped_features: set[str] = set()
-    for data_source, source_features in feature_data_source.items():
-        for feature in source_features or []:
-            if feature not in feature_set:
-                raise ValueError(
-                    "feature_data_source contains features outside the active evaluation feature set: "
-                    f"{feature}",
-                )
-            normalized[feature] = str(data_source)
-            mapped_features.add(feature)
-
-    for feature in feature_set - mapped_features:
-        normalized[feature] = "UNMAPPED"
-    return normalized
+    from mars.reporting._metadata import normalize_metadata
+    metadata = normalize_metadata(None, features, feature_data_source)
+    return {f: m.get("data_source") or "UNMAPPED" for f, m in metadata.items()}
 
 
 def build_binner(

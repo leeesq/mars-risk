@@ -43,6 +43,10 @@ def test_reporting_public_exports_are_the_only_report_class_surface() -> None:
         "MarsBinningReport",
         "MarsHtmlRenderResult",
         "ProfileData",
+        "Report",
+        "ReportSnapshot",
+        "load_report",
+        "snapshot_report",
     ]
     assert "MarsBinningReport" not in mars.analysis.__all__
     assert "MarsProfileReport" not in mars.analysis.__all__
@@ -1491,7 +1495,8 @@ def test_evaluation_report_can_write_html(sample_credit_df, caplog):
         assert 'id="missing-day-section"' in html_text
         assert "Bin Type" not in html_text
         assert "Threshold Filter (Total)" not in html_text
-        assert ">mono<" not in html_text
+        # Summary 不展示单调性列；独立计算状态表仍可明确列出 mono 状态。
+        assert "<th>mono</th>" not in html_text
         assert "Event Rate" in html_text
         assert "Binned distribution and risk comparison across groups." in html_text
         assert "Grouped pivot aligned with the Excel-style source + bin matrix." not in html_text
@@ -1771,11 +1776,11 @@ def test_binning_report_html_renders_threshold_style_colors(tmp_path: Path):
 def test_grouped_pivot_recomputes_pct_and_sorts_features_by_total_iv(tmp_path: Path):
     detail_df = pd.DataFrame(
         [
-            {"data_source": "SRC_A", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.30, "iv_bin": 0.10},
-            {"data_source": "SRC_B", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 0, "count": 10, "lift": 1.20, "iv_bin": 0.08},
-            {"data_source": "SRC_A", "feature": "feature_high", "bin_label": "Missing", "bin_index": -1, "bin_type": "\u7a7a\u503c\u7ec4", "grp": "202401", "bad": 1, "count": 10, "lift": 1.10, "iv_bin": 0.07},
-            {"data_source": "SRC_A", "feature": "feature_low", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.05, "iv_bin": 0.04},
-            {"data_source": "SRC_A", "feature": "feature_low", "bin_label": "B", "bin_index": 1, "bin_type": "\u6b63\u5e38\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.01, "iv_bin": 0.03},
+            {"data_source": "SRC", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.30, "iv_bin": 0.10},
+            {"data_source": "SRC", "feature": "feature_high", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 0, "count": 10, "lift": 1.20, "iv_bin": 0.08},
+            {"data_source": "SRC", "feature": "feature_high", "bin_label": "Missing", "bin_index": -1, "bin_type": "\u7a7a\u503c\u7ec4", "grp": "202401", "bad": 1, "count": 10, "lift": 1.10, "iv_bin": 0.07},
+            {"data_source": "SRC", "feature": "feature_low", "bin_label": "A", "bin_index": 0, "bin_type": "\u9996\u5c3e\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.05, "iv_bin": 0.04},
+            {"data_source": "SRC", "feature": "feature_low", "bin_label": "B", "bin_index": 1, "bin_type": "\u6b63\u5e38\u7ec4", "grp": "202401", "bad": 1, "count": 20, "lift": 1.01, "iv_bin": 0.03},
         ]
     )
 

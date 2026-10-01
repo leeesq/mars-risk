@@ -1,5 +1,6 @@
 """MARS Stable 报告对象公开入口。"""
 
+from ._artifact import Report, ReportSnapshot, load_report, snapshot_report
 from ._types import MarsHtmlRenderResult
 from .binning_report import MarsBinningReport
 from .profile_report import MarsProfileReport, ProfileData
@@ -9,4 +10,8 @@ __all__ = [
     "MarsBinningReport",
     "MarsHtmlRenderResult",
     "ProfileData",
+    "Report",
+    "ReportSnapshot",
+    "load_report",
+    "snapshot_report",
 ]

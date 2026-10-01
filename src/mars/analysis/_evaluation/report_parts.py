@@ -441,7 +441,6 @@ def build_binning_summary_table(
             pl.col("missing").fill_null(0.0),
             pl.col("missing_min").fill_null(0.0),
             pl.col("missing_max").fill_null(0.0),
-            pl.col("mono").fill_null(1.0),
         ])
         .sort(["iv", "rc_min"], descending=[True, True])
         .select([

@@ -6,6 +6,13 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 画像、分箱分析和 StatsSelector 接受统一 `feature_metadata` 与 `business_context`；支持中文名、业务定义、来源、单位及多标签窗口。旧来源参数保留薄适配，冲突明确报错。
+- Stable `mars.reporting.Report` 公共契约与 `ReportSnapshot` 支持检索、分页证据和单文件 `.marsreport` 保存恢复；外部 Agent 无需内部会话即可查询。
+- 趋势上下文将日期作为维度，只定义一次指标；`queries` 支持异构表查询，最终 JSON 按字符预算裁剪完整字段、行或说明块。
+- 非有限数 JSON 从报告字符串标记/Agent null 统一为 `{"$mars":"float","value":"nan|inf|-inf"}`。消费者需迁移解码规则，普通 `"NaN"` 字符串不转换。
+- `mono` 单箱或坏率恒定时返回未定义值，不再返回历史占位 `1.0`；状态和原因见 `calculation_status`。无标签与全未表现标签分别标为 `not_computed` 和 `unobserved`。
+- Agent 登记公共报告快照并保留持久标识；新增特征检索与上下文工具。HTML/Excel 集中附带业务元信息；原统计表的英文特征标识保持不变。
+
 - 分箱评估的同一 batch_size 覆盖当前/基准转换、聚合、按日缺失与特征起点参考；跨批次只保留小统计表。
 - 画像趋势在 overview_batch_size 内联合聚合多个指标，复用口径一致的 overview 统计。
 - 两类报告新增 describe/get_table/to_ai_context/get_feature，展示支持列选择、来源筛选和 Top-K。

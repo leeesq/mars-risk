@@ -330,7 +330,7 @@ def test_report_output_reduces_page_size_without_dropping_rows() -> None:
     assert len(json.dumps(result.data, ensure_ascii=False)) <= 1024
 
 
-def test_nonfinite_report_values_are_json_null() -> None:
+def test_nonfinite_report_values_preserve_float_type_in_json() -> None:
     session = MarsAgentSession()
     session._save_report(
         "test",
@@ -344,7 +344,7 @@ def test_nonfinite_report_values_are_json_null() -> None:
         {"report_id": "report_1", "table": "summary"},
         session=session,
     )
-    assert result.data["rows"] == [{"x": None}, {"x": None}]
+    assert result.data["rows"] == [{"x": {"$mars": "float", "value": "nan"}}, {"x": {"$mars": "float", "value": "inf"}}]
     json.dumps(result.data, allow_nan=False)
 
 

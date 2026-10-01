@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import polars as pl
@@ -245,3 +246,62 @@ def calculate_overview(
 
     remaining_cols = [col for col in stats.columns if col not in seen]
     return stats.select(final_cols + remaining_cols).sort(["dtype", "feature"])
+
+
+def build_profile_status(
+    context: ProfileRunContext,
+    overview: pl.DataFrame,
+    metrics: list[str],
+    diagnostics: list[dict[str, Any]],
+    *,
+    has_psi_reference: bool,
+) -> pl.DataFrame:
+    """记录画像全量统计的未计算例外；趋势仍保留原值和既有诊断，不重复计算。"""
+    rows: list[dict[str, Any]] = []
+    for entry in overview.to_dicts():
+        feature = entry["feature"]
+        for metric in metrics:
+            status, reason = None, None
+            if metric == "psi":
+                if not has_psi_reference:
+                    status, reason = "not_computed", "no_group_or_benchmark"
+            elif not is_numeric_feature(context, feature):
+                status, reason = "skipped", "non_numeric_feature"
+            else:
+                value = entry.get(metric)
+                if value is None or isinstance(value, float) and not math.isfinite(value):
+                    if context.df.height < 2 and metric in {"std", "skew", "kurtosis"}:
+                        status, reason = "insufficient_samples", "fewer_than_two_samples"
+                    else:
+                        status, reason = "undefined", "empty_degenerate_or_nonfinite_values"
+            if status:
+                rows.append(
+                    {
+                        "feature": feature,
+                        "group": "Total",
+                        "metric": metric,
+                        "status": status,
+                        "reason": reason,
+                    }
+                )
+    for diagnostic in diagnostics:
+        for feature in diagnostic.get("features", []):
+            rows.append(
+                {
+                    "feature": feature,
+                    "group": "*",
+                    "metric": diagnostic.get("component"),
+                    "status": "failed",
+                    "reason": diagnostic.get("reason"),
+                }
+            )
+    return pl.DataFrame(
+        rows,
+        schema={
+            "feature": pl.String,
+            "group": pl.String,
+            "metric": pl.String,
+            "status": pl.String,
+            "reason": pl.String,
+        },
+    )

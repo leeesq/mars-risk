@@ -17,3 +17,13 @@ description: Reporting stable API：画像、分箱报告和 HTML 渲染结果�
 ::: mars.reporting.MarsHtmlRenderResult
 
 ::: mars.reporting.ProfileData
+
+::: mars.reporting.Report
+
+::: mars.reporting.ReportSnapshot
+    options:
+      inherited_members: true
+
+::: mars.reporting.load_report
+
+::: mars.reporting.snapshot_report

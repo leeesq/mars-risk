@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from mars.compute import to_pandas_frame
+from mars.reporting._metadata import export_semantics
 
 
 def _table_html(name: str, frame: object, table_index: int) -> str:
@@ -41,15 +42,16 @@ def _metadata_frame(metadata: dict[str, Any]) -> pd.DataFrame:
 def render_profile_html(report: Any, *, report_name: str) -> str:
     """Render a complete interactive profile document."""
     pages: list[tuple[str, list[tuple[str, object]]]] = []
-    if report.report_meta:
-        pages.append(("Metadata", [("Metadata", _metadata_frame(report.report_meta))]))
-    pages.append(("Overview", [("Overview", report.overview_table)]))
-    if report.dq_tables:
-        pages.append(("DQ", list(report.dq_tables.items())))
-    if report.stats_tables:
-        pages.append(("Stats", list(report.stats_tables.items())))
-    if report.comparison_tables:
-        pages.append(("Comparisons", list(report.comparison_tables.items())))
+    description = report.describe()
+    pages.append(("Metadata", list(export_semantics(description).items())))
+    grouped: dict[str, list[tuple[str, object]]] = {}
+    for name in description["tables"]:
+        frame = report.get_table(name)
+        display = report._display_frame(frame)
+        prefix = name.split(".", 1)[0]
+        page_name = {"overview": "Overview", "dq": "DQ", "stats": "Stats", "comparison": "Comparisons"}.get(prefix, name)
+        grouped.setdefault(page_name, []).append((name, display))
+    pages.extend(grouped.items())
     table_index = 0
     page_html: list[str] = []
     for page_index, (page_name, tables) in enumerate(pages):

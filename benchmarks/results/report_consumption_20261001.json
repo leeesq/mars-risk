@@ -1,0 +1,66 @@
+{
+  "environment": {
+    "python": "3.10.19",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "pandas": "2.3.3",
+    "polars": "1.37.1",
+    "date": "2026-10-01"
+  },
+  "size": {
+    "overview_rows": 10000,
+    "trend_rows": 1,
+    "date_columns": 365
+  },
+  "parameters": {
+    "repeats": 10,
+    "page_offset": 9000,
+    "page_limit": 10,
+    "budgets": [
+      16000,
+      5000
+    ]
+  },
+  "page": {
+    "median_ms": 0.2114000089932233,
+    "python_peak_bytes": 9549
+  },
+  "context": {
+    "16000": {
+      "median_ms": 33.95029999956023,
+      "python_peak_bytes": 2126371,
+      "characters": 13487,
+      "returned_fields": 366,
+      "omissions": []
+    },
+    "5000": {
+      "median_ms": 198.51259999995818,
+      "python_peak_bytes": 2120399,
+      "characters": 4988,
+      "returned_fields": 93,
+      "omissions": [
+        {
+          "reference": "stats.mean",
+          "report_id": "180ed6d7-0c2a-438d-b235-782264cdeb26",
+          "kind": "columns",
+          "reason": "output_budget",
+          "columns": 273,
+          "continue_at": {
+            "column": "2026-04-03",
+            "query": "get_table(columns=...)"
+          }
+        }
+      ]
+    }
+  },
+  "limitations": "tracemalloc measures Python allocations only, not native memory; single host, no fit or speedup comparison",
+  "save": {
+    "median_ms": 94.22790000098757,
+    "python_peak_bytes": 4511040
+  },
+  "load": {
+    "median_ms": 60.7558999909088,
+    "python_peak_bytes": 5539585
+  },
+  "file_bytes": 587148
+}

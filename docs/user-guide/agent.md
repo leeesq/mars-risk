@@ -47,11 +47,19 @@ page = agent.execute_tool(
 assert page.success
 ```
 
-`register_report()` 支持 `MarsProfileReport`、`MarsBinningReport` 和 `MarsRiskProfile`。
+`register_report()` 接受满足 `mars.reporting.Report` 的对象（包括外部实现及
+`load_report()` 恢复的快照），也接受持有 report 的 `MarsRiskProfile`。
 返回会话内唯一 ID，可以通过 `report_id=` 指定但不可覆盖。元数据和表保留快照；修改原报告或
 `get_report()` 返回的副本不影响会话。外部报告 `dataset_id=None`、`benchmark_id=None`，
 `metadata.source` 明确标明 external_report，原报告的参数和 describe 说明保存在 metadata 中。
 这些 ID 不代表已经登记原始数据集；Agent 的计算权限没有扩大。
+
+`persistent_report_id` 标识同一分析产物，独立于上述会话句柄。`get_report_table` 的
+`evidence_reference` 可在文件恢复后重放；`search_report_features` 按业务名/定义/来源返回
+明确英文标识，`get_report_context` 复用公共 `to_ai_context` 的异构查询与字符预算。
+`register_dataset` 可传入 `feature_metadata/business_context`，分析工具会向报告传递。
+外部消费者无需创建内部会话，完整示例见
+[可携带的公共分析报告](reports-and-exports.md#portable-analysis-reports)。
 
 ## 先验证确定性工具
 
@@ -139,7 +147,8 @@ page = agent.execute_tool(
 
 筛选为最多四个列的精确值匹配，随后排序、选择列、分页。`next_offset` 非空表示还有结果。
 输出超过字符预算时自动减小页长；单行过大时需通过 `columns` 缩小范围。
-非有限数值转为 JSON null，完整本地表保留 MARS 原值。Agent 不提供原始样本读取、Shell、
+浮点非有限值使用公共带类型标记 `{"$mars":"float","value":"nan/inf/-inf"}`（value 为三者之一），
+JSON null 表示缺失，普通字符串标记保持字符串；完整本地表保留 MARS 原值。Agent 不提供原始样本读取、Shell、
 任意 Python/SQL 执行、模型训练或业务决策修改工具。
 
 登记列名、描述、类别分箱和聚合结果可能发送给配置的模型服务。登记前由调用方筛除身份字段，

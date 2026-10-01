@@ -16,6 +16,7 @@ from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.selection.base import MarsBaseSelector
 from mars.reporting import MarsBinningReport
+from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -220,6 +221,8 @@ class MarsStatsSelector(MarsBaseSelector):
         benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
         features: list[str] | None = None,
         feature_data_source: dict[str, list[str]] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
@@ -245,6 +248,10 @@ class MarsStatsSelector(MarsBaseSelector):
             候选特征列；不传时会从样本表中自动推断。
         feature_data_source : dict[str, list[str]] | None
             特征来源映射，用于报告中追踪特征所属来源。
+        feature_metadata : FeatureMetadata | None
+            本次候选特征的业务字典或含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文，会传递给下游评估报告。
         group_col : str | None
             已存在的分组列名，用于趋势和稳定性筛选。
         time_col : str | None
@@ -384,7 +391,9 @@ class MarsStatsSelector(MarsBaseSelector):
         candidate_features = [
             col for col in source_features if col in X.columns and col not in exclude_cols
         ]
-        self._feature_source_map = self._normalize_feature_data_source(candidate_features)
+        self.feature_metadata = normalize_metadata(feature_metadata, candidate_features, self.feature_data_source)
+        self.business_context = normalize_business_context(business_context)
+        self._feature_source_map = {f: m.get("data_source") or "UNMAPPED" for f, m in self.feature_metadata.items()}
         valid_white_list = [
             feature for feature in self.white_list if feature in candidate_features
         ]
@@ -541,6 +550,8 @@ class MarsStatsSelector(MarsBaseSelector):
         benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
         features: list[str] | None = None,
         feature_data_source: dict[str, list[str]] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
@@ -564,6 +575,10 @@ class MarsStatsSelector(MarsBaseSelector):
             候选特征列；不传时从样本表自动推断。
         feature_data_source : dict[str, list[str]] | None
             特征来源映射，用于筛选报告的数据源标识。
+        feature_metadata : FeatureMetadata | None
+            本次候选特征的业务字典或含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文，会传递给下游评估报告。
         group_col : str | None
             已存在的趋势分组列。
         time_col : str | None
@@ -605,6 +620,8 @@ class MarsStatsSelector(MarsBaseSelector):
             benchmark_df=benchmark_df,
             features=features,
             feature_data_source=feature_data_source,
+            feature_metadata=feature_metadata,
+            business_context=business_context,
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
@@ -738,56 +755,9 @@ class MarsStatsSelector(MarsBaseSelector):
         report.report_meta["selection_metric_source"] = "df"
         return report
 
-    def _normalize_feature_data_source(self, features: List[str]) -> Dict[str, str]:
-        """
-        将选择器的数据源配置转换为特征到数据源的稳定映射。
-
-        未配置来源的特征统一标记为 ``"UNMAPPED"``；配置中出现当前候选特征
-        之外的字段时立即失败，避免导出的选择器报告来源错位。
-        """
-        if not self.feature_data_source:
-            return {feature: "UNMAPPED" for feature in features}
-
-        feature_set = set(features)
-        mapped_features = set()
-        normalized: Dict[str, str] = {}
-
-        for data_source, source_features in self.feature_data_source.items():
-            for feature in source_features or []:
-                if feature not in feature_set:
-                    raise ValueError(
-                        "feature_data_source contains features outside the active selector feature set: "
-                        f"{feature}"
-                    )
-                normalized[feature] = str(data_source)
-                mapped_features.add(feature)
-
-        for feature in feature_set - mapped_features:
-            normalized[feature] = "UNMAPPED"
-
-        return normalized
-
     def _feature_source_for(self, feature: str) -> str:
         """返回特征所属数据源，未映射时使用统一兜底标签。"""
         return self._feature_source_map.get(feature, "UNMAPPED")
-
-    def _feature_data_source_for(self, features: List[str]) -> Dict[str, List[str]]:
-        """按当前活跃特征裁剪数据源配置，避免评估器接收到已过滤字段。"""
-        if not self.feature_data_source:
-            return {}
-
-        active_features = set(features)
-        filtered_source: Dict[str, List[str]] = {}
-        for data_source, source_features in self.feature_data_source.items():
-            matched_features = [
-                feature
-                for feature in source_features or []
-                if feature in active_features
-            ]
-            if matched_features:
-                filtered_source[str(data_source)] = matched_features
-
-        return filtered_source
 
     def _register_feature_decision(
         self,
@@ -1202,7 +1172,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=self.group_col,
             time_col=self.time_col,
             time_grain=self.time_grain,
-            feature_data_source=self._feature_data_source_for(features),
+            feature_metadata={f: self.feature_metadata.get(f, {}) for f in features},
+            business_context=self.business_context,
             benchmark_df=benchmark_df,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
@@ -1310,7 +1281,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=self.group_col,
             time_col=self.time_col,
             time_grain=self.time_grain,
-            feature_data_source=self._feature_data_source_for(features),
+            feature_metadata={f: self.feature_metadata.get(f, {}) for f in features},
+            business_context=self.business_context,
             binner=self._stage3_binner,
             benchmark_df=benchmark_df,
             psi_include_missing=self.psi_include_missing,
@@ -1551,7 +1523,8 @@ class MarsStatsSelector(MarsBaseSelector):
             group_col=self.group_col,
             time_col=self.time_col,
             time_grain=self.time_grain,
-            feature_data_source=self._feature_data_source_for(self.selected_features_),
+            feature_metadata={f: self.feature_metadata.get(f, {}) for f in self.selected_features_},
+            business_context=self.business_context,
             binner=self._stage3_binner,
             benchmark_df=benchmark_pl,
             psi_include_missing=self.psi_include_missing,

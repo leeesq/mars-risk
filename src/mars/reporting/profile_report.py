@@ -8,6 +8,7 @@ import pandas as pd
 import polars as pl
 
 from mars.compute import to_pandas_frame
+from mars.reporting._metadata import FeatureMetadata
 from mars.reporting._profile_excel import _ProfileExcelWriter
 from mars.reporting._profile_html import write_profile_html
 from mars.reporting._query import ReportFrame, _ReportQuery
@@ -88,6 +89,8 @@ class MarsProfileReport(_ReportQuery):
         stats_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]],
         comparison_tables: Dict[str, Union[pl.DataFrame, pd.DataFrame]] | None = None,
         report_meta: Dict[str, Any] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> None:
         """
         初始化画像报告容器。
@@ -104,12 +107,18 @@ class MarsProfileReport(_ReportQuery):
             Schema drift 与 unseen rate 对比表字典。
         report_meta : Dict[str, Any] | None
             报告运行元数据与可恢复诊断。
+        feature_metadata : FeatureMetadata | None
+            以英文标识为键的业务字典，或包含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文；不推断未提供的信息。
         """
         self.overview_table = overview
         self.dq_tables = dq_tables
         self.stats_tables = stats_tables
         self.comparison_tables = dict(comparison_tables or {})
         self.report_meta = dict(report_meta or {})
+        self._calculation_status: ReportFrame | None = None
+        self._initialize_semantics(feature_metadata, business_context)
 
         # 建立索引：将所有指标名映射到对应的数据源类型 ('dq' 或 'stat')
         # 这允许我们在 show_trend 中快速定位
@@ -124,6 +133,7 @@ class MarsProfileReport(_ReportQuery):
     def _query_tables(self) -> dict[str, ReportFrame]:
         """沿用 Agent 的画像表目录，保留每张原生结果表。"""
         return {"overview": self.overview_table,
+                **({"calculation_status": self._calculation_status} if self._calculation_status is not None else {}),
                 **{f"dq.{k}": v for k, v in self.dq_tables.items()},
                 **{f"stats.{k}": v for k, v in self.stats_tables.items()},
                 **{f"comparison.{k}": v for k, v in self.comparison_tables.items()}}
@@ -391,6 +401,7 @@ class MarsProfileReport(_ReportQuery):
             "overview", features=features, columns=columns, sort_by=available_sort or None,
             descending=not sort_ascending, limit=limit, sources=sources,
         ))
+        df = self._display_frame(df)
         return self._get_styler(
             df,
             title="Dataset Overview",
@@ -483,6 +494,7 @@ class MarsProfileReport(_ReportQuery):
             f"{prefix}.{metric}", features=features, columns=columns,
             sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
         ))
+        df = self._display_frame(df)
         df = self._reorder_trend_cols(df, group_ascending=group_ascending)
 
         return self._get_styler(
@@ -497,7 +509,7 @@ class MarsProfileReport(_ReportQuery):
     def _reorder_trend_cols(self, df: pd.DataFrame, group_ascending: bool) -> pd.DataFrame:
         """重新排列趋势表的列顺序。"""
         # 定义元数据列和末尾全量统计列
-        meta_cols = ["feature", "dtype", "distribution", "mode_value"]
+        meta_cols = ["feature", "display_name", "dtype", "distribution", "mode_value"]
         stat_cols = ["total"]
 
         # 识别中间的分组列（如时间列）

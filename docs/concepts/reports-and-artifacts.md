@@ -11,7 +11,12 @@ MARS 将计算结果分成内存中的结构化对象和可选的持久化产物
 Report 保存汇总表、明细表、趋势表和元数据。它适合在 Python 中继续筛选、排序、复盘或组合，
 也可以按需导出 Excel、HTML 和图表资产。
 
-导出不是读取结果的前置步骤。对自动化流程，优先消费 report 字段；对人工交付，再调用
+导出不是读取结果的前置步骤。对自动化流程，优先消费公共 `describe/get_table/query_page`
+接口；画像和分箱报告可通过 `save/load_report` 保存为含 JSON 清单及 Parquet 完整统计表的
+单个 `.marsreport` 文件。恢复的 `ReportSnapshot` 不需要原始数据和分析器，可被外部 Agent
+直接查询，也可登记到 `MarsAgentSession`。持久报告标识在恢复后保持不变，AI 上下文是受预算
+限制的摘要。业务元数据、实际参数及计算状态的完整说明见
+[可携带的公共分析报告](../user-guide/reports-and-exports.md#portable-analysis-reports)。对人工交付，再调用
 `write_excel()` 或 `write_html()`。
 
 ## HTML 与 Excel

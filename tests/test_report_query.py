@@ -128,7 +128,9 @@ def test_ai_serializes_date_null_zero_and_nonfinite_with_evidence(
         {},
     )
     rows = json.loads(special.to_ai_context())["evidence"][0]["rows"]
-    assert [row["mean"] for row in rows] == [None, "NaN", "Infinity", 0.0]
+    assert [row["mean"] for row in rows] == [
+        None, {"$mars": "float", "value": "nan"}, {"$mars": "float", "value": "inf"}, 0.0,
+    ]
 
 
 def test_ai_budget_omits_complete_rows_and_parameter_values() -> None:

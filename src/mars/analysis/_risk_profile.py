@@ -11,6 +11,7 @@ import polars as pl
 from mars.analysis._raw_ks import _apply_raw_ks, _prepare_raw_ks
 from mars.compute import OrderedMetricSortBy, RiskCorrBaseline, to_polars_frame
 from mars.reporting import MarsBinningReport
+from mars.reporting._metadata import FeatureMetadata
 from mars.utils.logger import logger
 
 if TYPE_CHECKING:
@@ -248,6 +249,8 @@ def profile_risk(
     target: str | list[str] | None = None,
     features: list[str] | None = None,
     feature_data_source: dict[str, list[str]] | None = None,
+    feature_metadata: FeatureMetadata | None = None,
+    business_context: dict[str, Any] | None = None,
     group_col: str | None = None,
     time_col: str | None = None,
     time_grain: str | None = None,
@@ -296,6 +299,10 @@ def profile_risk(
         本次参与评估的特征列。传入 `None` 时自动从输入表推断。
     feature_data_source : dict[str, list[str]] | None
         特征来源映射，用于在报告中保留数据源维度。
+    feature_metadata : FeatureMetadata | None
+        完整业务字典或含 feature 列的 Pandas/Polars 表；英文标识保持不变。
+    business_context : dict[str, Any] | None
+        可选 JSON 业务上下文，多标签定义按 labels 的目标标识登记。
     group_col : str | None
         已存在的分组列名。
     time_col : str | None
@@ -509,6 +516,8 @@ def profile_risk(
         time_col=time_col,
         time_grain=time_grain,
         feature_data_source=feature_data_source,
+        feature_metadata=feature_metadata,
+        business_context=business_context,
         weights_col=weights_col,
         amount_col=amount_col,
         benchmark_df=benchmark_df,
@@ -534,6 +543,7 @@ def profile_risk(
         all_details: list[pl.DataFrame] = [p_detail]
         all_summaries: list[pl.DataFrame] = [p_summary]
         all_references: list[pl.DataFrame] = [p_reference]
+        all_statuses = [to_polars_frame(primary_report.get_table("calculation_status"))]
 
         for sec_target in target_list[1:]:
             sec_run = MarsBinEvaluator(
@@ -549,6 +559,8 @@ def profile_risk(
                 time_col=time_col,
                 time_grain=time_grain,
                 feature_data_source=feature_data_source,
+                feature_metadata=feature_metadata,
+                business_context=business_context,
                 weights_col=weights_col,
                 amount_col=amount_col,
                 binner=trained_binner,
@@ -560,6 +572,7 @@ def profile_risk(
                 ordered_metric_sort_by=ordered_metric_sort_by,
                 batch_size=batch_size,
             )
+            all_statuses.append(to_polars_frame(sec_run.report.get_table("calculation_status")))
             all_details.append(to_polars_frame(sec_run.report.detail_table))
             all_summaries.append(
                 to_polars_frame(sec_run.report.summary_table).with_columns(
@@ -607,7 +620,12 @@ def profile_risk(
             missing_by_day_table=primary_report.missing_by_day_table,
             risk_corr_reference_table=final_reference,
             report_meta=merged_meta,
+            feature_metadata=primary_report.feature_metadata,
+            business_context=business_context,
         )
+        combined_status = pl.concat(all_statuses, how="vertical_relaxed")
+        final_report.source = dict(primary_report.source)
+        final_report._calculation_status = combined_status.to_pandas() if input_is_pandas else combined_status
         final_targets = [str(t) for t in target_list]
 
     if raw_ks_values is not None:

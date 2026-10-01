@@ -178,7 +178,7 @@ def _apply_raw_ks(
         for f in summary["feature"].unique().to_list()
     }
     meta["raw_ks_diagnostics"] = values.to_dicts()
-    return MarsBinningReport(
+    updated_report: MarsBinningReport = MarsBinningReport(
         summary_table=(
             summary.to_pandas()
             if isinstance(report.summary_table, pd.DataFrame)
@@ -197,4 +197,10 @@ def _apply_raw_ks(
         missing_by_day_table=report.missing_by_day_table,
         risk_corr_reference_table=report.risk_corr_reference_table,
         report_meta=meta,
+        feature_metadata=report.feature_metadata,
+        business_context=report.business_context,
     )
+    updated_report.report_id = report.report_id
+    updated_report.source = dict(report.source)
+    updated_report._calculation_status = report._calculation_status
+    return updated_report

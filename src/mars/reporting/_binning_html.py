@@ -36,6 +36,7 @@ from mars.reporting._binning_html_helpers import (
     wrap_html_section,
 )
 from mars.reporting._matplotlib import require_pyplot
+from mars.reporting._metadata import export_report_semantics
 from mars.reporting._time_range import TimeRange, resolve_report_time_range
 from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
 from mars.utils.html import format_html_value, is_missing_html_value
@@ -1409,7 +1410,7 @@ class _BinningHtmlRenderer:
         方法负责收集汇总表、明细表、趋势表、图表和数据源筛选配置，随后
         组装导航、概览、各业务 section 与运行脚本并写入目标路径。
         """
-        summary_pd = to_pandas_frame(self.summary_table).copy()
+        summary_pd = self._display_frame(self.get_table("summary"))
         detail_pd = to_pandas_frame(self.detail_table).copy()
         trend_pd_map = {metric: to_pandas_frame(df).copy() for metric, df in self.trend_tables.items()}
         missing_by_day_pd = (
@@ -1455,6 +1456,9 @@ class _BinningHtmlRenderer:
 
         html_parts: List[str] = []
         nav_items: List[Tuple[str, str]] = []
+        semantics_html = "".join(f"<h3>{html.escape(name)}</h3>{frame.to_html(index=False, escape=True)}" for name, frame in export_report_semantics(self).items())
+        html_parts.append(self._mark_page_view(self._wrap_html_section("Business Metadata", semantics_html, "semantics-section"), "overview"))
+        nav_items.append(("semantics-section", "Business Metadata"))
 
         overview_html = self._build_dataset_overview_html(self.report_meta)
         if overview_html:

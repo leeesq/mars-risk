@@ -17,13 +17,18 @@ from mars.analysis._profiling.context import (
     prepare_benchmark_data,
     prepare_profile_data,
 )
-from mars.analysis._profiling.metrics import calculate_overview, normalize_profile_metrics
+from mars.analysis._profiling.metrics import (
+    build_profile_status,
+    calculate_overview,
+    normalize_profile_metrics,
+)
 from mars.analysis._profiling.pivot import generate_pivot_reports
 from mars.analysis._profiling.psi import get_psi_trend
 from mars.analysis._profiling.sparkline import compute_sparklines
 from mars.analysis._profiling.types import ProfileBinMethod, ProfileComputeOptions
 from mars.core.base import MarsBaseEstimator
 from mars.reporting import MarsProfileReport
+from mars.reporting._metadata import FeatureMetadata
 from mars.utils.decorators import time_it
 
 
@@ -32,6 +37,8 @@ def profile_stats(
     *,
     metrics: list[str],
     features: list[str] | None = None,
+    feature_metadata: FeatureMetadata | None = None,
+    business_context: dict[str, Any] | None = None,
     benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
     categorical_features: list[str] | None = None,
     group_col: str | None = None,
@@ -61,6 +68,10 @@ def profile_stats(
         本次需要计算的数据质量或统计指标，必须显式传入。
     features : list[str] | None
         本次画像的特征列。
+    feature_metadata : FeatureMetadata | None
+        完整特征字典或含 feature 列的 Pandas/Polars 表；按本次特征裁剪。
+    business_context : dict[str, Any] | None
+        用户提供的 JSON 业务上下文，与实际计算配置分开保存。
     benchmark_df : pl.DataFrame | pd.DataFrame | None
         PSI 基准样本。传入后用其拟合分箱并构造 expected distribution；不会参与
         overview、数据质量或其他统计指标。未提供分组时仍会计算当前全量相对基准的 PSI。
@@ -126,6 +137,8 @@ def profile_stats(
         df,
         metrics=metrics,
         features=features,
+        feature_metadata=feature_metadata,
+        business_context=business_context,
         benchmark_df=benchmark_df,
         categorical_features=categorical_features,
         exclude_features=exclude_features,
@@ -218,6 +231,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         *,
         metrics: list[str] | None = None,
         features: list[str] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
         benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
         categorical_features: list[str] | None = None,
         exclude_features: list[str] | None = None,
@@ -242,6 +257,10 @@ class MarsDataProfiler(MarsBaseEstimator):
             本次计算的指标；不传时使用默认全量画像指标。
         features : list[str] | None
             本次画像的特征列；不传时使用过滤后的全部候选列。
+        feature_metadata : FeatureMetadata | None
+            完整特征字典或含 feature 列的 Pandas/Polars 表。
+        business_context : dict[str, Any] | None
+            用户提供的 JSON 业务上下文，未知信息不推断。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
             PSI 基准样本。传入后用其拟合分箱并构造 expected distribution；不会参与
             overview、数据质量或其他统计指标。未提供分组时仍会计算当前全量相对基准的 PSI。
@@ -464,10 +483,20 @@ class MarsDataProfiler(MarsBaseEstimator):
             "diagnostics": list(options.diagnostics),
         }
 
-        return MarsProfileReport(
+        report = MarsProfileReport(
             overview=self._format_output(overview_df),
             dq_tables=self._format_output(dq_tables),
             stats_tables=self._format_output(stat_tables),
             comparison_tables=self._format_output(comparison_tables),
             report_meta=report_meta,
+            feature_metadata=feature_metadata,
+            business_context=business_context,
         )
+        status = build_profile_status(
+            context, overview_df, selection.stat_metrics, options.diagnostics,
+            has_psi_reference=context.group_col is not None or benchmark_pl is not None,
+        )
+        if status.height:
+            report._calculation_status = self._format_output(status)
+        report.source = {"kind": "analysis", "producer": "mars", "input_provenance": "caller_provided_dataframe"}
+        return report

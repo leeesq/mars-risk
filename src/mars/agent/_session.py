@@ -8,9 +8,12 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any
 
+import pandas as pd
 import polars as pl
 
 from mars.compute import FrameLike, to_polars_frame
+from mars.reporting import ReportSnapshot, snapshot_report
+from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
 
 from ._contracts import MarsAgentMessage, MarsAgentReport
 
@@ -27,6 +30,8 @@ class _Dataset:
     time_col: str | None
     description: str
     missing_values: tuple[int | float | str, ...]
+    feature_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
+    business_context: dict[str, Any] = field(default_factory=dict)
 
     def describe(self) -> dict[str, Any]:
         """仅返回字段角色和规模，不提供原始样本。"""
@@ -43,6 +48,8 @@ class _Dataset:
             "group_columns": list(self.group_columns),
             "time_col": self.time_col,
             "missing_values": list(self.missing_values),
+            "feature_metadata": deepcopy(self.feature_metadata),
+            "business_context": deepcopy(self.business_context),
         }
 
 
@@ -59,6 +66,7 @@ class MarsAgentSession:
     def __init__(self) -> None:
         self._datasets: dict[str, _Dataset] = {}
         self._reports: dict[str, MarsAgentReport] = {}
+        self._public_reports: dict[str, ReportSnapshot] = {}
         self._messages: list[MarsAgentMessage] = []
         self._lock = Lock()
 
@@ -73,6 +81,8 @@ class MarsAgentSession:
         time_col: str | None = None,
         description: str = "",
         missing_values: list[int | float | str] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
     ) -> None:
         """
         登记允许 Agent 使用的数据及明确业务角色。
@@ -96,6 +106,11 @@ class MarsAgentSession:
         missing_values : list[int | float | str] | None
             交由 MARS 处理的额外缺失值。
 
+        feature_metadata : FeatureMetadata | None
+            可选业务字典或含 feature 列的 Pandas/Polars 表；仅保留已授权特征。
+        business_context : dict[str, Any] | None
+            可选 JSON 业务上下文；交给画像和分箱报告。
+
         Raises
         ------
         RuntimeError
@@ -108,6 +123,8 @@ class MarsAgentSession:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("session is busy")
         try:
+            normalized_metadata = normalize_metadata(feature_metadata, features)
+            normalized_context = normalize_business_context(business_context)
             self._register(
                 dataset_id,
                 df,
@@ -117,6 +134,13 @@ class MarsAgentSession:
                 time_col,
                 description,
                 missing_values,
+            )
+            dataset = self._datasets[dataset_id]
+            from dataclasses import replace
+            self._datasets[dataset_id] = replace(
+                dataset,
+                feature_metadata=normalized_metadata,
+                business_context=normalized_context,
             )
         finally:
             self._lock.release()
@@ -231,7 +255,7 @@ class MarsAgentSession:
         Parameters
         ----------
         report : object
-            MarsProfileReport、MarsBinningReport 或持有此类 report 的 MarsRiskProfile。
+            满足 mars.reporting.Report 公共契约的报告，或持有 report 的结果对象。
         report_id : str | None
             可选唯一标识；限字母、数字、下划线和连字符，最长 64 字符；None 自动分配。
 
@@ -257,26 +281,26 @@ class MarsAgentSession:
         >>> session = MarsAgentSession()
         >>> report_id = session.register_report(profile.report)  # doctest: +SKIP
         """
-        from mars.reporting import MarsBinningReport, MarsProfileReport
-
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("session is busy")
         try:
             candidate = getattr(report, "report", report)
-            if not isinstance(candidate, (MarsProfileReport, MarsBinningReport)):
-                raise ValueError("report must be MarsProfileReport, MarsBinningReport or a result containing one.")
+            snapshot = snapshot_report(candidate)
             if report_id is not None:
                 if not isinstance(report_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", report_id):
                     raise ValueError("report_id must match [A-Za-z0-9_-]{1,64}")
                 if report_id in self._reports:
                     raise ValueError(f"report_id already registered: {report_id}")
-            metadata = deepcopy(candidate.report_meta)
-            metadata["source"] = {"kind": "external_report", "report_type": type(candidate).__name__,
-                                  "dataset_id": None, "snapshot": True}
-            metadata["report_description"] = candidate.describe()
-            metadata["agent_parameters"] = deepcopy(candidate.report_meta)
+            description = snapshot.describe()
+            metadata = deepcopy(description["parameters"])
+            metadata["source"] = {"kind": "external_report", "report_type": snapshot.report_type,
+                                  "dataset_id": None, "snapshot": True, "origin": description.get("source", {})}
+            metadata["report_description"] = description
+            metadata["persistent_report_id"] = snapshot.report_id
+            metadata["agent_parameters"] = deepcopy(description["parameters"])
             stored = self._save_report(
-                type(candidate).__name__, None, None, candidate._query_tables(), metadata,
+                snapshot.report_type, None, None,
+                {name: snapshot.get_table(name) for name in description["tables"]}, metadata,
                 report_id=report_id,
             )
             return stored.id
@@ -304,8 +328,15 @@ class MarsAgentSession:
             kind,
             dataset_id,
             benchmark_id,
-            {name: to_polars_frame(table).clone() for name, table in tables.items()},
+            {
+                name: pl.from_pandas(table, nan_to_null=False)
+                if isinstance(table, pd.DataFrame)
+                else to_polars_frame(table).clone()
+                for name, table in tables.items()
+            },
             deepcopy(metadata),
         )
         self._reports[report_id] = report
+        if metadata.get("report_description"):
+            self._public_reports[report_id] = ReportSnapshot(tables, metadata["report_description"])
         return report
