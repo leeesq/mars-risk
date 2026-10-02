@@ -11,6 +11,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import pytest
@@ -110,34 +111,36 @@ def test_normal_bin_dsl_matches_public_cross_assignment(
     assert actual == expected
 
 
-def test_downloaded_zip_runs_outside_a_checkout(
-    lightweight_cases: Path, tmp_path: Path,
-) -> None:
+def test_downloaded_zip_runs_outside_a_checkout(lightweight_cases: Path) -> None:
     """完整下载包在独立目录可生成新案例，再用已有可信快照独立消费。"""
-    unpacked = tmp_path / "downloaded"
-    with zipfile.ZipFile(lightweight_cases / "cases.zip") as archive:
-        archive.extractall(unpacked)
-    output = tmp_path / "new-analysis"
-    generated = subprocess.run(
-        [sys.executable, str(unpacked / "task_cases.py"), "--case", "1", "--rows", "90",
-         "--seed", "20261003", "--output-dir", str(output)],
-        cwd=tmp_path, capture_output=True, text=True, check=False,
-    )
-    assert generated.returncode == 0, generated.stdout + "\n" + generated.stderr
-    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
-    assert summary["rows"] == 90 and summary["seed"] == 20261003
-    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["source_commit"] is None
-    assert "unknown" in manifest["source_status"]
-    assert manifest["code_fingerprints"]
-    consumed = subprocess.run(
-        [sys.executable, str(unpacked / "task_cases.py"), "--phase", "consume",
-         "--output-dir", str(unpacked)],
-        cwd=tmp_path, capture_output=True, text=True, check=False,
-    )
-    assert consumed.returncode == 0, consumed.stdout + "\n" + consumed.stderr
-    restore = json.loads((unpacked / "case-6.json").read_text(encoding="utf-8"))
-    assert restore["findings"]["policy_replay_matches"]
+    # Docs CI 的 --basetemp 在仓库内；兄弟临时目录确保真正脱离受测 checkout。
+    with TemporaryDirectory(prefix="mars-case-standalone-", dir=ROOT.parent) as directory:
+        workspace = Path(directory).resolve()
+        assert ROOT not in workspace.parents
+        unpacked = workspace / "downloaded"
+        with zipfile.ZipFile(lightweight_cases / "cases.zip") as archive:
+            archive.extractall(unpacked)
+        output = workspace / "new-analysis"
+        generated = subprocess.run(
+            [sys.executable, str(unpacked / "task_cases.py"), "--case", "1", "--rows", "90",
+             "--seed", "20261003", "--output-dir", str(output)],
+            cwd=workspace, capture_output=True, text=True, check=False,
+        )
+        assert generated.returncode == 0, generated.stdout + "\n" + generated.stderr
+        summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+        assert summary["rows"] == 90 and summary["seed"] == 20261003
+        manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["source_commit"] is None
+        assert "unknown" in manifest["source_status"]
+        assert manifest["code_fingerprints"]
+        consumed = subprocess.run(
+            [sys.executable, str(unpacked / "task_cases.py"), "--phase", "consume",
+             "--output-dir", str(unpacked)],
+            cwd=workspace, capture_output=True, text=True, check=False,
+        )
+        assert consumed.returncode == 0, consumed.stdout + "\n" + consumed.stderr
+        restore = json.loads((unpacked / "case-6.json").read_text(encoding="utf-8"))
+        assert restore["findings"]["policy_replay_matches"]
 
 
 def test_automatic_rule_case_has_separate_bounded_generator_evidence(lightweight_cases: Path) -> None:

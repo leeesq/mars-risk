@@ -359,6 +359,22 @@ def consume(output_dir: Path) -> dict[str, Any]:
         load_report(output_dir / "rules.marsreport"),
     )
     descriptions = {r.report_id: r.describe() for r in (cross, rules)}
+    cross_description = descriptions[cross.report_id]
+    weighted = cross_description["parameters"].get("weights_col") is not None
+    denominator = "observed_weight_sum" if weighted else "observed_sample_count"
+    numerator = "bad_weight_sum" if weighted else "bad_sample_count"
+    cell_columns = [
+        "group", "period", "target", "x_bin", "y_bin", "sample_count",
+        "observed_sample_count", "bad_sample_count",
+    ]
+    if weighted:
+        weight_columns = ["observed_weight_sum", "bad_weight_sum"]
+        available = cross_description["tables"]["cells"]["fields"]
+        missing = [column for column in weight_columns if column not in available]
+        if missing:
+            raise ValueError(f"加权报告缺少实际分母／事件权重证据：{missing}。")
+        cell_columns.extend(weight_columns)
+    cell_columns.extend(["bad_rate", "row_bad_rate", "delta_vs_row", "status"])
     discovery_period = cross.get_table(
         "overall", filters={"group": "discovery", "target": "bad30"}, columns=["period"], limit=1,
     )["period"][0]
@@ -369,22 +385,7 @@ def consume(output_dir: Path) -> dict[str, Any]:
             "cells",
             {
                 "filters": {"group": "discovery", "period": discovery_period, "target": "bad30", "x_bin": "b1"},
-                "columns": [
-                    "group",
-                    "period",
-                    "target",
-                    "x_bin",
-                    "y_bin",
-                    "sample_count",
-                    "observed_sample_count",
-                    "bad_sample_count",
-                    "observed_weight_sum",
-                    "bad_weight_sum",
-                    "bad_rate",
-                    "row_bad_rate",
-                    "delta_vs_row",
-                    "status",
-                ],
+                "columns": cell_columns,
                 "sort_by": "y_bin",
                 "limit": 10,
             },
@@ -576,6 +577,8 @@ def consume(output_dir: Path) -> dict[str, Any]:
                 "high_y_bin": upper["y_bin"],
                 "high_event_rate": upper["bad_rate"],
                 "high_observed_count": upper["observed_sample_count"],
+                "bad_rate_numerator": numerator,
+                "bad_rate_denominator": denominator,
                 "reference": trace[0]["reference"],
             }
         )
@@ -590,6 +593,10 @@ def consume(output_dir: Path) -> dict[str, Any]:
         "kind": "deterministic_evidence_review",
         "question": QUESTION,
         "simulated": True,
+        "risk_measure": {
+            "weighted": weighted, "numerator": numerator, "denominator": denominator,
+            "formula": f"{numerator} / {denominator}",
+        },
         "findings": findings,
         "discovery": trace[0],
         "selection": [item for item in trace if item["reference"]["table"] == "candidates"],
@@ -608,7 +615,8 @@ def consume(output_dir: Path) -> dict[str, Any]:
     lines = [
         "# 确定性证据复核（模拟数据，无 LLM）",
         QUESTION,
-        "发现证据见 query-trace.json 的第一条 cells 引用；风险比率以 observed_weight_sum 为分母，人数另行保留。",
+        f"发现证据见 query-trace.json 的第一条 cells 引用；本报告为{'加权' if weighted else '未加权'}统计，"
+        f"风险比率 = {numerator} / {denominator}；全样本人数与已表现人数分别保留。",
         "候选审计：",
     ]
     lines.extend(encode(finding) for finding in findings)

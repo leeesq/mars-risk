@@ -52,9 +52,17 @@ python scripts/check_case_assets.py --site-dir site --skip-recompute
 源码检查包括 Ruff、157 文件 Mypy、pydoclint 与私有 docstring；六条既有私有 docstring 建议保留。
 七页新增人工短代码全部实际执行通过；同目录重复保存的安全拒绝未放宽。
 案例定向 17 项通过；交叉 HTML 与数值相关定向 128 项通过；分箱 HTML 定向 24 项通过。
-最终文档、案例及两种 HTML 定向检查为 87 passed、2 deselected；
+最终文档、案例、外部规则消费者及两种 HTML 定向检查为 90 passed、2 deselected，
+使用仓库内 `--basetemp .pytest-tmp-final` 复现 Docs CI 的临时目录配置；
 公开 18,000 行重算、56 个文件与 8 个快照校验通过。sdist/wheel 构建与 Twine 检查通过。
-严格 MkDocs 构建与构建产物校验通过；远端 CI 结果在 PR 中更新。
+严格 MkDocs 构建与构建产物校验通过；最终远端 CI 结果在 [PR #5](https://github.com/leeesq/mars-risk/pull/5) 中更新。
+
+首次 PR CI 暴露两个真实案例问题：未加权报告的消费查询请求不存在的权重字段，
+以及 ZIP 的“仓库外”测试沿用 CI 位于 checkout 内的临时目录。
+消费者现在按报告的实际 `weights_col` 选择人数或权重，并在文字结论中保留分母；
+加权报告缺少权重证据仍明确失败。ZIP 测试改用 checkout 的兄弟临时目录，
+保留未知提交、指纹、独立生成与消费的全部断言。18,000 行加权快照消费复核通过，
+查询行与证据引用保持一致；计算报告与原生图无需重算，下载源码、任务材料及 ZIP 同步刷新。
 
 本地完整基础套件的首次运行在公开产物刷新前执行：1,040 passed、4 skipped、7 deselected，
 12 failed。四项属于尚未生成的新图片/下载材料及已修正的链接断言；
@@ -67,7 +75,10 @@ python scripts/check_case_assets.py --site-dir site --skip-recompute
 本地未安装 LightGBM/Optuna，完整 optional_ml/docs_ml 不在本地验收范围。
 云浏览器拒绝访问本地 HTTP 与 file 协议，因此本轮本地 HTML 没有完成真实浏览器交互验收；
 导航行为由实际 Node JS 回归与生成后 HTML 集成检查覆盖。
-真实 GitHub 托管 README 的检查单独记录，既有旧手机/暗色记录不代表新版已验收。
+真实 GitHub 托管的中英文 README 已实际打开并点击语言入口：两页主标题居中，
+原生 PNG、动画 GIF、英文全称与六个徽章均加载成功，互链指向当前分支。
+[中文桌面截图](../assets/case-validation/native-readme-zh-desktop.jpg)记录本轮原生主图与门面布局。
+既有旧手机/暗色记录不代表新版已验收。
 原生 Excel 外观未验收，静态工作表与关键数值由自动校验核对。
 
 先前版本的截图与验收材料保留在 Git 历史及已有 case-validation 目录，
