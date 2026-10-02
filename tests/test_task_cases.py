@@ -146,13 +146,19 @@ def test_semantic_check_allows_fresh_identity_but_detects_changed_numbers() -> N
     compare = checker["_assert_equal"]
     published: dict[str, Any] = {
         "report_id": "batch-a", "created_at": "2026-10-01",
+        "parameters": {"polars_version": "1.42.0", "format_version": 1},
         "query": {"rows": [{"count": 36, "bad_rate": 0.25, "status": "ok"}]},
     }
     current: dict[str, Any] = {
         "report_id": "batch-b", "created_at": "2026-10-02",
+        "parameters": {"polars_version": "1.44.2", "format_version": 1},
         "query": {"rows": [{"count": 36, "bad_rate": 0.25, "status": "ok"}]},
     }
     compare(semantic(published), semantic(current))
+    current["parameters"]["format_version"] = 2
+    with pytest.raises(ValueError, match=r"parameters.format_version"):
+        compare(semantic(published), semantic(current))
+    current["parameters"]["format_version"] = 1
     current["query"]["rows"][0]["bad_rate"] = 0.3
     with pytest.raises(ValueError, match=r"query.rows\[0\].bad_rate"):
         compare(semantic(published), semantic(current))

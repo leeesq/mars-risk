@@ -129,7 +129,29 @@ python tests/browser/readme.py --ref codex/task-cases-bilingual-readme --output 
 本轮静态 Excel 当前值已读取核对；原生 Excel 外观未完成验收。
 该交付不使用旧透视缓存冒充新计算，也不承诺 Excel 与 HTML 交互等价。
 
-GitHub README 真正托管页面和相关 CI 在分支推送后另外验收。
+GitHub 真正托管的提交 `bd00d5e2cdd2bab6fe5519498a31942fb2c22063` 的中英文 README
+完成 1440／390px × 亮／暗的八组合浏览器验收；六个动态徽章实际加载，语言相对链接正确，
+手机 `picture` 实际选择 `readme-preview-mobile.png`，主体无溢出，暗色背景实际为 RGB(13,17,23)。
+同批 [完整托管渲染记录](../assets/case-validation/github-readme-results.json)保留两个 README 的 Git blob，
+后续纯检查修复提交不改变这两个内容身份。
+[GitHub 桌面首屏](../assets/case-validation/github-readme-desktop-light.png)、
+[手机英文正文](../assets/case-validation/github-readme-phone-light.png)和
+[暗色中文正文](../assets/case-validation/github-readme-desktop-dark.png)是实际托管页面截图。
+该首屏捕获于初次 Docs 版本溯源检查失败期间，其动态 CI 徽章状态保留真实当时结果。
+
+GitHub 随后的分支／提交访问间歇返回其 Unicorn HTTP 503，有限重试明确失败，
+[未验证访问记录](../assets/case-validation/github-access-unverified.json)与
+[503 页面](../assets/case-validation/github-http-503.png)分别保存，未冒充通过；
+另一次分支桌面渲染成功，但手机资源等待没有完成，未计入八组合成功记录。
+
+首次推送的 [push CI](https://github.com/leeesq/mars-risk/actions/runs/37015161469)和
+[PR CI](https://github.com/leeesq/mars-risk/actions/runs/37015249670)各 11 个 jobs 全部 success。
+[初次 Docs](https://github.com/leeesq/mars-risk/actions/runs/37015249677)的 58 个测试和严格构建通过，
+公开重算比较在环境溯源 `polars_version` 失败：生成 1.42.0、CI 安装 1.44.2。
+已仅将该依赖版本字段排除出业务语义比较，完整环境记录保留；新增回归仍拒绝
+报告 `format_version` 或业务指标变化。修复后的本地 18,000 行重算和 56 个测试再次通过。
+最终提交的远端 Docs 与 CI 结果随交付单独给出，不用“已触发”代替完成。
+
 任务分支普通 push 不触发 Pages 部署；新站点页面仅在源码／本地严格构建预览中，
 线上既有文档继续可访问。没有自动 merge、Release、PyPI 发布或额外生产部署。
 历史验收记录保留在[2026-10-02 原记录](validation-20261002.md)，不代替本轮检查。

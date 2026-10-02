@@ -24,7 +24,7 @@ CASE_PAGES = (
 )
 VOLATILE_FIELDS = frozenset({
     "report_id", "created_at", "generated_at", "created_at_utc", "generated_at_utc",
-    "source_commit", "source_revision", "elapsed_seconds",
+    "source_commit", "source_revision", "elapsed_seconds", "polars_version",
 })
 
 
