@@ -11,15 +11,15 @@
   "qualification": "temporally_validated",
   "rules": [
     {
-      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
       "labels": [],
-      "rule_id": "mr_cb714e09ca8c064f8185",
+      "rule_id": "mr_7bdb03abe2bdaf07f897",
       "source": "cross_discovery"
     },
     {
-      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
       "labels": [],
-      "rule_id": "mr_20fa26e2262d26742d78",
+      "rule_id": "mr_17ee9fe9490cfed4c8c6",
       "source": "cross_discovery"
     }
   ],

@@ -287,7 +287,7 @@ def _apply(page: Page, expression: str, *, enter: bool = False) -> None:
 
 def _keyboard(page: Page, x_count: int, y_count: int) -> None:
     """通过 Tab 真正进入矩阵，确认方向键边界、焦点和 live region。"""
-    page.get_by_role("button", name="绝对坏账率", exact=True).focus()
+    page.get_by_role("button", name="Bad Rate", exact=True).focus()
     page.keyboard.press("Tab")
     assert page.evaluate("document.activeElement.matches('#matrix .cell.selected')")
     for key in ("ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown", "ArrowDown", "ArrowRight"):
@@ -528,7 +528,7 @@ def _run_fixture(
             _keyboard(page, len(xs), len(ys))
 
             # 指标切换保留选择；每个模式全报告色阶不因 scope 变化。
-            for mode, label in (("rate", "绝对坏账率"), ("delta", "相对 X 行基线 Δ")):
+            for mode, label in (("rate", "Bad Rate"), ("delta", "相对 X 行基线 Δ")):
                 selected = json.loads(page.locator("#evidence-id").inner_text())
                 page.get_by_role("button", name=label, exact=True).click()
                 expect(page.locator(f"[data-mode='{mode}']")).to_have_attribute("aria-pressed", "true")

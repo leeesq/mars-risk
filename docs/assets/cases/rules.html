@@ -29,7 +29,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   </tbody>
 </table>
 <h2>Metadata</h2>
-<pre>{&quot;report_id&quot;:&quot;a7c565bd-eb83-408b-88e6-791eccd5c87f&quot;,&quot;report_type&quot;:&quot;rule&quot;,&quot;format_version&quot;:1,&quot;tables&quot;:{&quot;summary&quot;:{&quot;rows&quot;:1,&quot;grain&quot;:&quot;one mining run (or benchmark summary); no feature-level metrics&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;candidate_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;候选审计行数；cascade 包含同一 rule_id 在不同轮次的审计，不是去重规则数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selected_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;最终 RuleSet 中入选规则数；no_rules 为 0&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;validation_status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;independent 或 in_sample；验证样本独立性由调用方保证&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;profile&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;实际 explore / production 门禁；报告不改阈值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;qualification&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;计算时 RuleSet 资格；快照恢复不会重建部署资格&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_query&quot;:&quot;unsupported&quot;},&quot;rules&quot;:{&quot;rows&quot;:2,&quot;grain&quot;:&quot;final rule_id / selection rank; grades are rule membership, not metrics&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;规则生成来源；不是业务特征来源&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;labels&quot;:{&quot;dtype&quot;:&quot;List(String)&quot;,&quot;unit&quot;:&quot;unknown&quot;,&quot;meaning&quot;:&quot;已保存的 labels；未登记业务含义保持 unknown&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;grades&quot;:{&quot;dtype&quot;:&quot;List(String)&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;既有 RuleSet 等级成员列表&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;generation_round&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;候选生成轮次；相同规则在不同轮次的审计不可合并&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selection_round&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 cascade 入选轮次；未入选为 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;candidates&quot;:{&quot;rows&quot;:5,&quot;grain&quot;:&quot;candidate rule_id / generation_round when present; generator audit&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sources&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;候选生成器／seed 来源；不是 feature_metadata.data_source&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;distinct_source_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 distinct_source_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;exact_duplicate_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 exact_duplicate_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;within_candidate_budget&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 within_candidate_budget 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;candidate_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 candidate_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;validation_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 validation_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;iou_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 iou_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selection_rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际选择顺序；未入选为 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rejection_stage&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state_reason&quot;,&quot;meaning&quot;:&quot;实际淘汰门禁阶段&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;reason&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state_reason&quot;,&quot;meaning&quot;:&quot;真实候选淘汰原因；错误不转换为 no_rules&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source_position&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 source_position 候选顺序；null 表示不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;budget_position&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 budget_position 候选顺序；null 表示不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;budget_strategy&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;已保存的 budget_strategy；未登记业务含义保持 unknown&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;temporal_assessed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 temporal_assessed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;temporal_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 temporal_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;time_slice_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 time_slice_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;time_slice_pass_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;通过时间切片数 / 已评估时间切片数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;evaluation&quot;:{&quot;rows&quot;:48,&quot;grain&quot;:&quot;dataset / rule_id / target / slice / group (hit, miss, total)&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_amount&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 金额和；amount_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前 amount_total / 同范围 base amount_total&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;amount_event_rate / 同范围 base amount_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现 label=1 范围去重客户数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;customer_count / 同范围 base customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;customer_event_rate / 同范围 base customer_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间下界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间上界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;slices&quot;:{&quot;rows&quot;:54,&quot;grain&quot;:&quot;dataset / rule_id / target / slice / group; slice encodes supplied time or segment&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_amount&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 金额和；amount_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前 amount_total / 同范围 base amount_total&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;amount_event_rate / 同范围 base amount_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现 label=1 范围去重客户数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;customer_count / 同范围 base customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;customer_event_rate / 同范围 base customer_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间下界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间上界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;rule_explanations&quot;:{&quot;rows&quot;:2,&quot;grain&quot;:&quot;final rule_id / rank / dataset / target / slice / group&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;规则生成来源；不是业务特征来源&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;complexity&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 complexity 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;qualification&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;计算时 RuleSet 资格；快照恢复不会重建部署资格&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;explanation&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;text&quot;,&quot;meaning&quot;:&quot;当前行所引用验证范围的中文说明；缺指标显示 N/A&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;rule_features&quot;:{&quot;rows&quot;:10,&quot;grain&quot;:&quot;distinct rule_id / English feature; includes rejected candidates&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;feature&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;AST 提取的英文输入特征 ID；中文名不替代此身份&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;feature_roles&quot;:{&quot;feature&quot;:&quot;feature&quot;},&quot;state&quot;:&quot;computed&quot;,&quot;feature_query&quot;:&quot;direct&quot;}},&quot;parameters&quot;:{&quot;mars_version&quot;:&quot;0.0.28&quot;,&quot;source_project&quot;:&quot;deimos-rule&quot;,&quot;source_commit&quot;:&quot;e6714c5e795054e44f0c58ad7097668b4117b4a2&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;aux_targets&quot;:[&quot;late60&quot;],&quot;features&quot;:[&quot;main_score&quot;,&quot;aux_score&quot;],&quot;validation_status&quot;:&quot;independent&quot;,&quot;profile&quot;:&quot;production&quot;,&quot;qualification&quot;:&quot;temporally_validated&quot;,&quot;group_col&quot;:null,&quot;time_col&quot;:&quot;application_date&quot;,&quot;time_grain&quot;:&quot;month&quot;,&quot;amount_col&quot;:&quot;amount&quot;,&quot;customer_col&quot;:&quot;sample_id&quot;,&quot;generation_errors&quot;:[],&quot;generator_diagnostics&quot;:[],&quot;generators&quot;:[],&quot;elapsed_seconds&quot;:0.03267479999340139,&quot;resolved_spec&quot;:{&quot;profile&quot;:&quot;production&quot;,&quot;direction&quot;:&quot;high_risk&quot;,&quot;candidate_filter&quot;:{&quot;conditions&quot;:[{&quot;metric&quot;:&quot;lift&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:1.2},{&quot;metric&quot;:&quot;event_count&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:3.0},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:0.01},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&lt;=&quot;,&quot;value&quot;:0.5}],&quot;targets&quot;:&quot;primary&quot;,&quot;target_scope&quot;:&quot;all&quot;,&quot;slice_pass_rate&quot;:null},&quot;validation_filter&quot;:{&quot;conditions&quot;:[{&quot;metric&quot;:&quot;lift&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:2.0},{&quot;metric&quot;:&quot;event_count&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:3.0},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:0.01},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&lt;=&quot;,&quot;value&quot;:0.5}],&quot;targets&quot;:&quot;primary&quot;,&quot;target_scope&quot;:&quot;all&quot;,&quot;slice_pass_rate&quot;:0.8},&quot;grade_filters&quot;:{},&quot;selection_strategy&quot;:&quot;ranked&quot;,&quot;top_k&quot;:10,&quot;max_candidates&quot;:100000,&quot;iou_threshold&quot;:0.3,&quot;batch_size&quot;:100,&quot;iou_batch_size&quot;:512,&quot;max_rounds&quot;:10,&quot;random_state&quot;:42,&quot;on_generator_error&quot;:&quot;raise&quot;,&quot;confidence_level&quot;:0.95,&quot;max_fdr&quot;:0.05,&quot;min_time_slices&quot;:3},&quot;validation_summary&quot;:{&quot;profile&quot;:&quot;production&quot;,&quot;qualification&quot;:&quot;temporally_validated&quot;,&quot;validation_status&quot;:&quot;independent&quot;,&quot;confidence_level&quot;:0.95,&quot;max_fdr&quot;:0.05,&quot;min_time_slices&quot;:3,&quot;selected_count&quot;:2,&quot;temporal_assessed&quot;:true,&quot;minimum_time_slice_count&quot;:3,&quot;minimum_time_slice_pass_rate&quot;:1.0},&quot;slice_definition&quot;:{&quot;kind&quot;:&quot;time&quot;,&quot;column&quot;:&quot;application_date&quot;,&quot;group_precedes_time&quot;:true,&quot;overall_value&quot;:&quot;__overall__&quot;},&quot;analysis_states&quot;:{&quot;slices&quot;:&quot;computed&quot;,&quot;interactions&quot;:&quot;not_computed&quot;,&quot;cumulative&quot;:&quot;not_computed&quot;,&quot;bootstrap&quot;:&quot;not_computed&quot;},&quot;advanced_analysis&quot;:null},&quot;feature_metadata&quot;:{&quot;main_score&quot;:{&quot;display_name&quot;:&quot;主模型分&quot;,&quot;data_source&quot;:&quot;champion&quot;,&quot;description&quot;:&quot;模拟固定分，高分低风险&quot;,&quot;unit&quot;:&quot;score_points&quot;},&quot;aux_score&quot;:{&quot;display_name&quot;:&quot;辅助模型分&quot;,&quot;data_source&quot;:&quot;challenger&quot;,&quot;description&quot;:&quot;模拟固定分，高分高风险&quot;,&quot;unit&quot;:&quot;score_points&quot;}},&quot;business_context&quot;:{&quot;dataset_id&quot;:&quot;synthetic-consumer-credit-20261001&quot;,&quot;sample_unit&quot;:&quot;模拟申请，每行独立 sample_id&quot;,&quot;label_definition&quot;:&quot;unknown&quot;,&quot;observation_window&quot;:&quot;unknown&quot;,&quot;simulated&quot;:true,&quot;question&quot;:&quot;同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？&quot;,&quot;currency&quot;:&quot;CNY&quot;,&quot;labels&quot;:{&quot;bad30&quot;:{&quot;definition&quot;:&quot;模拟30日违约&quot;,&quot;performance_window&quot;:&quot;30天&quot;},&quot;late60&quot;:{&quot;definition&quot;:&quot;模拟60日逾期&quot;,&quot;performance_window&quot;:&quot;60天&quot;}},&quot;splits&quot;:{&quot;discovery&quot;:&quot;2026-01至03，6000独立行；确定分段及候选&quot;,&quot;validation&quot;:&quot;2026-04至06，6000独立行；一次独立门禁检验&quot;,&quot;observation&quot;:&quot;2026-07至09，6000独立行；仅交叉观察，不参与选择&quot;},&quot;score_directions&quot;:{&quot;main_score&quot;:&quot;lower_risk&quot;,&quot;aux_score&quot;:&quot;higher_risk&quot;},&quot;amount_definition&quot;:&quot;模拟申请金额，不代表损失或利润&quot;,&quot;independence&quot;:&quot;不同 sample_id 和时间，不从验证或观察重新挑选候选；并非真实业务效果&quot;,&quot;candidate_origins&quot;:{&quot;mr_cb714e09ca8c064f8185&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;reference&quot;:{&quot;report_id&quot;:&quot;066dccc0-b803-4f2a-8f3c-2ace86cf0ada&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_20fa26e2262d26742d78&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;reference&quot;:{&quot;report_id&quot;:&quot;066dccc0-b803-4f2a-8f3c-2ace86cf0ada&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b2&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_8664f1fa21c9c7ac8a92&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;reference&quot;:{&quot;report_id&quot;:&quot;066dccc0-b803-4f2a-8f3c-2ace86cf0ada&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b0&quot;}}}},&quot;mr_adcb27865a5ad7dbe5ef&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;reference&quot;:{&quot;report_id&quot;:&quot;066dccc0-b803-4f2a-8f3c-2ace86cf0ada&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b3&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_60edcd64fb81d6441861&quot;:{&quot;kind&quot;:&quot;sample_insufficiency_check&quot;,&quot;cross_reference&quot;:null,&quot;limitation&quot;:&quot;手工覆盖压力候选，无交叉格子对应，不制造证据链&quot;}},&quot;slice_scope&quot;:&quot;只计算 validation 时间切片；没有客群或规则 observation 评估&quot;,&quot;analysis_scope&quot;:&quot;高级分析未执行；不得根据空白推断没有交互或稳定性问题&quot;},&quot;source&quot;:{&quot;dataset_id&quot;:&quot;synthetic-consumer-credit-20261001&quot;,&quot;computation&quot;:&quot;rule&quot;,&quot;producer&quot;:&quot;mars.rule.MarsRuleReport&quot;,&quot;mars_version&quot;:&quot;0.0.28&quot;,&quot;origin_project&quot;:&quot;deimos-rule&quot;},&quot;public_functions&quot;:[],&quot;saved_operations&quot;:&quot;public functions accept load_report ReportSnapshot; no source samples or fitted objects required&quot;,&quot;operations&quot;:[&quot;describe&quot;,&quot;get_table&quot;,&quot;query_page&quot;,&quot;get_feature&quot;,&quot;search_features&quot;,&quot;to_ai_context&quot;,&quot;save&quot;,&quot;show_table&quot;,&quot;write_excel&quot;,&quot;write_html&quot;],&quot;limitations&quot;:[&quot;Only saved aggregate evidence; no causal or deployment conclusion.&quot;,&quot;Null is unavailable, not numeric zero. See status and denominators.&quot;,&quot;Feature matching uses rule membership union; features AND sources may match different features of the same rule. sources is business data_source, not candidate generators.&quot;,&quot;summary and benchmark do not support features/sources queries. Advanced analysis scope is advanced_analysis; no dataset identity is inferred for supplied analysis samples.&quot;,&quot;Absent analyses are not computed; present zero-row tables are computed_empty unless explicitly not_computed. Null may be undefined or unconfigured; inspect parameters and denominators.&quot;,&quot;Snapshot is aggregate evidence, not RuleSet JSON, transform capability or deployment permission. No original samples or models are saved.&quot;],&quot;maturity&quot;:&quot;Experimental&quot;,&quot;default_ai_queries&quot;:{&quot;summary&quot;:{&quot;limit&quot;:1},&quot;rule_explanations&quot;:{&quot;limit&quot;:3,&quot;columns&quot;:[&quot;rank&quot;,&quot;rule_id&quot;,&quot;dataset&quot;,&quot;target&quot;,&quot;slice&quot;,&quot;group&quot;,&quot;sample_count&quot;,&quot;event_count&quot;,&quot;event_rate&quot;,&quot;lift&quot;]}}}</pre>
+<pre>{&quot;report_id&quot;:&quot;12260b98-9fab-4dc4-86e7-bd13ef84fa1a&quot;,&quot;report_type&quot;:&quot;rule&quot;,&quot;format_version&quot;:1,&quot;tables&quot;:{&quot;summary&quot;:{&quot;rows&quot;:1,&quot;grain&quot;:&quot;one mining run (or benchmark summary); no feature-level metrics&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;candidate_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;候选审计行数；cascade 包含同一 rule_id 在不同轮次的审计，不是去重规则数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selected_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;最终 RuleSet 中入选规则数；no_rules 为 0&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;validation_status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;independent 或 in_sample；验证样本独立性由调用方保证&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;profile&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;实际 explore / production 门禁；报告不改阈值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;qualification&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;计算时 RuleSet 资格；快照恢复不会重建部署资格&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_query&quot;:&quot;unsupported&quot;},&quot;rules&quot;:{&quot;rows&quot;:2,&quot;grain&quot;:&quot;final rule_id / selection rank; grades are rule membership, not metrics&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;规则生成来源；不是业务特征来源&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;labels&quot;:{&quot;dtype&quot;:&quot;List(String)&quot;,&quot;unit&quot;:&quot;unknown&quot;,&quot;meaning&quot;:&quot;已保存的 labels；未登记业务含义保持 unknown&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;grades&quot;:{&quot;dtype&quot;:&quot;List(String)&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;既有 RuleSet 等级成员列表&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;generation_round&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;候选生成轮次；相同规则在不同轮次的审计不可合并&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selection_round&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 cascade 入选轮次；未入选为 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;candidates&quot;:{&quot;rows&quot;:5,&quot;grain&quot;:&quot;candidate rule_id / generation_round when present; generator audit&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sources&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;候选生成器／seed 来源；不是 feature_metadata.data_source&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;distinct_source_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 distinct_source_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;exact_duplicate_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 exact_duplicate_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;within_candidate_budget&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 within_candidate_budget 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;candidate_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 candidate_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;validation_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 validation_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;iou_filter_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 iou_filter_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;selection_rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际选择顺序；未入选为 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;status&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rejection_stage&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state_reason&quot;,&quot;meaning&quot;:&quot;实际淘汰门禁阶段&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;reason&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state_reason&quot;,&quot;meaning&quot;:&quot;真实候选淘汰原因；错误不转换为 no_rules&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source_position&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 source_position 候选顺序；null 表示不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;budget_position&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;实际 budget_position 候选顺序；null 表示不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;budget_strategy&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;已保存的 budget_strategy；未登记业务含义保持 unknown&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;temporal_assessed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 temporal_assessed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;temporal_passed&quot;:{&quot;dtype&quot;:&quot;Boolean&quot;,&quot;unit&quot;:&quot;boolean&quot;,&quot;meaning&quot;:&quot;实际 temporal_passed 门禁结果；null 表示未执行或不适用&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;time_slice_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 time_slice_count 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;time_slice_pass_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;通过时间切片数 / 已评估时间切片数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;evaluation&quot;:{&quot;rows&quot;:48,&quot;grain&quot;:&quot;dataset / rule_id / target / slice / group (hit, miss, total)&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_amount&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 金额和；amount_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前 amount_total / 同范围 base amount_total&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;amount_event_rate / 同范围 base amount_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现 label=1 范围去重客户数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;customer_count / 同范围 base customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;customer_event_rate / 同范围 base customer_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间下界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间上界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;slices&quot;:{&quot;rows&quot;:54,&quot;grain&quot;:&quot;dataset / rule_id / target / slice / group; slice encodes supplied time or segment&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_amount&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 金额和；amount_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前 amount_total / 同范围 base amount_total&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;amount_event_rate / 同范围 base amount_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现 label=1 范围去重客户数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;customer_count / 同范围 base customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;customer_event_rate / 同范围 base customer_event_rate&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间下界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;Wilson 事件率区间上界；confidence_level 见实际参数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;rule_explanations&quot;:{&quot;rows&quot;:2,&quot;grain&quot;:&quot;final rule_id / rank / dataset / target / slice / group&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rank&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;ordinal&quot;,&quot;meaning&quot;:&quot;最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;dataset&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;target&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;真实标签列 ID；各 target 独立排除未表现标签&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;slice&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;__overall__ 或 evaluator 实际构造的时间／客群切片值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;group&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;dimension&quot;,&quot;meaning&quot;:&quot;hit / miss / total；此列不是原始客群，客群见 slice&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;expression&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;definition&quot;,&quot;meaning&quot;:&quot;既有 DSL 规范表达式；不执行报告文本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;source&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;category&quot;,&quot;meaning&quot;:&quot;规则生成来源；不是业务特征来源&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;complexity&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;实际 complexity 整数计数；粒度见本表 grain&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;sample_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前 target 已表现样本数；group/slice/dataset 定义统计范围&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前范围已表现 label=1 样本数&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;coverage&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_count / sample_count；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_lower&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;lift_ci_upper&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;dimensionless&quot;,&quot;meaning&quot;:&quot;规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;p_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;按 direction 的单侧事件富集检验 p 值；方法见 evaluator&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;q_value&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;probability&quot;,&quot;meaning&quot;:&quot;同数据范围、target、slice、group 候选检验族 BH 校正 q 值&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;qualification&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;state&quot;,&quot;meaning&quot;:&quot;计算时 RuleSet 资格；快照恢复不会重建部署资格&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_total&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;unknown_business_unit&quot;,&quot;meaning&quot;:&quot;当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;amount_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_amount / amount_total；零分母 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_count&quot;:{&quot;dtype&quot;:&quot;Int64&quot;,&quot;unit&quot;:&quot;count&quot;,&quot;meaning&quot;:&quot;当前已表现范围去重客户数；customer_col 未提供则 null&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;customer_event_rate&quot;:{&quot;dtype&quot;:&quot;Float64&quot;,&quot;unit&quot;:&quot;ratio&quot;,&quot;meaning&quot;:&quot;event_customer_count / customer_count；不可跨规则相加&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;explanation&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;text&quot;,&quot;meaning&quot;:&quot;当前行所引用验证范围的中文说明；缺指标显示 N/A&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;state&quot;:&quot;computed&quot;,&quot;feature_relation&quot;:{&quot;table&quot;:&quot;rule_features&quot;,&quot;key&quot;:&quot;rule_id&quot;,&quot;feature&quot;:&quot;feature&quot;,&quot;roles&quot;:{&quot;rule_id&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;}},&quot;feature_query&quot;:&quot;relation&quot;},&quot;rule_features&quot;:{&quot;rows&quot;:10,&quot;grain&quot;:&quot;distinct rule_id / English feature; includes rejected candidates&quot;,&quot;schema_version&quot;:1,&quot;fields&quot;:{&quot;rule_id&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;},&quot;feature&quot;:{&quot;dtype&quot;:&quot;String&quot;,&quot;unit&quot;:&quot;identifier&quot;,&quot;meaning&quot;:&quot;AST 提取的英文输入特征 ID；中文名不替代此身份&quot;,&quot;null&quot;:&quot;unavailable; inspect status and report parameters&quot;}},&quot;feature_roles&quot;:{&quot;feature&quot;:&quot;feature&quot;},&quot;state&quot;:&quot;computed&quot;,&quot;feature_query&quot;:&quot;direct&quot;}},&quot;parameters&quot;:{&quot;mars_version&quot;:&quot;0.0.28&quot;,&quot;source_project&quot;:&quot;deimos-rule&quot;,&quot;source_commit&quot;:&quot;e6714c5e795054e44f0c58ad7097668b4117b4a2&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;aux_targets&quot;:[&quot;late60&quot;],&quot;features&quot;:[&quot;main_score&quot;,&quot;aux_score&quot;],&quot;validation_status&quot;:&quot;independent&quot;,&quot;profile&quot;:&quot;production&quot;,&quot;qualification&quot;:&quot;temporally_validated&quot;,&quot;group_col&quot;:null,&quot;time_col&quot;:&quot;application_date&quot;,&quot;time_grain&quot;:&quot;month&quot;,&quot;amount_col&quot;:&quot;amount&quot;,&quot;customer_col&quot;:&quot;sample_id&quot;,&quot;generation_errors&quot;:[],&quot;generator_diagnostics&quot;:[],&quot;generators&quot;:[],&quot;elapsed_seconds&quot;:0.05286455899477005,&quot;resolved_spec&quot;:{&quot;profile&quot;:&quot;production&quot;,&quot;direction&quot;:&quot;high_risk&quot;,&quot;candidate_filter&quot;:{&quot;conditions&quot;:[{&quot;metric&quot;:&quot;lift&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:1.2},{&quot;metric&quot;:&quot;event_count&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:3.0},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:0.01},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&lt;=&quot;,&quot;value&quot;:0.5}],&quot;targets&quot;:&quot;primary&quot;,&quot;target_scope&quot;:&quot;all&quot;,&quot;slice_pass_rate&quot;:null},&quot;validation_filter&quot;:{&quot;conditions&quot;:[{&quot;metric&quot;:&quot;lift&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:2.0},{&quot;metric&quot;:&quot;event_count&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:3.0},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&gt;=&quot;,&quot;value&quot;:0.01},{&quot;metric&quot;:&quot;coverage&quot;,&quot;operator&quot;:&quot;&lt;=&quot;,&quot;value&quot;:0.5}],&quot;targets&quot;:&quot;primary&quot;,&quot;target_scope&quot;:&quot;all&quot;,&quot;slice_pass_rate&quot;:0.8},&quot;grade_filters&quot;:{},&quot;selection_strategy&quot;:&quot;ranked&quot;,&quot;top_k&quot;:10,&quot;max_candidates&quot;:100000,&quot;iou_threshold&quot;:0.3,&quot;batch_size&quot;:100,&quot;iou_batch_size&quot;:512,&quot;max_rounds&quot;:10,&quot;random_state&quot;:42,&quot;on_generator_error&quot;:&quot;raise&quot;,&quot;confidence_level&quot;:0.95,&quot;max_fdr&quot;:0.05,&quot;min_time_slices&quot;:3},&quot;validation_summary&quot;:{&quot;profile&quot;:&quot;production&quot;,&quot;qualification&quot;:&quot;temporally_validated&quot;,&quot;validation_status&quot;:&quot;independent&quot;,&quot;confidence_level&quot;:0.95,&quot;max_fdr&quot;:0.05,&quot;min_time_slices&quot;:3,&quot;selected_count&quot;:2,&quot;temporal_assessed&quot;:true,&quot;minimum_time_slice_count&quot;:3,&quot;minimum_time_slice_pass_rate&quot;:1.0},&quot;slice_definition&quot;:{&quot;kind&quot;:&quot;time&quot;,&quot;column&quot;:&quot;application_date&quot;,&quot;group_precedes_time&quot;:true,&quot;overall_value&quot;:&quot;__overall__&quot;},&quot;analysis_states&quot;:{&quot;slices&quot;:&quot;computed&quot;,&quot;interactions&quot;:&quot;not_computed&quot;,&quot;cumulative&quot;:&quot;not_computed&quot;,&quot;bootstrap&quot;:&quot;not_computed&quot;},&quot;advanced_analysis&quot;:null},&quot;feature_metadata&quot;:{&quot;main_score&quot;:{&quot;display_name&quot;:&quot;主模型分&quot;,&quot;data_source&quot;:&quot;champion&quot;,&quot;description&quot;:&quot;模拟固定分，高分低风险&quot;,&quot;unit&quot;:&quot;score_points&quot;},&quot;aux_score&quot;:{&quot;display_name&quot;:&quot;辅助模型分&quot;,&quot;data_source&quot;:&quot;challenger&quot;,&quot;description&quot;:&quot;模拟固定分，高分高风险&quot;,&quot;unit&quot;:&quot;score_points&quot;}},&quot;business_context&quot;:{&quot;dataset_id&quot;:&quot;synthetic-consumer-credit-20261001&quot;,&quot;sample_unit&quot;:&quot;one synthetic application; unique sample_id&quot;,&quot;label_definition&quot;:&quot;unknown&quot;,&quot;observation_window&quot;:&quot;unknown&quot;,&quot;simulated&quot;:true,&quot;question&quot;:&quot;同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？&quot;,&quot;currency&quot;:&quot;CNY&quot;,&quot;labels&quot;:{&quot;bad30&quot;:{&quot;definition&quot;:&quot;模拟30日违约&quot;,&quot;performance_window&quot;:&quot;30天&quot;},&quot;late60&quot;:{&quot;definition&quot;:&quot;模拟60日逾期&quot;,&quot;performance_window&quot;:&quot;60天&quot;}},&quot;splits&quot;:{&quot;discovery&quot;:&quot;1–3月；参考分箱与候选发现&quot;,&quot;validation&quot;:&quot;4–6月；独立验证，不重新拟合分箱或选择候选&quot;,&quot;observation&quot;:&quot;7–9月；bad30 有模拟标签，late60 全未表现&quot;},&quot;score_directions&quot;:{&quot;main_score&quot;:&quot;lower_risk&quot;,&quot;aux_score&quot;:&quot;higher_risk&quot;},&quot;amount_definition&quot;:&quot;模拟申请金额 CNY；不是损失、利润或预期收益&quot;,&quot;independence&quot;:&quot;不同 sample_id 和时间，不从验证或观察重新挑选候选；并非真实业务效果&quot;,&quot;sample_count&quot;:18000,&quot;seed&quot;:20261001,&quot;weight_definition&quot;:&quot;模拟分析权重；与原始申请人数分别保存&quot;,&quot;binning_origin&quot;:&quot;discovery only; frozen definitions&quot;,&quot;candidate_origins&quot;:{&quot;mr_7bdb03abe2bdaf07f897&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;region&quot;:{&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b3&quot;},&quot;member_check&quot;:{&quot;verified&quot;:true,&quot;scope&quot;:&quot;all supplied rows; exact sample_id membership&quot;,&quot;member_count&quot;:1128,&quot;members_by_dataset&quot;:[{&quot;dataset&quot;:&quot;discovery&quot;,&quot;sample_count&quot;:385,&quot;observed_sample_count&quot;:348},{&quot;dataset&quot;:&quot;observation&quot;,&quot;sample_count&quot;:391,&quot;observed_sample_count&quot;:365},{&quot;dataset&quot;:&quot;validation&quot;,&quot;sample_count&quot;:352,&quot;observed_sample_count&quot;:316}]},&quot;reference&quot;:{&quot;report_id&quot;:&quot;cba02fb3-e2e3-44ae-8c72-32ab920fd80c&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_17ee9fe9490cfed4c8c6&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;region&quot;:{&quot;x_bin&quot;:&quot;b2&quot;,&quot;y_bin&quot;:&quot;b3&quot;},&quot;member_check&quot;:{&quot;verified&quot;:true,&quot;scope&quot;:&quot;all supplied rows; exact sample_id membership&quot;,&quot;member_count&quot;:1114,&quot;members_by_dataset&quot;:[{&quot;dataset&quot;:&quot;discovery&quot;,&quot;sample_count&quot;:382,&quot;observed_sample_count&quot;:349},{&quot;dataset&quot;:&quot;observation&quot;,&quot;sample_count&quot;:365,&quot;observed_sample_count&quot;:338},{&quot;dataset&quot;:&quot;validation&quot;,&quot;sample_count&quot;:367,&quot;observed_sample_count&quot;:339}]},&quot;reference&quot;:{&quot;report_id&quot;:&quot;cba02fb3-e2e3-44ae-8c72-32ab920fd80c&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b2&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_ad799e0c85ff11828d91&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;region&quot;:{&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b0&quot;},&quot;member_check&quot;:{&quot;verified&quot;:true,&quot;scope&quot;:&quot;all supplied rows; exact sample_id membership&quot;,&quot;member_count&quot;:1123,&quot;members_by_dataset&quot;:[{&quot;dataset&quot;:&quot;discovery&quot;,&quot;sample_count&quot;:385,&quot;observed_sample_count&quot;:356},{&quot;dataset&quot;:&quot;observation&quot;,&quot;sample_count&quot;:345,&quot;observed_sample_count&quot;:313},{&quot;dataset&quot;:&quot;validation&quot;,&quot;sample_count&quot;:393,&quot;observed_sample_count&quot;:358}]},&quot;reference&quot;:{&quot;report_id&quot;:&quot;cba02fb3-e2e3-44ae-8c72-32ab920fd80c&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b1&quot;,&quot;y_bin&quot;:&quot;b0&quot;}}}},&quot;mr_c67ebed12b349c6732e7&quot;:{&quot;kind&quot;:&quot;development_cell&quot;,&quot;region&quot;:{&quot;x_bin&quot;:&quot;b3&quot;,&quot;y_bin&quot;:&quot;b3&quot;},&quot;member_check&quot;:{&quot;verified&quot;:true,&quot;scope&quot;:&quot;all supplied rows; exact sample_id membership&quot;,&quot;member_count&quot;:1105,&quot;members_by_dataset&quot;:[{&quot;dataset&quot;:&quot;discovery&quot;,&quot;sample_count&quot;:337,&quot;observed_sample_count&quot;:307},{&quot;dataset&quot;:&quot;observation&quot;,&quot;sample_count&quot;:374,&quot;observed_sample_count&quot;:344},{&quot;dataset&quot;:&quot;validation&quot;,&quot;sample_count&quot;:394,&quot;observed_sample_count&quot;:372}]},&quot;reference&quot;:{&quot;report_id&quot;:&quot;cba02fb3-e2e3-44ae-8c72-32ab920fd80c&quot;,&quot;table&quot;:&quot;cells&quot;,&quot;query&quot;:{&quot;offset&quot;:0,&quot;limit&quot;:1,&quot;filters&quot;:{&quot;group&quot;:&quot;discovery&quot;,&quot;period&quot;:&quot;202601&quot;,&quot;target&quot;:&quot;bad30&quot;,&quot;x_bin&quot;:&quot;b3&quot;,&quot;y_bin&quot;:&quot;b3&quot;}}}},&quot;mr_60edcd64fb81d6441861&quot;:{&quot;kind&quot;:&quot;sample_insufficiency_check&quot;,&quot;cross_reference&quot;:null,&quot;limitation&quot;:&quot;手工覆盖压力候选，无交叉格子对应，不制造证据链&quot;}},&quot;slice_scope&quot;:&quot;只计算 validation 时间切片；没有客群或规则 observation 评估&quot;,&quot;analysis_scope&quot;:&quot;高级分析未执行；不得根据空白推断没有交互或稳定性问题&quot;},&quot;source&quot;:{&quot;dataset_id&quot;:&quot;synthetic-consumer-credit-20261001&quot;,&quot;computation&quot;:&quot;rule&quot;,&quot;producer&quot;:&quot;mars.rule.MarsRuleReport&quot;,&quot;mars_version&quot;:&quot;0.0.28&quot;,&quot;origin_project&quot;:&quot;deimos-rule&quot;},&quot;public_functions&quot;:[],&quot;saved_operations&quot;:&quot;public functions accept load_report ReportSnapshot; no source samples or fitted objects required&quot;,&quot;operations&quot;:[&quot;describe&quot;,&quot;get_table&quot;,&quot;query_page&quot;,&quot;get_feature&quot;,&quot;search_features&quot;,&quot;to_ai_context&quot;,&quot;save&quot;,&quot;show_table&quot;,&quot;write_excel&quot;,&quot;write_html&quot;],&quot;limitations&quot;:[&quot;Only saved aggregate evidence; no causal or deployment conclusion.&quot;,&quot;Null is unavailable, not numeric zero. See status and denominators.&quot;,&quot;Feature matching uses rule membership union; features AND sources may match different features of the same rule. sources is business data_source, not candidate generators.&quot;,&quot;summary and benchmark do not support features/sources queries. Advanced analysis scope is advanced_analysis; no dataset identity is inferred for supplied analysis samples.&quot;,&quot;Absent analyses are not computed; present zero-row tables are computed_empty unless explicitly not_computed. Null may be undefined or unconfigured; inspect parameters and denominators.&quot;,&quot;Snapshot is aggregate evidence, not RuleSet JSON, transform capability or deployment permission. No original samples or models are saved.&quot;],&quot;maturity&quot;:&quot;Experimental&quot;,&quot;default_ai_queries&quot;:{&quot;summary&quot;:{&quot;limit&quot;:1},&quot;rule_explanations&quot;:{&quot;limit&quot;:3,&quot;columns&quot;:[&quot;rank&quot;,&quot;rule_id&quot;,&quot;dataset&quot;,&quot;target&quot;,&quot;slice&quot;,&quot;group&quot;,&quot;sample_count&quot;,&quot;event_count&quot;,&quot;event_rate&quot;,&quot;lift&quot;]}}}</pre>
 <h2>Rules</h2>
 <table border="1" class="dataframe">
   <thead>
@@ -46,8 +46,8 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   </thead>
   <tbody>
     <tr>
-      <td>mr_cb714e09ca8c064f8185</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>1</td>
       <td>cross_discovery</td>
       <td>[]</td>
@@ -56,8 +56,8 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>NaN</td>
     </tr>
     <tr>
-      <td>mr_20fa26e2262d26742d78</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>2</td>
       <td>cross_discovery</td>
       <td>[]</td>
@@ -98,8 +98,8 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   </thead>
   <tbody>
     <tr>
-      <td>mr_cb714e09ca8c064f8185</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>1</td>
       <td>0</td>
@@ -114,17 +114,17 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>1</td>
       <td>1</td>
       <td>seed_then_round_robin</td>
-      <td>4.615814e-54</td>
-      <td>2.976072</td>
-      <td>3.550170</td>
+      <td>1.308682e-55</td>
+      <td>3.035082</td>
+      <td>3.614024</td>
       <td>True</td>
       <td>True</td>
       <td>3.0</td>
       <td>1.000000</td>
     </tr>
     <tr>
-      <td>mr_20fa26e2262d26742d78</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>1</td>
       <td>0</td>
@@ -139,17 +139,17 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>2</td>
       <td>2</td>
       <td>seed_then_round_robin</td>
-      <td>1.512109e-29</td>
-      <td>2.268118</td>
-      <td>2.812799</td>
+      <td>2.846920e-29</td>
+      <td>2.273373</td>
+      <td>2.823086</td>
       <td>True</td>
       <td>True</td>
       <td>3.0</td>
       <td>1.000000</td>
     </tr>
     <tr>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 432.41255966198844) AND "main_score" != -999) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_ad799e0c85ff11828d91</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 432.41255966198844) AND "aux_score" &gt;= -1.7976931348623157e+308) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>1</td>
       <td>0</td>
@@ -173,8 +173,8 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>NaN</td>
     </tr>
     <tr>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
-      <td>((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &gt; 653.7750315986514) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_c67ebed12b349c6732e7</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 1.7976931348623157e+308) AND "main_score" &gt; 653.7750315986514) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>1</td>
       <td>0</td>
@@ -189,9 +189,9 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>4</td>
       <td>4</td>
       <td>seed_then_round_robin</td>
-      <td>1.966419e-09</td>
-      <td>1.504949</td>
-      <td>1.981912</td>
+      <td>1.419839e-09</td>
+      <td>1.513225</td>
+      <td>1.992247</td>
       <td>True</td>
       <td>False</td>
       <td>3.0</td>
@@ -259,25 +259,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   <tbody>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>350</td>
-      <td>182</td>
-      <td>0.063486</td>
-      <td>0.520000</td>
-      <td>3.400664</td>
-      <td>5.268109e+06</td>
-      <td>2.696052e+06</td>
-      <td>0.060057</td>
-      <td>0.511768</td>
-      <td>3.384830</td>
-      <td>350</td>
-      <td>182</td>
-      <td>0.063486</td>
-      <td>0.520000</td>
-      <td>3.400664</td>
+      <td>348</td>
+      <td>181</td>
+      <td>0.063124</td>
+      <td>0.520115</td>
+      <td>3.401416</td>
+      <td>5.223220e+06</td>
+      <td>2.676067e+06</td>
+      <td>0.059545</td>
+      <td>0.512340</td>
+      <td>3.388613</td>
+      <td>348</td>
+      <td>181</td>
+      <td>0.063124</td>
+      <td>0.520115</td>
+      <td>3.401416</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -287,25 +287,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5163</td>
-      <td>661</td>
-      <td>0.936514</td>
-      <td>0.128026</td>
-      <td>0.837259</td>
-      <td>8.245031e+07</td>
-      <td>1.056651e+07</td>
-      <td>0.939943</td>
-      <td>0.128156</td>
-      <td>0.847623</td>
-      <td>5163</td>
-      <td>661</td>
-      <td>0.936514</td>
-      <td>0.128026</td>
-      <td>0.837259</td>
+      <td>5165</td>
+      <td>662</td>
+      <td>0.936876</td>
+      <td>0.128170</td>
+      <td>0.838201</td>
+      <td>8.249520e+07</td>
+      <td>1.058649e+07</td>
+      <td>0.940455</td>
+      <td>0.128329</td>
+      <td>0.848764</td>
+      <td>5165</td>
+      <td>662</td>
+      <td>0.936876</td>
+      <td>0.128170</td>
+      <td>0.838201</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -315,7 +315,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -343,25 +343,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>356</td>
-      <td>135</td>
-      <td>0.064575</td>
-      <td>0.379213</td>
-      <td>2.479957</td>
-      <td>5.744590e+06</td>
-      <td>2.276469e+06</td>
-      <td>0.065489</td>
-      <td>0.396280</td>
-      <td>2.620994</td>
-      <td>356</td>
-      <td>135</td>
-      <td>0.064575</td>
-      <td>0.379213</td>
-      <td>2.479957</td>
+      <td>349</td>
+      <td>134</td>
+      <td>0.063305</td>
+      <td>0.383954</td>
+      <td>2.510960</td>
+      <td>5.566958e+06</td>
+      <td>2.246858e+06</td>
+      <td>0.063464</td>
+      <td>0.403606</td>
+      <td>2.669446</td>
+      <td>349</td>
+      <td>134</td>
+      <td>0.063305</td>
+      <td>0.383954</td>
+      <td>2.510960</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -371,25 +371,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5157</td>
-      <td>708</td>
-      <td>0.935425</td>
-      <td>0.137289</td>
-      <td>0.897835</td>
-      <td>8.197383e+07</td>
-      <td>1.098609e+07</td>
-      <td>0.934511</td>
-      <td>0.134020</td>
-      <td>0.886403</td>
-      <td>5157</td>
-      <td>708</td>
-      <td>0.935425</td>
-      <td>0.137289</td>
-      <td>0.897835</td>
+      <td>5164</td>
+      <td>709</td>
+      <td>0.936695</td>
+      <td>0.137297</td>
+      <td>0.897884</td>
+      <td>8.215146e+07</td>
+      <td>1.101570e+07</td>
+      <td>0.936536</td>
+      <td>0.134090</td>
+      <td>0.886871</td>
+      <td>5164</td>
+      <td>709</td>
+      <td>0.936695</td>
+      <td>0.137297</td>
+      <td>0.897884</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -399,7 +399,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -427,7 +427,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
@@ -455,7 +455,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
@@ -483,7 +483,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -511,25 +511,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>313</td>
-      <td>69</td>
-      <td>0.056775</td>
-      <td>0.220447</td>
-      <td>1.441668</td>
-      <td>5.061453e+06</td>
-      <td>1.147278e+06</td>
-      <td>0.057701</td>
-      <td>0.226670</td>
-      <td>1.499191</td>
-      <td>313</td>
-      <td>69</td>
-      <td>0.056775</td>
-      <td>0.220447</td>
-      <td>1.441668</td>
+      <td>307</td>
+      <td>67</td>
+      <td>0.055687</td>
+      <td>0.218241</td>
+      <td>1.427239</td>
+      <td>4.977420e+06</td>
+      <td>1.109408e+06</td>
+      <td>0.056743</td>
+      <td>0.222888</td>
+      <td>1.474179</td>
+      <td>307</td>
+      <td>67</td>
+      <td>0.055687</td>
+      <td>0.218241</td>
+      <td>1.427239</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -539,25 +539,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5200</td>
-      <td>774</td>
-      <td>0.943225</td>
-      <td>0.148846</td>
-      <td>0.973415</td>
-      <td>8.265697e+07</td>
-      <td>1.211528e+07</td>
-      <td>0.942299</td>
-      <td>0.146573</td>
-      <td>0.969432</td>
-      <td>5200</td>
-      <td>774</td>
-      <td>0.943225</td>
-      <td>0.148846</td>
-      <td>0.973415</td>
+      <td>5206</td>
+      <td>776</td>
+      <td>0.944313</td>
+      <td>0.149059</td>
+      <td>0.974806</td>
+      <td>8.274100e+07</td>
+      <td>1.215315e+07</td>
+      <td>0.943257</td>
+      <td>0.146882</td>
+      <td>0.971475</td>
+      <td>5206</td>
+      <td>776</td>
+      <td>0.944313</td>
+      <td>0.149059</td>
+      <td>0.974806</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -567,7 +567,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -679,25 +679,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>328</td>
-      <td>154</td>
-      <td>0.068648</td>
-      <td>0.469512</td>
-      <td>3.094247</td>
-      <td>4.995441e+06</td>
-      <td>2.164439e+06</td>
-      <td>0.065374</td>
-      <td>0.433283</td>
-      <td>2.942777</td>
-      <td>328</td>
-      <td>154</td>
-      <td>0.068648</td>
-      <td>0.469512</td>
-      <td>3.094247</td>
+      <td>326</td>
+      <td>153</td>
+      <td>0.068229</td>
+      <td>0.469325</td>
+      <td>3.093015</td>
+      <td>4.968328e+06</td>
+      <td>2.139535e+06</td>
+      <td>0.065019</td>
+      <td>0.430635</td>
+      <td>2.924792</td>
+      <td>326</td>
+      <td>153</td>
+      <td>0.068229</td>
+      <td>0.469325</td>
+      <td>3.093015</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -707,25 +707,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4450</td>
-      <td>571</td>
-      <td>0.931352</td>
-      <td>0.128315</td>
-      <td>0.845638</td>
-      <td>7.141831e+07</td>
-      <td>9.086418e+06</td>
-      <td>0.934626</td>
-      <td>0.127228</td>
-      <td>0.864110</td>
-      <td>4450</td>
-      <td>571</td>
-      <td>0.931352</td>
-      <td>0.128315</td>
-      <td>0.845638</td>
+      <td>4452</td>
+      <td>572</td>
+      <td>0.931771</td>
+      <td>0.128482</td>
+      <td>0.846738</td>
+      <td>7.144542e+07</td>
+      <td>9.111322e+06</td>
+      <td>0.934981</td>
+      <td>0.127528</td>
+      <td>0.866150</td>
+      <td>4452</td>
+      <td>572</td>
+      <td>0.931771</td>
+      <td>0.128482</td>
+      <td>0.846738</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -735,7 +735,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -763,25 +763,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>298</td>
-      <td>106</td>
-      <td>0.062369</td>
-      <td>0.355705</td>
-      <td>2.344217</td>
-      <td>4.740880e+06</td>
-      <td>1.748344e+06</td>
-      <td>0.062042</td>
-      <td>0.368780</td>
-      <td>2.504689</td>
-      <td>298</td>
-      <td>106</td>
-      <td>0.062369</td>
-      <td>0.355705</td>
-      <td>2.344217</td>
+      <td>291</td>
+      <td>105</td>
+      <td>0.060904</td>
+      <td>0.360825</td>
+      <td>2.377959</td>
+      <td>4.563248e+06</td>
+      <td>1.718733e+06</td>
+      <td>0.059718</td>
+      <td>0.376647</td>
+      <td>2.558116</td>
+      <td>291</td>
+      <td>105</td>
+      <td>0.060904</td>
+      <td>0.360825</td>
+      <td>2.377959</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -791,25 +791,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4480</td>
-      <td>619</td>
-      <td>0.937631</td>
-      <td>0.138170</td>
-      <td>0.910586</td>
-      <td>7.167287e+07</td>
-      <td>9.502513e+06</td>
-      <td>0.937958</td>
-      <td>0.132582</td>
-      <td>0.900471</td>
-      <td>4480</td>
-      <td>619</td>
-      <td>0.937631</td>
-      <td>0.138170</td>
-      <td>0.910586</td>
+      <td>4487</td>
+      <td>620</td>
+      <td>0.939096</td>
+      <td>0.138177</td>
+      <td>0.910634</td>
+      <td>7.185050e+07</td>
+      <td>9.532124e+06</td>
+      <td>0.940282</td>
+      <td>0.132666</td>
+      <td>0.901044</td>
+      <td>4487</td>
+      <td>620</td>
+      <td>0.939096</td>
+      <td>0.138177</td>
+      <td>0.910634</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -819,7 +819,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -847,7 +847,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
@@ -875,7 +875,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
@@ -903,7 +903,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -931,25 +931,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>272</td>
-      <td>51</td>
-      <td>0.056928</td>
-      <td>0.187500</td>
-      <td>1.235690</td>
-      <td>4.410187e+06</td>
-      <td>8.376289e+05</td>
-      <td>0.057715</td>
-      <td>0.189930</td>
-      <td>1.289973</td>
-      <td>272</td>
-      <td>51</td>
-      <td>0.056928</td>
-      <td>0.187500</td>
-      <td>1.235690</td>
+      <td>266</td>
+      <td>50</td>
+      <td>0.055672</td>
+      <td>0.187970</td>
+      <td>1.238787</td>
+      <td>4.326155e+06</td>
+      <td>8.291717e+05</td>
+      <td>0.056615</td>
+      <td>0.191665</td>
+      <td>1.301752</td>
+      <td>266</td>
+      <td>50</td>
+      <td>0.055672</td>
+      <td>0.187970</td>
+      <td>1.238787</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -959,25 +959,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4506</td>
-      <td>674</td>
-      <td>0.943072</td>
-      <td>0.149578</td>
-      <td>0.985773</td>
-      <td>7.200356e+07</td>
-      <td>1.041323e+07</td>
-      <td>0.942285</td>
-      <td>0.144621</td>
-      <td>0.982239</td>
-      <td>4506</td>
-      <td>674</td>
-      <td>0.943072</td>
-      <td>0.149578</td>
-      <td>0.985773</td>
+      <td>4512</td>
+      <td>675</td>
+      <td>0.944328</td>
+      <td>0.149601</td>
+      <td>0.985923</td>
+      <td>7.208759e+07</td>
+      <td>1.042168e+07</td>
+      <td>0.943385</td>
+      <td>0.144570</td>
+      <td>0.981891</td>
+      <td>4512</td>
+      <td>675</td>
+      <td>0.944328</td>
+      <td>0.149601</td>
+      <td>0.985923</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -987,7 +987,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>train</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1099,53 +1099,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>322</td>
+      <td>316</td>
       <td>167</td>
-      <td>0.058008</td>
-      <td>0.518634</td>
-      <td>3.264098</td>
-      <td>5.276321e+06</td>
+      <td>0.056927</td>
+      <td>0.528481</td>
+      <td>3.326075</td>
+      <td>5.195548e+06</td>
       <td>2.722210e+06</td>
-      <td>0.059584</td>
-      <td>0.515930</td>
-      <td>3.198494</td>
-      <td>322</td>
+      <td>0.058672</td>
+      <td>0.523951</td>
+      <td>3.248220</td>
+      <td>316</td>
       <td>167</td>
-      <td>0.058008</td>
-      <td>0.518634</td>
-      <td>3.264098</td>
-      <td>0.472869</td>
-      <td>0.564088</td>
-      <td>2.976072</td>
-      <td>3.550170</td>
-      <td>1.538605e-54</td>
-      <td>4.615814e-54</td>
+      <td>0.056927</td>
+      <td>0.528481</td>
+      <td>3.326075</td>
+      <td>0.482245</td>
+      <td>0.574233</td>
+      <td>3.035082</td>
+      <td>3.614024</td>
+      <td>4.362274e-56</td>
+      <td>1.308682e-55</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5229</td>
+      <td>5235</td>
       <td>715</td>
-      <td>0.941992</td>
-      <td>0.136737</td>
-      <td>0.860578</td>
-      <td>8.327661e+07</td>
+      <td>0.943073</td>
+      <td>0.136581</td>
+      <td>0.859591</td>
+      <td>8.335738e+07</td>
       <td>1.156173e+07</td>
-      <td>0.940416</td>
-      <td>0.138835</td>
-      <td>0.860706</td>
-      <td>5229</td>
+      <td>0.941328</td>
+      <td>0.138701</td>
+      <td>0.859872</td>
+      <td>5235</td>
       <td>715</td>
-      <td>0.941992</td>
-      <td>0.136737</td>
-      <td>0.860578</td>
+      <td>0.943073</td>
+      <td>0.136581</td>
+      <td>0.859591</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1155,7 +1155,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1183,53 +1183,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>345</td>
-      <td>139</td>
-      <td>0.062151</td>
-      <td>0.402899</td>
-      <td>2.535703</td>
-      <td>5.599238e+06</td>
-      <td>2.330074e+06</td>
-      <td>0.063230</td>
-      <td>0.416141</td>
-      <td>2.579858</td>
-      <td>345</td>
-      <td>139</td>
-      <td>0.062151</td>
-      <td>0.402899</td>
-      <td>2.535703</td>
-      <td>0.360382</td>
-      <td>0.446926</td>
-      <td>2.268118</td>
-      <td>2.812799</td>
-      <td>1.008073e-29</td>
-      <td>1.512109e-29</td>
+      <td>339</td>
+      <td>137</td>
+      <td>0.061070</td>
+      <td>0.404130</td>
+      <td>2.543452</td>
+      <td>5.512697e+06</td>
+      <td>2.316169e+06</td>
+      <td>0.062253</td>
+      <td>0.420152</td>
+      <td>2.604721</td>
+      <td>339</td>
+      <td>137</td>
+      <td>0.061070</td>
+      <td>0.404130</td>
+      <td>2.543452</td>
+      <td>0.361217</td>
+      <td>0.448561</td>
+      <td>2.273373</td>
+      <td>2.823086</td>
+      <td>1.897947e-29</td>
+      <td>2.846920e-29</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5206</td>
-      <td>743</td>
-      <td>0.937849</td>
-      <td>0.142720</td>
-      <td>0.898229</td>
-      <td>8.295369e+07</td>
-      <td>1.195386e+07</td>
-      <td>0.936770</td>
-      <td>0.144103</td>
-      <td>0.893362</td>
-      <td>5206</td>
-      <td>743</td>
-      <td>0.937849</td>
-      <td>0.142720</td>
-      <td>0.898229</td>
+      <td>5212</td>
+      <td>745</td>
+      <td>0.938930</td>
+      <td>0.142939</td>
+      <td>0.899610</td>
+      <td>8.304024e+07</td>
+      <td>1.196777e+07</td>
+      <td>0.937747</td>
+      <td>0.144120</td>
+      <td>0.893469</td>
+      <td>5212</td>
+      <td>745</td>
+      <td>0.938930</td>
+      <td>0.142939</td>
+      <td>0.899610</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1239,7 +1239,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1267,53 +1267,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>374</td>
+      <td>372</td>
       <td>103</td>
-      <td>0.067375</td>
-      <td>0.275401</td>
-      <td>1.733278</td>
-      <td>5.790363e+06</td>
+      <td>0.067015</td>
+      <td>0.276882</td>
+      <td>1.742597</td>
+      <td>5.761686e+06</td>
       <td>1.599393e+06</td>
-      <td>0.065389</td>
-      <td>0.276216</td>
-      <td>1.712397</td>
-      <td>374</td>
+      <td>0.065065</td>
+      <td>0.277591</td>
+      <td>1.720920</td>
+      <td>372</td>
       <td>103</td>
-      <td>0.067375</td>
-      <td>0.275401</td>
-      <td>1.733278</td>
-      <td>0.239122</td>
-      <td>0.314907</td>
-      <td>1.504949</td>
-      <td>1.981912</td>
-      <td>1.966419e-09</td>
-      <td>1.966419e-09</td>
+      <td>0.067015</td>
+      <td>0.276882</td>
+      <td>1.742597</td>
+      <td>0.240437</td>
+      <td>0.316549</td>
+      <td>1.513225</td>
+      <td>1.992247</td>
+      <td>1.419839e-09</td>
+      <td>1.419839e-09</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>5177</td>
+      <td>5179</td>
       <td>779</td>
-      <td>0.932625</td>
-      <td>0.150473</td>
-      <td>0.947026</td>
-      <td>8.276257e+07</td>
+      <td>0.932985</td>
+      <td>0.150415</td>
+      <td>0.946660</td>
+      <td>8.279125e+07</td>
       <td>1.268454e+07</td>
-      <td>0.934611</td>
-      <td>0.153264</td>
-      <td>0.950158</td>
-      <td>5177</td>
+      <td>0.934935</td>
+      <td>0.153211</td>
+      <td>0.949829</td>
+      <td>5179</td>
       <td>779</td>
-      <td>0.932625</td>
-      <td>0.150473</td>
-      <td>0.947026</td>
+      <td>0.932985</td>
+      <td>0.150415</td>
+      <td>0.946660</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1323,7 +1323,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1351,53 +1351,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>280</td>
+      <td>275</td>
       <td>138</td>
-      <td>0.058164</td>
-      <td>0.492857</td>
-      <td>3.250157</td>
-      <td>4.624978e+06</td>
+      <td>0.057125</td>
+      <td>0.501818</td>
+      <td>3.309250</td>
+      <td>4.564211e+06</td>
       <td>2.295917e+06</td>
-      <td>0.060027</td>
-      <td>0.496417</td>
-      <td>3.251396</td>
-      <td>280</td>
+      <td>0.059238</td>
+      <td>0.503026</td>
+      <td>3.294685</td>
+      <td>275</td>
       <td>138</td>
-      <td>0.058164</td>
-      <td>0.492857</td>
-      <td>3.250157</td>
-      <td>0.444017</td>
-      <td>0.541834</td>
-      <td>2.928078</td>
-      <td>3.573137</td>
-      <td>2.185776e-44</td>
-      <td>6.557328e-44</td>
+      <td>0.057125</td>
+      <td>0.501818</td>
+      <td>3.309250</td>
+      <td>0.452449</td>
+      <td>0.551152</td>
+      <td>2.983683</td>
+      <td>3.634584</td>
+      <td>1.414837e-45</td>
+      <td>4.244512e-45</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4534</td>
+      <td>4539</td>
       <td>592</td>
-      <td>0.941836</td>
-      <td>0.130569</td>
-      <td>0.861040</td>
-      <td>7.242335e+07</td>
+      <td>0.942875</td>
+      <td>0.130425</td>
+      <td>0.860092</td>
+      <td>7.248412e+07</td>
       <td>9.467673e+06</td>
-      <td>0.939973</td>
-      <td>0.130727</td>
-      <td>0.856225</td>
-      <td>4534</td>
+      <td>0.940762</td>
+      <td>0.130617</td>
+      <td>0.855507</td>
+      <td>4539</td>
       <td>592</td>
-      <td>0.941836</td>
-      <td>0.130569</td>
-      <td>0.861040</td>
+      <td>0.942875</td>
+      <td>0.130425</td>
+      <td>0.860092</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1407,7 +1407,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1435,53 +1435,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>304</td>
+      <td>299</td>
       <td>89</td>
-      <td>0.063149</td>
-      <td>0.292763</td>
-      <td>1.930633</td>
-      <td>5.053797e+06</td>
+      <td>0.062111</td>
+      <td>0.297659</td>
+      <td>1.962917</td>
+      <td>4.982375e+06</td>
       <td>1.489430e+06</td>
-      <td>0.065593</td>
-      <td>0.294715</td>
-      <td>1.930303</td>
-      <td>304</td>
+      <td>0.064666</td>
+      <td>0.298940</td>
+      <td>1.957974</td>
+      <td>299</td>
       <td>89</td>
-      <td>0.063149</td>
-      <td>0.292763</td>
-      <td>1.930633</td>
-      <td>0.251815</td>
-      <td>0.337368</td>
-      <td>1.660598</td>
-      <td>2.224778</td>
-      <td>6.342781e-11</td>
-      <td>9.514172e-11</td>
+      <td>0.062111</td>
+      <td>0.297659</td>
+      <td>1.962917</td>
+      <td>0.256137</td>
+      <td>0.342809</td>
+      <td>1.689102</td>
+      <td>2.260664</td>
+      <td>2.344600e-11</td>
+      <td>3.516901e-11</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4510</td>
+      <td>4515</td>
       <td>641</td>
-      <td>0.936851</td>
-      <td>0.142129</td>
-      <td>0.937270</td>
-      <td>7.199453e+07</td>
+      <td>0.937889</td>
+      <td>0.141971</td>
+      <td>0.936232</td>
+      <td>7.206596e+07</td>
       <td>1.027416e+07</td>
-      <td>0.934407</td>
-      <td>0.142707</td>
-      <td>0.934696</td>
-      <td>4510</td>
+      <td>0.935334</td>
+      <td>0.142566</td>
+      <td>0.933769</td>
+      <td>4515</td>
       <td>641</td>
-      <td>0.936851</td>
-      <td>0.142129</td>
-      <td>0.937270</td>
+      <td>0.937889</td>
+      <td>0.141971</td>
+      <td>0.936232</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1491,7 +1491,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1519,53 +1519,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>321</td>
+      <td>320</td>
       <td>83</td>
-      <td>0.066681</td>
-      <td>0.258567</td>
-      <td>1.705125</td>
-      <td>5.008420e+06</td>
+      <td>0.066473</td>
+      <td>0.259375</td>
+      <td>1.710454</td>
+      <td>4.983470e+06</td>
       <td>1.243080e+06</td>
-      <td>0.065004</td>
-      <td>0.248198</td>
-      <td>1.625630</td>
-      <td>321</td>
+      <td>0.064680</td>
+      <td>0.249441</td>
+      <td>1.633769</td>
+      <td>320</td>
       <td>83</td>
-      <td>0.066681</td>
-      <td>0.258567</td>
-      <td>1.705125</td>
-      <td>0.220505</td>
-      <td>0.300665</td>
-      <td>1.454125</td>
-      <td>1.982740</td>
-      <td>1.760181e-07</td>
-      <td>1.760181e-07</td>
+      <td>0.066473</td>
+      <td>0.259375</td>
+      <td>1.710454</td>
+      <td>0.221210</td>
+      <td>0.301575</td>
+      <td>1.458774</td>
+      <td>1.988741</td>
+      <td>1.518690e-07</td>
+      <td>1.518690e-07</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>miss</td>
-      <td>4493</td>
+      <td>4494</td>
       <td>647</td>
-      <td>0.933319</td>
-      <td>0.144002</td>
-      <td>0.949623</td>
-      <td>7.203991e+07</td>
+      <td>0.933527</td>
+      <td>0.143970</td>
+      <td>0.949411</td>
+      <td>7.206486e+07</td>
       <td>1.052051e+07</td>
-      <td>0.934996</td>
-      <td>0.146037</td>
-      <td>0.956504</td>
-      <td>4493</td>
+      <td>0.935320</td>
+      <td>0.145987</td>
+      <td>0.956173</td>
+      <td>4494</td>
       <td>647</td>
-      <td>0.933319</td>
-      <td>0.144002</td>
-      <td>0.949623</td>
+      <td>0.933527</td>
+      <td>0.143970</td>
+      <td>0.949411</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1575,7 +1575,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>__overall__</td>
       <td>total</td>
@@ -1638,53 +1638,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   <tbody>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>hit</td>
-      <td>116</td>
+      <td>113</td>
       <td>64</td>
-      <td>0.062332</td>
-      <td>0.551724</td>
-      <td>3.159257</td>
-      <td>1.829411e+06</td>
+      <td>0.060720</td>
+      <td>0.566372</td>
+      <td>3.243131</td>
+      <td>1.783795e+06</td>
       <td>9.817434e+05</td>
-      <td>0.061890</td>
-      <td>0.536645</td>
-      <td>3.107239</td>
-      <td>116</td>
+      <td>0.060347</td>
+      <td>0.550368</td>
+      <td>3.186699</td>
+      <td>113</td>
       <td>64</td>
-      <td>0.062332</td>
-      <td>0.551724</td>
-      <td>3.159257</td>
-      <td>0.475456</td>
-      <td>0.625635</td>
-      <td>2.722533</td>
-      <td>3.582481</td>
-      <td>1.174750e-21</td>
-      <td>3.524249e-21</td>
+      <td>0.060720</td>
+      <td>0.566372</td>
+      <td>3.243131</td>
+      <td>0.489023</td>
+      <td>0.640617</td>
+      <td>2.800220</td>
+      <td>3.668269</td>
+      <td>1.648477e-22</td>
+      <td>4.945432e-22</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>miss</td>
-      <td>1745</td>
+      <td>1748</td>
       <td>261</td>
-      <td>0.937668</td>
-      <td>0.149570</td>
-      <td>0.856462</td>
-      <td>2.772965e+07</td>
+      <td>0.939280</td>
+      <td>0.149314</td>
+      <td>0.854992</td>
+      <td>2.777526e+07</td>
       <td>4.123338e+06</td>
-      <td>0.938110</td>
-      <td>0.148698</td>
-      <td>0.860979</td>
-      <td>1745</td>
+      <td>0.939653</td>
+      <td>0.148454</td>
+      <td>0.859565</td>
+      <td>1748</td>
       <td>261</td>
-      <td>0.937668</td>
-      <td>0.149570</td>
-      <td>0.856462</td>
+      <td>0.939280</td>
+      <td>0.149314</td>
+      <td>0.854992</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1694,7 +1694,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>total</td>
@@ -1722,53 +1722,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>hit</td>
-      <td>131</td>
+      <td>129</td>
       <td>56</td>
-      <td>0.070392</td>
-      <td>0.427481</td>
-      <td>2.447821</td>
-      <td>2.162980e+06</td>
+      <td>0.069318</td>
+      <td>0.434109</td>
+      <td>2.485772</td>
+      <td>2.123416e+06</td>
       <td>9.537139e+05</td>
-      <td>0.073175</td>
-      <td>0.440926</td>
-      <td>2.553016</td>
-      <td>131</td>
+      <td>0.071836</td>
+      <td>0.449141</td>
+      <td>2.600585</td>
+      <td>129</td>
       <td>56</td>
-      <td>0.070392</td>
-      <td>0.427481</td>
-      <td>2.447821</td>
-      <td>0.358560</td>
-      <td>0.499337</td>
-      <td>2.053170</td>
-      <td>2.859278</td>
-      <td>1.445073e-12</td>
-      <td>2.167609e-12</td>
+      <td>0.069318</td>
+      <td>0.434109</td>
+      <td>2.485772</td>
+      <td>0.364411</td>
+      <td>0.506513</td>
+      <td>2.086674</td>
+      <td>2.900372</td>
+      <td>6.544019e-13</td>
+      <td>9.816029e-13</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>miss</td>
-      <td>1730</td>
+      <td>1732</td>
       <td>269</td>
-      <td>0.929608</td>
-      <td>0.155491</td>
-      <td>0.890367</td>
-      <td>2.739608e+07</td>
+      <td>0.930682</td>
+      <td>0.155312</td>
+      <td>0.889339</td>
+      <td>2.743564e+07</td>
       <td>4.151368e+06</td>
-      <td>0.926825</td>
-      <td>0.151531</td>
-      <td>0.877386</td>
-      <td>1730</td>
+      <td>0.928164</td>
+      <td>0.151313</td>
+      <td>0.876121</td>
+      <td>1732</td>
       <td>269</td>
-      <td>0.929608</td>
-      <td>0.155491</td>
-      <td>0.890367</td>
+      <td>0.930682</td>
+      <td>0.155312</td>
+      <td>0.889339</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1778,7 +1778,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>total</td>
@@ -1806,7 +1806,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>hit</td>
@@ -1834,7 +1834,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>miss</td>
@@ -1862,7 +1862,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-04</td>
       <td>total</td>
@@ -1890,53 +1890,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>hit</td>
-      <td>105</td>
+      <td>102</td>
       <td>53</td>
-      <td>0.057471</td>
-      <td>0.504762</td>
-      <td>3.519847</td>
-      <td>1.697830e+06</td>
+      <td>0.055829</td>
+      <td>0.519608</td>
+      <td>3.623372</td>
+      <td>1.662673e+06</td>
       <td>9.008298e+05</td>
-      <td>0.057603</td>
-      <td>0.530577</td>
-      <td>3.621484</td>
-      <td>105</td>
+      <td>0.056410</td>
+      <td>0.541796</td>
+      <td>3.698061</td>
+      <td>102</td>
       <td>53</td>
-      <td>0.057471</td>
-      <td>0.504762</td>
-      <td>3.519847</td>
-      <td>0.425400</td>
-      <td>0.583885</td>
-      <td>2.966432</td>
-      <td>4.071595</td>
-      <td>7.198286e-20</td>
-      <td>2.159486e-19</td>
+      <td>0.055829</td>
+      <td>0.519608</td>
+      <td>3.623372</td>
+      <td>0.438788</td>
+      <td>0.599414</td>
+      <td>3.059793</td>
+      <td>4.179886</td>
+      <td>1.239323e-20</td>
+      <td>3.717969e-20</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>miss</td>
-      <td>1722</td>
+      <td>1725</td>
       <td>209</td>
-      <td>0.942529</td>
-      <td>0.121370</td>
-      <td>0.846351</td>
-      <td>2.777708e+07</td>
+      <td>0.944171</td>
+      <td>0.121159</td>
+      <td>0.844879</td>
+      <td>2.781223e+07</td>
       <td>3.417486e+06</td>
-      <td>0.942397</td>
-      <td>0.123033</td>
-      <td>0.839766</td>
-      <td>1722</td>
+      <td>0.943590</td>
+      <td>0.122877</td>
+      <td>0.838704</td>
+      <td>1725</td>
       <td>209</td>
-      <td>0.942529</td>
-      <td>0.121370</td>
-      <td>0.846351</td>
+      <td>0.944171</td>
+      <td>0.121159</td>
+      <td>0.844879</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -1946,7 +1946,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>total</td>
@@ -1974,53 +1974,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>hit</td>
-      <td>99</td>
+      <td>98</td>
       <td>35</td>
-      <td>0.054187</td>
-      <td>0.353535</td>
-      <td>2.465302</td>
-      <td>1.607392e+06</td>
+      <td>0.053640</td>
+      <td>0.357143</td>
+      <td>2.490458</td>
+      <td>1.579219e+06</td>
       <td>5.207963e+05</td>
-      <td>0.054534</td>
-      <td>0.324001</td>
-      <td>2.211486</td>
-      <td>99</td>
+      <td>0.053578</td>
+      <td>0.329781</td>
+      <td>2.250938</td>
+      <td>98</td>
       <td>35</td>
-      <td>0.054187</td>
-      <td>0.353535</td>
-      <td>2.465302</td>
-      <td>0.279361</td>
-      <td>0.435502</td>
-      <td>1.948066</td>
-      <td>3.036877</td>
-      <td>5.465032e-08</td>
-      <td>8.197548e-08</td>
+      <td>0.053640</td>
+      <td>0.357143</td>
+      <td>2.490458</td>
+      <td>0.282349</td>
+      <td>0.439612</td>
+      <td>1.968901</td>
+      <td>3.065541</td>
+      <td>4.043616e-08</td>
+      <td>6.065424e-08</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>miss</td>
-      <td>1728</td>
+      <td>1729</td>
       <td>227</td>
-      <td>0.945813</td>
-      <td>0.131366</td>
-      <td>0.916050</td>
-      <td>2.786752e+07</td>
+      <td>0.946360</td>
+      <td>0.131290</td>
+      <td>0.915521</td>
+      <td>2.789569e+07</td>
       <td>3.797520e+06</td>
-      <td>0.945466</td>
-      <td>0.136270</td>
-      <td>0.930122</td>
-      <td>1728</td>
+      <td>0.946422</td>
+      <td>0.136133</td>
+      <td>0.929182</td>
+      <td>1729</td>
       <td>227</td>
-      <td>0.945813</td>
-      <td>0.131366</td>
-      <td>0.916050</td>
+      <td>0.946360</td>
+      <td>0.131290</td>
+      <td>0.915521</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2030,7 +2030,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>total</td>
@@ -2058,53 +2058,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>hit</td>
-      <td>119</td>
+      <td>118</td>
       <td>35</td>
-      <td>0.065134</td>
-      <td>0.294118</td>
-      <td>2.050965</td>
-      <td>1.756868e+06</td>
+      <td>0.064587</td>
+      <td>0.296610</td>
+      <td>2.068346</td>
+      <td>1.753447e+06</td>
       <td>5.297915e+05</td>
-      <td>0.059606</td>
-      <td>0.301555</td>
-      <td>2.058278</td>
-      <td>119</td>
+      <td>0.059489</td>
+      <td>0.302143</td>
+      <td>2.062292</td>
+      <td>118</td>
       <td>35</td>
-      <td>0.065134</td>
-      <td>0.294118</td>
-      <td>2.050965</td>
-      <td>0.230605</td>
-      <td>0.366784</td>
-      <td>1.608071</td>
-      <td>2.557690</td>
-      <td>8.312906e-06</td>
-      <td>8.312906e-06</td>
+      <td>0.064587</td>
+      <td>0.296610</td>
+      <td>2.068346</td>
+      <td>0.232633</td>
+      <td>0.369705</td>
+      <td>1.622217</td>
+      <td>2.578056</td>
+      <td>6.722494e-06</td>
+      <td>6.722494e-06</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>miss</td>
-      <td>1708</td>
+      <td>1709</td>
       <td>227</td>
-      <td>0.934866</td>
-      <td>0.132904</td>
-      <td>0.926777</td>
-      <td>2.771804e+07</td>
+      <td>0.935413</td>
+      <td>0.132826</td>
+      <td>0.926235</td>
+      <td>2.772146e+07</td>
       <td>3.788524e+06</td>
-      <td>0.940394</td>
-      <td>0.136681</td>
-      <td>0.932923</td>
-      <td>1708</td>
+      <td>0.940511</td>
+      <td>0.136664</td>
+      <td>0.932808</td>
+      <td>1709</td>
       <td>227</td>
-      <td>0.934866</td>
-      <td>0.132904</td>
-      <td>0.926777</td>
+      <td>0.935413</td>
+      <td>0.132826</td>
+      <td>0.926235</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2114,7 +2114,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-05</td>
       <td>total</td>
@@ -2142,7 +2142,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>hit</td>
@@ -2170,7 +2170,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>miss</td>
@@ -2198,7 +2198,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>total</td>
@@ -2226,53 +2226,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>hit</td>
-      <td>115</td>
-      <td>48</td>
-      <td>0.061728</td>
-      <td>0.417391</td>
-      <td>2.635932</td>
-      <td>1.828866e+06</td>
-      <td>8.555635e+05</td>
-      <td>0.061956</td>
-      <td>0.467811</td>
-      <td>2.841104</td>
-      <td>115</td>
-      <td>48</td>
-      <td>0.061728</td>
-      <td>0.417391</td>
-      <td>2.635932</td>
-      <td>0.344503</td>
-      <td>0.494078</td>
-      <td>2.175622</td>
-      <td>3.120226</td>
-      <td>4.635825e-12</td>
-      <td>6.953738e-12</td>
+      <td>112</td>
+      <td>46</td>
+      <td>0.060118</td>
+      <td>0.410714</td>
+      <td>2.593765</td>
+      <td>1.810062e+06</td>
+      <td>8.416587e+05</td>
+      <td>0.061319</td>
+      <td>0.464989</td>
+      <td>2.823965</td>
+      <td>112</td>
+      <td>46</td>
+      <td>0.060118</td>
+      <td>0.410714</td>
+      <td>2.593765</td>
+      <td>0.337235</td>
+      <td>0.488405</td>
+      <td>2.129725</td>
+      <td>3.084404</td>
+      <td>2.759789e-11</td>
+      <td>4.139684e-11</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>miss</td>
-      <td>1748</td>
-      <td>247</td>
-      <td>0.938272</td>
-      <td>0.141304</td>
-      <td>0.892373</td>
-      <td>2.769010e+07</td>
-      <td>4.004974e+06</td>
-      <td>0.938044</td>
-      <td>0.144636</td>
-      <td>0.878399</td>
-      <td>1748</td>
-      <td>247</td>
-      <td>0.938272</td>
-      <td>0.141304</td>
-      <td>0.892373</td>
+      <td>1751</td>
+      <td>249</td>
+      <td>0.939882</td>
+      <td>0.142204</td>
+      <td>0.898057</td>
+      <td>2.770891e+07</td>
+      <td>4.018879e+06</td>
+      <td>0.938681</td>
+      <td>0.145039</td>
+      <td>0.880851</td>
+      <td>1751</td>
+      <td>249</td>
+      <td>0.939882</td>
+      <td>0.142204</td>
+      <td>0.898057</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2282,7 +2282,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>total</td>
@@ -2310,53 +2310,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>hit</td>
-      <td>128</td>
+      <td>127</td>
       <td>34</td>
-      <td>0.068706</td>
-      <td>0.265625</td>
-      <td>1.677489</td>
-      <td>1.979866e+06</td>
+      <td>0.068170</td>
+      <td>0.267717</td>
+      <td>1.690698</td>
+      <td>1.954610e+06</td>
       <td>5.431307e+05</td>
-      <td>0.067071</td>
-      <td>0.274327</td>
-      <td>1.666040</td>
-      <td>128</td>
+      <td>0.066215</td>
+      <td>0.277872</td>
+      <td>1.687567</td>
+      <td>127</td>
       <td>34</td>
-      <td>0.068706</td>
-      <td>0.265625</td>
-      <td>1.677489</td>
-      <td>0.206748</td>
-      <td>0.334205</td>
-      <td>1.305664</td>
-      <td>2.110591</td>
-      <td>8.732926e-04</td>
-      <td>8.732926e-04</td>
+      <td>0.068170</td>
+      <td>0.267717</td>
+      <td>1.690698</td>
+      <td>0.208431</td>
+      <td>0.336693</td>
+      <td>1.316293</td>
+      <td>2.126301</td>
+      <td>7.479411e-04</td>
+      <td>7.479411e-04</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>miss</td>
-      <td>1735</td>
+      <td>1736</td>
       <td>261</td>
-      <td>0.931294</td>
-      <td>0.150432</td>
-      <td>0.950018</td>
-      <td>2.753910e+07</td>
+      <td>0.931830</td>
+      <td>0.150346</td>
+      <td>0.949471</td>
+      <td>2.756436e+07</td>
       <td>4.317407e+06</td>
-      <td>0.932929</td>
-      <td>0.156774</td>
-      <td>0.952116</td>
-      <td>1735</td>
+      <td>0.933785</td>
+      <td>0.156630</td>
+      <td>0.951244</td>
+      <td>1736</td>
       <td>261</td>
-      <td>0.931294</td>
-      <td>0.150432</td>
-      <td>0.950018</td>
+      <td>0.931830</td>
+      <td>0.150346</td>
+      <td>0.949471</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2366,7 +2366,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>bad30</td>
       <td>2026-06</td>
       <td>total</td>
@@ -2394,53 +2394,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>hit</td>
-      <td>98</td>
+      <td>95</td>
       <td>45</td>
-      <td>0.061908</td>
-      <td>0.459184</td>
-      <td>2.895967</td>
-      <td>1.519524e+06</td>
+      <td>0.060013</td>
+      <td>0.473684</td>
+      <td>2.987419</td>
+      <td>1.473908e+06</td>
       <td>6.280390e+05</td>
-      <td>0.060177</td>
-      <td>0.413313</td>
-      <td>2.766762</td>
-      <td>98</td>
+      <td>0.058371</td>
+      <td>0.426104</td>
+      <td>2.852390</td>
+      <td>95</td>
       <td>45</td>
-      <td>0.061908</td>
-      <td>0.459184</td>
-      <td>2.895967</td>
-      <td>0.378592</td>
-      <td>0.541968</td>
-      <td>2.387696</td>
-      <td>3.418070</td>
-      <td>2.758586e-13</td>
-      <td>8.275759e-13</td>
+      <td>0.060013</td>
+      <td>0.473684</td>
+      <td>2.987419</td>
+      <td>0.391322</td>
+      <td>0.557504</td>
+      <td>2.467981</td>
+      <td>3.516048</td>
+      <td>6.559781e-14</td>
+      <td>1.967934e-13</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>miss</td>
-      <td>1485</td>
+      <td>1488</td>
       <td>206</td>
-      <td>0.938092</td>
-      <td>0.138721</td>
-      <td>0.874879</td>
-      <td>2.373133e+07</td>
+      <td>0.939987</td>
+      <td>0.138441</td>
+      <td>0.873115</td>
+      <td>2.377694e+07</td>
       <td>3.144061e+06</td>
-      <td>0.939823</td>
-      <td>0.132486</td>
-      <td>0.886874</td>
-      <td>1485</td>
+      <td>0.941629</td>
+      <td>0.132231</td>
+      <td>0.885172</td>
+      <td>1488</td>
       <td>206</td>
-      <td>0.938092</td>
-      <td>0.138721</td>
-      <td>0.874879</td>
+      <td>0.939987</td>
+      <td>0.138441</td>
+      <td>0.873115</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2450,7 +2450,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>total</td>
@@ -2478,53 +2478,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>hit</td>
-      <td>110</td>
+      <td>109</td>
       <td>32</td>
-      <td>0.069488</td>
-      <td>0.290909</td>
-      <td>1.834698</td>
-      <td>1.803580e+06</td>
+      <td>0.068857</td>
+      <td>0.293578</td>
+      <td>1.851530</td>
+      <td>1.779135e+06</td>
       <td>5.538584e+05</td>
-      <td>0.071427</td>
-      <td>0.307088</td>
-      <td>2.055683</td>
-      <td>110</td>
+      <td>0.070458</td>
+      <td>0.311308</td>
+      <td>2.083929</td>
+      <td>109</td>
       <td>32</td>
-      <td>0.069488</td>
-      <td>0.290909</td>
-      <td>1.834698</td>
-      <td>0.225380</td>
-      <td>0.366477</td>
-      <td>1.421422</td>
-      <td>2.311285</td>
-      <td>1.975659e-04</td>
-      <td>2.963489e-04</td>
+      <td>0.068857</td>
+      <td>0.293578</td>
+      <td>1.851530</td>
+      <td>0.227528</td>
+      <td>0.369627</td>
+      <td>1.434967</td>
+      <td>2.331155</td>
+      <td>1.631097e-04</td>
+      <td>2.446645e-04</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>miss</td>
-      <td>1473</td>
+      <td>1474</td>
       <td>219</td>
-      <td>0.930512</td>
-      <td>0.148676</td>
-      <td>0.937667</td>
-      <td>2.344727e+07</td>
+      <td>0.931143</td>
+      <td>0.148575</td>
+      <td>0.937031</td>
+      <td>2.347172e+07</td>
       <td>3.218241e+06</td>
-      <td>0.928573</td>
-      <td>0.137254</td>
-      <td>0.918796</td>
-      <td>1473</td>
+      <td>0.929542</td>
+      <td>0.137111</td>
+      <td>0.917839</td>
+      <td>1474</td>
       <td>219</td>
-      <td>0.930512</td>
-      <td>0.148676</td>
-      <td>0.937667</td>
+      <td>0.931143</td>
+      <td>0.148575</td>
+      <td>0.937031</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2534,7 +2534,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>total</td>
@@ -2562,7 +2562,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>hit</td>
@@ -2590,7 +2590,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>miss</td>
@@ -2618,7 +2618,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-04</td>
       <td>total</td>
@@ -2646,53 +2646,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>hit</td>
-      <td>98</td>
+      <td>96</td>
       <td>50</td>
-      <td>0.060719</td>
-      <td>0.510204</td>
-      <td>3.812358</td>
-      <td>1.583222e+06</td>
+      <td>0.059480</td>
+      <td>0.520833</td>
+      <td>3.891782</td>
+      <td>1.568071e+06</td>
       <td>8.577912e+05</td>
-      <td>0.060957</td>
-      <td>0.541801</td>
-      <td>3.908883</td>
-      <td>98</td>
+      <td>0.060374</td>
+      <td>0.547036</td>
+      <td>3.946651</td>
+      <td>96</td>
       <td>50</td>
-      <td>0.060719</td>
-      <td>0.510204</td>
-      <td>3.812358</td>
-      <td>0.427992</td>
-      <td>0.591867</td>
-      <td>3.198055</td>
-      <td>4.422565</td>
-      <td>1.142157e-20</td>
-      <td>3.426471e-20</td>
+      <td>0.059480</td>
+      <td>0.520833</td>
+      <td>3.891782</td>
+      <td>0.437552</td>
+      <td>0.602973</td>
+      <td>3.269486</td>
+      <td>4.505545</td>
+      <td>3.398430e-21</td>
+      <td>1.019529e-20</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>miss</td>
-      <td>1516</td>
+      <td>1518</td>
       <td>166</td>
-      <td>0.939281</td>
-      <td>0.109499</td>
-      <td>0.818198</td>
-      <td>2.438947e+07</td>
+      <td>0.940520</td>
+      <td>0.109354</td>
+      <td>0.817120</td>
+      <td>2.440462e+07</td>
       <td>2.742223e+06</td>
-      <td>0.939043</td>
-      <td>0.112435</td>
-      <td>0.811172</td>
-      <td>1516</td>
+      <td>0.939626</td>
+      <td>0.112365</td>
+      <td>0.810669</td>
+      <td>1518</td>
       <td>166</td>
-      <td>0.939281</td>
-      <td>0.109499</td>
-      <td>0.818198</td>
+      <td>0.940520</td>
+      <td>0.109354</td>
+      <td>0.817120</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2702,7 +2702,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>total</td>
@@ -2730,53 +2730,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>hit</td>
-      <td>89</td>
+      <td>88</td>
       <td>28</td>
-      <td>0.055143</td>
-      <td>0.314607</td>
-      <td>2.350811</td>
-      <td>1.507685e+06</td>
+      <td>0.054523</td>
+      <td>0.318182</td>
+      <td>2.377525</td>
+      <td>1.479513e+06</td>
       <td>4.369538e+05</td>
-      <td>0.058049</td>
-      <td>0.289818</td>
-      <td>2.090921</td>
-      <td>89</td>
+      <td>0.056964</td>
+      <td>0.295336</td>
+      <td>2.130736</td>
+      <td>88</td>
       <td>28</td>
-      <td>0.055143</td>
-      <td>0.314607</td>
-      <td>2.350811</td>
-      <td>0.240129</td>
-      <td>0.400023</td>
-      <td>1.794300</td>
-      <td>2.989063</td>
-      <td>4.127864e-06</td>
-      <td>6.191796e-06</td>
+      <td>0.054523</td>
+      <td>0.318182</td>
+      <td>2.377525</td>
+      <td>0.242981</td>
+      <td>0.404230</td>
+      <td>1.815605</td>
+      <td>3.020493</td>
+      <td>3.204884e-06</td>
+      <td>4.807327e-06</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>miss</td>
-      <td>1525</td>
+      <td>1526</td>
       <td>188</td>
-      <td>0.944857</td>
-      <td>0.123279</td>
-      <td>0.921166</td>
-      <td>2.446501e+07</td>
+      <td>0.945477</td>
+      <td>0.123198</td>
+      <td>0.920562</td>
+      <td>2.449318e+07</td>
       <td>3.163060e+06</td>
-      <td>0.941951</td>
-      <td>0.129289</td>
-      <td>0.932771</td>
-      <td>1525</td>
+      <td>0.943036</td>
+      <td>0.129140</td>
+      <td>0.931698</td>
+      <td>1526</td>
       <td>188</td>
-      <td>0.944857</td>
-      <td>0.123279</td>
-      <td>0.921166</td>
+      <td>0.945477</td>
+      <td>0.123198</td>
+      <td>0.920562</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -2786,7 +2786,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>total</td>
@@ -2814,7 +2814,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>hit</td>
@@ -2842,7 +2842,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>miss</td>
@@ -2870,7 +2870,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-05</td>
       <td>total</td>
@@ -2898,7 +2898,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>hit</td>
@@ -2926,7 +2926,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>miss</td>
@@ -2954,7 +2954,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>total</td>
@@ -2982,53 +2982,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>hit</td>
-      <td>105</td>
+      <td>102</td>
       <td>29</td>
-      <td>0.064935</td>
-      <td>0.276190</td>
-      <td>1.698099</td>
-      <td>1.742532e+06</td>
+      <td>0.063080</td>
+      <td>0.284314</td>
+      <td>1.748043</td>
+      <td>1.723728e+06</td>
       <td>4.986175e+05</td>
-      <td>0.067475</td>
-      <td>0.286145</td>
-      <td>1.682725</td>
-      <td>105</td>
+      <td>0.066747</td>
+      <td>0.289267</td>
+      <td>1.701081</td>
+      <td>102</td>
       <td>29</td>
-      <td>0.064935</td>
-      <td>0.276190</td>
-      <td>1.698099</td>
-      <td>0.210726</td>
-      <td>0.352899</td>
-      <td>1.295604</td>
-      <td>2.169725</td>
-      <td>1.613001e-03</td>
-      <td>1.613001e-03</td>
+      <td>0.063080</td>
+      <td>0.284314</td>
+      <td>1.748043</td>
+      <td>0.217162</td>
+      <td>0.362612</td>
+      <td>1.335177</td>
+      <td>2.229441</td>
+      <td>9.698389e-04</td>
+      <td>9.698389e-04</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>miss</td>
-      <td>1512</td>
+      <td>1515</td>
       <td>234</td>
-      <td>0.935065</td>
-      <td>0.154762</td>
-      <td>0.951521</td>
-      <td>2.408226e+07</td>
+      <td>0.936920</td>
+      <td>0.154455</td>
+      <td>0.949637</td>
+      <td>2.410106e+07</td>
       <td>3.892858e+06</td>
-      <td>0.932525</td>
-      <td>0.161648</td>
-      <td>0.950600</td>
-      <td>1512</td>
+      <td>0.933253</td>
+      <td>0.161522</td>
+      <td>0.949858</td>
+      <td>1515</td>
       <td>234</td>
-      <td>0.935065</td>
-      <td>0.154762</td>
-      <td>0.951521</td>
+      <td>0.936920</td>
+      <td>0.154455</td>
+      <td>0.949637</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -3038,7 +3038,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>total</td>
@@ -3066,53 +3066,53 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>hit</td>
-      <td>108</td>
+      <td>107</td>
       <td>31</td>
-      <td>0.066790</td>
-      <td>0.287037</td>
-      <td>1.764787</td>
-      <td>1.715468e+06</td>
+      <td>0.066172</td>
+      <td>0.289720</td>
+      <td>1.781280</td>
+      <td>1.690518e+06</td>
       <td>4.952060e+05</td>
-      <td>0.066427</td>
-      <td>0.288671</td>
-      <td>1.697577</td>
-      <td>108</td>
+      <td>0.065461</td>
+      <td>0.292932</td>
+      <td>1.722632</td>
+      <td>107</td>
       <td>31</td>
-      <td>0.066790</td>
-      <td>0.287037</td>
-      <td>1.764787</td>
-      <td>0.221330</td>
-      <td>0.363153</td>
-      <td>1.360800</td>
-      <td>2.232772</td>
-      <td>5.342826e-04</td>
-      <td>8.014240e-04</td>
+      <td>0.066172</td>
+      <td>0.289720</td>
+      <td>1.781280</td>
+      <td>0.223478</td>
+      <td>0.366333</td>
+      <td>1.374008</td>
+      <td>2.252320</td>
+      <td>4.457663e-04</td>
+      <td>6.686495e-04</td>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>miss</td>
-      <td>1509</td>
+      <td>1510</td>
       <td>232</td>
-      <td>0.933210</td>
-      <td>0.153744</td>
-      <td>0.945264</td>
-      <td>2.410932e+07</td>
+      <td>0.933828</td>
+      <td>0.153642</td>
+      <td>0.944638</td>
+      <td>2.413427e+07</td>
       <td>3.896270e+06</td>
-      <td>0.933573</td>
-      <td>0.161608</td>
-      <td>0.950365</td>
-      <td>1509</td>
+      <td>0.934539</td>
+      <td>0.161441</td>
+      <td>0.949382</td>
+      <td>1510</td>
       <td>232</td>
-      <td>0.933210</td>
-      <td>0.153744</td>
-      <td>0.945264</td>
+      <td>0.933828</td>
+      <td>0.153642</td>
+      <td>0.944638</td>
       <td>NaN</td>
       <td>NaN</td>
       <td>NaN</td>
@@ -3122,7 +3122,7 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
     </tr>
     <tr>
       <td>validation</td>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>late60</td>
       <td>2026-06</td>
       <td>total</td>
@@ -3187,25 +3187,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>mr_cb714e09ca8c064f8185</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 601.2262132556998) AND "main_score" &gt; 546.042988729658) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>7</td>
-      <td>322</td>
+      <td>316</td>
       <td>167</td>
-      <td>0.058008</td>
-      <td>0.518634</td>
-      <td>3.264098</td>
-      <td>2.976072</td>
-      <td>3.550170</td>
-      <td>1.538605e-54</td>
-      <td>4.615814e-54</td>
+      <td>0.056927</td>
+      <td>0.528481</td>
+      <td>3.326075</td>
+      <td>3.035082</td>
+      <td>3.614024</td>
+      <td>4.362274e-56</td>
+      <td>1.308682e-55</td>
       <td>temporally_validated</td>
-      <td>5.276321e+06</td>
-      <td>0.515930</td>
-      <td>322</td>
-      <td>0.518634</td>
-      <td>第 1 条规则命中 322 个样本，覆盖率 5.80%，事件数 167，事件率 51.86%，Lift 3.264，95% 保守区间 [2.976, 3.550]，q 值 0.0000。</td>
+      <td>5.195548e+06</td>
+      <td>0.523951</td>
+      <td>316</td>
+      <td>0.528481</td>
+      <td>第 1 条规则命中 316 个样本，覆盖率 5.69%，事件数 167，事件率 52.85%，Lift 3.326，95% 保守区间 [3.035, 3.614]，q 值 0.0000。</td>
     </tr>
     <tr>
       <td>2</td>
@@ -3213,25 +3213,25 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>bad30</td>
       <td>__overall__</td>
       <td>hit</td>
-      <td>mr_20fa26e2262d26742d78</td>
-      <td>(((((("aux_score" != -999 AND "aux_score" &gt; 567.1738809810513) AND "main_score" != -999) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
+      <td>(((((("aux_score" != -999 AND "aux_score" &lt;= 1.7976931348623157e+308) AND "aux_score" &gt; 567.1738809810513) AND "main_score" &lt;= 653.7750315986514) AND "main_score" &gt; 601.2262132556998) AND "aux_score" IS NOT MISSING) AND "main_score" IS NOT MISSING)</td>
       <td>cross_discovery</td>
       <td>7</td>
-      <td>345</td>
-      <td>139</td>
-      <td>0.062151</td>
-      <td>0.402899</td>
-      <td>2.535703</td>
-      <td>2.268118</td>
-      <td>2.812799</td>
-      <td>1.008073e-29</td>
-      <td>1.512109e-29</td>
+      <td>339</td>
+      <td>137</td>
+      <td>0.061070</td>
+      <td>0.404130</td>
+      <td>2.543452</td>
+      <td>2.273373</td>
+      <td>2.823086</td>
+      <td>1.897947e-29</td>
+      <td>2.846920e-29</td>
       <td>temporally_validated</td>
-      <td>5.599238e+06</td>
-      <td>0.416141</td>
-      <td>345</td>
-      <td>0.402899</td>
-      <td>第 2 条规则命中 345 个样本，覆盖率 6.22%，事件数 139，事件率 40.29%，Lift 2.536，95% 保守区间 [2.268, 2.813]，q 值 0.0000。</td>
+      <td>5.512697e+06</td>
+      <td>0.420152</td>
+      <td>339</td>
+      <td>0.404130</td>
+      <td>第 2 条规则命中 339 个样本，覆盖率 6.11%，事件数 137，事件率 40.41%，Lift 2.543，95% 保守区间 [2.273, 2.823]，q 值 0.0000。</td>
     </tr>
   </tbody>
 </table>
@@ -3245,11 +3245,11 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
   </thead>
   <tbody>
     <tr>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>aux_score</td>
     </tr>
     <tr>
-      <td>mr_20fa26e2262d26742d78</td>
+      <td>mr_17ee9fe9490cfed4c8c6</td>
       <td>main_score</td>
     </tr>
     <tr>
@@ -3261,27 +3261,27 @@ pre{background:#f7f7f8;padding:12px;overflow:auto}</style></head>
       <td>main_score</td>
     </tr>
     <tr>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>aux_score</td>
     </tr>
     <tr>
-      <td>mr_8664f1fa21c9c7ac8a92</td>
+      <td>mr_7bdb03abe2bdaf07f897</td>
       <td>main_score</td>
     </tr>
     <tr>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>aux_score</td>
     </tr>
     <tr>
-      <td>mr_adcb27865a5ad7dbe5ef</td>
+      <td>mr_ad799e0c85ff11828d91</td>
       <td>main_score</td>
     </tr>
     <tr>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>aux_score</td>
     </tr>
     <tr>
-      <td>mr_cb714e09ca8c064f8185</td>
+      <td>mr_c67ebed12b349c6732e7</td>
       <td>main_score</td>
     </tr>
   </tbody>

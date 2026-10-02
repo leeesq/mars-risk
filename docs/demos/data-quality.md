@@ -35,6 +35,20 @@ PSI 的参考、比较分区以及 missing/special 是否纳入，以报告实�
 
 === "人工阅读"
 
+    用你的 `df` 与参考样本 `reference_df` 替换共享合成数据，按实际字段名调整 features：
+
+    ```python
+    from mars.analysis import profile_stats
+
+    report = profile_stats(
+        df, features=["income", "channel"], categorical_features=["channel"],
+        metrics=["missing", "mean", "psi"], benchmark_df=reference_df,
+        group_col="dataset", special_values=[-999.0],
+    )
+    print(report.get_table("overview"))
+    report.write_html("quality.html")
+    ```
+
     先读总样本与有效标签，再定位缺失、特殊值和分布变化。
     schema 不同要先核对字段含义与类型，未见类别需要确认参考分箱如何接收它。
     缺失率上升与标签缺失是不同问题，不能直接解释为模型效果下降。

@@ -6,22 +6,23 @@
 .mars-home { min-width: 0; }
 .mars-home-hero {
   max-width: 920px;
-  margin: 0 auto 2.4rem;
-  padding: 1rem 0 1.3rem;
+  margin: 0 auto 1.4rem;
+  padding: .7rem 0 .6rem;
   text-align: center;
 }
+.mars-home-logo-wrap { display: block; }
 .mars-home-logo {
   display: block;
-  width: min(800px, 100%);
-  margin: 0 auto .8rem;
+  width: min(620px, 100%);
+  margin: 0 auto .65rem;
 }
 .mars-home-wordmark {
   display: block;
-  width: min(720px, 90%);
-  margin: 0 auto 1.1rem;
+  width: min(540px, 90%);
+  margin: 0 auto .85rem;
 }
 .mars-home .mars-home-hero h1 {
-  margin: 1.5rem 0 .8rem;
+  margin: 1.25rem 0 .8rem;
   color: var(--md-default-fg-color);
   font-size: clamp(1.5rem, 3vw, 2.25rem);
   font-weight: 750;
@@ -161,6 +162,27 @@
   max-width: 920px;
   margin: 1rem auto 1.6rem;
 }
+.mars-native-preview {
+  margin: 1.2rem 0 1.8rem;
+  padding: .65rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: .6rem;
+  background: #fff;
+  overflow: hidden;
+}
+.mars-native-preview img { display: block; width: 100%; height: auto; }
+.mars-native-preview figcaption {
+  margin-top: .65rem;
+  color: #475569;
+  font-size: .76rem;
+  line-height: 1.55;
+  text-align: center;
+}
+.mars-home .mars-native-preview figcaption { color: #475569; }
+.mars-native-preview a:focus-visible {
+  outline: 3px solid var(--md-typeset-a-color);
+  outline-offset: 3px;
+}
 .mars-home .mars-home-preview figcaption {
   margin-top: .5rem;
   font-size: .78rem;
@@ -172,4 +194,6 @@
   .mars-cases .mars-case-preview { padding: .35rem; }
   .mars-cases .mars-preview-desktop { display: none; }
   .mars-cases .mars-preview-mobile { display: block; max-width: 390px; margin: 0 auto; }
+  .mars-native-preview { padding: .3rem; }
+  .mars-native-preview figcaption { font-size: .7rem; }
 }

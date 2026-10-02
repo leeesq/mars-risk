@@ -8,12 +8,15 @@ import hashlib
 import json
 import math
 import re
+import runpy
+import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs/assets/cases"
@@ -213,7 +216,105 @@ def _validate_evidence(directory: Path) -> dict[str, Any]:
                 _assert_equal(value, rows[0][field], f"preview.excerpt.{field}")
         for field, value in excerpt["scope"].items():
             _assert_equal(value, rows[0][field], f"preview.scope.{field}")
+    _validate_native_binning_preview(directory, snapshots)
+    automatic: dict[str, Any] = _read_json(directory / "rule-generation.json")
+    report = snapshots.get(automatic["report_id"])
+    if report is None:
+        raise ValueError("Automatic rule evidence references an unsaved report")
+    _assert_equal(automatic["description"], report.describe(), "automatic.description")
+    _replay_queries(automatic["queries"], report, "automatic")
+    if automatic["raw_input_rows"] != automatic["eligible_rows"] + automatic["excluded_rows"]:
+        raise ValueError("Automatic rule input exclusions do not preserve the raw denominator")
     return snapshots
+
+
+def _replay_queries(queries: list[dict[str, Any]], report: Any, label: str) -> None:
+    """重放附加图表和生成器证据的实际分页，不用示意数字替代公共结果。"""
+    if not queries:
+        raise ValueError(f"{label}: no saved query evidence")
+    for index, query in enumerate(queries):
+        reference = query["reference"]
+        if reference["report_id"] != report.report_id:
+            raise ValueError(f"{label}.query-{index}: foreign report identity")
+        replay = report.query_page(reference["table"], **reference["query"])
+        _assert_equal(query["rows"], _table_rows(replay["data"]), f"{label}.query-{index}.rows")
+        for field in ("total_rows", "returned_rows", "omitted_rows", "next_offset"):
+            if query[field] != replay[field]:
+                raise ValueError(f"{label}.query-{index}: {field} does not replay")
+
+
+def _validate_native_binning_preview(directory: Path, snapshots: dict[str, Any]) -> None:
+    """README 使用原生分箱图，公开图文件及其业务查询须来自同一快照。"""
+    evidence: dict[str, Any] = _read_json(directory / "binning-native-evidence.json")
+    report = snapshots.get(evidence["report_id"])
+    binning_case: dict[str, Any] = _read_json(directory / "case-2.json")
+    if report is None or evidence["report_id"] != binning_case["report_id"]:
+        raise ValueError("Native binning image has no matching binning snapshot")
+    metadata = report.describe()["feature_metadata"]
+    if evidence["feature"] not in metadata:
+        raise ValueError("Native binning image feature has no business metadata")
+    _replay_queries(evidence["queries"], report, "native-binning")
+    for query in evidence["queries"]:
+        if any(row.get("feature") != evidence["feature"] for row in query["rows"]):
+            raise ValueError("Native binning evidence contains a different feature")
+    png = _safe_path(directory, evidence["chart_png"]).read_bytes()
+    if not png.startswith(b"\x89PNG\r\n\x1a\n") or len(png) < 24:
+        raise ValueError("Native binning PNG is not a readable PNG")
+    width, height = struct.unpack(">II", png[16:24])
+    if width < 500 or height < 300:
+        raise ValueError(f"Native binning PNG is too small for its panels: {width} x {height}")
+    svg = ElementTree.parse(_safe_path(directory, evidence["chart_svg"])).getroot()
+    if svg.tag != "{http://www.w3.org/2000/svg}svg" or not list(svg.iter("{http://www.w3.org/2000/svg}path")):
+        raise ValueError("Native binning SVG has no rendered chart paths")
+
+
+def _validate_rule_memberships(directory: Path, config: dict[str, Any]) -> None:
+    """用同源合成样本核对正常格候选的成员口径，而非重放同一个错误摘要。"""
+    import polars as pl
+
+    from mars.reporting import load_report
+    from mars.rule import MarsRule, MarsRuleSet
+
+    sys.path.insert(0, str(GENERATOR.parent))
+    try:
+        generator = runpy.run_path(str(GENERATOR))
+    finally:
+        sys.path.pop(0)
+    data = generator["_data"](config["rows"], config["seed"])
+    cross = load_report(directory / "score-cross.marsreport")
+    rules = load_report(directory / "rules.marsreport")
+    description = rules.describe()
+    origins = description["business_context"]["candidate_origins"]
+    candidates = rules.get_table("candidates").to_dicts()
+    cells = cross.get_table("cells").to_dicts()
+    checked = 0
+    for candidate in candidates:
+        origin = origins.get(candidate["rule_id"], {})
+        if origin.get("kind") != "development_cell":
+            continue
+        filters = origin["reference"]["query"]["filters"]
+        rule = MarsRule(candidate["expression"])
+        applied = MarsRuleSet(rules=[rule]).transform(data)
+        hit_column = f"rule__{rule.rule_id}"
+        for group in data["dataset"].unique().to_list():
+            hits = applied.filter((pl.col("dataset") == group) & (pl.col(hit_column) == 1))
+            normal = [row for row in cells if row["group"] == group
+                      and row["target"] == filters["target"]
+                      and row["x_bin"] == filters["x_bin"] and row["y_bin"] == filters["y_bin"]]
+            for field, actual in (
+                ("sample_count", hits.height),
+                ("observed_sample_count", hits[filters["target"]].count()),
+                ("bad_sample_count", int(hits[filters["target"]].sum() or 0)),
+            ):
+                expected = sum(row[field] for row in normal)
+                if actual != expected:
+                    raise ValueError(
+                        f"Normal cell / DSL membership differs: {rule.rule_id}, {group}, "
+                        f"{field}: cell={expected}, rule={actual}"
+                    )
+        checked += 1
+    if not checked:
+        raise ValueError("Rule case contains no normal-cell candidates to validate")
 
 
 def _validate_manifest(directory: Path, site_dir: Path | None) -> dict[str, Any]:
@@ -294,10 +395,11 @@ def _recompute(directory: Path, manifest: dict[str, Any]) -> None:
         )
         if execution.returncode:
             raise ValueError(f"Public case generation failed (exit {execution.returncode}):\n{execution.stdout}\n{execution.stderr}")
-        names = ["summary.json", "agent-context.json"]
+        names = ["summary.json", "agent-context.json", "binning-native-evidence.json", "rule-generation.json"]
         names.extend(f"{prefix}-{number}.json" for prefix in ("case", "query") for number in range(1, 8))
         for name in names:
             _assert_equal(_semantic(_read_json(directory / name)), _semantic(_read_json(fresh / name)), name)
+        _validate_rule_memberships(fresh, config)
         _assert_equal(
             (directory / "previews.txt").read_text(encoding="utf-8"),
             (fresh / "previews.txt").read_text(encoding="utf-8"), "previews.txt",
@@ -314,7 +416,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         manifest = _validate_manifest(args.assets_dir, args.site_dir)
-        for name in ("preview-evidence.json", "previews.txt", "readme-preview.png", "readme-preview-mobile.png"):
+        for name in ("previews.txt", "binning-native-main-score.png", "binning-native-main-score.svg"):
             _safe_path(args.assets_dir, name)
         snapshots = _validate_evidence(args.assets_dir)
         if not args.skip_recompute:

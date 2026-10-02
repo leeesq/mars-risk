@@ -2,14 +2,15 @@
 
 本包结果：18,000 行，seed=20261001，九个月、三个等量独立分区。
 公开站点展示规模为 18,000 行；其他规模仅用于 API/语义回归。
-运行基于本任务源码；固定基线 commit 746b8fa 提供核心 API，新生成入口随任务分支提供。
-从仓库根目录执行：
+先在已安装兼容 MARS 及 docs 依赖的 Python 环境解压，不要求解压目录是 git 仓库。
+在解压目录执行：
 
-python docs/snippets/task_cases.py --case all --rows 18000 --seed 20261001 --output-dir docs/assets/cases
+python task_cases.py --case all --rows 18000 --seed 20261001 --output-dir reproduced
 
+也可在当前 MARS 源码仓库执行 docs/snippets/task_cases.py；--repository-root /path/to/mars-risk 可显式记录仓库来源。
 轻量 API/语义回归用 --rows 900，不能冒充公开数字。
 --case 1..7 按需运行；6/7 需要已有 score-cross 和 policy 快照，不重复计算宽表。
 --phase consume 在新进程只加载快照；--phase finalize 更新摘要、来源和 ZIP。
 此 ZIP 是预生成结果与复现材料，不含原始宽表。源码文件见同目录 task_cases.py、external_agent_rule_case.py；依赖及哈希见 manifest.json。
-复制脚本到已安装本任务源码环境的同一目录运行，或直接在 checkout 运行。
+脱离仓库时 git commit 标记 unknown/null，仍记录脚本及实际已安装模块指纹；不假定复制脚本属于原提交。
 信任边界：仅加载可信 .marsreport 文件；当前格式和专用回放能力以 describe 为准。

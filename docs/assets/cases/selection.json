@@ -1,20 +1,11 @@
 [
   {
-    "feature": "income_copy",
-    "data_source": "application",
-    "status": "Dropped",
-    "stage": "Corr_Filter",
-    "reason": "Correlated with 'income'",
-    "value": 1.0,
-    "description": ""
-  },
-  {
-    "feature": "score_inverse",
+    "feature": "main_score",
     "data_source": "champion",
     "status": "Dropped",
     "stage": "Corr_Filter",
-    "reason": "Correlated with 'main_score'",
-    "value": 0.9999681130129501,
+    "reason": "Correlated with 'score_inverse'",
+    "value": 0.9982520332325072,
     "description": ""
   },
   {
@@ -38,19 +29,100 @@
   {
     "feature": "income",
     "data_source": "application",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.00911143608391285,
+    "description": ""
+  },
+  {
+    "feature": "income_copy",
+    "data_source": "application",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.007448240648955107,
+    "description": ""
+  },
+  {
+    "feature": "aux_drift",
+    "data_source": "challenger",
+    "status": "Dropped",
+    "stage": "Stability",
+    "reason": "High PSI (9.46)",
+    "value": 9.462003964126108,
+    "description": ""
+  },
+  {
+    "feature": "aux_score",
+    "data_source": "challenger",
     "status": "Selected",
     "stage": "Corr_Filter",
     "reason": "Independent",
-    "value": 0.007448240648955107,
+    "value": 2.647951126098633,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.40193307399749756,
+    "description": ""
+  },
+  {
+    "feature": "aux_drift",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Fine_Scan",
+    "reason": "Pass (IV)",
+    "value": 0.9054592847824097,
+    "description": ""
+  },
+  {
+    "feature": "aux_score",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Fine_Scan",
+    "reason": "Pass (IV)",
+    "value": 2.647951126098633,
     "description": ""
   },
   {
     "feature": "main_score",
     "data_source": "champion",
     "status": "Selected",
-    "stage": "Corr_Filter",
-    "reason": "Independent",
-    "value": 0.3210684359073639,
+    "stage": "Fine_Scan",
+    "reason": "Pass (IV)",
+    "value": 0.40134844183921814,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Fine_Scan",
+    "reason": "Pass (IV)",
+    "value": 0.40193307399749756,
+    "description": ""
+  },
+  {
+    "feature": "aux_drift",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.008666666666666666,
+    "description": ""
+  },
+  {
+    "feature": "aux_score",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.008666666666666666,
     "description": ""
   },
   {
@@ -90,21 +162,48 @@
     "description": ""
   },
   {
-    "feature": "income",
-    "data_source": "application",
+    "feature": "aux_score",
+    "data_source": "challenger",
     "status": "Selected",
-    "stage": "Rough_Scan",
-    "reason": "Pass (IV=0.007)",
-    "value": 0.007448240648955107,
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
     "description": ""
   },
   {
-    "feature": "income_copy",
-    "data_source": "application",
+    "feature": "main_score",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.9272727272727272,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.9272727272727272,
+    "description": ""
+  },
+  {
+    "feature": "aux_drift",
+    "data_source": "challenger",
     "status": "Selected",
     "stage": "Rough_Scan",
-    "reason": "Pass (IV=0.007)",
-    "value": 0.007448240648955107,
+    "reason": "Pass (IV=0.653)",
+    "value": 0.6534533500671387,
+    "description": ""
+  },
+  {
+    "feature": "aux_score",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=2.297)",
+    "value": 2.2970714569091797,
     "description": ""
   },
   {
@@ -123,6 +222,33 @@
     "stage": "Rough_Scan",
     "reason": "Pass (IV=0.321)",
     "value": 0.32091811299324036,
+    "description": ""
+  },
+  {
+    "feature": "aux_score",
+    "data_source": "challenger",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0060770665642735314,
+    "description": ""
+  },
+  {
+    "feature": "main_score",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.008103952631859824,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.007753347559946931,
     "description": ""
   }
 ]

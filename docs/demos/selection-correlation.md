@@ -16,7 +16,8 @@ description: 从真实筛选决策复核保留／删除；分别检查 raw 与�
 
 --8<-- "docs/assets/cases/previews.txt:case3"
 
-Linear 在 raw 空间也保留 `main_score`、`income`。
+Stats 使用完整门禁筛选强辅助分、主分及冗余／质量／模拟漂移字段；实际保留以表中结果为准。
+Linear 在单独的 raw 相关池保留 `main_score`、`income`。
 但 raw 的 `main_score/score_inverse` 是 **−1**，`income/income_copy` 是 **+1**；
 不能把 WOE 的正相关改写成原始值的关系。来源为[实际决策](../assets/cases/selection.json)与同批相关表。
 
@@ -29,9 +30,11 @@ Linear 在 raw 空间也保留 `main_score`、`income`。
 候选、每步 active 集合、保留／删除、实际阈值与已有原因读取真实决策输出。
 若决策表没有业务原因字段，就只呈现已有证据，不能补成完整业务解释。
 
-本次 Stats 配置缺失阈值 0.9、WOE 相关阈值 0.8，关闭 PSI／RC 门禁、跳过 fine scan，
-并把 rough IV／Lift 门槛设为 −1／0，使例子聚焦质量与相关去冗余。
-因此低 IV 的 `income` 被保留也符合本次真实配置，不代表它已通过业务建模标准。
+本次 Stats 使用缺失阈值 0.9、粗筛及精筛 IV 0.01／Lift 1.2、PSI 0.25、RC 0.5、
+WOE 相关阈值 0.8，保留粗筛、精筛及稳定性阶段。
+`aux_drift` 是辅助分加上逐月固定平移的演示字段：即使有区分度，也要经过稳定性筛选。
+非有限模型分在本次筛选配置为缺失，交叉中仍独立标为 invalid；两种任务的参数分别保存。
+原始相关性只演示冗余关系，不能用其保留的 `income` 替代 Stats 的统计筛选结果。
 
 ## 相关性：先确认表示空间 { #correlation }
 
@@ -43,6 +46,23 @@ raw 采用候选池与目标完整行删除；WOE 采用 bad30 有效标签并�
 具体行数和阈值在上方真实预览中分别保留，不把两个空间当成相同统计。
 
 === "人工阅读"
+
+    用自己的开发样本 `train_df`，替换候选字段；日期用于稳定性检查，不从验证集重新选字段：
+
+    ```python
+    from mars.feature import MarsStatsSelector
+
+    selector = MarsStatsSelector(
+        psi_thr=0.25, rc_thr=0.5, corr_thr=0.8, n_jobs=1,
+        missing_values=[float("inf"), float("-inf")], special_values=[-999.0],
+    )
+    selector.fit(
+        train_df, target="bad30", features=["main_score", "aux_score", "income"],
+        time_col="application_date", time_grain="month",
+    )
+    print(selector.selected_features_)
+    print(selector.get_report())
+    ```
 
     先看真实候选与步骤，再查看相关冗余对和实际留下的字段。
     如负相关字段因 `abs(correlation)` 超阈值被处理，保留负号，说明阈值只取绝对强度。

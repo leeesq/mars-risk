@@ -1,10 +1,10 @@
 {
   "case": 5,
-  "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+  "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
   "question": "从候选规则走到可以审查的证据",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+    "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
     "report_type": "rule",
     "format_version": 1,
     "tables": {
@@ -828,7 +828,7 @@
       "generation_errors": [],
       "generator_diagnostics": [],
       "generators": [],
-      "elapsed_seconds": 0.03267479999340139,
+      "elapsed_seconds": 0.05286455899477005,
       "resolved_spec": {
         "profile": "production",
         "direction": "high_risk",
@@ -942,7 +942,7 @@
     },
     "business_context": {
       "dataset_id": "synthetic-consumer-credit-20261001",
-      "sample_unit": "模拟申请，每行独立 sample_id",
+      "sample_unit": "one synthetic application; unique sample_id",
       "label_definition": "unknown",
       "observation_window": "unknown",
       "simulated": true,
@@ -959,21 +959,51 @@
         }
       },
       "splits": {
-        "discovery": "2026-01至03，6000独立行；确定分段及候选",
-        "validation": "2026-04至06，6000独立行；一次独立门禁检验",
-        "observation": "2026-07至09，6000独立行；仅交叉观察，不参与选择"
+        "discovery": "1–3月；参考分箱与候选发现",
+        "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+        "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
       },
       "score_directions": {
         "main_score": "lower_risk",
         "aux_score": "higher_risk"
       },
-      "amount_definition": "模拟申请金额，不代表损失或利润",
+      "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
       "independence": "不同 sample_id 和时间，不从验证或观察重新挑选候选；并非真实业务效果",
+      "sample_count": 18000,
+      "seed": 20261001,
+      "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+      "binning_origin": "discovery only; frozen definitions",
       "candidate_origins": {
-        "mr_cb714e09ca8c064f8185": {
+        "mr_7bdb03abe2bdaf07f897": {
           "kind": "development_cell",
+          "region": {
+            "x_bin": "b1",
+            "y_bin": "b3"
+          },
+          "member_check": {
+            "verified": true,
+            "scope": "all supplied rows; exact sample_id membership",
+            "member_count": 1128,
+            "members_by_dataset": [
+              {
+                "dataset": "discovery",
+                "sample_count": 385,
+                "observed_sample_count": 348
+              },
+              {
+                "dataset": "observation",
+                "sample_count": 391,
+                "observed_sample_count": 365
+              },
+              {
+                "dataset": "validation",
+                "sample_count": 352,
+                "observed_sample_count": 316
+              }
+            ]
+          },
           "reference": {
-            "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+            "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -988,10 +1018,36 @@
             }
           }
         },
-        "mr_20fa26e2262d26742d78": {
+        "mr_17ee9fe9490cfed4c8c6": {
           "kind": "development_cell",
+          "region": {
+            "x_bin": "b2",
+            "y_bin": "b3"
+          },
+          "member_check": {
+            "verified": true,
+            "scope": "all supplied rows; exact sample_id membership",
+            "member_count": 1114,
+            "members_by_dataset": [
+              {
+                "dataset": "discovery",
+                "sample_count": 382,
+                "observed_sample_count": 349
+              },
+              {
+                "dataset": "observation",
+                "sample_count": 365,
+                "observed_sample_count": 338
+              },
+              {
+                "dataset": "validation",
+                "sample_count": 367,
+                "observed_sample_count": 339
+              }
+            ]
+          },
           "reference": {
-            "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+            "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1006,10 +1062,36 @@
             }
           }
         },
-        "mr_8664f1fa21c9c7ac8a92": {
+        "mr_ad799e0c85ff11828d91": {
           "kind": "development_cell",
+          "region": {
+            "x_bin": "b1",
+            "y_bin": "b0"
+          },
+          "member_check": {
+            "verified": true,
+            "scope": "all supplied rows; exact sample_id membership",
+            "member_count": 1123,
+            "members_by_dataset": [
+              {
+                "dataset": "discovery",
+                "sample_count": 385,
+                "observed_sample_count": 356
+              },
+              {
+                "dataset": "observation",
+                "sample_count": 345,
+                "observed_sample_count": 313
+              },
+              {
+                "dataset": "validation",
+                "sample_count": 393,
+                "observed_sample_count": 358
+              }
+            ]
+          },
           "reference": {
-            "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+            "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1024,10 +1106,36 @@
             }
           }
         },
-        "mr_adcb27865a5ad7dbe5ef": {
+        "mr_c67ebed12b349c6732e7": {
           "kind": "development_cell",
+          "region": {
+            "x_bin": "b3",
+            "y_bin": "b3"
+          },
+          "member_check": {
+            "verified": true,
+            "scope": "all supplied rows; exact sample_id membership",
+            "member_count": 1105,
+            "members_by_dataset": [
+              {
+                "dataset": "discovery",
+                "sample_count": 337,
+                "observed_sample_count": 307
+              },
+              {
+                "dataset": "observation",
+                "sample_count": 374,
+                "observed_sample_count": 344
+              },
+              {
+                "dataset": "validation",
+                "sample_count": 394,
+                "observed_sample_count": 372
+              }
+            ]
+          },
           "reference": {
-            "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+            "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1106,7 +1214,7 @@
     {
       "question": "生产规格实际保留多少候选？",
       "reference": {
-        "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+        "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
         "table": "summary",
         "query": {
           "offset": 0,
@@ -1131,7 +1239,7 @@
     {
       "question": "每个候选保留或拒绝的原因是什么？",
       "reference": {
-        "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+        "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
         "table": "candidates",
         "query": {
           "offset": 0,
@@ -1144,8 +1252,8 @@
       "next_offset": null,
       "rows": [
         {
-          "rule_id": "mr_cb714e09ca8c064f8185",
-          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_7bdb03abe2bdaf07f897",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "sources": "cross_discovery",
           "distinct_source_count": 1,
           "exact_duplicate_count": 0,
@@ -1160,17 +1268,17 @@
           "source_position": 1,
           "budget_position": 1,
           "budget_strategy": "seed_then_round_robin",
-          "q_value": 4.615813933430166e-54,
-          "lift_ci_lower": 2.97607241221415,
-          "lift_ci_upper": 3.550170066569011,
+          "q_value": 1.3086822895664254e-55,
+          "lift_ci_lower": 3.0350820550201916,
+          "lift_ci_upper": 3.614024477046496,
           "temporal_assessed": true,
           "temporal_passed": true,
           "time_slice_count": 3,
           "time_slice_pass_rate": 1.0
         },
         {
-          "rule_id": "mr_20fa26e2262d26742d78",
-          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_17ee9fe9490cfed4c8c6",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "sources": "cross_discovery",
           "distinct_source_count": 1,
           "exact_duplicate_count": 0,
@@ -1185,17 +1293,17 @@
           "source_position": 2,
           "budget_position": 2,
           "budget_strategy": "seed_then_round_robin",
-          "q_value": 1.512109494013924e-29,
-          "lift_ci_lower": 2.268117517598033,
-          "lift_ci_upper": 2.8127985034468894,
+          "q_value": 2.846919799698625e-29,
+          "lift_ci_lower": 2.273372818285476,
+          "lift_ci_upper": 2.8230855111984074,
           "temporal_assessed": true,
           "temporal_passed": true,
           "time_slice_count": 3,
           "time_slice_pass_rate": 1.0
         },
         {
-          "rule_id": "mr_8664f1fa21c9c7ac8a92",
-          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 432.41255966198844) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_ad799e0c85ff11828d91",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 432.41255966198844) AND \"aux_score\" >= -1.7976931348623157e+308) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "sources": "cross_discovery",
           "distinct_source_count": 1,
           "exact_duplicate_count": 0,
@@ -1219,8 +1327,8 @@
           "time_slice_pass_rate": null
         },
         {
-          "rule_id": "mr_adcb27865a5ad7dbe5ef",
-          "expression": "(((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" > 653.7750315986514) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_c67ebed12b349c6732e7",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 1.7976931348623157e+308) AND \"main_score\" > 653.7750315986514) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "sources": "cross_discovery",
           "distinct_source_count": 1,
           "exact_duplicate_count": 0,
@@ -1235,9 +1343,9 @@
           "source_position": 4,
           "budget_position": 4,
           "budget_strategy": "seed_then_round_robin",
-          "q_value": 1.9664191925210193e-09,
-          "lift_ci_lower": 1.5049490673920247,
-          "lift_ci_upper": 1.9819117766381364,
+          "q_value": 1.4198390338725016e-09,
+          "lift_ci_lower": 1.5132246506341027,
+          "lift_ci_upper": 1.992247398407267,
           "temporal_assessed": true,
           "temporal_passed": false,
           "time_slice_count": 3,
@@ -1273,7 +1381,7 @@
     {
       "question": "独立验证主目标的覆盖和风险是什么？",
       "reference": {
-        "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+        "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
         "table": "evaluation",
         "query": {
           "offset": 0,
@@ -1292,94 +1400,94 @@
       "rows": [
         {
           "dataset": "validation",
-          "rule_id": "mr_cb714e09ca8c064f8185",
+          "rule_id": "mr_7bdb03abe2bdaf07f897",
           "target": "bad30",
           "slice": "__overall__",
           "group": "hit",
-          "sample_count": 322,
+          "sample_count": 316,
           "event_count": 167,
-          "coverage": 0.058007566204287514,
-          "event_rate": 0.5186335403726708,
-          "lift": 3.2640983929803804,
-          "amount_total": 5276321.036114124,
-          "event_amount": 2722210.0431449604,
-          "amount_coverage": 0.05958380927934762,
-          "amount_event_rate": 0.5159295699622173,
-          "amount_lift": 3.1984936558105916,
-          "customer_count": 322,
+          "coverage": 0.05692667987749955,
+          "event_rate": 0.5284810126582279,
+          "lift": 3.3260749447458307,
+          "amount_total": 5195547.6394781,
+          "event_amount": 2722210.043144961,
+          "amount_coverage": 0.0586716610936962,
+          "amount_event_rate": 0.5239505499786756,
+          "amount_lift": 3.2482195393219886,
+          "customer_count": 316,
           "event_customer_count": 167,
-          "customer_coverage": 0.058007566204287514,
-          "customer_event_rate": 0.5186335403726708,
-          "customer_lift": 3.2640983929803804,
-          "event_rate_ci_lower": 0.47286900875029375,
-          "event_rate_ci_upper": 0.5640875515607761,
-          "lift_ci_lower": 2.97607241221415,
-          "lift_ci_upper": 3.550170066569011,
-          "p_value": 1.538604644476722e-54,
-          "q_value": 4.615813933430166e-54
+          "customer_coverage": 0.05692667987749955,
+          "customer_event_rate": 0.5284810126582279,
+          "customer_lift": 3.3260749447458307,
+          "event_rate_ci_lower": 0.4822450680107745,
+          "event_rate_ci_upper": 0.5742333973617384,
+          "lift_ci_lower": 3.0350820550201916,
+          "lift_ci_upper": 3.614024477046496,
+          "p_value": 4.362274298554751e-56,
+          "q_value": 1.3086822895664254e-55
         },
         {
           "dataset": "validation",
-          "rule_id": "mr_20fa26e2262d26742d78",
+          "rule_id": "mr_17ee9fe9490cfed4c8c6",
           "target": "bad30",
           "slice": "__overall__",
           "group": "hit",
-          "sample_count": 345,
-          "event_count": 139,
-          "coverage": 0.06215096379030805,
-          "event_rate": 0.4028985507246377,
-          "lift": 2.5357027835288704,
-          "amount_total": 5599237.991291957,
-          "event_amount": 2330073.762254959,
-          "amount_coverage": 0.06323040738031419,
-          "amount_event_rate": 0.4161412259808807,
-          "amount_lift": 2.579858082797159,
-          "customer_count": 345,
-          "event_customer_count": 139,
-          "customer_coverage": 0.06215096379030805,
-          "customer_event_rate": 0.4028985507246377,
-          "customer_lift": 2.5357027835288704,
-          "event_rate_ci_lower": 0.3603818502110368,
-          "event_rate_ci_upper": 0.44692637003065333,
-          "lift_ci_lower": 2.268117517598033,
-          "lift_ci_upper": 2.8127985034468894,
-          "p_value": 1.0080729960092828e-29,
-          "q_value": 1.512109494013924e-29
+          "sample_count": 339,
+          "event_count": 137,
+          "coverage": 0.061070077463520084,
+          "event_rate": 0.40412979351032446,
+          "lift": 2.543451795664185,
+          "amount_total": 5512696.9240444265,
+          "event_amount": 2316168.9731552755,
+          "amount_coverage": 0.0622531267314654,
+          "amount_event_rate": 0.42015169799249596,
+          "amount_lift": 2.6047209129832587,
+          "customer_count": 339,
+          "event_customer_count": 137,
+          "customer_coverage": 0.061070077463520084,
+          "customer_event_rate": 0.40412979351032446,
+          "customer_lift": 2.543451795664185,
+          "event_rate_ci_lower": 0.36121686646150064,
+          "event_rate_ci_upper": 0.44856087567591346,
+          "lift_ci_lower": 2.273372818285476,
+          "lift_ci_upper": 2.8230855111984074,
+          "p_value": 1.8979465331324166e-29,
+          "q_value": 2.846919799698625e-29
         },
         {
           "dataset": "validation",
-          "rule_id": "mr_adcb27865a5ad7dbe5ef",
+          "rule_id": "mr_c67ebed12b349c6732e7",
           "target": "bad30",
           "slice": "__overall__",
           "group": "hit",
-          "sample_count": 374,
+          "sample_count": 372,
           "event_count": 103,
-          "coverage": 0.06737524770311655,
-          "event_rate": 0.27540106951871657,
-          "lift": 1.7332781597487479,
-          "amount_total": 5790362.738086015,
-          "event_amount": 1599392.987598401,
-          "amount_coverage": 0.06538871813957149,
-          "amount_event_rate": 0.2762163719171547,
-          "amount_lift": 1.712397126748787,
-          "customer_count": 374,
+          "coverage": 0.0670149522608539,
+          "event_rate": 0.2768817204301075,
+          "lift": 1.7425968595323431,
+          "amount_total": 5761686.391226349,
+          "event_amount": 1599392.9875984006,
+          "amount_coverage": 0.06506488530786549,
+          "amount_event_rate": 0.2775911215913952,
+          "amount_lift": 1.7209198561432437,
+          "customer_count": 372,
           "event_customer_count": 103,
-          "customer_coverage": 0.06737524770311655,
-          "customer_event_rate": 0.27540106951871657,
-          "customer_lift": 1.7332781597487479,
-          "event_rate_ci_lower": 0.23912179381008214,
-          "event_rate_ci_upper": 0.3149065370194265,
-          "lift_ci_lower": 1.5049490673920247,
-          "lift_ci_upper": 1.9819117766381364,
-          "p_value": 1.9664191925210193e-09,
-          "q_value": 1.9664191925210193e-09
+          "customer_coverage": 0.0670149522608539,
+          "customer_event_rate": 0.2768817204301075,
+          "customer_lift": 1.7425968595323431,
+          "event_rate_ci_lower": 0.24043670363164812,
+          "event_rate_ci_upper": 0.31654876696004497,
+          "lift_ci_lower": 1.5132246506341027,
+          "lift_ci_upper": 1.992247398407267,
+          "p_value": 1.4198390338725016e-09,
+          "q_value": 1.4198390338725016e-09
         }
       ]
     },
     {
       "question": "可审查规则的条件和身份是什么？",
       "reference": {
-        "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+        "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
         "table": "rules",
         "query": {
           "offset": 0,
@@ -1392,8 +1500,8 @@
       "next_offset": null,
       "rows": [
         {
-          "rule_id": "mr_cb714e09ca8c064f8185",
-          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_7bdb03abe2bdaf07f897",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "rank": 1,
           "source": "cross_discovery",
           "labels": [],
@@ -1402,8 +1510,8 @@
           "selection_round": null
         },
         {
-          "rule_id": "mr_20fa26e2262d26742d78",
-          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+          "rule_id": "mr_17ee9fe9490cfed4c8c6",
+          "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
           "rank": 2,
           "source": "cross_discovery",
           "labels": [],
@@ -1427,8 +1535,8 @@
     ],
     "candidates": [
       {
-        "rule_id": "mr_cb714e09ca8c064f8185",
-        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+        "rule_id": "mr_7bdb03abe2bdaf07f897",
+        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
         "sources": "cross_discovery",
         "distinct_source_count": 1,
         "exact_duplicate_count": 0,
@@ -1443,17 +1551,17 @@
         "source_position": 1,
         "budget_position": 1,
         "budget_strategy": "seed_then_round_robin",
-        "q_value": 4.615813933430166e-54,
-        "lift_ci_lower": 2.97607241221415,
-        "lift_ci_upper": 3.550170066569011,
+        "q_value": 1.3086822895664254e-55,
+        "lift_ci_lower": 3.0350820550201916,
+        "lift_ci_upper": 3.614024477046496,
         "temporal_assessed": true,
         "temporal_passed": true,
         "time_slice_count": 3,
         "time_slice_pass_rate": 1.0
       },
       {
-        "rule_id": "mr_20fa26e2262d26742d78",
-        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+        "rule_id": "mr_17ee9fe9490cfed4c8c6",
+        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
         "sources": "cross_discovery",
         "distinct_source_count": 1,
         "exact_duplicate_count": 0,
@@ -1468,17 +1576,17 @@
         "source_position": 2,
         "budget_position": 2,
         "budget_strategy": "seed_then_round_robin",
-        "q_value": 1.512109494013924e-29,
-        "lift_ci_lower": 2.268117517598033,
-        "lift_ci_upper": 2.8127985034468894,
+        "q_value": 2.846919799698625e-29,
+        "lift_ci_lower": 2.273372818285476,
+        "lift_ci_upper": 2.8230855111984074,
         "temporal_assessed": true,
         "temporal_passed": true,
         "time_slice_count": 3,
         "time_slice_pass_rate": 1.0
       },
       {
-        "rule_id": "mr_8664f1fa21c9c7ac8a92",
-        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 432.41255966198844) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+        "rule_id": "mr_ad799e0c85ff11828d91",
+        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 432.41255966198844) AND \"aux_score\" >= -1.7976931348623157e+308) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
         "sources": "cross_discovery",
         "distinct_source_count": 1,
         "exact_duplicate_count": 0,
@@ -1502,8 +1610,8 @@
         "time_slice_pass_rate": null
       },
       {
-        "rule_id": "mr_adcb27865a5ad7dbe5ef",
-        "expression": "(((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" > 653.7750315986514) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+        "rule_id": "mr_c67ebed12b349c6732e7",
+        "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" <= 1.7976931348623157e+308) AND \"aux_score\" > 567.1738809810513) AND \"main_score\" <= 1.7976931348623157e+308) AND \"main_score\" > 653.7750315986514) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
         "sources": "cross_discovery",
         "distinct_source_count": 1,
         "exact_duplicate_count": 0,
@@ -1518,9 +1626,9 @@
         "source_position": 4,
         "budget_position": 4,
         "budget_strategy": "seed_then_round_robin",
-        "q_value": 1.9664191925210193e-09,
-        "lift_ci_lower": 1.5049490673920247,
-        "lift_ci_upper": 1.9819117766381364,
+        "q_value": 1.4198390338725016e-09,
+        "lift_ci_lower": 1.5132246506341027,
+        "lift_ci_upper": 1.992247398407267,
         "temporal_assessed": true,
         "temporal_passed": false,
         "time_slice_count": 3,
@@ -1555,92 +1663,2224 @@
     "validation": [
       {
         "dataset": "validation",
-        "rule_id": "mr_cb714e09ca8c064f8185",
+        "rule_id": "mr_7bdb03abe2bdaf07f897",
         "target": "bad30",
         "slice": "__overall__",
         "group": "hit",
-        "sample_count": 322,
+        "sample_count": 316,
         "event_count": 167,
-        "coverage": 0.058007566204287514,
-        "event_rate": 0.5186335403726708,
-        "lift": 3.2640983929803804,
-        "amount_total": 5276321.036114124,
-        "event_amount": 2722210.0431449604,
-        "amount_coverage": 0.05958380927934762,
-        "amount_event_rate": 0.5159295699622173,
-        "amount_lift": 3.1984936558105916,
-        "customer_count": 322,
+        "coverage": 0.05692667987749955,
+        "event_rate": 0.5284810126582279,
+        "lift": 3.3260749447458307,
+        "amount_total": 5195547.6394781,
+        "event_amount": 2722210.043144961,
+        "amount_coverage": 0.0586716610936962,
+        "amount_event_rate": 0.5239505499786756,
+        "amount_lift": 3.2482195393219886,
+        "customer_count": 316,
         "event_customer_count": 167,
-        "customer_coverage": 0.058007566204287514,
-        "customer_event_rate": 0.5186335403726708,
-        "customer_lift": 3.2640983929803804,
-        "event_rate_ci_lower": 0.47286900875029375,
-        "event_rate_ci_upper": 0.5640875515607761,
-        "lift_ci_lower": 2.97607241221415,
-        "lift_ci_upper": 3.550170066569011,
-        "p_value": 1.538604644476722e-54,
-        "q_value": 4.615813933430166e-54
+        "customer_coverage": 0.05692667987749955,
+        "customer_event_rate": 0.5284810126582279,
+        "customer_lift": 3.3260749447458307,
+        "event_rate_ci_lower": 0.4822450680107745,
+        "event_rate_ci_upper": 0.5742333973617384,
+        "lift_ci_lower": 3.0350820550201916,
+        "lift_ci_upper": 3.614024477046496,
+        "p_value": 4.362274298554751e-56,
+        "q_value": 1.3086822895664254e-55
       },
       {
         "dataset": "validation",
-        "rule_id": "mr_20fa26e2262d26742d78",
+        "rule_id": "mr_17ee9fe9490cfed4c8c6",
         "target": "bad30",
         "slice": "__overall__",
         "group": "hit",
-        "sample_count": 345,
-        "event_count": 139,
-        "coverage": 0.06215096379030805,
-        "event_rate": 0.4028985507246377,
-        "lift": 2.5357027835288704,
-        "amount_total": 5599237.991291957,
-        "event_amount": 2330073.762254959,
-        "amount_coverage": 0.06323040738031419,
-        "amount_event_rate": 0.4161412259808807,
-        "amount_lift": 2.579858082797159,
-        "customer_count": 345,
-        "event_customer_count": 139,
-        "customer_coverage": 0.06215096379030805,
-        "customer_event_rate": 0.4028985507246377,
-        "customer_lift": 2.5357027835288704,
-        "event_rate_ci_lower": 0.3603818502110368,
-        "event_rate_ci_upper": 0.44692637003065333,
-        "lift_ci_lower": 2.268117517598033,
-        "lift_ci_upper": 2.8127985034468894,
-        "p_value": 1.0080729960092828e-29,
-        "q_value": 1.512109494013924e-29
+        "sample_count": 339,
+        "event_count": 137,
+        "coverage": 0.061070077463520084,
+        "event_rate": 0.40412979351032446,
+        "lift": 2.543451795664185,
+        "amount_total": 5512696.9240444265,
+        "event_amount": 2316168.9731552755,
+        "amount_coverage": 0.0622531267314654,
+        "amount_event_rate": 0.42015169799249596,
+        "amount_lift": 2.6047209129832587,
+        "customer_count": 339,
+        "event_customer_count": 137,
+        "customer_coverage": 0.061070077463520084,
+        "customer_event_rate": 0.40412979351032446,
+        "customer_lift": 2.543451795664185,
+        "event_rate_ci_lower": 0.36121686646150064,
+        "event_rate_ci_upper": 0.44856087567591346,
+        "lift_ci_lower": 2.273372818285476,
+        "lift_ci_upper": 2.8230855111984074,
+        "p_value": 1.8979465331324166e-29,
+        "q_value": 2.846919799698625e-29
       },
       {
         "dataset": "validation",
-        "rule_id": "mr_adcb27865a5ad7dbe5ef",
+        "rule_id": "mr_c67ebed12b349c6732e7",
         "target": "bad30",
         "slice": "__overall__",
         "group": "hit",
-        "sample_count": 374,
+        "sample_count": 372,
         "event_count": 103,
-        "coverage": 0.06737524770311655,
-        "event_rate": 0.27540106951871657,
-        "lift": 1.7332781597487479,
-        "amount_total": 5790362.738086015,
-        "event_amount": 1599392.987598401,
-        "amount_coverage": 0.06538871813957149,
-        "amount_event_rate": 0.2762163719171547,
-        "amount_lift": 1.712397126748787,
-        "customer_count": 374,
+        "coverage": 0.0670149522608539,
+        "event_rate": 0.2768817204301075,
+        "lift": 1.7425968595323431,
+        "amount_total": 5761686.391226349,
+        "event_amount": 1599392.9875984006,
+        "amount_coverage": 0.06506488530786549,
+        "amount_event_rate": 0.2775911215913952,
+        "amount_lift": 1.7209198561432437,
+        "customer_count": 372,
         "event_customer_count": 103,
-        "customer_coverage": 0.06737524770311655,
-        "customer_event_rate": 0.27540106951871657,
-        "customer_lift": 1.7332781597487479,
-        "event_rate_ci_lower": 0.23912179381008214,
-        "event_rate_ci_upper": 0.3149065370194265,
-        "lift_ci_lower": 1.5049490673920247,
-        "lift_ci_upper": 1.9819117766381364,
-        "p_value": 1.9664191925210193e-09,
-        "q_value": 1.9664191925210193e-09
+        "customer_coverage": 0.0670149522608539,
+        "customer_event_rate": 0.2768817204301075,
+        "customer_lift": 1.7425968595323431,
+        "event_rate_ci_lower": 0.24043670363164812,
+        "event_rate_ci_upper": 0.31654876696004497,
+        "lift_ci_lower": 1.5132246506341027,
+        "lift_ci_upper": 1.992247398407267,
+        "p_value": 1.4198390338725016e-09,
+        "q_value": 1.4198390338725016e-09
       }
     ],
-    "cross_report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "cross_report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
+    "candidate_origins": {
+      "mr_7bdb03abe2bdaf07f897": {
+        "kind": "development_cell",
+        "region": {
+          "x_bin": "b1",
+          "y_bin": "b3"
+        },
+        "member_check": {
+          "verified": true,
+          "scope": "all supplied rows; exact sample_id membership",
+          "member_count": 1128,
+          "members_by_dataset": [
+            {
+              "dataset": "discovery",
+              "sample_count": 385,
+              "observed_sample_count": 348
+            },
+            {
+              "dataset": "observation",
+              "sample_count": 391,
+              "observed_sample_count": 365
+            },
+            {
+              "dataset": "validation",
+              "sample_count": 352,
+              "observed_sample_count": 316
+            }
+          ]
+        },
+        "reference": {
+          "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
+          "table": "cells",
+          "query": {
+            "offset": 0,
+            "limit": 1,
+            "filters": {
+              "group": "discovery",
+              "period": "202601",
+              "target": "bad30",
+              "x_bin": "b1",
+              "y_bin": "b3"
+            }
+          }
+        }
+      },
+      "mr_17ee9fe9490cfed4c8c6": {
+        "kind": "development_cell",
+        "region": {
+          "x_bin": "b2",
+          "y_bin": "b3"
+        },
+        "member_check": {
+          "verified": true,
+          "scope": "all supplied rows; exact sample_id membership",
+          "member_count": 1114,
+          "members_by_dataset": [
+            {
+              "dataset": "discovery",
+              "sample_count": 382,
+              "observed_sample_count": 349
+            },
+            {
+              "dataset": "observation",
+              "sample_count": 365,
+              "observed_sample_count": 338
+            },
+            {
+              "dataset": "validation",
+              "sample_count": 367,
+              "observed_sample_count": 339
+            }
+          ]
+        },
+        "reference": {
+          "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
+          "table": "cells",
+          "query": {
+            "offset": 0,
+            "limit": 1,
+            "filters": {
+              "group": "discovery",
+              "period": "202601",
+              "target": "bad30",
+              "x_bin": "b2",
+              "y_bin": "b3"
+            }
+          }
+        }
+      },
+      "mr_ad799e0c85ff11828d91": {
+        "kind": "development_cell",
+        "region": {
+          "x_bin": "b1",
+          "y_bin": "b0"
+        },
+        "member_check": {
+          "verified": true,
+          "scope": "all supplied rows; exact sample_id membership",
+          "member_count": 1123,
+          "members_by_dataset": [
+            {
+              "dataset": "discovery",
+              "sample_count": 385,
+              "observed_sample_count": 356
+            },
+            {
+              "dataset": "observation",
+              "sample_count": 345,
+              "observed_sample_count": 313
+            },
+            {
+              "dataset": "validation",
+              "sample_count": 393,
+              "observed_sample_count": 358
+            }
+          ]
+        },
+        "reference": {
+          "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
+          "table": "cells",
+          "query": {
+            "offset": 0,
+            "limit": 1,
+            "filters": {
+              "group": "discovery",
+              "period": "202601",
+              "target": "bad30",
+              "x_bin": "b1",
+              "y_bin": "b0"
+            }
+          }
+        }
+      },
+      "mr_c67ebed12b349c6732e7": {
+        "kind": "development_cell",
+        "region": {
+          "x_bin": "b3",
+          "y_bin": "b3"
+        },
+        "member_check": {
+          "verified": true,
+          "scope": "all supplied rows; exact sample_id membership",
+          "member_count": 1105,
+          "members_by_dataset": [
+            {
+              "dataset": "discovery",
+              "sample_count": 337,
+              "observed_sample_count": 307
+            },
+            {
+              "dataset": "observation",
+              "sample_count": 374,
+              "observed_sample_count": 344
+            },
+            {
+              "dataset": "validation",
+              "sample_count": 394,
+              "observed_sample_count": 372
+            }
+          ]
+        },
+        "reference": {
+          "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
+          "table": "cells",
+          "query": {
+            "offset": 0,
+            "limit": 1,
+            "filters": {
+              "group": "discovery",
+              "period": "202601",
+              "target": "bad30",
+              "x_bin": "b3",
+              "y_bin": "b3"
+            }
+          }
+        }
+      },
+      "mr_60edcd64fb81d6441861": {
+        "kind": "sample_insufficiency_check",
+        "cross_reference": null,
+        "limitation": "手工覆盖压力候选，无交叉格子对应，不制造证据链"
+      }
+    },
     "raw_data_saved": false,
-    "rule_status": "Experimental"
+    "rule_status": "Experimental",
+    "automatic_generation": {
+      "report_id": "27994b27-f62b-49be-96ce-ec928600d9e0",
+      "description": {
+        "report_id": "27994b27-f62b-49be-96ce-ec928600d9e0",
+        "report_type": "rule",
+        "format_version": 1,
+        "tables": {
+          "summary": {
+            "rows": 1,
+            "grain": "one mining run (or benchmark summary); no feature-level metrics",
+            "schema_version": 1,
+            "fields": {
+              "status": {
+                "dtype": "String",
+                "unit": "state",
+                "meaning": "summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "candidate_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "候选审计行数；cascade 包含同一 rule_id 在不同轮次的审计，不是去重规则数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "selected_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "最终 RuleSet 中入选规则数；no_rules 为 0",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "validation_status": {
+                "dtype": "String",
+                "unit": "state",
+                "meaning": "independent 或 in_sample；验证样本独立性由调用方保证",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "profile": {
+                "dtype": "String",
+                "unit": "category",
+                "meaning": "实际 explore / production 门禁；报告不改阈值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "qualification": {
+                "dtype": "String",
+                "unit": "state",
+                "meaning": "计算时 RuleSet 资格；快照恢复不会重建部署资格",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_query": "unsupported"
+          },
+          "rules": {
+            "rows": 2,
+            "grain": "final rule_id / selection rank; grades are rule membership, not metrics",
+            "schema_version": 1,
+            "fields": {
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "expression": {
+                "dtype": "String",
+                "unit": "definition",
+                "meaning": "既有 DSL 规范表达式；不执行报告文本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "rank": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "source": {
+                "dtype": "String",
+                "unit": "category",
+                "meaning": "规则生成来源；不是业务特征来源",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "labels": {
+                "dtype": "List(String)",
+                "unit": "unknown",
+                "meaning": "已保存的 labels；未登记业务含义保持 unknown",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "grades": {
+                "dtype": "List(String)",
+                "unit": "category",
+                "meaning": "既有 RuleSet 等级成员列表",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "generation_round": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "候选生成轮次；相同规则在不同轮次的审计不可合并",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "selection_round": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "实际 cascade 入选轮次；未入选为 null",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_relation": {
+              "table": "rule_features",
+              "key": "rule_id",
+              "feature": "feature",
+              "roles": {
+                "rule_id": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次"
+              }
+            },
+            "feature_query": "relation"
+          },
+          "candidates": {
+            "rows": 24,
+            "grain": "candidate rule_id / generation_round when present; generator audit",
+            "schema_version": 1,
+            "fields": {
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "expression": {
+                "dtype": "String",
+                "unit": "definition",
+                "meaning": "既有 DSL 规范表达式；不执行报告文本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "sources": {
+                "dtype": "String",
+                "unit": "category",
+                "meaning": "候选生成器／seed 来源；不是 feature_metadata.data_source",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "distinct_source_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "实际 distinct_source_count 整数计数；粒度见本表 grain",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "exact_duplicate_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "实际 exact_duplicate_count 整数计数；粒度见本表 grain",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "within_candidate_budget": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 within_candidate_budget 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "candidate_filter_passed": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 candidate_filter_passed 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "validation_filter_passed": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 validation_filter_passed 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "iou_filter_passed": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 iou_filter_passed 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "selection_rank": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "实际选择顺序；未入选为 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "status": {
+                "dtype": "String",
+                "unit": "state",
+                "meaning": "summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "rejection_stage": {
+                "dtype": "String",
+                "unit": "state_reason",
+                "meaning": "实际淘汰门禁阶段",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "reason": {
+                "dtype": "String",
+                "unit": "state_reason",
+                "meaning": "真实候选淘汰原因；错误不转换为 no_rules",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "source_position": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "实际 source_position 候选顺序；null 表示不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "budget_position": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "实际 budget_position 候选顺序；null 表示不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "budget_strategy": {
+                "dtype": "String",
+                "unit": "category",
+                "meaning": "已保存的 budget_strategy；未登记业务含义保持 unknown",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "q_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "同数据范围、target、slice、group 候选检验族 BH 校正 q 值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_lower": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_upper": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "temporal_assessed": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 temporal_assessed 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "temporal_passed": {
+                "dtype": "Boolean",
+                "unit": "boolean",
+                "meaning": "实际 temporal_passed 门禁结果；null 表示未执行或不适用",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "time_slice_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "实际 time_slice_count 整数计数；粒度见本表 grain",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "time_slice_pass_rate": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "通过时间切片数 / 已评估时间切片数",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_relation": {
+              "table": "rule_features",
+              "key": "rule_id",
+              "feature": "feature",
+              "roles": {
+                "rule_id": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次"
+              }
+            },
+            "feature_query": "relation"
+          },
+          "evaluation": {
+            "rows": 99,
+            "grain": "dataset / rule_id / target / slice / group (hit, miss, total)",
+            "schema_version": 1,
+            "fields": {
+              "dataset": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "target": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "真实标签列 ID；各 target 独立排除未表现标签",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "slice": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "__overall__ 或 evaluator 实际构造的时间／客群切片值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "group": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "hit / miss / total；此列不是原始客群，客群见 slice",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "sample_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前 target 已表现样本数；group/slice/dataset 定义统计范围",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前范围已表现 label=1 样本数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "coverage": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "event_count / sample_count；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_total": {
+                "dtype": "Null",
+                "unit": "unknown_business_unit",
+                "meaning": "当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_amount": {
+                "dtype": "Null",
+                "unit": "unknown_business_unit",
+                "meaning": "当前范围已表现 label=1 金额和；amount_col 未提供则 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_coverage": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "当前 amount_total / 同范围 base amount_total",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_amount / amount_total；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_lift": {
+                "dtype": "Null",
+                "unit": "dimensionless",
+                "meaning": "amount_event_rate / 同范围 base amount_event_rate",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_count": {
+                "dtype": "Null",
+                "unit": "count",
+                "meaning": "当前已表现范围去重客户数；customer_col 未提供则 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_customer_count": {
+                "dtype": "Null",
+                "unit": "count",
+                "meaning": "当前已表现 label=1 范围去重客户数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_coverage": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "customer_count / 同范围 base customer_count；不可跨规则相加",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_customer_count / customer_count；不可跨规则相加",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_lift": {
+                "dtype": "Null",
+                "unit": "dimensionless",
+                "meaning": "customer_event_rate / 同范围 base customer_event_rate",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate_ci_lower": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "Wilson 事件率区间下界；confidence_level 见实际参数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate_ci_upper": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "Wilson 事件率区间上界；confidence_level 见实际参数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_lower": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_upper": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "p_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "按 direction 的单侧事件富集检验 p 值；方法见 evaluator",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "q_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "同数据范围、target、slice、group 候选检验族 BH 校正 q 值",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_relation": {
+              "table": "rule_features",
+              "key": "rule_id",
+              "feature": "feature",
+              "roles": {
+                "rule_id": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次"
+              }
+            },
+            "feature_query": "relation"
+          },
+          "slices": {
+            "rows": 81,
+            "grain": "dataset / rule_id / target / slice / group; slice encodes supplied time or segment",
+            "schema_version": 1,
+            "fields": {
+              "dataset": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "target": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "真实标签列 ID；各 target 独立排除未表现标签",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "slice": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "__overall__ 或 evaluator 实际构造的时间／客群切片值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "group": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "hit / miss / total；此列不是原始客群，客群见 slice",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "sample_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前 target 已表现样本数；group/slice/dataset 定义统计范围",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前范围已表现 label=1 样本数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "coverage": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "event_count / sample_count；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_total": {
+                "dtype": "Null",
+                "unit": "unknown_business_unit",
+                "meaning": "当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_amount": {
+                "dtype": "Null",
+                "unit": "unknown_business_unit",
+                "meaning": "当前范围已表现 label=1 金额和；amount_col 未提供则 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_coverage": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "当前 amount_total / 同范围 base amount_total",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_amount / amount_total；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_lift": {
+                "dtype": "Null",
+                "unit": "dimensionless",
+                "meaning": "amount_event_rate / 同范围 base amount_event_rate",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_count": {
+                "dtype": "Null",
+                "unit": "count",
+                "meaning": "当前已表现范围去重客户数；customer_col 未提供则 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_customer_count": {
+                "dtype": "Null",
+                "unit": "count",
+                "meaning": "当前已表现 label=1 范围去重客户数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_coverage": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "customer_count / 同范围 base customer_count；不可跨规则相加",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_customer_count / customer_count；不可跨规则相加",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_lift": {
+                "dtype": "Null",
+                "unit": "dimensionless",
+                "meaning": "customer_event_rate / 同范围 base customer_event_rate",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate_ci_lower": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "Wilson 事件率区间下界；confidence_level 见实际参数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate_ci_upper": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "Wilson 事件率区间上界；confidence_level 见实际参数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_lower": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_upper": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "p_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "按 direction 的单侧事件富集检验 p 值；方法见 evaluator",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "q_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "同数据范围、target、slice、group 候选检验族 BH 校正 q 值",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_relation": {
+              "table": "rule_features",
+              "key": "rule_id",
+              "feature": "feature",
+              "roles": {
+                "rule_id": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次"
+              }
+            },
+            "feature_query": "relation"
+          },
+          "rule_explanations": {
+            "rows": 2,
+            "grain": "final rule_id / rank / dataset / target / slice / group",
+            "schema_version": 1,
+            "fields": {
+              "rank": {
+                "dtype": "Int64",
+                "unit": "ordinal",
+                "meaning": "最终规则集的 1 起始顺序；cumulative 使用此前全部规则的并集",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "dataset": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "实际保存的 train/validation/in_sample 范围；不推断未保存的逐轮剩余样本统计",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "target": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "真实标签列 ID；各 target 独立排除未表现标签",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "slice": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "__overall__ 或 evaluator 实际构造的时间／客群切片值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "group": {
+                "dtype": "String",
+                "unit": "dimension",
+                "meaning": "hit / miss / total；此列不是原始客群，客群见 slice",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "expression": {
+                "dtype": "String",
+                "unit": "definition",
+                "meaning": "既有 DSL 规范表达式；不执行报告文本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "source": {
+                "dtype": "String",
+                "unit": "category",
+                "meaning": "规则生成来源；不是业务特征来源",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "complexity": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "实际 complexity 整数计数；粒度见本表 grain",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "sample_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前 target 已表现样本数；group/slice/dataset 定义统计范围",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_count": {
+                "dtype": "Int64",
+                "unit": "count",
+                "meaning": "当前范围已表现 label=1 样本数",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "coverage": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "当前范围 sample_count / 同 dataset、target、slice 的 base sample_count；只含已表现样本",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "event_rate": {
+                "dtype": "Float64",
+                "unit": "ratio",
+                "meaning": "event_count / sample_count；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "event_rate / 同 dataset、target、slice 的 base event_rate；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_lower": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率下界 / 同范围总体事件率；保守 Lift 下界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "lift_ci_upper": {
+                "dtype": "Float64",
+                "unit": "dimensionless",
+                "meaning": "规则 Wilson 事件率上界 / 同范围总体事件率；保守 Lift 上界",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "p_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "按 direction 的单侧事件富集检验 p 值；方法见 evaluator",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "q_value": {
+                "dtype": "Float64",
+                "unit": "probability",
+                "meaning": "同数据范围、target、slice、group 候选检验族 BH 校正 q 值",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "qualification": {
+                "dtype": "String",
+                "unit": "state",
+                "meaning": "计算时 RuleSet 资格；快照恢复不会重建部署资格",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_total": {
+                "dtype": "Null",
+                "unit": "unknown_business_unit",
+                "meaning": "当前范围已表现样本金金额和；amount_col 未提供则 null；币种见 business_context",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "amount_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_amount / amount_total；零分母 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_count": {
+                "dtype": "Null",
+                "unit": "count",
+                "meaning": "当前已表现范围去重客户数；customer_col 未提供则 null",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "customer_event_rate": {
+                "dtype": "Null",
+                "unit": "ratio",
+                "meaning": "event_customer_count / customer_count；不可跨规则相加",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "explanation": {
+                "dtype": "String",
+                "unit": "text",
+                "meaning": "当前行所引用验证范围的中文说明；缺指标显示 N/A",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "state": "computed",
+            "feature_relation": {
+              "table": "rule_features",
+              "key": "rule_id",
+              "feature": "feature",
+              "roles": {
+                "rule_id": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次"
+              }
+            },
+            "feature_query": "relation"
+          },
+          "rule_features": {
+            "rows": 40,
+            "grain": "distinct rule_id / English feature; includes rejected candidates",
+            "schema_version": 1,
+            "fields": {
+              "rule_id": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "规范 DSL 的稳定哈希 ID；同 ID 可出现在不同 dataset、target 或轮次",
+                "null": "unavailable; inspect status and report parameters"
+              },
+              "feature": {
+                "dtype": "String",
+                "unit": "identifier",
+                "meaning": "AST 提取的英文输入特征 ID；中文名不替代此身份",
+                "null": "unavailable; inspect status and report parameters"
+              }
+            },
+            "feature_roles": {
+              "feature": "feature"
+            },
+            "state": "computed",
+            "feature_query": "direct"
+          }
+        },
+        "parameters": {
+          "mars_version": "0.0.28",
+          "source_project": "deimos-rule",
+          "source_commit": "e6714c5e795054e44f0c58ad7097668b4117b4a2",
+          "target": "bad30",
+          "aux_targets": [],
+          "features": [
+            "main_score",
+            "aux_score"
+          ],
+          "validation_status": "independent",
+          "profile": "production",
+          "qualification": "temporally_validated",
+          "group_col": null,
+          "time_col": "application_date",
+          "time_grain": "month",
+          "amount_col": null,
+          "customer_col": null,
+          "generation_errors": [],
+          "generator_diagnostics": [],
+          "generators": [
+            "MarsCombinationRuleGenerator"
+          ],
+          "elapsed_seconds": 0.05687456500163535,
+          "resolved_spec": {
+            "profile": "production",
+            "direction": "high_risk",
+            "candidate_filter": {
+              "conditions": [
+                {
+                  "metric": "lift",
+                  "operator": ">=",
+                  "value": 1.2
+                },
+                {
+                  "metric": "event_count",
+                  "operator": ">=",
+                  "value": 3.0
+                },
+                {
+                  "metric": "coverage",
+                  "operator": ">=",
+                  "value": 0.01
+                },
+                {
+                  "metric": "coverage",
+                  "operator": "<=",
+                  "value": 0.5
+                }
+              ],
+              "targets": "primary",
+              "target_scope": "all",
+              "slice_pass_rate": null
+            },
+            "validation_filter": {
+              "conditions": [
+                {
+                  "metric": "lift",
+                  "operator": ">=",
+                  "value": 2.0
+                },
+                {
+                  "metric": "event_count",
+                  "operator": ">=",
+                  "value": 3.0
+                },
+                {
+                  "metric": "coverage",
+                  "operator": ">=",
+                  "value": 0.01
+                },
+                {
+                  "metric": "coverage",
+                  "operator": "<=",
+                  "value": 0.5
+                }
+              ],
+              "targets": "primary",
+              "target_scope": "all",
+              "slice_pass_rate": 0.8
+            },
+            "grade_filters": {},
+            "selection_strategy": "ranked",
+            "top_k": 5,
+            "max_candidates": 24,
+            "iou_threshold": 0.3,
+            "batch_size": 100,
+            "iou_batch_size": 512,
+            "max_rounds": 10,
+            "random_state": 42,
+            "on_generator_error": "raise",
+            "confidence_level": 0.95,
+            "max_fdr": 0.05,
+            "min_time_slices": 3
+          },
+          "validation_summary": {
+            "profile": "production",
+            "qualification": "temporally_validated",
+            "validation_status": "independent",
+            "confidence_level": 0.95,
+            "max_fdr": 0.05,
+            "min_time_slices": 3,
+            "selected_count": 2,
+            "temporal_assessed": true,
+            "minimum_time_slice_count": 3,
+            "minimum_time_slice_pass_rate": 1.0
+          },
+          "slice_definition": {
+            "kind": "time",
+            "column": "application_date",
+            "group_precedes_time": true,
+            "overall_value": "__overall__"
+          },
+          "analysis_states": {
+            "slices": "computed",
+            "interactions": "not_computed",
+            "cumulative": "not_computed",
+            "bootstrap": "not_computed"
+          },
+          "advanced_analysis": null
+        },
+        "feature_metadata": {
+          "main_score": {
+            "display_name": "主模型分",
+            "data_source": "champion",
+            "description": "模拟固定分，高分低风险",
+            "unit": "score_points"
+          },
+          "aux_score": {
+            "display_name": "辅助模型分",
+            "data_source": "challenger",
+            "description": "模拟固定分，高分高风险",
+            "unit": "score_points"
+          }
+        },
+        "business_context": {
+          "dataset_id": "synthetic-consumer-credit-20261001",
+          "sample_unit": "one synthetic application; unique sample_id",
+          "label_definition": "unknown",
+          "observation_window": "unknown",
+          "simulated": true,
+          "sample_count": 18000,
+          "seed": 20261001,
+          "currency": "CNY",
+          "labels": {
+            "bad30": {
+              "definition": "模拟30日违约",
+              "performance_window": "30天"
+            },
+            "late60": {
+              "definition": "模拟60日逾期",
+              "performance_window": "60天"
+            }
+          },
+          "splits": {
+            "discovery": "1–3月；参考分箱与候选发现",
+            "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+            "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
+          },
+          "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
+          "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+          "score_directions": {
+            "main_score": "lower_risk",
+            "aux_score": "higher_risk"
+          },
+          "binning_origin": "discovery only; frozen definitions",
+          "candidate_origin": "MarsCombinationRuleGenerator; no hand-written seeds",
+          "score_domain": "finite main_score/aux_score; aux_score != -999",
+          "excluded_input_rows": 354
+        },
+        "source": {
+          "dataset_id": "synthetic-consumer-credit-20261001",
+          "computation": "rule",
+          "producer": "mars.rule.MarsRuleReport",
+          "mars_version": "0.0.28",
+          "origin_project": "deimos-rule"
+        },
+        "public_functions": [],
+        "saved_operations": "public functions accept load_report ReportSnapshot; no source samples or fitted objects required",
+        "operations": [
+          "describe",
+          "get_table",
+          "query_page",
+          "get_feature",
+          "search_features",
+          "to_ai_context",
+          "save",
+          "show_table",
+          "write_excel",
+          "write_html"
+        ],
+        "limitations": [
+          "Only saved aggregate evidence; no causal or deployment conclusion.",
+          "Null is unavailable, not numeric zero. See status and denominators.",
+          "Feature matching uses rule membership union; features AND sources may match different features of the same rule. sources is business data_source, not candidate generators.",
+          "summary and benchmark do not support features/sources queries. Advanced analysis scope is advanced_analysis; no dataset identity is inferred for supplied analysis samples.",
+          "Absent analyses are not computed; present zero-row tables are computed_empty unless explicitly not_computed. Null may be undefined or unconfigured; inspect parameters and denominators.",
+          "Snapshot is aggregate evidence, not RuleSet JSON, transform capability or deployment permission. No original samples or models are saved."
+        ],
+        "maturity": "Experimental",
+        "default_ai_queries": {
+          "summary": {
+            "limit": 1
+          },
+          "rule_explanations": {
+            "limit": 3,
+            "columns": [
+              "rank",
+              "rule_id",
+              "dataset",
+              "target",
+              "slice",
+              "group",
+              "sample_count",
+              "event_count",
+              "event_rate",
+              "lift"
+            ]
+          }
+        }
+      },
+      "candidate_budget": 24,
+      "raw_input_rows": 18000,
+      "eligible_rows": 17646,
+      "excluded_rows": 354,
+      "queries": [
+        {
+          "question": "自动生成器实际生成与保留多少候选？",
+          "reference": {
+            "report_id": "27994b27-f62b-49be-96ce-ec928600d9e0",
+            "table": "summary",
+            "query": {
+              "offset": 0,
+              "limit": 1
+            }
+          },
+          "total_rows": 1,
+          "returned_rows": 1,
+          "omitted_rows": 0,
+          "next_offset": null,
+          "rows": [
+            {
+              "status": "success",
+              "candidate_count": 24,
+              "selected_count": 2,
+              "validation_status": "independent",
+              "profile": "production",
+              "qualification": "temporally_validated"
+            }
+          ]
+        },
+        {
+          "question": "自动生成来源与实际过滤原因是什么？",
+          "reference": {
+            "report_id": "27994b27-f62b-49be-96ce-ec928600d9e0",
+            "table": "candidates",
+            "query": {
+              "offset": 0,
+              "limit": 24
+            }
+          },
+          "total_rows": 24,
+          "returned_rows": 24,
+          "omitted_rows": 0,
+          "next_offset": null,
+          "rows": [
+            {
+              "rule_id": "mr_0214f95862552440fd04",
+              "expression": "\"aux_score\" > 566.9666802981787",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": true,
+              "iou_filter_passed": true,
+              "selection_rank": 2,
+              "status": "selected",
+              "rejection_stage": null,
+              "reason": null,
+              "source_position": 1,
+              "budget_position": 1,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 2.2644233055097865e-243,
+              "lift_ci_lower": 2.8032504435340115,
+              "lift_ci_upper": 3.083881691536432,
+              "temporal_assessed": true,
+              "temporal_passed": true,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 1.0
+            },
+            {
+              "rule_id": "mr_ff2767aab5af961a34b3",
+              "expression": "\"aux_score\" <= 432.41255966198844",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 2,
+              "budget_position": 2,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_e2167a201688b3d36625",
+              "expression": "\"aux_score\" > 498.64449515204456",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 3,
+              "budget_position": 3,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 1.1410102337839846e-188,
+              "lift_ci_lower": 1.7552950289947131,
+              "lift_ci_upper": 1.9353786288799812,
+              "temporal_assessed": true,
+              "temporal_passed": false,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 0.0
+            },
+            {
+              "rule_id": "mr_216081df410df1c73efd",
+              "expression": "\"aux_score\" <= 498.64449515204456",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 4,
+              "budget_position": 4,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_bc11fe717dbcd7f9f34b",
+              "expression": "\"aux_score\" <= 566.9666802981787",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 5,
+              "budget_position": 5,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_3b06baaef352932f3ca8",
+              "expression": "\"main_score\" <= 546.0358265810573",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 6,
+              "budget_position": 6,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 8.826050021631576e-33,
+              "lift_ci_lower": 1.5692032921515497,
+              "lift_ci_upper": 1.8232531726508443,
+              "temporal_assessed": true,
+              "temporal_passed": false,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 0.0
+            },
+            {
+              "rule_id": "mr_7a0ddb55f7ffcfc6062e",
+              "expression": "\"main_score\" > 653.837199628332",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 7,
+              "budget_position": 7,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_72369b55c69e5a1f06a8",
+              "expression": "\"main_score\" > 601.2217664971522",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 8,
+              "budget_position": 8,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_d48029eb855c13c01fa9",
+              "expression": "(\"aux_score\" > 566.9666802981787 AND \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": true,
+              "iou_filter_passed": true,
+              "selection_rank": 1,
+              "status": "selected",
+              "rejection_stage": null,
+              "reason": null,
+              "source_position": 9,
+              "budget_position": 9,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 7.025909150678637e-112,
+              "lift_ci_lower": 4.067234786730938,
+              "lift_ci_upper": 4.595146807418028,
+              "temporal_assessed": true,
+              "temporal_passed": true,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 1.0
+            },
+            {
+              "rule_id": "mr_02dfdb0aab18c86f846f",
+              "expression": "(\"aux_score\" > 566.9666802981787 OR \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 10,
+              "budget_position": 10,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 1.8587554625481415e-196,
+              "lift_ci_lower": 1.9477781870379995,
+              "lift_ci_upper": 2.148637532126781,
+              "temporal_assessed": true,
+              "temporal_passed": false,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 0.3333333333333333
+            },
+            {
+              "rule_id": "mr_3aa0cd4863817a744beb",
+              "expression": "(\"aux_score\" > 566.9666802981787 AND \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 11,
+              "budget_position": 11,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 1.2948437403931316e-09,
+              "lift_ci_lower": 1.5147790934475907,
+              "lift_ci_upper": 1.9942939118908047,
+              "temporal_assessed": true,
+              "temporal_passed": false,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 0.3333333333333333
+            },
+            {
+              "rule_id": "mr_24a526c1be905ee12d89",
+              "expression": "(\"aux_score\" > 566.9666802981787 OR \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 12,
+              "budget_position": 12,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 1.0853227501339984e-89,
+              "lift_ci_lower": 1.6147892306706737,
+              "lift_ci_upper": 1.8037063903850066,
+              "temporal_assessed": true,
+              "temporal_passed": false,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 0.0
+            },
+            {
+              "rule_id": "mr_5c8a1d46b374d83920d9",
+              "expression": "(\"aux_score\" > 566.9666802981787 AND \"main_score\" > 601.2217664971522)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": false,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "validation_filter",
+              "reason": "未通过验证阈值或切片通过率",
+              "source_position": 13,
+              "budget_position": 13,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 1.6598457848957352e-37,
+              "lift_ci_lower": 1.9470332751743025,
+              "lift_ci_upper": 2.313968877727332,
+              "temporal_assessed": true,
+              "temporal_passed": true,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 1.0
+            },
+            {
+              "rule_id": "mr_82a45be88b1d8c4e4278",
+              "expression": "(\"aux_score\" > 566.9666802981787 OR \"main_score\" > 601.2217664971522)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 14,
+              "budget_position": 14,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_163bfd3bc3172b9ec598",
+              "expression": "(\"aux_score\" <= 432.41255966198844 AND \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 15,
+              "budget_position": 15,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_d01a7623e102d5acbe65",
+              "expression": "(\"aux_score\" <= 432.41255966198844 OR \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 16,
+              "budget_position": 16,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_05b0ec3e46159460deee",
+              "expression": "(\"aux_score\" <= 432.41255966198844 AND \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 17,
+              "budget_position": 17,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_7eeb708843097e4f2f50",
+              "expression": "(\"aux_score\" <= 432.41255966198844 OR \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 18,
+              "budget_position": 18,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_da404fbcd671274ef122",
+              "expression": "(\"aux_score\" <= 432.41255966198844 AND \"main_score\" > 601.2217664971522)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 19,
+              "budget_position": 19,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_3e39ad76ca08516028f2",
+              "expression": "(\"aux_score\" <= 432.41255966198844 OR \"main_score\" > 601.2217664971522)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 20,
+              "budget_position": 20,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_3c58e019ba252c18ec4e",
+              "expression": "(\"aux_score\" > 498.64449515204456 AND \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": true,
+              "validation_filter_passed": true,
+              "iou_filter_passed": false,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "iou_deduplication",
+              "reason": "命中人群与更高优先级规则重叠",
+              "source_position": 21,
+              "budget_position": 21,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": 8.207000242859528e-102,
+              "lift_ci_lower": 2.896218128389657,
+              "lift_ci_upper": 3.3055668370606783,
+              "temporal_assessed": true,
+              "temporal_passed": true,
+              "time_slice_count": 3,
+              "time_slice_pass_rate": 1.0
+            },
+            {
+              "rule_id": "mr_c16b8e406d0aa29be289",
+              "expression": "(\"aux_score\" > 498.64449515204456 OR \"main_score\" <= 546.0358265810573)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 22,
+              "budget_position": 22,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_c476ff221b4d4bec6107",
+              "expression": "(\"aux_score\" > 498.64449515204456 AND \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 23,
+              "budget_position": 23,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            },
+            {
+              "rule_id": "mr_7803d0c8083bc5fe2f28",
+              "expression": "(\"aux_score\" > 498.64449515204456 OR \"main_score\" > 653.837199628332)",
+              "sources": "combination",
+              "distinct_source_count": 1,
+              "exact_duplicate_count": 0,
+              "within_candidate_budget": true,
+              "candidate_filter_passed": false,
+              "validation_filter_passed": null,
+              "iou_filter_passed": null,
+              "selection_rank": null,
+              "status": "rejected",
+              "rejection_stage": "candidate_filter",
+              "reason": "未通过训练集候选阈值",
+              "source_position": 24,
+              "budget_position": 24,
+              "budget_strategy": "seed_then_round_robin",
+              "q_value": null,
+              "lift_ci_lower": null,
+              "lift_ci_upper": null,
+              "temporal_assessed": null,
+              "temporal_passed": null,
+              "time_slice_count": null,
+              "time_slice_pass_rate": null
+            }
+          ]
+        },
+        {
+          "question": "自动发现规则在独立验证有何证据？",
+          "reference": {
+            "report_id": "27994b27-f62b-49be-96ce-ec928600d9e0",
+            "table": "evaluation",
+            "query": {
+              "offset": 0,
+              "limit": 10,
+              "filters": {
+                "dataset": "validation",
+                "target": "bad30",
+                "group": "hit"
+              }
+            }
+          },
+          "total_rows": 9,
+          "returned_rows": 9,
+          "omitted_rows": 0,
+          "next_offset": null,
+          "rows": [
+            {
+              "dataset": "validation",
+              "rule_id": "mr_0214f95862552440fd04",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 1355,
+              "event_count": 633,
+              "coverage": 0.24921831892587823,
+              "event_rate": 0.46715867158671587,
+              "lift": 2.943153762939715,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.44495220393044915,
+              "event_rate_ci_upper": 0.4894960271833623,
+              "lift_ci_lower": 2.8032504435340115,
+              "lift_ci_upper": 3.083881691536432,
+              "p_value": 2.516025895010874e-244,
+              "q_value": 2.2644233055097865e-243
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_e2167a201688b3d36625",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 2740,
+              "event_count": 802,
+              "coverage": 0.503954386610263,
+              "event_rate": 0.2927007299270073,
+              "lift": 1.8440485151948303,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.27861313408542165,
+              "event_rate_ci_upper": 0.30719730673596174,
+              "lift_ci_lower": 1.7552950289947131,
+              "lift_ci_upper": 1.9353786288799812,
+              "p_value": 3.8033674459466155e-189,
+              "q_value": 1.1410102337839846e-188
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_3b06baaef352932f3ca8",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 1306,
+              "event_count": 351,
+              "coverage": 0.2402059959536509,
+              "event_rate": 0.26875957120980093,
+              "lift": 1.6932164410981316,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.24907530644230044,
+              "event_rate_ci_upper": 0.28939994261498597,
+              "lift_ci_lower": 1.5692032921515497,
+              "lift_ci_upper": 1.8232531726508443,
+              "p_value": 7.845377797005846e-33,
+              "q_value": 8.826050021631576e-33
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_d48029eb855c13c01fa9",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 328,
+              "event_count": 226,
+              "coverage": 0.06032738642633805,
+              "event_rate": 0.6890243902439024,
+              "lift": 4.3409334991380035,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.6455809492272944,
+              "event_rate_ci_upper": 0.729374966857046,
+              "lift_ci_lower": 4.067234786730938,
+              "lift_ci_upper": 4.595146807418028,
+              "p_value": 3.1226262891905057e-112,
+              "q_value": 7.025909150678637e-112
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_02dfdb0aab18c86f846f",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 2333,
+              "event_count": 758,
+              "coverage": 0.4290969284531911,
+              "event_rate": 0.324903557651093,
+              "lift": 2.0469300613545687,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.30916545437075477,
+              "event_rate_ci_upper": 0.3410473037015656,
+              "lift_ci_lower": 1.9477781870379995,
+              "lift_ci_upper": 2.148637532126781,
+              "p_value": 4.1305676945514256e-197,
+              "q_value": 1.8587554625481415e-196
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_3aa0cd4863817a744beb",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 372,
+              "event_count": 103,
+              "coverage": 0.06842008460548096,
+              "event_rate": 0.2768817204301075,
+              "lift": 1.7443869223389274,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.24043670363164812,
+              "event_rate_ci_upper": 0.31654876696004497,
+              "lift_ci_lower": 1.5147790934475907,
+              "lift_ci_upper": 1.9942939118908047,
+              "p_value": 1.2948437403931316e-09,
+              "q_value": 1.2948437403931316e-09
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_24a526c1be905ee12d89",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 2376,
+              "event_count": 644,
+              "coverage": 0.4370057016737171,
+              "event_rate": 0.27104377104377103,
+              "lift": 1.707607164733468,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.25631103661371923,
+              "event_rate_ci_upper": 0.28629733582899775,
+              "lift_ci_lower": 1.6147892306706737,
+              "lift_ci_upper": 1.8037063903850066,
+              "p_value": 7.235485000893323e-90,
+              "q_value": 1.0853227501339984e-89
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_5c8a1d46b374d83920d9",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 711,
+              "event_count": 240,
+              "coverage": 0.13077064557660475,
+              "event_rate": 0.33755274261603374,
+              "lift": 2.1266213923561708,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.3090472165671185,
+              "event_rate_ci_upper": 0.367289891756242,
+              "lift_ci_lower": 1.9470332751743025,
+              "lift_ci_upper": 2.313968877727332,
+              "p_value": 1.2909911660300163e-37,
+              "q_value": 1.6598457848957352e-37
+            },
+            {
+              "dataset": "validation",
+              "rule_id": "mr_3c58e019ba252c18ec4e",
+              "target": "bad30",
+              "slice": "__overall__",
+              "group": "hit",
+              "sample_count": 638,
+              "event_count": 314,
+              "coverage": 0.1173441235975722,
+              "event_rate": 0.49216300940438873,
+              "lift": 3.100683988565077,
+              "amount_total": null,
+              "event_amount": null,
+              "amount_coverage": null,
+              "amount_event_rate": null,
+              "amount_lift": null,
+              "customer_count": null,
+              "event_customer_count": null,
+              "customer_coverage": null,
+              "customer_event_rate": null,
+              "customer_lift": null,
+              "event_rate_ci_lower": 0.4597087078904311,
+              "event_rate_ci_upper": 0.5246834983232234,
+              "lift_ci_lower": 2.896218128389657,
+              "lift_ci_upper": 3.3055668370606783,
+              "p_value": 4.559444579366404e-102,
+              "q_value": 8.207000242859528e-102
+            }
+          ]
+        }
+      ]
+    },
+    "auto_report_id": "27994b27-f62b-49be-96ce-ec928600d9e0"
   },
   "unavailable": "报告不代表生产策略批准；没有规则 observation 客群评估或高级分析，不能推断其结果。"
 }

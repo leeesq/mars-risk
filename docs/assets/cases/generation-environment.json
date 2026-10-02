@@ -1,14 +1,14 @@
 {
-  "python": "3.11.15",
+  "python": "3.12.14",
   "imported_mars_version": "0.0.28",
-  "installed_distribution_version": "0.0.19",
-  "import_source": "repository src/mars checkout",
+  "installed_distribution_version": "0.0.28",
+  "import_source": "installed MARS package; source fingerprints are recorded separately",
   "dependencies": {
     "numpy": "2.4.6",
-    "pandas": "3.0.3",
-    "polars": "1.42.0",
-    "scikit-learn": "1.9.0",
-    "pyarrow": "24.0.0",
+    "pandas": "3.0.6",
+    "polars": "1.44.2",
+    "scikit-learn": "1.9.1",
+    "pyarrow": "25.0.1",
     "openpyxl": "3.1.5",
     "xlsxwriter": "3.2.9"
   }

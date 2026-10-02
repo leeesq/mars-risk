@@ -13,9 +13,9 @@ from playwright.sync_api import expect, sync_playwright
 
 
 def main() -> None:
-    """读取推送后的公开任务分支；不写入 GitHub 或登录账户。"""
+    """读取指定公开提交；不写入 GitHub 或登录账户。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ref", default="codex/task-cases-bilingual-readme")
+    parser.add_argument("--ref", default="main")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--channel", default="chrome")
     args = parser.parse_args()
@@ -59,9 +59,9 @@ def main() -> None:
                         switch = article.locator(f'a[href$="/{opposite}"]').first
                         assert switch.count() == 1
                         assert f"/blob/{args.ref}/{opposite}" in (switch.get_attribute("href") or "")
-                        preview = article.locator('img[src*="readme-preview"]')
+                        preview = article.locator('img[src*="binning-native-main-score"]')
                         expect(preview).to_be_visible(timeout=30000)
-                        page.wait_for_function("() => [...document.querySelectorAll('article.markdown-body img')].filter(i=>/mars-logo|mars-wordmark|readme-preview/.test(i.src)).every(i=>i.complete && i.naturalWidth>0)")
+                        page.wait_for_function("() => [...document.querySelectorAll('article.markdown-body img')].filter(i=>/mars-logo|mars-wordmark|binning-native-main-score/.test(i.src)).every(i=>i.complete && i.naturalWidth>0)")
                         images = article.locator("img").evaluate_all(
                             "images=>images.map(i=>({alt:i.alt,source:i.currentSrc,width:i.naturalWidth}))"
                         )

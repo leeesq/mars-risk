@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -13,8 +14,9 @@ import numpy as np
 import polars as pl
 
 from mars.analysis import cross_scores, get_score_bin_definitions
+from mars.compute import missing_condition_expr
 from mars.reporting import Report, load_report
-from mars.rule import MarsRule, MarsRuleMiningSpec, mine_rules
+from mars.rule import MarsRule, MarsRuleMiningSpec, MarsRuleSet, mine_rules
 
 QUESTION = "同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？"
 METADATA = {
@@ -78,14 +80,61 @@ def _sample(n: int = 18000, seed: int = 20261001) -> pl.DataFrame:
 
 
 def _condition(feature: str, definition: dict[str, Any], index: int) -> str:
-    """将现有右闭正常分段显式写为现有 DSL，不新增语法。"""
+    """按真实定义写右闭正常箱；有限 double 域排除 ±inf，不改变核心 DSL。"""
     cuts = definition["cutpoints"]
-    parts = [f"{feature} IS NOT MISSING", f"{feature} != -999"]
+    identifier = '"' + feature.replace('"', '""') + '"'
+    parts = [f"{identifier} IS NOT MISSING",
+             f"{identifier} >= {-sys.float_info.max!r}",
+             f"{identifier} <= {sys.float_info.max!r}"]
+    excluded = [*definition.get("special_values", []), *definition.get("missing_values", [])]
+    for value in excluded:
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            parts.append(f"{identifier} != {value!r}")
+    if definition.get("probability"):
+        parts.extend([f"{identifier} >= 0", f"{identifier} <= 1"])
     if index:
-        parts.append(f"{feature} > {cuts[index - 1]!r}")
+        parts.append(f"{identifier} > {cuts[index - 1]!r}")
     if index < len(cuts):
-        parts.append(f"{feature} <= {cuts[index]!r}")
+        parts.append(f"{identifier} <= {cuts[index]!r}")
     return " AND ".join(parts)
+
+
+def _check_cell_members(
+    data: pl.DataFrame, rule: MarsRule, definitions: dict[str, Any], cell: dict[str, Any],
+) -> dict[str, Any]:
+    """逐行核对 DSL 与两轴正常箱成员；人数相同不能替代成员集合相同。"""
+    expected = pl.lit(True)
+    for axis in ("x", "y"):
+        definition = definitions[axis]
+        feature = definition["score"]
+        values = pl.col(feature)
+        normal = values.is_finite() & ~missing_condition_expr(
+            feature, dtype=data.schema[feature], missing_values=definition.get("missing_values")
+        )
+        if definition["special_values"]:
+            normal &= ~values.is_in(definition["special_values"])
+        if definition["probability"]:
+            normal &= values.is_between(0, 1, closed="both")
+        index = int(cell[f"{axis}_bin"][1:])
+        cuts = definition["cutpoints"]
+        if index:
+            normal &= values > cuts[index - 1]
+        if index < len(cuts):
+            normal &= values <= cuts[index]
+        expected &= normal
+    actual = MarsRuleSet(rules=[rule]).transform(data)
+    expected_ids = set(data.filter(expected)["sample_id"])
+    actual_ids = set(actual.filter(pl.col(f"rule__{rule.rule_id}") == 1)["sample_id"])
+    if expected_ids != actual_ids:
+        raise AssertionError(f"正常交叉箱与规则 {rule.rule_id} 成员不同。")
+    members = data.filter(expected)
+    return {
+        "verified": True, "scope": "all supplied rows; exact sample_id membership",
+        "member_count": len(expected_ids),
+        "members_by_dataset": members.group_by("dataset").agg(
+            pl.len().alias("sample_count"), pl.col("bad30").count().alias("observed_sample_count")
+        ).sort("dataset").to_dicts(),
+    }
 
 
 def _page(report: Report, table: str, query: dict[str, Any], question: str) -> dict[str, Any]:
@@ -106,6 +155,7 @@ def produce(
     *,
     data: pl.DataFrame | None = None,
     cross_report: Report | None = None,
+    business_context: dict[str, Any] | None = None,
 ) -> None:
     """生成发现和独立验证报告，或复用同批已有交叉报告。
 
@@ -118,6 +168,8 @@ def produce(
     cross_report : Report | None
         同一 data 的已计算交叉报告，包含固定发现分箱与 discovery 分区。
         为 None 时在本函数内计算；传入时复用其真实定义和格子证据。
+    business_context : dict[str, Any] | None
+        调用方的真实同批来源与 seed。自带默认样本使用默认上下文；外部数据不假定 seed。
 
     Returns
     -------
@@ -129,12 +181,13 @@ def produce(
     >>> produce(Path("output/agent-rule-case"))  # doctest: +SKIP
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    default_data = data is None
     data = _sample() if data is None else data
     train = data.filter(pl.col("dataset") == "discovery")
     validation = data.filter(pl.col("dataset") == "validation")
     assert not set(train["sample_id"]).intersection(validation["sample_id"])
     context: dict[str, Any] = {
-        "dataset_id": "synthetic-consumer-credit-20261001",
+        "dataset_id": "synthetic-consumer-credit-20261001" if default_data else "supplied-case-data",
         "sample_unit": "模拟申请，每行独立 sample_id",
         "simulated": True,
         "question": QUESTION,
@@ -152,6 +205,8 @@ def produce(
         "amount_definition": "模拟申请金额，不代表损失或利润",
         "independence": "不同 sample_id 和时间，不从验证或观察重新挑选候选；并非真实业务效果",
     }
+    if business_context is not None:
+        context.update(business_context)
     if cross_report is None:
         discovery = cross_scores(
             train,
@@ -222,6 +277,8 @@ def produce(
         seeds.append(rule)
         origins[rule.rule_id] = {
             "kind": "development_cell",
+            "region": {"x_bin": cell["x_bin"], "y_bin": cell["y_bin"]},
+            "member_check": _check_cell_members(data, rule, definitions, cell),
             "reference": cross.query_page(
                 "cells",
                 filters={
@@ -290,6 +347,9 @@ def produce(
     (output_dir / "external-agent-task.md").write_text(
         prompt.replace("{{OUTPUT_DIR}}", "."), encoding="utf-8"
     )
+    (output_dir / "external-agent-rule-task.txt").write_text(
+        prompt.replace("{{OUTPUT_DIR}}", "."), encoding="utf-8"
+    )
 
 
 def consume(output_dir: Path) -> dict[str, Any]:
@@ -299,27 +359,33 @@ def consume(output_dir: Path) -> dict[str, Any]:
         load_report(output_dir / "rules.marsreport"),
     )
     descriptions = {r.report_id: r.describe() for r in (cross, rules)}
+    cross_description = descriptions[cross.report_id]
+    weighted = cross_description["parameters"].get("weights_col") is not None
+    denominator = "observed_weight_sum" if weighted else "observed_sample_count"
+    numerator = "bad_weight_sum" if weighted else "bad_sample_count"
+    cell_columns = [
+        "group", "period", "target", "x_bin", "y_bin", "sample_count",
+        "observed_sample_count", "bad_sample_count",
+    ]
+    if weighted:
+        weight_columns = ["observed_weight_sum", "bad_weight_sum"]
+        available = cross_description["tables"]["cells"]["fields"]
+        missing = [column for column in weight_columns if column not in available]
+        if missing:
+            raise ValueError(f"加权报告缺少实际分母／事件权重证据：{missing}。")
+        cell_columns.extend(weight_columns)
+    cell_columns.extend(["bad_rate", "row_bad_rate", "delta_vs_row", "status"])
+    discovery_period = cross.get_table(
+        "overall", filters={"group": "discovery", "target": "bad30"}, columns=["period"], limit=1,
+    )["period"][0]
     trace: list[dict[str, Any]] = []
     trace.append(
         _page(
             cross,
             "cells",
             {
-                "filters": {"group": "discovery", "target": "bad30", "x_bin": "b1"},
-                "columns": [
-                    "group",
-                    "period",
-                    "target",
-                    "x_bin",
-                    "y_bin",
-                    "sample_count",
-                    "observed_sample_count",
-                    "bad_sample_count",
-                    "bad_rate",
-                    "row_bad_rate",
-                    "delta_vs_row",
-                    "status",
-                ],
+                "filters": {"group": "discovery", "period": discovery_period, "target": "bad30", "x_bin": "b1"},
+                "columns": cell_columns,
                 "sort_by": "y_bin",
                 "limit": 10,
             },
@@ -511,6 +577,8 @@ def consume(output_dir: Path) -> dict[str, Any]:
                 "high_y_bin": upper["y_bin"],
                 "high_event_rate": upper["bad_rate"],
                 "high_observed_count": upper["observed_sample_count"],
+                "bad_rate_numerator": numerator,
+                "bad_rate_denominator": denominator,
                 "reference": trace[0]["reference"],
             }
         )
@@ -525,6 +593,10 @@ def consume(output_dir: Path) -> dict[str, Any]:
         "kind": "deterministic_evidence_review",
         "question": QUESTION,
         "simulated": True,
+        "risk_measure": {
+            "weighted": weighted, "numerator": numerator, "denominator": denominator,
+            "formula": f"{numerator} / {denominator}",
+        },
         "findings": findings,
         "discovery": trace[0],
         "selection": [item for item in trace if item["reference"]["table"] == "candidates"],
@@ -543,7 +615,8 @@ def consume(output_dir: Path) -> dict[str, Any]:
     lines = [
         "# 确定性证据复核（模拟数据，无 LLM）",
         QUESTION,
-        "发现证据见 query-trace.json 的第一条 cells 引用；风险比率仅以已表现人数为分母。",
+        f"发现证据见 query-trace.json 的第一条 cells 引用；本报告为{'加权' if weighted else '未加权'}统计，"
+        f"风险比率 = {numerator} / {denominator}；全样本人数与已表现人数分别保留。",
         "候选审计：",
     ]
     lines.extend(encode(finding) for finding in findings)

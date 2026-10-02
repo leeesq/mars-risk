@@ -1,12 +1,12 @@
 {
   "case": 6,
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
   "question": "分析完成后，如何保存并继续查询？",
   "query": {
     "question": "发现目录后的第一页",
     "reference": {
-      "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+      "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
       "table": "cells",
       "query": {
         "offset": 0,

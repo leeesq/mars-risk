@@ -9,6 +9,7 @@ import importlib.metadata
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -33,6 +34,7 @@ from mars.analysis import (
 from mars.feature import MarsLinearSelector, MarsStatsSelector
 from mars.reporting import Report, load_report, show_correlation_matrix
 from mars.reporting._serialization import json_safe
+from mars.rule import MarsCombinationRuleGenerator, MarsRuleMiningSpec, mine_rules
 
 DEFAULT_SEED = 20261001
 DEFAULT_ROWS = 18000
@@ -60,6 +62,10 @@ DICTIONARY: dict[str, dict[str, Any]] = {
     "aux_probability": {
         "display_name": "辅助概率检查字段", "data_source": "challenger", "unit": "fraction",
         "description": "由辅助分转换，含显式非法概率和特殊值；仅用于概率域审计",
+    },
+    "aux_drift": {
+        "display_name": "模拟漂移辅助分", "data_source": "challenger", "unit": "score_points",
+        "description": "aux_score 加上发现期逐月平移；用于演示有区分度仍可能因 PSI 被剔除",
     },
 }
 BASELINE: dict[str, Any] = {
@@ -142,6 +148,7 @@ def _data(rows: int, seed: int) -> pl.DataFrame:
     ).with_columns(
         (2 * pl.col("income")).alias("income_copy"),
         (-pl.col("main_score")).alias("score_inverse"),
+        (pl.col("aux_score") + 160 * (pl.int_range(pl.len()) // (rows // 9))).alias("aux_drift"),
         pl.when(pl.col("dataset") == "observation").then(None)
         .otherwise(pl.col("late60")).alias("late60"),
     )
@@ -283,20 +290,44 @@ def _binning(data: pl.DataFrame, output: Path, context: dict[str, Any]) -> None:
     run = profile_risk(
         data, target=["bad30", "late60"], features=FEATURES, benchmark_df=reference,
         method="quantile", n_bins=4, special_values=[-999], group_col="dataset",
+        time_col="application_date", time_grain="month",
         weights_col="weight", amount_col="amount", feature_metadata=DICTIONARY,
         business_context=context, n_jobs=1,
     )
     report = run.report
     # 原 Excel 模板需原生刷新；此处公共 snapshot 导出静态表，不带旧透视缓存。
     report.save(output / "binning.marsreport", overwrite=True)
-    report.write_html(str(output / "binning.html"), include_charts=False)
+    report.write_html(str(output / "binning.html"), include_charts=True, chart_embed_mode="inline")
     load_report(output / "binning.marsreport").write_excel(str(output / "binning.xlsx"))
+    assets: dict[str, str] = {}
+    for image_format in ("png", "svg"):
+        generated = report.save_risk_trend_images(
+            output, features="main_score", target="bad30", image_format=image_format,
+            filename_prefix="binning-native", dpi=300, show_risk="both",
+        )
+        destination = output / f"binning-native-main-score.{image_format}"
+        shutil.copyfile(generated[0], destination)
+        assets[image_format] = destination.name
+    _write_json(output / "binning-native-evidence.json", {
+        "report_id": report.report_id, "feature": "main_score", "target": "bad30",
+        "chart_png": assets["png"], "chart_svg": assets["svg"],
+        "source_api": "MarsBinningReport.save_risk_trend_images",
+        "layout": "existing native figure; no redraw, resizing or changed panel geometry",
+        "group": "dataset", "time_col": "application_date", "time_grain": "month",
+        "scope": "three dataset partitions; real date range, not nine monthly risk groups",
+        "queries": [
+            _query(report, "summary", "原生图主分指标", features="main_score", limit=2),
+            _query(report, "detail", "原生图固定箱件数/金额风险与分区占比",
+                   features="main_score", filters={"y": "bad30"}, limit=40),
+        ],
+    })
     _binning_evidence(report, output, reference.height)
 
 
 def _binning_evidence(report: Report, output: Path, reference_rows: int) -> None:
     """从同一报告的真实固定分箱证据生成分区对比和风险曲线；也支持快照重读。"""
     queries: list[dict[str, Any]] = [
+        _query(report, "trend.ks", "主目标开发表现与独立验证 KS 如何比较？", features=FEATURES, limit=4),
         _query(report, "summary", "哪些特征同时有区分度和稳定性证据？",
                sort_by="iv", descending=True, limit=8),
         _query(report, "detail", "收入在多个分区和目标下的固定分箱风险表现如何？",
@@ -317,29 +348,11 @@ def _binning_evidence(report: Report, output: Path, reference_rows: int) -> None
         limit=8,
     )
     queries.append(risk_query)
-    # 静态科学图逐点读取已计算 detail，不在图中拟合新边界或改变指标。
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    figure, axes = plt.subplots(figsize=(8.2, 3.9), constrained_layout=True)
-    for group, color in [("discovery", "#7755b8"), ("validation", "#e29738")]:
-        values = [row for row in risk_query["rows"] if row["mars_group"] == group]
-        axes.plot([row["bin_index"] for row in values],
-                  [100 * row["bad_rate"] for row in values], label=group,
-                  color=color, marker="o", linewidth=2)
-    axes.set(title="Auxiliary score: frozen discovery bins, target bad30",
-             xlabel="Normal bin index (higher aux_score = higher risk)",
-             ylabel="Weighted event rate (%)", xticks=[0, 1, 2, 3])
-    axes.legend(loc="upper left")
-    axes.grid(axis="y", alpha=0.18)
-    figure.savefig(output / "binning-risk.png", dpi=150)
-    plt.close(figure)
     _case(output, 2, report, "哪些特征有区分度，而且足够稳定？", queries,
-          {"summary_rows": queries[0]["rows"], "status_rows": queries[2]["rows"],
+          {"summary_rows": queries[1]["rows"], "status_rows": queries[3]["rows"],
            "reference_row_count": reference_rows, "targets": ["bad30", "late60"],
            "split_metrics": {metric: queries[index]["rows"]
-                             for index, metric in enumerate(["iv", "ks", "psi"], start=3)},
+                             for index, metric in enumerate(["iv", "ks", "psi"], start=4)},
            "auxiliary_bin_risk": risk_query["rows"],
            "units": {"ks": "percentage points on 0–100 scale", "iv": "dimensionless",
                      "psi": "dimensionless", "bad_rate": "fraction"}},
@@ -351,13 +364,14 @@ def _binning_evidence(report: Report, output: Path, reference_rows: int) -> None
 def _selection(data: pl.DataFrame, output: Path, context: dict[str, Any]) -> None:
     """选择与相关性复用各自真实审计；raw 与 WOE 从不混成一份矩阵。"""
     discovery: pl.DataFrame = data.filter(pl.col("dataset") == "discovery")
-    candidates = ["main_score", "score_inverse", "income", "income_copy", "constant", "sparse"]
+    candidates = ["main_score", "aux_score", "aux_drift", "score_inverse", "income", "income_copy", "constant", "sparse"]
     stats = MarsStatsSelector(
-        missing_thr=0.9, rough_iv_thr=-1, rough_lift_thr=0, skip_fine_scan=True,
-        psi_thr=None, rc_thr=None, corr_thr=0.8,
+        missing_thr=0.9, rough_iv_thr=0.01, rough_lift_thr=1.2,
+        iv_thr=0.01, lift_thr=1.2, psi_thr=0.25, rc_thr=0.5, corr_thr=0.8,
+        missing_values=[float("inf"), float("-inf")], special_values=[-999.0],
         rough_binning_params={"method": "quantile", "n_bins": 4}, n_jobs=1,
     ).fit(discovery, target="bad30", features=candidates, feature_metadata=DICTIONARY,
-          business_context=context)
+          time_col="application_date", time_grain="month", business_context=context)
     selection = stats.get_report()
     selection.write_excel(output / "selection.xlsx") if hasattr(selection, "write_excel") else (
         pd.DataFrame(_rows(selection)).to_excel(output / "selection.xlsx", index=False)
@@ -391,9 +405,9 @@ def _selection(data: pl.DataFrame, output: Path, context: dict[str, Any]) -> Non
 
 
 # --8<-- [start:rules]
-def _rules(data: pl.DataFrame, cross: Report, output: Path) -> None:
+def _rules(data: pl.DataFrame, cross: Report, output: Path, context: dict[str, Any]) -> None:
     """复用已有旗舰规则发现/独立验证流程，完整保留生产规格的拒绝与不足状态。"""
-    produce(output, data=data, cross_report=cross)
+    produce(output, data=data, cross_report=cross, business_context=context)
     report = load_report(output / "rules.marsreport")
     queries: list[dict[str, Any]] = [
         _query(report, "summary", "生产规格实际保留多少候选？", limit=1),
@@ -402,12 +416,53 @@ def _rules(data: pl.DataFrame, cross: Report, output: Path) -> None:
                filters={"dataset": "validation", "target": "bad30", "group": "hit"}, limit=10),
         _query(report, "rules", "可审查规则的条件和身份是什么？", limit=10),
     ]
+    automatic = _automatic_rules(data, output, context)
     _case(output, 5, report, "从候选规则走到可以审查的证据", queries,
           {"summary_rows": queries[0]["rows"], "candidates": queries[1]["rows"],
            "validation": queries[2]["rows"], "cross_report_id": cross.report_id,
-           "raw_data_saved": False, "rule_status": "Experimental"},
+           "candidate_origins": report.describe()["business_context"]["candidate_origins"],
+           "raw_data_saved": False, "rule_status": "Experimental",
+           "automatic_generation": automatic, "auto_report_id": automatic["report_id"]},
           "报告不代表生产策略批准；没有规则 observation 客群评估或高级分析，不能推断其结果。")
 # --8<-- [end:rules]
+
+
+# --8<-- [start:automatic_rules]
+def _automatic_rules(data: pl.DataFrame, output: Path, context: dict[str, Any]) -> dict[str, Any]:
+    """用真实组合生成器演示自动发现；独立保存，不冒充手工格子来源。"""
+    # 自动生成器只接收已通过模型分域检查的行；保留剔除人数并说明两份报告样本范围不同。
+    eligible = data.filter(pl.all_horizontal(
+        pl.col("main_score").is_finite(), pl.col("aux_score").is_finite(),
+        pl.col("aux_score") != -999,
+    ))
+    train = eligible.filter(pl.col("dataset") == "discovery")
+    validation = eligible.filter(pl.col("dataset") == "validation")
+    result = mine_rules(
+        train, target="bad30", validation_df=validation, features=["main_score", "aux_score"],
+        generators=[MarsCombinationRuleGenerator(n_bins=4, max_candidates=24, random_state=42)],
+        time_col="application_date", time_grain="month",
+        spec=MarsRuleMiningSpec.production(max_candidates=24, top_k=5),
+    )
+    automatic = result.to_report(feature_metadata=DICTIONARY, business_context={
+        **context, "candidate_origin": "MarsCombinationRuleGenerator; no hand-written seeds",
+        "score_domain": "finite main_score/aux_score; aux_score != -999",
+        "excluded_input_rows": data.height - eligible.height,
+    })
+    _export(automatic, output, "auto-rules")
+    evidence = {
+        "report_id": automatic.report_id, "description": automatic.describe(),
+        "candidate_budget": 24, "raw_input_rows": data.height,
+        "eligible_rows": eligible.height, "excluded_rows": data.height - eligible.height,
+        "queries": [
+            _query(automatic, "summary", "自动生成器实际生成与保留多少候选？", limit=1),
+            _query(automatic, "candidates", "自动生成来源与实际过滤原因是什么？", limit=24),
+            _query(automatic, "evaluation", "自动发现规则在独立验证有何证据？",
+                   filters={"dataset": "validation", "target": "bad30", "group": "hit"}, limit=10),
+        ],
+    }
+    _write_json(output / "rule-generation.json", evidence)
+    return evidence
+# --8<-- [end:automatic_rules]
 
 
 # --8<-- [start:restore]
@@ -480,16 +535,19 @@ def _delivery(output: Path) -> None:
         ), name
     workbook.close()
     prompt = (
-        "你是外部分析消费者。此任务无需内置 Agent、LLM Key 或原始宽表。\n"
+        "你是具备 Python 工具的外部分析消费者。报告查询不调用 LLM、无需内置 Agent 或原始宽表。\n"
+        "业务问题：同一主模型等级 b1 内，辅助分哪些正常箱的风险更高，表现分母和状态是否支持继续验证？\n"
         "1. 用 load_report('score-cross.marsreport') 读取可信输入。\n"
         "2. describe() 发现实际表、单位、状态和业务上下文。\n"
-        "3. query_page('cells', filters={'group':'discovery','period':'202601','target':'bad30'}, "
-        "limit=3)；按 next_offset 继续，引用实际 reference。\n"
+        "3. query_page('cells', filters={'group':'discovery','period':'202601','target':'bad30','x_bin':'b1'}, "
+        "limit=3)；按 next_offset 继续至这个范围结束，比较正常y_bin，引用实际 reference。\n"
         "4. to_ai_context(max_chars=9000, queries=...) 预算单位是 Unicode 字符；"
         "只引用裁剪后 evidence 的有效 query。\n"
         "5. 区分全样本、已表现标签、权重、金额；delta 比例乘 100 才是 pp。\n"
         "6. 缺失、invalid、低样本、未表现与有效零值分别回答；未知信息明确说不能回答。\n"
         "7. 模拟关联不是因果、实际收益或部署批准。快照不恢复原分析器或原数据。\n"
+        "8. 输出范围、方向、各正常箱人数/表现人数/表现权重、坏率、delta百分点和证据引用；"
+        "列出不能回答的问题及下一步独立验证条件。不要重算、训练或部署。\n"
     )
     (output / "external-agent-task.txt").write_text(prompt, encoding="utf-8")
     formats: list[dict[str, str]] = [
@@ -525,7 +583,7 @@ def _environment() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "imported_mars_version": mars.__version__,
         "installed_distribution_version": importlib.metadata.version("mars-risk"),
-        "import_source": "repository src/mars checkout",
+        "import_source": "installed MARS package; source fingerprints are recorded separately",
         "dependencies": {name: importlib.metadata.version(name)
                          for name in ["numpy", "pandas", "polars", "scikit-learn",
                                       "pyarrow", "openpyxl", "xlsxwriter"]},
@@ -578,13 +636,13 @@ def _previews(output: Path) -> None:
             blocks["card2"] = table(["辅助分验证 KS", "参考行数"],
                 [[number(auxiliary["validation"]), finding["reference_row_count"]]])
         elif case == 3:
-            audit = [row for row in finding["stats_audit"] if row["stage"] in {"Quality", "Corr_Filter"}
-                     and not (row["stage"] == "Quality" and row["status"] == "Selected")]
+            audit = [row for row in finding["stats_audit"] if row["status"] == "Dropped"
+                     or row["stage"] == "Corr_Filter"]
             blocks["case3"] = table(["特征", "状态", "阶段", "实际原因"],
                 [[row["feature"], row["status"], row["stage"], row["reason"]] for row in audit])
             blocks["case3"] += "\n\n" + table(["表示", "方法", "实际相关样本人数", "阈值比较"],
                 [[finding[name]["representation"], finding[name]["method"],
-                  finding[name]["correlation_row_count"],
+                  finding[name].get("correlation_row_count", "未计算；没有通过前置筛选的候选"),
                   finding[name]["operator"] + " " + str(finding[name]["threshold"])]
                  for name in ["raw_parameters", "woe_parameters"]])
             blocks["case3"] += "\n\n" + table(["raw 特征对", "有符号相关", "绝对相关"],
@@ -609,14 +667,27 @@ def _previews(output: Path) -> None:
                 [[number(lower["bad_rate"], 100, "%") if lower else "不可比较：无有效分母",
                   number(upper["bad_rate"], 100, "%") if upper else "不可比较：无有效分母"]])
         elif case == 5:
+            def label(rule_id: str, origins: dict[str, Any] = finding["candidate_origins"]) -> str:
+                """用真实来源区域解释候选，完整稳定 ID 仍留在查询证据。"""
+                origin = origins[rule_id]
+                region = origin.get("region")
+                return (f"主分 {region['x_bin']} × 辅助 {region['y_bin']}" if region
+                        else "手工覆盖压力候选")
             blocks["case5"] = table(["规则", "审计状态", "拒绝阶段", "实际原因"],
-                [[row["rule_id"], row["status"], row["rejection_stage"] or "—", row["reason"] or "—"]
+                [[label(row["rule_id"]), row["status"], row["rejection_stage"] or "—", row["reason"] or "—"]
                  for row in finding["candidates"]])
             blocks["case5"] += "\n\n独立 validation / bad30 / hit；sample_count 是已表现人数。\n\n" + table(
                 ["规则", "已表现命中人数", "事件人数", "覆盖", "坏率", "Lift", "Lift 下界"],
-                [[row["rule_id"], row["sample_count"], row["event_count"], number(row["coverage"], 100, "%"),
+                [[label(row["rule_id"]), row["sample_count"], row["event_count"], number(row["coverage"], 100, "%"),
                   number(row["event_rate"], 100, "%"), number(row["lift"]), number(row["lift_ci_lower"])]
                  for row in finding["validation"]])
+            automatic = finding["automatic_generation"]
+            automatic_summary = automatic["queries"][0]["rows"][0]
+            blocks["case5"] += "\n\n自动组合生成器（独立报告、24 候选预算）：\n\n" + table(
+                ["来源", "候选", "实际保留", "独立验证", "排除非法/缺失分行数"],
+                [["MarsCombinationRuleGenerator", automatic_summary["candidate_count"],
+                  automatic_summary["selected_count"], automatic_summary["validation_status"],
+                  automatic["excluded_rows"]]])
             summary = finding["summary_rows"][0]
             blocks["card5"] = table(["候选数", "保留数", "验证范围"],
                 [[summary["candidate_count"], summary["selected_count"], summary["validation_status"]]])
@@ -640,11 +711,21 @@ def _previews(output: Path) -> None:
     (output / "previews.txt").write_text(content, encoding="utf-8")
 
 
-def _finalize(output: Path, rows: int, seed: int) -> None:
+def _finalize(output: Path, rows: int, seed: int, repository_root: Path | None = None) -> None:
     """汇总实际已生成结果，收集文件哈希；晚到的真实浏览器截图也可再次收集。"""
-    repository = Path(__file__).resolve().parents[2]
-    source = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=True,
-                            capture_output=True, text=True).stdout.strip()
+    if repository_root is not None:
+        repository = repository_root.resolve()
+        if not (repository / "pyproject.toml").is_file() or not (repository / "src/mars").is_dir():
+            raise ValueError("--repository-root 必须指向 MARS 源码仓库根目录。")
+    else:
+        repository = next((parent for parent in Path(__file__).resolve().parents
+                           if (parent / "pyproject.toml").is_file() and (parent / "src/mars").is_dir()), None)
+    source: str | None = None
+    if repository is not None and shutil.which("git"):
+        provenance = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=False,
+                                    capture_output=True, text=True)
+        if provenance.returncode == 0:
+            source = provenance.stdout.strip()
     snippets = ["docs/snippets/task_cases.py", "docs/snippets/external_agent_rule_case.py"]
     modules = ["src/mars/analysis/score_cross.py", "src/mars/analysis/score_cross_view.py",
                "src/mars/analysis/profiler.py", "src/mars/analysis/evaluator.py",
@@ -669,16 +750,18 @@ def _finalize(output: Path, rows: int, seed: int) -> None:
         "# 共享案例复现材料\n\n"
         f"本包结果：{rows:,} 行，seed={seed}，九个月、三个等量独立分区。\n"
         "公开站点展示规模为 18,000 行；其他规模仅用于 API/语义回归。\n"
-        "运行基于本任务源码；固定基线 commit 746b8fa 提供核心 API，新生成入口随任务分支提供。\n"
-        "从仓库根目录执行：\n\n"
-        "python docs/snippets/task_cases.py --case all --rows 18000 --seed 20261001 "
-        "--output-dir docs/assets/cases\n\n"
+        "先在已安装兼容 MARS 及 docs 依赖的 Python 环境解压，不要求解压目录是 git 仓库。\n"
+        "在解压目录执行：\n\n"
+        f"python task_cases.py --case all --rows {rows} --seed {seed} --output-dir reproduced\n\n"
+        "也可在当前 MARS 源码仓库执行 docs/snippets/task_cases.py；"
+        "--repository-root /path/to/mars-risk 可显式记录仓库来源。\n"
         "轻量 API/语义回归用 --rows 900，不能冒充公开数字。\n"
         "--case 1..7 按需运行；6/7 需要已有 score-cross 和 policy 快照，不重复计算宽表。\n"
         "--phase consume 在新进程只加载快照；--phase finalize 更新摘要、来源和 ZIP。\n"
         "此 ZIP 是预生成结果与复现材料，不含原始宽表。源码文件见同目录 task_cases.py、"
         "external_agent_rule_case.py；依赖及哈希见 manifest.json。\n"
-        "复制脚本到已安装本任务源码环境的同一目录运行，或直接在 checkout 运行。\n"
+        "脱离仓库时 git commit 标记 unknown/null，仍记录脚本及实际已安装模块指纹；"
+        "不假定复制脚本属于原提交。\n"
         "信任边界：仅加载可信 .marsreport 文件；当前格式和专用回放能力以 describe 为准。\n"
     )
     (output / "REPRODUCE.txt").write_text(material, encoding="utf-8")
@@ -697,12 +780,17 @@ def _finalize(output: Path, rows: int, seed: int) -> None:
                  if path.is_file() and path.name not in {"manifest.json", "cases.zip"}]
     manifest: dict[str, Any] = {
         "schema_version": 1, "source_commit": source,
-        "command": f"python docs/snippets/task_cases.py --case all --rows {rows} --seed {seed} --output-dir docs/assets/cases",
+        "source_status": "known git checkout" if source else "unknown commit; installed module fingerprints available",
+        "command": f"python {Path(__file__).name} --case all --rows {rows} --seed {seed} --output-dir {output.name}",
         "data_config": {"rows": rows, "seed": seed, "reference": "discovery", "n_score_bins": 4,
                         "scope_dimensions": ["dataset", "application_date month", "target"]},
         "dependencies": environment["dependencies"], "python": environment["python"],
         "generation_environment": environment,
-        "code_fingerprints": {name: _fingerprint(repository / name) for name in [*snippets, *modules]},
+        "code_fingerprints": {
+            **{name: _fingerprint(Path(__file__).with_name(Path(name).name)) for name in snippets},
+            **{name: _fingerprint(Path(mars.__file__).resolve().parent / name[len("src/mars/"):])
+               for name in modules},
+        },
         "reports": {number: payload["report_id"] for number, payload in cases.items()},
         "artifacts": artifacts,
     }
@@ -721,11 +809,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--output-dir", type=Path, default=Path("docs/assets/cases"))
     parser.add_argument("--phase", choices=["generate", "compute", "consume", "finalize"], default="generate")
+    parser.add_argument("--repository-root", type=Path, help="可选源码仓库，用于 git 来源记录；独立解压无需此项")
     args = parser.parse_args()
     output: Path = args.output_dir
     output.mkdir(parents=True, exist_ok=True)
     if args.phase == "finalize":
-        _finalize(output, args.rows, args.seed)
+        _finalize(output, args.rows, args.seed, args.repository_root)
         return
     if args.phase == "consume":
         required = ["score-cross.marsreport", "score-cross.xlsx", "policy.marsreport", "case-4.json"]
@@ -745,7 +834,7 @@ def main() -> None:
         if cases.intersection({4, 5, 6, 7}):
             subprocess.run([sys.executable, str(Path(__file__).resolve()), "--phase", "consume",
                             "--output-dir", str(output.resolve())], check=True)
-        _finalize(output, args.rows, args.seed)
+        _finalize(output, args.rows, args.seed, args.repository_root)
         print(f"已生成案例 {args.case}：rows={args.rows} seed={args.seed}；合成统计，无 LLM。")
         return
     if cases.intersection({1, 2, 3, 4, 5}):
@@ -763,7 +852,7 @@ def main() -> None:
             _selection(data, output, context)
         if 5 in cases:
             assert cross is not None
-            _rules(data, cross, output)
+            _rules(data, cross, output, context)
 
 
 if __name__ == "__main__":

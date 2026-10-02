@@ -1,9 +1,14 @@
 **中文** / [English](README.en.md)
 
-<div align="center">
-<img src="docs/assets/mars-logo.svg" alt="MARS" width="480">
+<p align="center">
+<picture>
+<source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/mars-logo.svg">
+<source media="(prefers-color-scheme: dark)" srcset="docs/assets/mars-logo-dark.gif">
+<img src="docs/assets/mars-logo-light.gif" alt="MARS" width="480">
+</picture>
 <br>
 <img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
+</p>
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
   <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
@@ -12,67 +17,64 @@
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
-</div>
 
-# 面向人和 AI Agent 的风控分析工具箱
+<h1 align="center">面向人和 AI Agent 的风控分析工具箱</h1>
+<p align="center"><strong>数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘</strong></p>
+<p align="center">从 Pandas 或 Polars 宽表，得到可查看、可查询、可交付、可复用的风控分析结果。<br>用原生图表支持人工判断，用结构化报告连接你的建模、监控归因与分析 Agent。</p>
+<p align="center"><a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">开始分析</a> · <a href="https://leeesq.github.io/mars-risk/demos/">实战案例</a> · <a href="https://leeesq.github.io/mars-risk/user-guide/external-agents/">面向 AI Agent</a> · <a href="https://leeesq.github.io/mars-risk/">完整文档</a></p>
 
-**数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**
+<p align="center">
+<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
+<img src="docs/assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性" width="1040">
+</a>
+</p>
 
-从 Pandas 或 Polars 宽表得到可查询、可交付、可复用的分析报告。人工图表与外部 Agent 查询共享同一 Report。
+<p align="center"><sub>MARS 原生分箱趋势图，直接导出自分析报告；图表与统计表共享同一计算结果。点击查看高清 SVG。</sub><br>
+<a href="https://leeesq.github.io/mars-risk/demos/binning-stability/">分箱与稳定性实战</a> · <a href="https://leeesq.github.io/mars-risk/assets/cases/binning.html">打开交互式报告</a></p>
 
-<picture>
-  <source media="(max-width: 600px)" srcset="docs/assets/cases/readme-preview-mobile.png">
-  <img src="docs/assets/cases/readme-preview.png" alt="同一合成报告的真实模型分交叉矩阵与公共 Agent 查询证据" width="1040">
-</picture>
+## MARS 能帮你做什么
 
-本轮真实浏览器截图：合成模型分交叉矩阵与同一报告的公共查询 JSON。身份、范围与数值可在[完整证据](docs/assets/cases/case-4.json)中核对；[进入可运行案例](docs/demos/score-cross.md)。
+MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表，将数据画像、分箱风险评估、特征筛选、相关性和规则分析组织为统一的分析报告。你可以查看分布与风险趋势，比较客群和时间，追溯特征保留与删除的原因，再将结果交付为图表、HTML 或 Excel。
 
-[开始分析](https://leeesq.github.io/mars-risk/getting-started/quickstart/) · [七个实战案例](docs/demos/index.md) · [外部 Agent 使用](https://leeesq.github.io/mars-risk/user-guide/external-agents/) · [完整文档](https://leeesq.github.io/mars-risk/)
+同一份结果也能交给 **外部 AI Agent**。公共报告接口保留表目录、指标口径、特征业务元数据、计算状态和可重放证据，保存后仍能按需查询。Agent 可以把 MARS 作为分析计算层，结合你选择的模型库、实验工具和业务流程，持续提出问题、读取证据和完成分析。
 
-## 从要解决的问题开始
-
-| 问题 | 对应能力 | 结果与可运行案例 |
+| 核心能力 | 可以看到什么 | 实战入口 |
 | --- | --- | --- |
-| 这份数据能直接用吗？ | 数据画像 | [质量、标签、schema 与分布证据](docs/demos/data-quality.md) |
-| 哪些特征有区分度，而且足够稳定？ | 分箱评估 | [固定参考分箱、多目标 IV / KS / PSI](docs/demos/binning-stability.md) |
-| 为什么保留这个特征、删除另一个？ | 特征筛选 + 相关性分析 | [真实决策、带符号冗余、raw / WOE 分别解释](docs/demos/selection-correlation.md) |
-| 主模型同等级内，辅助分还能区分风险吗？ | 模型分交叉 | [交互矩阵、相对行基线 Δ、格子证据与策略回放](docs/demos/score-cross.md) |
-| 从候选规则走到可以审查的证据？ | 规则挖掘 · Experimental | [发现审计、独立验证、表现与覆盖](docs/demos/rule-evidence.md) |
-| 分析完成后，如何保存并继续查询？ | 公共报告 | [新进程加载、分页与字符预算](docs/demos/saved-reports.md) |
-| 同一次分析，如何交付给不同使用者？ | 报告导出 | [HTML / Excel / .marsreport / 有边界 JSON / 提示材料](docs/demos/report-delivery.md) |
+| 数据画像 | 缺失与特殊值、样本与标签覆盖、分布变化 | [判断数据是否可以使用](https://leeesq.github.io/mars-risk/demos/data-quality/) |
+| 分箱与风险评估 | 原生趋势图、固定分箱、多目标 IV / KS / PSI、件数与金额风险 | [比较区分度与稳定性](https://leeesq.github.io/mars-risk/demos/binning-stability/) |
+| 特征筛选 | 候选特征、筛选步骤、保留与删除理由 | [理解特征取舍](https://leeesq.github.io/mars-risk/demos/selection-correlation/) |
+| 相关性分析 | 带符号的冗余关系，分别查看 raw / WOE 证据 | [检查特征之间的关系](https://leeesq.github.io/mars-risk/demos/selection-correlation/#correlation) |
+| 模型分交叉 | 同一主等级内的风险分离与组合证据 | [比较辅助模型分](https://leeesq.github.io/mars-risk/demos/score-cross/) |
+| 规则挖掘 · Experimental | 候选来源、筛选、覆盖与独立验证 | [用证据审查规则](https://leeesq.github.io/mars-risk/demos/rule-evidence/) |
 
-七例共用固定 seed 的 18,000 行合成数据，发现与验证分离。观察期 `late60` 无标签，`bad30` 保留实际有效标签。合成统计不外推业务收益、因果关系、策略批准或生产结论。精确参数以 [API Reference](https://leeesq.github.io/mars-risk/reference/) 为单一权威来源。
+[七个实战案例](https://leeesq.github.io/mars-risk/demos/)共用 18,000 行合成申请，发现、验证、观察分区独立。人工图表和 Agent 查询读取实际报告；合成统计用于展示能力，不代表真实信贷业务效果。
 
-## 安装与版本边界
+## 基于 MARS，构建你的 Agent
 
-源码版本为 **0.0.28**。本页公共报告与新分析能力使用已核验源码，固定安装 commit：
+MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型训练工具和业务决策流程。
 
-```bash
-pip install "git+https://github.com/leeesq/mars-risk.git@746b8fa76439e6841b466bd590c35249a975ab56"
-```
+| 外部 Agent 场景 | 可复用的 MARS 能力 | 可以形成的结果 |
+| --- | --- | --- |
+| 建模 Agent | 数据质量、分箱评估、特征筛选、相关性、风险评估 | 特征候选与淘汰理由，交给自选训练工具的评估证据 |
+| 监控与归因 Agent | 分组画像、缺失和分布变化、固定分箱风险趋势、稳定性 | 定位变化人群与特征，汇总证据，提出待验证的归因假设 |
+| 规则分析 Agent | 候选规则、命中评估、发现审计与独立验证 | 带风险、覆盖与验证结果的可审查候选 |
+| 报告分析 Agent | 表目录、业务元数据、有限查询、快照与证据引用 | 跨会话继续分析，交付可追溯的回答 |
 
-截至 **2026-10-02**，实时核验 [PyPI 已发布版本](https://pypi.org/project/mars-risk/)为 **0.0.27**，不包含本页全部新能力。本轮没有发布 0.0.28；六个徽章保留真实动态来源。
+这些是可以基于 MARS 构建的工作流，完整 Agent 由使用者组合实现。可选 <code>mars.agent</code> 也复用公共报告接口。[外部 Agent 使用指南](https://leeesq.github.io/mars-risk/user-guide/external-agents/) · [规则证据与 Agent](https://leeesq.github.io/mars-risk/user-guide/rule-reports-and-agents/)。
 
-```bash
-pip install mars-risk==0.0.27
-```
+## 安装
 
-基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈。本轮公开案例以 Python 3.11 生成、Python 3.12 检查；可选模型、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装指南](https://leeesq.github.io/mars-risk/getting-started/installation/)列出 extras 与兼容约束。
-
-复现新案例脚本，在合并前使用本任务分支：
+本页示例对应 **main / 源码版本 0.0.28**，使用当前源码安装：
 
 ```bash
-git clone --branch codex/task-cases-bilingual-readme https://github.com/leeesq/mars-risk.git
-cd mars-risk
-pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir docs/assets/cases
+pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-新案例源码和已提交下载资源在此分支可取得；文档站新增交互路径在合并并由既有 Pages 流程部署后可用。本轮不自动合并或额外部署。
+PyPI 当前发布 **0.0.27**，尚不包含这里展示的全部新能力。基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖](https://leeesq.github.io/mars-risk/getting-started/installation/)。
 
-## 先得到一份有用的报告
+## 先得到一份报告
 
-在空工作目录执行。代码独立产生风险摘要、HTML 与快照：
+在空工作目录运行这个独立示例：
 
 ```python
 import polars as pl
@@ -80,24 +82,25 @@ import polars as pl
 from mars.analysis import profile_risk
 
 df = pl.DataFrame({
+    "date": ["2026-01-01"] * 4 + ["2026-02-01"] * 4,
     "income": [3200, 3600, 5200, 6100, 3400, 4300, 5800, 6800],
     "utilization": [0.72, 0.61, 0.29, 0.18, 0.66, 0.48, 0.24, 0.12],
     "target": [1, 1, 0, 0, 1, 1, 0, 0],
-})
+}).with_columns(pl.col("date").str.to_date())
 report = profile_risk(
     df, target="target", features=["income", "utilization"],
-    method="quantile", n_bins=4,
+    time_col="date", method="quantile", n_bins=4,
 ).report
 print(report.get_table("summary", sort_by="iv", descending=True, limit=2))
-report.write_html("risk_report.html", include_charts=False)
+report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
 ```
 
-[完整已测试脚本](docs/snippets/readme_quickstart.py) · [Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。八行小夹具用于说明接口，其 IV 不证明真实模型质量。这里的 HTML 不含图表；计算时间趋势需提供有效日期上下文。
+[共享可运行源码](docs/snippets/readme_quickstart.py) · [完整 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战](https://leeesq.github.io/mars-risk/demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
 
-## 同一 Report，人工阅读与 Agent 查询
+## 将同一份结果交给 AI Agent
 
-人工可读 HTML。在**新进程**中加载快照，不需要原始宽表、原分析器、LLM、API Key 或 `MarsAgentSession`：
+在新进程加载已保存的报告，按需读取证据：
 
 ```python
 from mars.reporting import load_report
@@ -109,30 +112,25 @@ next_page = report.query_page("summary", offset=page["next_offset"], limit=1)
 context_json = report.to_ai_context(tables=["summary"], max_chars=16000)
 ```
 
-此时 `report` 是 ReportSnapshot，`report.write_excel("risk_report.xlsx")` 导出当前静态表。原分箱报告的 Excel 方法使用旧透视模板，可能需要原生 Excel 刷新；本例静态交付使用加载后的快照。
+<code>describe()</code> 提供真实表目录、口径、参数与状态；<code>query_page()</code> 返回结果、分页和可重放证据引用；<code>to_ai_context()</code> 生成有限 JSON，**<code>max_chars</code> 是字符预算，不是 token 数**。查询已有结果无需 LLM、API Key、<code>MarsAgentSession</code>、原始宽表或分析器。
 
-`describe()` 发现真实表目录、schema、口径与支持能力；`query_page()` 返回有限页、表行数、下一页 offset 与可重放证据引用。`to_ai_context()` 生成有限 JSON，**`max_chars` 是最终 JSON 字符预算，不是 token 数**。回答前检查裁剪与状态；空结果、不可用值与有效零值分别表达。
+加载得到 **ReportSnapshot**，包含已保存统计和元数据。<code>report.write_excel("risk_report.xlsx")</code> 导出静态表，<code>report.show_table("summary", limit=10)</code> 用于展示。需要新维度或原始记录的问题，应发起新的计算。[保存后继续查询](https://leeesq.github.io/mars-risk/demos/saved-reports/) · [交付 HTML、Excel、快照与 Agent 材料](https://leeesq.github.io/mars-risk/demos/report-delivery/)。
 
-恢复类型为 **ReportSnapshot**，保留身份、元数据和已保存统计表，用 `show_table()` 通用展示。专用模型分策略回放使用保存的聚合证据。恢复不还原分析器、原始记录、任意方法、训练模型或可部署 RuleSet；新维度与个体记录问题需要重新分析。
+## 当前迭代方向
 
-[保存查询案例](docs/demos/saved-reports.md)展示下一页、空结果、无效请求与真实预算裁剪。[交付案例](docs/demos/report-delivery.md)列出各格式能力与限制：Excel 为静态交付，HTML 交互和离线性逐份导出验证。TXT 是提示材料，本地确定性消费者明确标为脚本；示例回答是人工整理并用证据核验，不冒充 LLM 实验。
+**Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipeline、Scoring、Agent 为 Experimental。** 这些标记说明接口成熟度。
 
-## 成熟度与投入方向
+当前重点改进核心分析性能、内存效率、人工体验与外部 Agent 消费能力。**监控、建模（含 Pipeline）、评分卡暂时停止功能迭代**，现有功能和文档保留，处理必要修复与上游适配。你可以借助 AI、MARS 分析能力和自选模型工具构建更定制的流程。三个下游直接适配核心代码，上游不为它们保留兼容别名或冗余计算。
 
-**Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipeline、Scoring、Agent 为 Experimental。** 成熟度与开发投入分别表达。
+[稳定性与适配原则](https://leeesq.github.io/mars-risk/project/stability/) · [保留的 LightGBM 示例](https://leeesq.github.io/mars-risk/demos/history/)。
 
-优先改进核心分析性能、内存效率、人工体验与外部 Agent 公共报告消费。**监控、建模（含 Pipeline）、评分卡暂时停止功能迭代**；现有功能、文档与历史案例保留，处理必要正确性修复、运行修复和上游直接适配。上游不为三个下游增加旧别名、兼容壳或冗余计算；该豁免不扩展到核心公共 API 和已保存报告。
-
-[稳定性与适配原则](https://leeesq.github.io/mars-risk/project/stability/) · [历史 LightGBM 案例](docs/demos/history.md) · [规则与 Agent 详细指南](docs/user-guide/rule-reports-and-agents.md)。
-
-## 复现、验证与贡献
-
-生成、证据验证、站点构建分别执行。MkDocs 消费已核验资源；`mkdocs-jupyter` 的 `execute: false` 仅渲染，不代替运行。[案例索引](docs/demos/index.md)提供产物能力矩阵、共享下载与复现说明。
+## 复现与贡献
 
 ```bash
-python scripts/check_case_assets.py
-python -m pytest -q tests/test_task_cases.py tests/test_documentation.py -m "not docs_ml"
-python -m mkdocs build --strict
+git clone https://github.com/leeesq/mars-risk.git
+cd mars-risk
+pip install -e ".[docs]"
+python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 ```
 
-开发检查、依赖和真实浏览器验收见 [CONTRIBUTING.md](CONTRIBUTING.md)。[产物来源记录](docs/assets/cases/manifest.json)保留 seed、规模、源码 commit、依赖版本与文件 hash。[MIT License](LICENSE)。
+[案例下载与复现说明](https://leeesq.github.io/mars-risk/demos/#run) · [贡献指南](CONTRIBUTING.md) · [工程 Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE)。

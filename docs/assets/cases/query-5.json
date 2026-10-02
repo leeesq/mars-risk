@@ -1,12 +1,12 @@
 {
   "case": 5,
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+  "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
   "question": "从候选规则走到可以审查的证据",
   "query": {
     "question": "生产规格实际保留多少候选？",
     "reference": {
-      "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+      "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
       "table": "summary",
       "query": {
         "offset": 0,

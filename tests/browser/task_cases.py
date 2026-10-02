@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import functools
-import html
 import json
 import platform
 import threading
@@ -23,7 +22,6 @@ from score_cross import (
     _assert_cell,
     _assert_policies,
     _assert_rule,
-    _check_number,
     _keyboard,
     _observe,
     _overflow,
@@ -129,75 +127,34 @@ def _cross(browser: Browser, assets: Path, output: Path) -> dict[str, Any]:
 
 
 def _preview(browser: Browser, assets: Path, output: Path) -> dict[str, Any]:
-    """先截真实矩阵，再在可维护排版中展示同格公共查询，不改报告数字。"""
-    report = load_report(assets / "score-cross.marsreport")
-    first = report.get_table("overall", filters={"group": "discovery", "target": "bad30"}, limit=1).to_dicts()[0]
-    scope = {key: first[key] for key in ("group", "target", "period")}
-    context = browser.new_context(viewport={"width": 1150, "height": 1000}, locale="zh-CN")
+    """验收原生分箱 PNG/SVG 和同源查询；不重绘或覆盖产品图。"""
+    evidence = json.loads((assets / "binning-native-evidence.json").read_text(encoding="utf-8"))
+    report = load_report(assets / "binning.marsreport")
+    assert evidence["report_id"] == report.report_id
+    for query in evidence["queries"]:
+        reference = query["reference"]
+        assert reference["report_id"] == report.report_id
+        page_result = report.query_page(reference["table"], **reference["query"])
+        assert page_result["data"].to_dicts() == query["rows"]
+    context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="zh-CN")
+    events = _observe(context)
     page = context.new_page()
-    page.goto((assets / "score-cross.html").as_uri())
-    _select_scope(page, scope)
-    cell = report.get_table("cells", filters={**scope, "x_bin": "b1", "y_bin": "b3"}).to_dicts()[0]
-    page.locator(f'#matrix button[data-r="{cell["x_risk_rank"]-1}"][data-c="{cell["y_risk_rank"]-1}"]').click()
-    page.locator(".maincol > section.card").first.screenshot(path=str(assets / "score-cross-matrix.png"))
-    reference = json.loads(page.locator("#evidence-id").inner_text())
-    assert reference["report_id"] == report.report_id
-    row = report.query_page(reference["table"], **reference["query"])["data"].to_dicts()[0]
-    for identifier, field, scale, digits in (
-        ("detail-rate", "bad_rate", 100, 2), ("detail-delta", "delta_vs_row", 100, 2),
-        ("detail-lift", "lift_vs_overall", 1, 2), ("detail-n", "sample_count", 1, 0),
-        ("detail-obs", "observed_sample_count", 1, 0),
-    ):
-        _check_number(page.locator("#" + identifier).inner_text(), row[field], scale, digits)
-    excerpt = {"report_id": report.report_id, "table": "cells", "scope": scope,
-               "x_bin": row["x_bin"], "y_bin": row["y_bin"],
-               **{field: row[field] for field in ("status", "sample_count", "observed_sample_count", "bad_sample_count", "observed_weight_sum", "bad_weight_sum", "bad_rate", "delta_vs_row", "lift_vs_overall")}}
-    _json(assets / "preview-evidence.json", {"reference": reference, "row": row, "excerpt": excerpt,
-                                            "method": "real browser matrix screenshot + public query; layout only"})
-    # 排版仅组合真实截图与真实有限 JSON，手机只裁切标签之外的空白，不绘制新矩阵。
-    escaped = html.escape(json.dumps(excerpt, ensure_ascii=False, indent=2))
-    viewer = assets / "preview.html"
-    viewer.write_text(f'''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MARS — 同一报告的人工与 Agent 证据</title><style>
-*{{box-sizing:border-box}}body{{margin:0;color:#24203b;background:#f4f0fc;font:16px/1.5 "Segoe UI","Microsoft YaHei",sans-serif}}
-main{{padding:22px}}header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}}
-h1{{font-size:23px;margin:0}}header span{{color:#69538c;font-size:13px}}.content{{display:grid;grid-template-columns:minmax(0,1fr) 355px;gap:14px}}
-.panel{{background:white;border:1px solid #ded5ef;border-radius:12px;overflow:hidden}}.panel h2{{font-size:15px;margin:0;padding:10px 15px;background:#faf8ff}}
-.matrix img{{width:100%;display:block}}pre{{font:13px/1.6 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;margin:0}}
-footer{{font-size:12px;color:#69538c;padding:12px 2px 0}}@media(max-width:600px){{main{{padding:12px}}header{{display:block}}h1{{font-size:20px}}.content{{grid-template-columns:1fr}}.matrix{{overflow:auto}}.matrix img{{width:680px;max-width:none}}pre{{font-size:13px}}}}
-</style><main><header><h1>一个 Report · 人工矩阵与 Agent 证据</h1><span>MARS / SYNTHETIC · discovery / bad30 / {scope['period']}</span></header>
-<div class="content"><section class="panel matrix"><h2>真实 Score Cross 矩阵 · Δ 单位 pp</h2><img src="score-cross-matrix.png" alt="真实交叉矩阵"></section>
-<section class="panel"><h2>同一选格 · 公共 query_page 摘录</h2><pre>{escaped}</pre></section></div>
-<footer>截图和 JSON 来自同一 .marsreport · 加权率分母为有效标签权重；完整行及引用见 preview-evidence.json · 合成数据</footer></main></html>''', encoding="utf-8")
-    page.set_viewport_size({"width": 1120, "height": 1000})
-    page.goto(viewer.as_uri())
-    page.locator("main").screenshot(path=str(assets / "readme-preview.png"))
-    # 窄屏预览保留同一格的身份、范围、单位与状态，使用原生详情而不裁掉矩阵轴。
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.goto((assets / "score-cross.html").as_uri())
-    _select_scope(page, scope)
-    page.locator(f'#matrix button[data-r="{cell["x_risk_rank"]-1}"][data-c="{cell["y_risk_rank"]-1}"]').click()
-    detail = page.locator("aside.detail")
-    detail.scroll_into_view_if_needed()
-    box = detail.bounding_box()
-    assert box is not None
-    page.screenshot(path=str(assets / "score-cross-cell.png"), clip={**box, "height": 425})
-    mobile_excerpt = {"table": "cells", "scope": scope, "x_bin": row["x_bin"], "y_bin": row["y_bin"],
-                      "status": row["status"], "bad_rate": row["bad_rate"],
-                      "delta_vs_row": row["delta_vs_row"], "full_evidence": "preview-evidence.json"}
-    mobile_viewer = assets / "preview-mobile.html"
-    mobile_viewer.write_text(f'''<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-*{{box-sizing:border-box}}body{{margin:0;background:#f4f0fc;color:#24203b;font:15px/1.45 "Microsoft YaHei",sans-serif}}
-main{{padding:12px}}h1{{font-size:19px;margin:0 0 8px}}p{{font-size:12px;margin:6px 0}}
-img{{width:100%;display:block;border-radius:8px}}pre{{font:12px/1.5 Consolas,monospace;background:#fff;border:1px solid #ded5ef;border-radius:8px;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere}}
-</style><main><h1>同一报告 · 真实选格与 Agent 证据</h1><p>discovery / bad30 / {scope['period']} · 移动预览为选格详情；完整矩阵见桌面图</p>
-<img src="score-cross-cell.png" alt="真实选格详情"><pre>{html.escape(json.dumps(mobile_excerpt, ensure_ascii=False, indent=2))}</pre>
-<p>公共 query_page 真实摘录 · 完整身份与引用见 preview-evidence.json · 合成数据</p></main></html>''', encoding="utf-8")
-    page.goto(mobile_viewer.as_uri())
-    page.locator("main").screenshot(path=str(assets / "readme-preview-mobile.png"))
+    rendered: list[dict[str, Any]] = []
+    for key, element in (("chart_png", "img"), ("chart_svg", "svg")):
+        path = assets / evidence[key]
+        assert path.is_file()
+        page.goto(path.as_uri())
+        chart = page.locator(element).first
+        expect(chart).to_be_visible()
+        box = chart.bounding_box()
+        assert box is not None and box["width"] > 0 and box["height"] > 0
+        page.screenshot(path=str(output / f"native-binning-{key}.png"), full_page=True)
+        rendered.append({"file": path.name, "box": box})
+    assert not any(events[key] for key in ("pageerror", "csp", "external_requests", "requestfailed")), events
     context.close()
-    return {"reference": reference, "key_fields": excerpt, "matrix_source": "native HTML report screenshot",
-            "layout": "preview.html; JSON excerpt is labeled, complete original linked"}
+    return {"report_id": report.report_id, "feature": evidence["feature"],
+            "source": evidence["source_api"], "rendered": rendered,
+            "method": "native exported files; public-query replay; no composite Score Cross hero"}
 
 
 def _docs(browser: Browser, site: Path, output: Path) -> dict[str, Any]:
@@ -255,6 +212,18 @@ def _docs(browser: Browser, site: Path, output: Path) -> dict[str, Any]:
             body = response.body()
             assert body
             download_paths.append({"url": urlparse(href).path, "bytes": len(body), "status": response.status})
+        page.goto(base + "demos/binning-stability/", wait_until="networkidle")
+        for filename in ("binning-native-main-score.png", "binning-native-main-score.svg", "binning.html"):
+            link = page.locator(f'article a[href$="/{filename}"]').first
+            assert link.count(), f"Native binning download is missing from the case page: {filename}"
+            href = link.get_attribute("href")
+            assert href is not None
+            absolute = link.evaluate("element => element.href")
+            response = context.request.get(absolute)
+            assert response.ok, (absolute, response.status)
+            assert response.body() == (site / "assets/cases" / filename).read_bytes()
+            download_paths.append({"url": urlparse(absolute).path, "bytes": len(response.body()), "status": response.status})
+        page.goto(base + "demos/report-delivery/", wait_until="networkidle")
         archive = page.locator('article a[href$="/cases.zip"]').first
         with page.expect_download() as downloading:
             archive.click()
@@ -303,7 +272,7 @@ def _zoom(playwright: Any, site: Path, output: Path, channel: str) -> dict[str, 
 
 
 def main() -> None:
-    """按阶段生成真实预览并对最终严格构建做浏览器验收。"""
+    """分阶段验收原生分箱图、交叉交互和最终严格构建。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets", type=Path, required=True)
     parser.add_argument("--site-dir", type=Path)

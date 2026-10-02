@@ -31,6 +31,17 @@ description: 新进程仅加载已有快照，验证目录、身份、分页、�
 
 === "人工阅读"
 
+    先保存当前报告，再在下一次会话读取它；不需要重新准备原宽表：
+
+    ```python
+    report.save("analysis.marsreport")
+
+    from mars.reporting import load_report
+    saved = load_report("analysis.marsreport")
+    print(saved.describe())
+    print(saved.query_page("cells", filters={"target": "bad30"}, limit=5)["data"])
+    ```
+
     从 `describe()` 找真实表名与粒度，再按问题筛选、排序、投影和分页。
     通过 `next_offset` 请求下一页，空结果保留零行；非法表名、字段或预算应显示真实异常。
     不要把查询裁剪前的行数或引用冒充预算 JSON 的完整内容。
