@@ -24,7 +24,7 @@ README、版本号、依赖范围、工作流触发条件未改；没有 PR、�
 | B3 | 合法 JSON 的带类型非有限值被当作操作符对象；现在只在筛选边界严格解码既有 `$mars` float。 | `_query.py` 复用 `_serialization.py`；测试标量/in、±Infinity、NaN/Null既有语义、普通字符串和坏标签拒绝，两后端及新进程。 |
 | B4 | 裁剪列/行后 evidence 仍声称原查询；现在有效 columns/limit 同展示子集，整体 JSON 连查询/身份开销一起计预算。 | 现有上下文裁剪路径；回归含365列宽表、非零offset、多表、严格JSON、重复调用和精确查询回放。 |
 | B5 | 只投影数值丢失特征字典，关系查询缺另一端；现在基于真实页身份裁剪元数据，投影缺身份时补等长 identities，裁行同步裁身份。 | 同一上下文路径；回归包括多行数字投影、关系两端、空页、排序、来源交集和成员桥接，不携带全项目字典。 |
-| C1 | 原透视工作簿的缓存可能需要 Excel 刷新；已有 snapshot 静态路径直接写出当前值，本次补足测试和入口文档。 | `test_static_excel.py` 两后端逐表关闭/重开核对值、中文名、NaN、权重、KS/IV、保存文件新进程导出；原透视 XML 和 refreshOnLoad 保留。 |
+| C1 | 原透视工作簿的缓存需要 Excel 刷新；已有 snapshot 静态路径直接写出当前值，本次补足测试和入口文档。 | `test_static_excel.py` 两后端逐表关闭/重开核对值、中文名、NaN、权重、KS/IV、保存文件新进程导出；原透视 XML 和 refreshOnLoad 保留。原生Excel实际刷新/另存/关闭后20项缓存数值通过。 |
 | C2 | schema 默认排序列不存在，文本列渐变时转float；现在根据实际schema选择默认排序，仅数值列使用数值样式。 | `profile_report.py`、`_profile_excel.py`；`test_profile_presentation.py` 实际执行 Styler.to_html，覆盖分组/不分组、默认/显式、不可比较/空/nullable 与查询/HTML/Excel值一致。 |
 | C3 | 全局/局部事件互相覆盖 hidden；现在按当前两条件的交集重算。 | `_profile_html.py` 同时服务原报告/快照；DOM测试与真实 Chrome脚本分开记录。当前只有页面导航，没有行级分页；验证切页前后与排序保留筛选。 |
 | C4 | 报告索引遗漏Correlation/ScoreCross，未发布固定安装提示容易误导。 | 现有指南/索引、受测试展示示例、Unreleased变更记录；安装说明链接当前PyPI/GitHub已发布0.0.27，源码仍0.0.28，不升版本。 |
@@ -99,8 +99,27 @@ test_profile_presentation.py test_profile_html.py test_static_excel.py test_repo
 `from mars.reporting import snapshot_report; snapshot_report(report).write_excel(path)`
 是已有静态Excel入口，恢复后的 `load_report(path).write_excel(...)` 同样静态。
 openpyxl `data_only=True` 的关闭/重开验收通过后，说明无需Excel刷新即可读取本次数值。
-这不等于原生Excel刷新验收。本会话的原生桌面控制接口未开放，无法操作Excel；
-透视模式仅验证结构/XML，原生打开、刷新、保存后缓存仍未验证。
+静态读取与原生刷新分开验收。会话最初的Cua入口禁用native操作；随后发现已安装的
+Computer Use `node_repl + @oai/sky` Windows入口可用。首次启动返回
+`Computer Use app approval timed out`，用户明确允许重试并通过应用授权后成功启动。
+第一次文件对话框曾出现索引失效/foreground process id错误，恢复窗口后通过键盘
+打开专用确定性透视工作簿，执行Ctrl+Alt+F5全部刷新，F12另存，然后关闭工作簿。
+未使用COM或修改任何Office安全设置；第三方OfficePLUS推广浮窗没有参与验收。
+
+原生Excel版本16.0.20430.20092。8行数据包含中文类别、Missing和权重，通过公共
+Native fit/update_bins和MarsBinEvaluator生成当前报告；刷新前缓存验证按预期失败。
+原生刷新保存后，独立Python进程以openpyxl `data_only=True`读取
+`<validation>/native-excel/mars_native_refreshed.xlsx`，按feature逐项核对综合指标与
+KS/IV/AUC/PSI/Missing页，共20项全部通过；关闭工作簿后重读仍20项通过。
+其中income/category的KS分别99.999975和85.714263，Missing均9.090909%。
+生成脚本、expected.json、原始/刷新后工作簿和verification.json保留在任务验证目录，
+没有将Excel文件或截图提交源码。实际命令为：
+
+```bash
+python <validation>/native-excel/generate_native_excel.py
+python <validation>/native-excel/verify_native_excel.py --workbook <validation>/native-excel/mars_native_pivot.xlsx
+python <validation>/native-excel/verify_native_excel.py --workbook <validation>/native-excel/mars_native_refreshed.xlsx
+```
 
 真实浏览器使用已有Playwright1.63.0与本机Chrome154.0.8037.95，headless、file://。
 `tests/browser/profile_search.py --output <validation>/c-profile-browser-final-v2 --channel chrome`
@@ -152,6 +171,11 @@ overview10000行、趋势1行×365日期列、offset9000/limit10、10次中位�
 最小普通文字对比度4.5047，HTML源码未改变，已查看hover截图。原始结果保存至
 任务验证目录 `score-time-ci-fix`、`contrast-ci-fix/contrast.json`。
 随后重新推送并核验新SHA的全部CI，最终状态随交付回复提供。
+
+修正提交 `b451781726f8e09827065c73f252738ea91037f7` 的 CI
+[36988991823](https://github.com/leeesq/mars-risk/actions/runs/36988991823)
+已核验终态success，全部11项成功。补充原生Excel实测记录的最后一次文档提交
+仍需核验自己的完整SHA；最终回复只引用该最终SHA的检查结果。
 
 仅推送核实的任务分支和origin，不force push。远端精确SHA及CI终态随最终回复核验。
 CI push覆盖quality、core3.10—3.12、legacy3.8/3.9、modeling、单次distribution、
