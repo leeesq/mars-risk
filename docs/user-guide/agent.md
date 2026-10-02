@@ -147,8 +147,13 @@ page = agent.execute_tool(
 )
 ```
 
-筛选为最多四个列的精确值匹配，随后排序、选择列、分页。`next_offset` 非空表示还有结果。
+筛选支持最多八个列的受限条件，随后排序、选择列、分页。`next_offset` 非空表示还有结果。
 输出超过字符预算时自动减小页长；单行过大时需通过 `columns` 缩小范围。
+`evidence_reference.query` 记录实际页长及已执行条件，可直接用于继续读取同一报告。
+`get_report_context` 的 `evidence.query` 也记录预算裁剪后的列与页长；仅输出数值时，
+`identities` 按行补充省略的特征身份，关系表保留两端，业务元数据仅覆盖实际页。
+Monitoring 的已有兼容查询消费登记来源，`sources` 与 `features` 采用交集；未知来源明确失败。
+缺少可靠来源信息的旧 Monitoring 报告明确拒绝 `sources`，不会将未执行条件写成成功证据。
 浮点非有限值使用公共带类型标记 `{"$mars":"float","value":"nan/inf/-inf"}`（value 为三者之一），
 JSON null 表示缺失，普通字符串标记保持字符串；完整本地表保留 MARS 原值。Agent 不提供原始样本读取、Shell、
 任意 Python/SQL 执行、模型训练或业务决策修改工具。

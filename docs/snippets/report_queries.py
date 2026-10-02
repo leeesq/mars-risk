@@ -29,9 +29,15 @@ bins = report.get_table(
 )
 context_json = report.to_ai_context(features="income", tables=["summary"], max_chars=16000)
 assert json.loads(context_json)["evidence"][0]["reference"] == "summary"
+for evidence in json.loads(context_json)["evidence"]:
+    replayed = report.get_table(evidence["reference"], **evidence["query"])
+    assert replayed.to_dicts() == evidence["rows"]
 feature_data = report.get_feature("income")
 summary_view = report.show_summary(sources="application", columns=["feature", "iv", "ks"], limit=10)
 
 profile = profile_stats(data, features=["income"], metrics=["missing", "mean"], group_col="month")
 overview = profile.get_table("overview", columns=["feature", "missing_rate", "mean"], limit=10)
 profile_context = profile.to_ai_context(tables=["dq.missing"], features="income")
+numeric_context = json.loads(profile.to_ai_context(columns=["mean"], limit=1))
+assert numeric_context["evidence"][0]["identities"] == [{"feature": "income"}]
+assert set(numeric_context["description"]["feature_metadata"]) == {"income"}

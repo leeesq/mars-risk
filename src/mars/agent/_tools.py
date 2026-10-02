@@ -431,7 +431,15 @@ class _MarsTools:
                     "missing_values": list(dataset.missing_values),
                 }
             )
-            report = monitor.monitor(frame, target=dataset.target, **common)
+            # 旧 Monitoring 接口已有 source -> features 参数，在本地消费登记来源即可。
+            feature_sources: dict[str, list[str]] = {}
+            for feature in features:
+                source = dataset.feature_metadata.get(feature, {}).get("data_source")
+                if source:
+                    feature_sources.setdefault(source, []).append(feature)
+            report = monitor.monitor(
+                frame, target=dataset.target, feature_data_source=feature_sources, **common
+            )
             tables = {
                 "summary": report.summary_table,
                 "detail": report.detail_table,
@@ -449,6 +457,10 @@ class _MarsTools:
             if report.target_observation_table is not None:
                 tables["target_observation"] = report.target_observation_table
             metadata = dict(report.metadata)
+            metadata["feature_metadata"] = {
+                feature: deepcopy(dataset.feature_metadata.get(feature, {}))
+                for feature in features
+            }
         metadata["agent_compute_budget"] = budget_record
         metadata["agent_output_budget"] = {"max_result_chars": self.max_result_chars}
         metadata["agent_parameters"] = {
@@ -545,9 +557,10 @@ class _MarsTools:
                     reference = page["reference"]
                 else:
                     # 监控报告保留现有口径，通过共享原生查询执行兼容适配。
+                    selected_features = self._monitor_source_features(report, options)
                     table = query_table(report.tables[name], filters=options.get("filters"),
                                         sort_by=options.get("sort_by"), descending=options.get("descending", False),
-                                        features=options.get("features"), columns=options.get("columns"))
+                                        features=selected_features, columns=options.get("columns"))
                     frame = table.slice(options["offset"], options["limit"])
                     rows, total = table_rows(frame), table.height
                     reference = {"report_id": None, "table": name, "query": dict(options)}
@@ -570,3 +583,40 @@ class _MarsTools:
             if options["limit"] <= 1:
                 raise _ToolInputError("one report row exceeds output budget; narrow the requested columns")
             options["limit"] = max(1, options["limit"] // 2)
+
+    @staticmethod
+    def _monitor_source_features(
+        report: MarsAgentReport, options: dict[str, Any]
+    ) -> list[str] | None:
+        """旧消费边界只解析可靠来源并求交，行筛选继续交给共享 query_table。"""
+        sources = options.get("sources")
+        requested: list[str] | None = options.get("features")
+        if sources is None:
+            return requested
+        metadata = report.metadata.get("feature_metadata", {})
+        source_map: dict[str, str] = {
+            feature: entry["data_source"]
+            for feature, entry in metadata.items()
+            if isinstance(entry.get("data_source"), str)
+            and entry["data_source"]
+            and entry["data_source"] != "UNMAPPED"
+        }
+        # 已有表可补齐部分登记来源；两处真实来源冲突时明确拒绝。
+        for table in report.tables.values():
+            if not {"feature", "data_source"}.issubset(table.columns):
+                continue
+            for feature, source in table.select("feature", "data_source").unique().iter_rows():
+                if isinstance(source, str) and source and source != "UNMAPPED":
+                    if source_map.get(feature) not in (None, source):
+                        raise ValueError(f"Conflicting feature sources for {feature!r}.")
+                    source_map[feature] = source
+        if not source_map:
+            raise ValueError(
+                "Monitoring source filtering is unsupported: this report has no reliable "
+                "feature source information."
+            )
+        unknown = set(sources) - set(source_map.values())
+        if unknown:
+            raise ValueError(f"Unknown feature sources: {sorted(unknown)}.")
+        allowed = [feature for feature, source in source_map.items() if source in sources]
+        return allowed if requested is None else [feature for feature in requested if feature in allowed]

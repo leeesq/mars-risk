@@ -17,6 +17,7 @@ import polars as pl
 
 from ._metadata import export_semantics
 from ._query import ReportFrame, _ReportQuery
+from ._semantics import _normalize_state_definitions
 from ._serialization import encode, json_safe
 
 pa = importlib.import_module("pyarrow")
@@ -241,6 +242,7 @@ class ReportSnapshot(_ReportQuery):
             parameters=deepcopy(self.report_meta),
             source=deepcopy(self.source),
         )
+        _normalize_state_definitions(description)
         return cast(Dict[str, Any], json_safe(description))
 
     def show_table(self, name: str, **query: Any) -> pd.DataFrame:

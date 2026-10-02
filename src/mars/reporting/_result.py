@@ -45,7 +45,7 @@ def _result_report(
     for name, frame in tables.items():
         fields: dict[str, Any] = {}
         for column, dtype in frame.schema.items():
-            meaning = _definition(column)
+            meaning = _definition(column, report_type=report_type, table=name)
             unit = (
                 "count"
                 if column.endswith("count")
