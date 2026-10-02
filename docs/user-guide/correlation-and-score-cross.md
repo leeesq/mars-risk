@@ -1,5 +1,9 @@
 # 相关性证据与双模型分交叉
 
+任务型入口：[案例 3：特征取舍与相关性](../demos/selection-correlation.md#correlation) ·
+[案例 4：同一主模型等级内的辅助分](../demos/score-cross.md)。
+本页继续作为完整参数与口径参考，旧 Notebook [入口](../demos/correlation_and_score_cross.ipynb)保留。
+
 两个功能均输出独立报告，不需要 MarsAgentSession。`.marsreport` 沿用 manifest +
 Parquet 格式，保留身份、原生表、稳定顺序和业务语义；没有 pickle、个体数据或模型。
 所有机器比例用小数，`delta_vs_row` 为小数差，展示时转为百分点。

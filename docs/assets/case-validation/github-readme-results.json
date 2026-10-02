@@ -1,0 +1,526 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.13",
+  "playwright": "1.63.0",
+  "engine": "Chromium",
+  "headless": true,
+  "method": "actual public GitHub branch file rendering",
+  "ref": "bd00d5e2cdd2bab6fe5519498a31942fb2c22063",
+  "pages": [
+    {
+      "file": "README.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "viewport": 1440,
+      "scheme": "light",
+      "sizes": {
+        "width": 1012,
+        "scroll": 1012
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "同一合成报告的真实模型分交叉矩阵与公共 Agent 查询证据",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png",
+          "width": 1120
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(255, 255, 255)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png"
+    },
+    {
+      "file": "README.en.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.en.md",
+      "viewport": 1440,
+      "scheme": "light",
+      "sizes": {
+        "width": 1012,
+        "scroll": 1012
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "Actual Score Cross matrix and public Agent query from the same synthetic report",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png",
+          "width": 1120
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(255, 255, 255)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png"
+    },
+    {
+      "file": "README.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "viewport": 390,
+      "scheme": "light",
+      "sizes": {
+        "width": 324,
+        "scroll": 324
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "同一合成报告的真实模型分交叉矩阵与公共 Agent 查询证据",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png",
+          "width": 390
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(255, 255, 255)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png"
+    },
+    {
+      "file": "README.en.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.en.md",
+      "viewport": 390,
+      "scheme": "light",
+      "sizes": {
+        "width": 324,
+        "scroll": 324
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "Actual Score Cross matrix and public Agent query from the same synthetic report",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png",
+          "width": 390
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(255, 255, 255)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png"
+    },
+    {
+      "file": "README.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "viewport": 1440,
+      "scheme": "dark",
+      "sizes": {
+        "width": 1012,
+        "scroll": 1012
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "同一合成报告的真实模型分交叉矩阵与公共 Agent 查询证据",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png",
+          "width": 1120
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(13, 17, 23)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png"
+    },
+    {
+      "file": "README.en.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.en.md",
+      "viewport": 1440,
+      "scheme": "dark",
+      "sizes": {
+        "width": 1012,
+        "scroll": 1012
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "Actual Score Cross matrix and public Agent query from the same synthetic report",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png",
+          "width": 1120
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(13, 17, 23)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview.png"
+    },
+    {
+      "file": "README.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "viewport": 390,
+      "scheme": "dark",
+      "sizes": {
+        "width": 324,
+        "scroll": 324
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "同一合成报告的真实模型分交叉矩阵与公共 Agent 查询证据",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png",
+          "width": 390
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(13, 17, 23)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png"
+    },
+    {
+      "file": "README.en.md",
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.en.md",
+      "viewport": 390,
+      "scheme": "dark",
+      "sizes": {
+        "width": 324,
+        "scroll": 324
+      },
+      "images": [
+        {
+          "alt": "MARS",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-logo.svg",
+          "width": 920
+        },
+        {
+          "alt": "MODELING ANALYSIS RISK SCORE",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/mars-wordmark.svg",
+          "width": 920
+        },
+        {
+          "alt": "PyPI",
+          "source": "https://camo.githubusercontent.com/a907de594a9ab016d36ab9c2848aeb12e994800fd94af3fc95d0523e34ef22d6/68747470733a2f2f696d672e736869656c64732e696f2f707970692f762f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d5079504926636f6c6f723d326636663866",
+          "width": 88
+        },
+        {
+          "alt": "Docs",
+          "source": "https://camo.githubusercontent.com/0ee8262d7c034954aba3ce03804cb91803c8c4aaea4f4d74354c81240a1846c3/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f63732d47697448756225323050616765732d3763336165643f7374796c653d666c61742d737175617265",
+          "width": 122
+        },
+        {
+          "alt": "Python",
+          "source": "https://camo.githubusercontent.com/022a1548c7dc63a8aa2b1acf1fa425e07946b61a4e7295ffa294c927a534de53/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d507974686f6e26636f6c6f723d333634663662",
+          "width": 220
+        },
+        {
+          "alt": "Downloads",
+          "source": "https://camo.githubusercontent.com/94c9abac2ed19293728cd78e9110726eeae0a82e10827603236b3a8eccf2860d/68747470733a2f2f696d672e736869656c64732e696f2f706570792f64742f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d446f776e6c6f61647326636f6c6f723d306637363665",
+          "width": 102
+        },
+        {
+          "alt": "CI",
+          "source": "https://camo.githubusercontent.com/73ce35dc284310f72110e0c7e0c1a730d48b75ea93b5dd26534140eab2b71ab7/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f616374696f6e732f776f726b666c6f772f7374617475732f6c65656573712f6d6172732d7269736b2f746573742e796d6c3f6272616e63683d6d61696e267374796c653d666c61742d737175617265266c6162656c3d434926636f6c6f723d316637613561",
+          "width": 74
+        },
+        {
+          "alt": "License",
+          "source": "https://camo.githubusercontent.com/c3f97fc00c67a3446a43433919a736ed5fcd4885b7356d38a8b5971d15e7cd7b/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c65656573712f6d6172732d7269736b3f7374796c653d666c61742d737175617265266c6162656c3d4c6963656e736526636f6c6f723d366335636537",
+          "width": 82
+        },
+        {
+          "alt": "Actual Score Cross matrix and public Agent query from the same synthetic report",
+          "source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png",
+          "width": 390
+        }
+      ],
+      "color_mode": "auto",
+      "background": "rgba(0, 0, 0, 0)",
+      "body_background": "rgb(13, 17, 23)",
+      "preview_source": "https://github.com/leeesq/mars-risk/raw/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/docs/assets/cases/readme-preview-mobile.png"
+    }
+  ],
+  "browser_version": "154.0.8037.95",
+  "status": "passed",
+  "readme_blobs": {
+    "README.md": "9fae6e28c4cb7de14b3abc92d3bcb7cd7162d7f9",
+    "README.en.md": "589979f8cc1899f512061ee9a8c350d44d8a429d"
+  },
+  "screenshots": [
+    {
+      "file": "github-readme-desktop-light.png",
+      "sha256": "cc3c702a5cde3802cb01dffd1528720e5ee5b28a599a79f5c2a0aaf5be1ca6ab",
+      "source_file": "readme-zh-1440-light-first-screen.png",
+      "bytes": 198854
+    },
+    {
+      "file": "github-readme-phone-light.png",
+      "sha256": "3f90f0be93f87531bc72c78027a071741254ca562261e439672dffa69022a4a0",
+      "source_file": "readme-en-390-light.png",
+      "bytes": 448458
+    },
+    {
+      "file": "github-readme-desktop-dark.png",
+      "sha256": "2f9742ebbbcec395c491695e77856fe806f48dafffe44965939844f8382dc547",
+      "source_file": "readme-zh-1440-dark.png",
+      "bytes": 901519
+    }
+  ],
+  "access_limitation": "Successful eight-combination immutable-commit render retained. Later branch/commit requests intermittently returned GitHub Unicorn HTTP 503; failed attempts are separately recorded, not treated as passes."
+}

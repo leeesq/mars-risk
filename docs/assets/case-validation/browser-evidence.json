@@ -1,0 +1,1208 @@
+{
+  "os": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.13",
+  "playwright": "1.63.0",
+  "engine": "Chromium",
+  "channel": "chrome",
+  "access": "native local file HTML / strict-build local HTTP",
+  "headless": true,
+  "browser_version": "154.0.8037.95",
+  "cross": {
+    "scopes": [
+      {
+        "scope": {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601"
+        },
+        "states": [
+          "empty",
+          "low_sample",
+          "valid"
+        ]
+      },
+      {
+        "scope": {
+          "target": "bad30",
+          "group": "validation",
+          "period": "202604"
+        },
+        "states": [
+          "empty",
+          "low_sample",
+          "valid"
+        ]
+      },
+      {
+        "scope": {
+          "target": "bad30",
+          "group": "observation",
+          "period": "202607"
+        },
+        "states": [
+          "empty",
+          "low_sample",
+          "valid"
+        ]
+      },
+      {
+        "scope": {
+          "target": "late60",
+          "group": "discovery",
+          "period": "202601"
+        },
+        "states": [
+          "empty",
+          "low_sample",
+          "unobserved",
+          "valid"
+        ]
+      },
+      {
+        "scope": {
+          "target": "late60",
+          "group": "observation",
+          "period": "202607"
+        },
+        "states": [
+          "empty",
+          "unobserved"
+        ]
+      }
+    ],
+    "events": {
+      "pageerror": [],
+      "console_error": [],
+      "csp": [],
+      "requests": [
+        "assets/cases/score-cross.html"
+      ],
+      "requestfailed": [],
+      "external_requests": []
+    },
+    "clipboard_replayed": true,
+    "keyboard": true,
+    "viewports": [
+      1440,
+      768,
+      390
+    ],
+    "offline": "file://; nonlocal requests blocked and none attempted"
+  },
+  "docs": {
+    "layouts": [
+      {
+        "page": "",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": []
+      },
+      {
+        "page": "",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": []
+      },
+      {
+        "page": "demos/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": []
+      },
+      {
+        "page": "demos/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": []
+      },
+      {
+        "page": "demos/data-quality/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/data-quality/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/binning-stability/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/binning-stability/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/score-cross/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 698,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/score-cross/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 698,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 827,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 720,
+            "scroll": 827,
+            "overflow": "auto"
+          },
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/saved-reports/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 959,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/saved-reports/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 959,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/report-delivery/",
+        "theme": "default",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 662,
+            "scroll": 796,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/report-delivery/",
+        "theme": "slate",
+        "width": 1440,
+        "scroll": 1440,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 688,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 662,
+            "scroll": 796,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 653,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 458,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 653,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 458,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 769,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 735,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 769,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 735,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/data-quality/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 434,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 481,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 533,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 630,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/data-quality/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 434,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 481,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 533,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 630,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/binning-stability/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 593,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 514,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 618,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/binning-stability/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 593,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 514,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 618,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 449,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 434,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 518,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 654,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 600,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 449,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 434,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 518,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 654,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 600,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/score-cross/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 698,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 509,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 660,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/score-cross/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 698,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 509,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 660,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 546,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 827,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 578,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 587,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 594,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 390,
+            "scroll": 546,
+            "overflow": "auto"
+          },
+          {
+            "width": 390,
+            "scroll": 827,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 578,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 587,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 594,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/saved-reports/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 959,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 544,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 638,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 630,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/saved-reports/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 959,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 544,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 638,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 630,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/report-delivery/",
+        "theme": "default",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 511,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 545,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 796,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/report-delivery/",
+        "theme": "slate",
+        "width": 390,
+        "scroll": 390,
+        "dpr": 1,
+        "containers": [
+          {
+            "width": 358,
+            "scroll": 511,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 545,
+            "overflow": "auto"
+          },
+          {
+            "width": 358,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 332,
+            "scroll": 796,
+            "overflow": "auto"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "page": "demos/data-quality/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/binning-stability/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/score-cross/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/saved-reports/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/report-delivery/",
+        "width": 1440,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/data-quality/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/binning-stability/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/selection-correlation/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/score-cross/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/rule-evidence/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/saved-reports/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      },
+      {
+        "page": "demos/report-delivery/",
+        "width": 390,
+        "tabs": 2,
+        "code_copy": false,
+        "expanded": true,
+        "keyboard": true
+      }
+    ],
+    "downloads": [
+      {
+        "url": "/assets/cases/case-7.json",
+        "bytes": 52480,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/cases.zip",
+        "bytes": 1387934,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/manifest.json",
+        "bytes": 11553,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/score-cross.html",
+        "bytes": 1244592,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/rules.html",
+        "bytes": 124449,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/score-cross.xlsx",
+        "bytes": 220537,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/rules.xlsx",
+        "bytes": 34696,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/score-cross.marsreport",
+        "bytes": 152604,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/rules.marsreport",
+        "bytes": 91822,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/case-4.json",
+        "bytes": 83047,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/agent-context.json",
+        "bytes": 9353,
+        "status": 200
+      },
+      {
+        "url": "/assets/cases/external-agent-task.txt",
+        "bytes": 811,
+        "status": 200
+      }
+    ],
+    "pageerror": [],
+    "local_http_errors": [],
+    "native_download": {
+      "filename": "cases.zip",
+      "bytes": 1387934
+    }
+  },
+  "zoom": {
+    "mechanism": "Chrome settings #zoomLevel 200%",
+    "pages": [
+      {
+        "page": "",
+        "width": 707,
+        "scroll": 707,
+        "dpr": 2,
+        "containers": []
+      },
+      {
+        "page": "demos/",
+        "width": 707,
+        "scroll": 707,
+        "dpr": 2,
+        "containers": [
+          {
+            "width": 707,
+            "scroll": 769,
+            "overflow": "auto"
+          },
+          {
+            "width": 707,
+            "scroll": 735,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/score-cross/",
+        "width": 707,
+        "scroll": 707,
+        "dpr": 2,
+        "containers": [
+          {
+            "width": 707,
+            "scroll": 734,
+            "overflow": "auto"
+          },
+          {
+            "width": 675,
+            "scroll": 802,
+            "overflow": "auto"
+          },
+          {
+            "width": 648,
+            "scroll": 660,
+            "overflow": "auto"
+          }
+        ]
+      },
+      {
+        "page": "demos/saved-reports/",
+        "width": 707,
+        "scroll": 707,
+        "dpr": 2,
+        "containers": []
+      }
+    ]
+  },
+  "status": "passed",
+  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "screenshots": [
+    {
+      "file": "after-score-cross-phone.png",
+      "bytes": 82474,
+      "sha256": "28d884b904171fa636a2b886f44b948d55c14d277d7af5b74d62f4a0d10617d8",
+      "stage": "final visual verification"
+    },
+    {
+      "file": "before-index-desktop.png",
+      "bytes": 264857,
+      "sha256": "bf0d47b8879c696c5d0bf1e76a64afc9992e04deb5d78aab43b43768b84ce4c1",
+      "stage": "before visual correction"
+    },
+    {
+      "file": "before-score-cross-phone.png",
+      "bytes": 93888,
+      "sha256": "471c9b80920f8b0e9159ebdcbbba30943f913a06223c9c97eb5671764d7fc4e5",
+      "stage": "before visual correction"
+    },
+    {
+      "file": "cross-desktop.png",
+      "bytes": 255263,
+      "sha256": "7dd89e78e0aaec731fa4a491ca78d3b5a3db553b0c61c3759dd4c793f9ca6ac1",
+      "stage": "final visual verification"
+    },
+    {
+      "file": "cross-rule-phone.png",
+      "bytes": 222526,
+      "sha256": "4c82f7f6d0c648407f33b7f328deb7d22bd4d4f8a3a02e2456bbc446990ed1bf",
+      "stage": "final visual verification"
+    },
+    {
+      "file": "index-desktop-dark.png",
+      "bytes": 117955,
+      "sha256": "87a3c02af11492ef45595899c172db43b722dc0cb5f1b6d7b9e2ea06993da5a8",
+      "stage": "final visual verification"
+    }
+  ]
+}

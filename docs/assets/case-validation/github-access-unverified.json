@@ -1,0 +1,24 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.13",
+  "playwright": "1.63.0",
+  "engine": "Chromium",
+  "headless": true,
+  "method": "actual public GitHub branch file rendering",
+  "ref": "bd00d5e2cdd2bab6fe5519498a31942fb2c22063",
+  "http_retries": [
+    {
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "status": 503
+    },
+    {
+      "url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+      "status": 503
+    }
+  ],
+  "pages": [],
+  "browser_version": "154.0.8037.95",
+  "status": "unverified",
+  "failed_url": "https://github.com/leeesq/mars-risk/blob/bd00d5e2cdd2bab6fe5519498a31942fb2c22063/README.md",
+  "http_status": 503
+}

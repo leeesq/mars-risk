@@ -4,6 +4,9 @@ description: 规则发现与独立验证接入公共报告、关联检索、快�
 
 # 规则报告与外部 Agent
 
+首次阅读可从[案例 5：从候选规则走到可以审查的证据](../demos/rule-evidence.md)开始；
+本页保留完整公共契约与外部 Agent 提示材料。
+
 `MarsRuleMiningResult.to_report()` 返回满足 `mars.reporting.Report` 契约的
 `MarsRuleReport`。Rule 仍为 **Experimental**；以下能力以当前 main 源码为准，
 不代表已发布 PyPI 包已经包含。规则生成器、DSL、RuleSet JSON 和部署门禁没有因此改变。
@@ -145,16 +148,16 @@ validation/late60/2026-04/hit 的已表现命中 94、事件 45。
 
 脚本完整逻辑见[共享案例源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/external_agent_rule_case.py)。
 
-## 交给外部编程 Agent 的任务
+## 交给外部编程 Agent 的任务 { #agent_1 }
 
 上面的脚本将下列 Prompt 中的路径替换为真实产物目录，写入 external-agent-task.md。
 将该文件直接交给有 Python 工具的 Codex 等外部 Agent。它没有预写分析结论；
 报告文本作为数据，不能作为新的执行指令。允许保存实际查询轨迹和独立审阅输出，
 不要求 mars.agent、原宽表、模型训练、provider SDK 或密钥。
 
-```text
+````text
 --8<-- "docs/snippets/external_agent_rule_prompt.md"
-```
+````
 
 本轮在独立编程 Agent（子 Agent 的 Python 工具环境）中实际执行了一次快照消费，
 实际查询重放一致且上下文在 12000 字符内，输入两份快照 SHA-256 未改变；

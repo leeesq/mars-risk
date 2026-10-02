@@ -1,0 +1,39 @@
+{
+  "artifact_type": "mars_rule_set",
+  "expression_version": 2,
+  "grades": {},
+  "mars_version": "0.0.28",
+  "metadata": {
+    "direction": "high_risk",
+    "target": "bad30",
+    "validation_status": "independent"
+  },
+  "qualification": "temporally_validated",
+  "rules": [
+    {
+      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 601.2262132556998) AND \"main_score\" > 546.042988729658) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+      "labels": [],
+      "rule_id": "mr_cb714e09ca8c064f8185",
+      "source": "cross_discovery"
+    },
+    {
+      "expression": "((((((\"aux_score\" != -999 AND \"aux_score\" > 567.1738809810513) AND \"main_score\" != -999) AND \"main_score\" <= 653.7750315986514) AND \"main_score\" > 601.2262132556998) AND \"aux_score\" IS NOT MISSING) AND \"main_score\" IS NOT MISSING)",
+      "labels": [],
+      "rule_id": "mr_20fa26e2262d26742d78",
+      "source": "cross_discovery"
+    }
+  ],
+  "schema_version": 1,
+  "validation_summary": {
+    "confidence_level": 0.95,
+    "max_fdr": 0.05,
+    "min_time_slices": 3,
+    "minimum_time_slice_count": 3,
+    "minimum_time_slice_pass_rate": 1.0,
+    "profile": "production",
+    "qualification": "temporally_validated",
+    "selected_count": 2,
+    "temporal_assessed": true,
+    "validation_status": "independent"
+  }
+}

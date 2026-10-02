@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "source_commit": "746b8fa76439e6841b466bd590c35249a975ab56",
+  "command": "python docs/snippets/task_cases.py --case all --rows 18000 --seed 20261001 --output-dir docs/assets/cases",
+  "data_config": {
+    "rows": 18000,
+    "seed": 20261001,
+    "reference": "discovery",
+    "n_score_bins": 4,
+    "scope_dimensions": [
+      "dataset",
+      "application_date month",
+      "target"
+    ]
+  },
+  "dependencies": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "polars": "1.42.0",
+    "scikit-learn": "1.9.0",
+    "pyarrow": "24.0.0",
+    "openpyxl": "3.1.5",
+    "xlsxwriter": "3.2.9"
+  },
+  "python": "3.11.15",
+  "generation_environment": {
+    "python": "3.11.15",
+    "imported_mars_version": "0.0.28",
+    "installed_distribution_version": "0.0.19",
+    "import_source": "repository src/mars checkout",
+    "dependencies": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "polars": "1.42.0",
+      "scikit-learn": "1.9.0",
+      "pyarrow": "24.0.0",
+      "openpyxl": "3.1.5",
+      "xlsxwriter": "3.2.9"
+    }
+  },
+  "code_fingerprints": {
+    "docs/snippets/task_cases.py": "df259f3f61bd7e9f52fb2629ff6a20ee7351510aaba2e969ba83e0df4de274c9",
+    "docs/snippets/external_agent_rule_case.py": "0a56e059ae655817f67566929a1730be7a527be5a5550af8685039f5438f5fdd",
+    "src/mars/analysis/score_cross.py": "6d7b1137e641c89a09ee05c28fb1c77f54e4438159e2b322850841dc78e6883f",
+    "src/mars/analysis/score_cross_view.py": "9d50049c8de305778e94e362904a3ce1239017a5b25464796b2487dbe8a45795",
+    "src/mars/analysis/profiler.py": "e5be1e0235410e3198347bfe1e7024c85de19420038b7849bb29e47cba8cc49e",
+    "src/mars/analysis/evaluator.py": "09ab5f5c4f9e156c19eec299f7d9fab6a1c5b04d5e8df5d66a0f9b36b9a46e22",
+    "src/mars/analysis/_risk_profile.py": "77b72f93cd8f98d4b67b9499516a7cd52eec4de670985ca619940384419adf89",
+    "src/mars/feature/selection/stats.py": "1650d522f791b9aa9b2af535ac5327d747bf0e1c667053cfbc8e87b221c801a6",
+    "src/mars/feature/selection/linear.py": "da8d975778e40880158e346000c145c9b37d63df4d5bb87acd68c96a15edc7a4",
+    "src/mars/reporting/_query.py": "8c14d7fe661dc199fe84718132d7b838a38d895fb43c8ec82256c5e2795cf4fe",
+    "src/mars/reporting/_artifact.py": "71f1ec0ae4f040158a357ca61ead0b6983c9ec3236a21d56ebf4fa2acf3ecc93",
+    "src/mars/rule/workflow.py": "6c179edab37e5b6a9354bc7188edd6e150cc64df18fed4b1182d69a4582348ba"
+  },
+  "reports": {
+    "1": "f9800620-f9c9-4190-9620-733700d525fb",
+    "2": "00a89e98-6896-4ab5-b337-2d06220e3723",
+    "3": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+    "4": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "5": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+    "6": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "7": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada"
+  },
+  "artifacts": [
+    {
+      "path": "agent-context.json",
+      "size_bytes": 9353,
+      "sha256": "82e1c9958a136b93e6a18ffb9772cd9d26b0d964f93afa99d4ba9cd6c5c0f369"
+    },
+    {
+      "path": "binning-risk.png",
+      "size_bytes": 59950,
+      "sha256": "90180470dba40ed9671674f46c43c6488fa4e55044dec587c189c620daf8bcdc"
+    },
+    {
+      "path": "binning.html",
+      "size_bytes": 397992,
+      "sha256": "ab348642678d899bce780181b39ff364b396fca87a86a3a5cc2ab41158af06e4"
+    },
+    {
+      "path": "binning.marsreport",
+      "size_bytes": 85044,
+      "sha256": "40829a19d2e761691ef202d6669454d1922814a9a1ddba773d4158131a1f228c"
+    },
+    {
+      "path": "binning.xlsx",
+      "size_bytes": 78762,
+      "sha256": "f6d486bbbdc594104f064b1c3afe426a828d7439a73ecc146384483a789f8fce"
+    },
+    {
+      "path": "case-1.json",
+      "size_bytes": 18143,
+      "sha256": "0904865e30e4ee85d5020743c76b7a987f37e60fb1eaf002cb3a4e4c2925c209"
+    },
+    {
+      "path": "case-2.json",
+      "size_bytes": 71438,
+      "sha256": "6cef78a969d1c10fcefc5b464ebde2904abf7f15e4d0cad204527db656eee905"
+    },
+    {
+      "path": "case-3.json",
+      "size_bytes": 29748,
+      "sha256": "364b50744bac4b17592e3ea7b1719791dcad0044794d2e50c3c2dc0ea9b84428"
+    },
+    {
+      "path": "case-4.json",
+      "size_bytes": 83047,
+      "sha256": "8820542cf593b9422120cf62a4eb1fe288d55f36e4c0af58fbc241b87451375b"
+    },
+    {
+      "path": "case-5.json",
+      "size_bytes": 66975,
+      "sha256": "ba32e384288fd97ec5164eb236e329b5e8191956d06265a34ff19a4297baea6a"
+    },
+    {
+      "path": "case-6.json",
+      "size_bytes": 53932,
+      "sha256": "8dc09828c96e05a2809106b67745d7238ad5b844d24d48d20e3106948750ad74"
+    },
+    {
+      "path": "case-7.json",
+      "size_bytes": 52480,
+      "sha256": "84c2d9b133d86cf4902d4ebc44b898729bd268c093d3acf5b41ecf65352271cc"
+    },
+    {
+      "path": "case-notes.json",
+      "size_bytes": 576,
+      "sha256": "c7fee78cc1c15672c65312b640261c9ddd7df82ab3f0e62fce299b42d93d84a2"
+    },
+    {
+      "path": "correlation.html",
+      "size_bytes": 2893,
+      "sha256": "c1cbbc54a592686e587e7a1e211ab2a4c066e5777ed281ae16fffcf5b5e38442"
+    },
+    {
+      "path": "correlation.xlsx",
+      "size_bytes": 5673,
+      "sha256": "25d6c9fccdbee236389fd6e222f5fe0cbf7d72ec91173b4f7b6be34c4cc3feb8"
+    },
+    {
+      "path": "external-agent-task.md",
+      "size_bytes": 3638,
+      "sha256": "0886318404b9225e194d162d002a884a2f4083fbf7860828c832e342f56d2144"
+    },
+    {
+      "path": "external-agent-task.txt",
+      "size_bytes": 811,
+      "sha256": "f41d34dd15482f3b912e4ae65252d65a8d9e0d564e967e68e78430478b9ca37b"
+    },
+    {
+      "path": "external_agent_rule_case.py",
+      "size_bytes": 23024,
+      "sha256": "8665ecc1733d02ec57c482a152695748fa58d13443145e4ff49a4398bfc6c244"
+    },
+    {
+      "path": "external_agent_rule_prompt.md",
+      "size_bytes": 3614,
+      "sha256": "d8bd956fe13e625f49b0fb618579aa50a752b9c601e6fa3f85ba31974432755b"
+    },
+    {
+      "path": "generation-environment.json",
+      "size_bytes": 374,
+      "sha256": "97659a3406a196ccb3208deba856eaebd2da5c5d23e09e6272a8c895c74cae49"
+    },
+    {
+      "path": "policy.marsreport",
+      "size_bytes": 88443,
+      "sha256": "a1e668fabecda325bc227c3bf7d9902ecfa729aa51a6b6fe6df4e964d2df6ee9"
+    },
+    {
+      "path": "policy.xlsx",
+      "size_bytes": 76457,
+      "sha256": "242578d0f3b61e2ec82fd205c9dfae34fc77b97737bed5d7295a500f44cac50f"
+    },
+    {
+      "path": "preview-evidence.json",
+      "size_bytes": 2204,
+      "sha256": "ec6f6f12bd6b6975717fcf769fdc17c0f942753605dba7165a23abdb02cd966d"
+    },
+    {
+      "path": "preview-mobile.html",
+      "size_bytes": 1364,
+      "sha256": "2863478c01667481dad76c4ce235ac2e569572731e4a6bb8ab9951c864ab5f3a"
+    },
+    {
+      "path": "preview.html",
+      "size_bytes": 2482,
+      "sha256": "4efd43280962889da4ed2c99e2eee88f6bc542906330bf0afd5a49fab2cc75ca"
+    },
+    {
+      "path": "previews.txt",
+      "size_bytes": 5014,
+      "sha256": "f90bd1bed0d38f092a33aa29c597f68c139e517a1bc355eb7b41c8609c41c37a"
+    },
+    {
+      "path": "profile.html",
+      "size_bytes": 24594,
+      "sha256": "04e696631eb77276309e144c0f4f3077e9bf6fc1bc1a201c4a9e622e969a83f5"
+    },
+    {
+      "path": "profile.marsreport",
+      "size_bytes": 25481,
+      "sha256": "75bb2329ac957b4634e56ffa5735d72aeda21416d576cd205799e5f2204fc6be"
+    },
+    {
+      "path": "profile.xlsx",
+      "size_bytes": 16455,
+      "sha256": "a3d5b7dffd330ee7f1d522458a38d6b96446ffe0f79f2044b456c01de5351655"
+    },
+    {
+      "path": "query-1.json",
+      "size_bytes": 1796,
+      "sha256": "774f4b4e3e80c025c38ce77995c9f27a0f2d8f89001d9628fa6b43615e288643"
+    },
+    {
+      "path": "query-2.json",
+      "size_bytes": 4881,
+      "sha256": "26bc189ce39aa34295c5eec5969d5c1845054d0bff375d2b97604eaeaef91a15"
+    },
+    {
+      "path": "query-3.json",
+      "size_bytes": 2943,
+      "sha256": "a16ccb20adfa2abcd1cc904d6306850028376a373036c7f279dabacd4246dc74"
+    },
+    {
+      "path": "query-4.json",
+      "size_bytes": 5941,
+      "sha256": "0cd61efed7c4604d8e7f4b7a18def8b4a89592fd81932ab548e343f206a76d69"
+    },
+    {
+      "path": "query-5.json",
+      "size_bytes": 952,
+      "sha256": "3efdbc675c2bf130921e4036841e28d8b815621e8dd1a4e0cfa10c5700dc23d1"
+    },
+    {
+      "path": "query-6.json",
+      "size_bytes": 1441,
+      "sha256": "85f0aae14550d8fa4a5776ded2db83658399941f46acdabb2803e148029f7a38"
+    },
+    {
+      "path": "query-7.json",
+      "size_bytes": 2107,
+      "sha256": "28663345bc967b2ab4c4a757b71e3132e967e328ac71c2f17930b980b6c8f3d5"
+    },
+    {
+      "path": "raw-correlation.marsreport",
+      "size_bytes": 25845,
+      "sha256": "fbee6dc1f53afeddfbd5961b89d41ad8ac7a14733f013363cf46e0e119fd35b0"
+    },
+    {
+      "path": "readme-preview-mobile.png",
+      "size_bytes": 67884,
+      "sha256": "32b6c0bce36e005772a614ac98a688eb716f509250aae66fd2bc28ba4a87bebb"
+    },
+    {
+      "path": "readme-preview.png",
+      "size_bytes": 201777,
+      "sha256": "024562d834e62dc02eadba6ee673bb2b9f66feffc2111adc38f357bfdd19c24e"
+    },
+    {
+      "path": "REPRODUCE.txt",
+      "size_bytes": 1108,
+      "sha256": "c453803909ec212505bc000de95dd4db5679aaa204c5e411f2e6d647acd107d4"
+    },
+    {
+      "path": "rules.html",
+      "size_bytes": 124449,
+      "sha256": "b4e3225790d1568ebb5f91dcafb5ab079d161d82fd36d8faec8e2578010c8517"
+    },
+    {
+      "path": "rules.marsreport",
+      "size_bytes": 91822,
+      "sha256": "0b6ae2897270060b00f5467527af847f8a85785d3f7dc956a43df2005a3c30b5"
+    },
+    {
+      "path": "rules.xlsx",
+      "size_bytes": 34696,
+      "sha256": "50c00f8bf0ba2cfcc44f1a8fd00019709c1902f4c68bed0ab3a6600dd672babb"
+    },
+    {
+      "path": "ruleset.json",
+      "size_bytes": 1416,
+      "sha256": "fc3dc09fca4c71c902082dd40ada4bd385426347d0df15d9f4c6b110de7bec8a"
+    },
+    {
+      "path": "score-cross-cell.png",
+      "size_bytes": 23603,
+      "sha256": "23f8c0bfcfd0756599c5b25d2a15a9177a004fa4b5f2b1394825151a4ddf5e35"
+    },
+    {
+      "path": "score-cross-matrix.png",
+      "size_bytes": 96002,
+      "sha256": "a0187383fee0a69ddd344239949ba203005265d926ee6a3682235105f4c073f5"
+    },
+    {
+      "path": "score-cross.html",
+      "size_bytes": 1244592,
+      "sha256": "8234c635eb0ead179a2b1adfd251c58fcb7bc0cc16d8801eb85fab29da9f95a7"
+    },
+    {
+      "path": "score-cross.marsreport",
+      "size_bytes": 152604,
+      "sha256": "130f0fb8c07f7766554964ac24b85262362b4af19bbee1388c8374679e63c849"
+    },
+    {
+      "path": "score-cross.xlsx",
+      "size_bytes": 220537,
+      "sha256": "4501b6b7c1cf2eca9f1d3b702ffacbb940b17ad94e59193dcc9b29a580aec76b"
+    },
+    {
+      "path": "selection.json",
+      "size_bytes": 3013,
+      "sha256": "2ca686b5ced3e3a573363ca6ed5aefdabdcf2f8c3ab218e4284d7921d5e443b0"
+    },
+    {
+      "path": "selection.xlsx",
+      "size_bytes": 6956,
+      "sha256": "ac052c0c621bc69e97a67854a82be245ecfce40edb2442ef21236d8da714d2cc"
+    },
+    {
+      "path": "summary.json",
+      "size_bytes": 41867,
+      "sha256": "34b42437f2440d6ef60da4d324cc1b28fd6c64aa3e94be3460608a6db80ba868"
+    },
+    {
+      "path": "task_cases.py",
+      "size_bytes": 45212,
+      "sha256": "058d8b9c87409dd7d8275ea80121a194363c8eb76745dfa6b46fc57935ff0287"
+    },
+    {
+      "path": "woe-correlation.marsreport",
+      "size_bytes": 30769,
+      "sha256": "9aab7260c46070af195ce79a7320668cb02336ed05769295194867d4887f1760"
+    }
+  ]
+}

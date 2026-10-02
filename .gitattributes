@@ -1,0 +1,4 @@
+# 已生成静态资源的 SHA-256 与下载包按实际字节核验，跨平台 checkout 不转换换行。
+docs/assets/cases/** -text
+# 生成器在 Windows 写出的 CRLF 是文件编码的一部分，CR 不属于行尾空格。
+docs/assets/cases/** whitespace=cr-at-eol

@@ -1,0 +1,2124 @@
+{
+  "case": 2,
+  "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+  "question": "哪些特征有区分度，而且足够稳定？",
+  "consumer": "deterministic public API queries; no LLM",
+  "description": {
+    "report_type": "MarsBinningReport",
+    "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+    "format_version": 1,
+    "feature_metadata": {
+      "aux_score": {
+        "display_name": "辅助模型分",
+        "data_source": "challenger",
+        "description": "模拟固定分，高分高风险",
+        "unit": "score_points"
+      },
+      "main_score": {
+        "display_name": "主模型分",
+        "data_source": "champion",
+        "description": "模拟固定分，高分低风险",
+        "unit": "score_points"
+      },
+      "channel": {
+        "display_name": "申请渠道",
+        "data_source": "application",
+        "unit": "category",
+        "description": "观察期出现仅在该期可见的 branch 渠道"
+      },
+      "income": {
+        "display_name": "申报月收入",
+        "data_source": "application",
+        "unit": "CNY/month",
+        "description": "模拟申报月收入；验证、观察期施加可复算分布变化"
+      }
+    },
+    "source": {
+      "kind": "analysis",
+      "producer": "mars",
+      "input_provenance": "caller_provided_dataframe"
+    },
+    "context_source": {
+      "business_context": {
+        "label_definition": "unknown",
+        "observation_window": "unknown",
+        "currency": "user_provided",
+        "dataset_id": "user_provided",
+        "simulated": "user_provided",
+        "sample_unit": "user_provided",
+        "sample_count": "user_provided",
+        "seed": "user_provided",
+        "labels": "user_provided",
+        "splits": "user_provided",
+        "amount_definition": "user_provided",
+        "weight_definition": "user_provided",
+        "score_directions": "user_provided",
+        "binning_origin": "user_provided"
+      },
+      "parameters": "calculation"
+    },
+    "serialization": {
+      "non_finite": "tagged float: {$mars: float, value: nan/inf/-inf}",
+      "date": "ISO-8601",
+      "null": "missing; calculation state is separate"
+    },
+    "tables": {
+      "summary": {
+        "rows": 8,
+        "index": null,
+        "grain": "target/feature",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "data_source": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "调用方登记的特征来源；未映射字段可能标为 UNMAPPED"
+          },
+          "iv": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"
+          },
+          "ks": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "按实际配置排序的分箱累计坏样本与好样本分布最大绝对差 ×100"
+          },
+          "auc": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"
+          },
+          "psi_max": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数；跨有效分组最大值"
+          },
+          "rc_min": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数；跨有效分组最小值"
+          },
+          "lift_min": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "Total 正常箱 Lift 的最小值"
+          },
+          "lift_max": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "Total 正常箱 Lift 的最大值"
+          },
+          "missing": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "missing_min": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值；跨有效分组最小值"
+          },
+          "missing_max": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值；跨有效分组最大值"
+          },
+          "mono": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "Total 正常箱索引与坏率的 Spearman 相关系数；单箱或坏率恒定时无法定义"
+          },
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识"
+          }
+        }
+      },
+      "detail": {
+        "rows": 188,
+        "index": null,
+        "grain": "target/feature/group/bin",
+        "fields": {
+          "y": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "目标列标识；真实目标及无标签状态见参数"
+          },
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "trend": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "Total 正常箱 WOE 形态；无标签时未计算"
+          },
+          "mars_group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "实际计算分组字段；取值保留原始分组标识"
+          },
+          "bin_index": {
+            "dtype": "Int16",
+            "unit": "index",
+            "meaning": "分箱规则索引；缺失和特殊箱为负，汇总行由 bin_type 标识"
+          },
+          "bin_label": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "来自拟合分箱规则的箱标签"
+          },
+          "count": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "全样本数；配置 weights_col 时为样本权重和"
+          },
+          "observed_count": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "已表现标签样本数或权重和；无标签时未计算"
+          },
+          "bad": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "已表现坏样本数或权重和"
+          },
+          "good": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "observed_count-bad"
+          },
+          "pct": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "箱样本量/分组全样本量，配置权重时为权重和之比"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"
+          },
+          "lift": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "箱坏率/总体坏率，复用稳定化规则"
+          },
+          "cum_count": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "按分箱索引展示顺序的累计全样本量或权重和"
+          },
+          "cum_observed_count": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "按分箱索引展示顺序的累计已表现样本量或权重和"
+          },
+          "cum_bad": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "按分箱索引展示顺序的累计坏样本量或权重和"
+          },
+          "cum_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "累计 bad/累计 observed_count"
+          },
+          "psi_bin": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "当前箱 PSI 贡献；缺失箱和特殊箱由参数控制"
+          },
+          "ks_bin": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "当前箱累计坏样本与好样本分布绝对差 ×100"
+          },
+          "auc_bin": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "分箱 ROC 梯形面积贡献；汇总行进行 AUC 归一"
+          },
+          "iv_bin": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "(bad_dist-good_dist)×WOE"
+          },
+          "total_count": {
+            "dtype": "Float64",
+            "unit": "weight_sum",
+            "meaning": "分组全样本数或权重和"
+          },
+          "bin_type": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "正常、缺失、特殊或汇总箱类型"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "business_currency": "CNY"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "business_currency": "CNY"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "business_currency": "CNY"
+          },
+          "avg_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "tot_amt/count；配置样本权重时 count 为权重和；业务币种未知",
+            "business_currency": "CNY"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空"
+          },
+          "lift_amt": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "箱金额坏率/总体金额坏率，复用稳定化规则"
+          },
+          "data_source": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "调用方登记的特征来源；未映射字段可能标为 UNMAPPED"
+          }
+        }
+      },
+      "trend.psi": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.auc": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "按配置排序的分箱 ROC 梯形面积；报告归一到不小于 0.5"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.ks": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "按实际配置排序的分箱累计坏样本与好样本分布最大绝对差 ×100"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "按实际配置排序的分箱累计坏样本与好样本分布最大绝对差 ×100"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "按实际配置排序的分箱累计坏样本与好样本分布最大绝对差 ×100"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "points_0_100",
+            "meaning": "按实际配置排序的分箱累计坏样本与好样本分布最大绝对差 ×100"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.iv": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"
+          },
+          "observation": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"
+          },
+          "validation": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"
+          },
+          "Total": {
+            "dtype": "Float32",
+            "unit": "dimensionless",
+            "meaning": "各箱 (bad_dist-good_dist)×WOE 之和，复用稳定化规则"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.missing": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.lift": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "当前分组箱 Lift 的最大值；未表现分组为空"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "当前分组箱 Lift 的最大值；未表现分组为空"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "当前分组箱 Lift 的最大值；未表现分组为空"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "当前分组箱 Lift 的最大值；未表现分组为空"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.bad_rate": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters"
+          }
+        },
+        "target": "bad30"
+      },
+      "trend.risk_corr": {
+        "rows": 4,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数"
+          },
+          "Total": {
+            "dtype": "Float64",
+            "unit": "correlation",
+            "meaning": "正常箱坏率与 RC 参考坏率的 Spearman 相关系数，参考来源见参数"
+          }
+        },
+        "target": "bad30"
+      },
+      "calculation_status": {
+        "rows": 40,
+        "index": null,
+        "grain": "target/feature/group/metric",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量"
+          },
+          "metric": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "计算状态适用的指标或指标族"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "computed 已计算（有效零仍为零）；not_computed 未计算；unobserved 无观测标签；undefined 无法定义；insufficient_samples 样本不足；failed 计算失败；skipped 跳过；结合 reason"
+          },
+          "reason": {
+            "dtype": "String",
+            "unit": "state_reason",
+            "meaning": "no_target 未提供目标；no_observed_labels 无已观测标签；single_observed_class 仅一种观测类别；其他失败、跳过、样本不足或无法定义原因；空值不替代有效零"
+          }
+        }
+      },
+      "risk_corr_reference": {
+        "rows": 28,
+        "index": null,
+        "grain": "target/feature/bin/reference",
+        "fields": {
+          "y": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "目标列标识；真实目标及无标签状态见参数"
+          },
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "bin_index": {
+            "dtype": "Int16",
+            "unit": "index",
+            "meaning": "分箱规则索引；缺失和特殊箱为负，汇总行由 bin_type 标识"
+          },
+          "base_br": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "RC 参考箱的 bad/observed_count"
+          },
+          "source": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "已保存的参考来源，例如 total、first_group 或 benchmark_df"
+          }
+        }
+      }
+    },
+    "calculation_state": {
+      "table": "calculation_status",
+      "diagnostics": "parameters.diagnostics/fit_failures/raw_ks_diagnostics",
+      "scope": "feature/target/group/metric; profile status contains exceptional outcomes only, not all trend cells"
+    },
+    "parameters": {
+      "row_count": 18000,
+      "benchmark_row_count": 6000,
+      "binning_fit_source": "benchmark_df",
+      "features": [
+        "main_score",
+        "aux_score",
+        "income",
+        "channel"
+      ],
+      "weights_col": "weight",
+      "batch_size": 100,
+      "ordered_metric_sort_by": "woe",
+      "binning_config": {
+        "cart_params": {},
+        "join_threshold": 100,
+        "merge_small_bins": false,
+        "method": "quantile",
+        "min_bin_size": 0.05,
+        "missing_values": [],
+        "n_bins": 4,
+        "n_jobs": 1,
+        "remove_empty_bins": false,
+        "special_values": [
+          -999
+        ]
+      },
+      "fit_failures": {},
+      "binning_fit_report": [
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "feature_type": "numeric",
+          "status": "fitted",
+          "usable": true,
+          "n_bins": 4,
+          "reason": null
+        },
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "feature_type": "numeric",
+          "status": "fitted",
+          "usable": true,
+          "n_bins": 4,
+          "reason": null
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "feature_type": "numeric",
+          "status": "fitted",
+          "usable": true,
+          "n_bins": 4,
+          "reason": null
+        },
+        {
+          "feature": "channel",
+          "dtype": "String",
+          "feature_type": "categorical",
+          "status": "fitted",
+          "usable": true,
+          "n_bins": 2,
+          "reason": null
+        }
+      ],
+      "feature_data_source": {
+        "main_score": "champion",
+        "aux_score": "challenger",
+        "income": "application",
+        "channel": "application"
+      },
+      "time_grain": null,
+      "target_requested": "bad30",
+      "has_target": true,
+      "target_available": true,
+      "feature_count": 4,
+      "profile_by_input": "dataset",
+      "group_col": "mars_group",
+      "group_count": 3,
+      "dt_col": null,
+      "start_dt": null,
+      "end_dt": null,
+      "targets": [
+        "bad30",
+        "late60"
+      ],
+      "event_rate_by_target": {
+        "bad30": 0.15815187888292417,
+        "late60": 0.15168890742285238
+      },
+      "feature_start_aware_reference": false,
+      "psi_include_missing": false,
+      "psi_include_special": false,
+      "risk_corr_baseline": "total",
+      "risk_corr_reference_source": "total",
+      "amount_col": "amount",
+      "feature_start_reference_features": [],
+      "feature_start_reference_dates": {}
+    },
+    "business_context": {
+      "label_definition": "unknown",
+      "observation_window": "unknown",
+      "currency": "CNY",
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "simulated": true,
+      "sample_unit": "one synthetic application; unique sample_id",
+      "sample_count": 18000,
+      "seed": 20261001,
+      "labels": {
+        "bad30": {
+          "definition": "模拟30日违约",
+          "positive_class": "unknown",
+          "negative_class": "unknown",
+          "performance_window": "30天"
+        },
+        "late60": {
+          "definition": "模拟60日逾期",
+          "positive_class": "unknown",
+          "negative_class": "unknown",
+          "performance_window": "60天"
+        }
+      },
+      "splits": {
+        "discovery": "1–3月；参考分箱与候选发现",
+        "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+        "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
+      },
+      "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
+      "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "binning_origin": "discovery only; frozen definitions"
+    },
+    "limitations": [
+      "只组织已有统计，未计算表不在目录中；失败和跳过见 parameters.diagnostics / fit_failures。",
+      "Null 不是数值 0；风险指标需结合标签表现状态，样本分布使用全样本。",
+      "比较前核对样本范围、权重、缺失/特殊箱、拟合来源、排序口径及参考来源；关联不代表因果。"
+    ]
+  },
+  "queries": [
+    {
+      "question": "哪些特征同时有区分度和稳定性证据？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "summary",
+        "query": {
+          "offset": 0,
+          "limit": 8,
+          "sort_by": "iv",
+          "descending": true
+        }
+      },
+      "total_rows": 8,
+      "returned_rows": 8,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_score",
+          "data_source": "challenger",
+          "iv": 2.164524555206299,
+          "ks": 58.02504105738247,
+          "auc": 0.8432240518441497,
+          "psi_max": 0.0016672474601409778,
+          "rc_min": 1.0,
+          "lift_min": 0.051650223056958135,
+          "lift_max": 2.9573616542189143,
+          "missing": 0.004960001045753993,
+          "missing_min": 0.004940005206229816,
+          "missing_max": 0.0049987763360838195,
+          "mono": 1.0,
+          "target": "bad30"
+        },
+        {
+          "feature": "aux_score",
+          "data_source": "challenger",
+          "iv": 1.7028961181640625,
+          "ks": 50.88207636809907,
+          "auc": 0.8135024206210837,
+          "psi_max": 0.0016672474601409889,
+          "rc_min": 1.0,
+          "lift_min": 0.07284276071066938,
+          "lift_max": 2.7359171160359232,
+          "missing": 0.004960001045753993,
+          "missing_min": 0.004940005206229816,
+          "missing_max": 0.00499877633608382,
+          "mono": 1.0,
+          "target": "late60"
+        },
+        {
+          "feature": "main_score",
+          "data_source": "champion",
+          "iv": 0.2832363247871399,
+          "ks": 23.298610351774485,
+          "auc": 0.644419003579272,
+          "psi_max": 0.0014543471711143852,
+          "rc_min": 1.0,
+          "lift_min": 0.46419664832994545,
+          "lift_max": 1.6359974375725086,
+          "missing": 0.004835848718939471,
+          "missing_min": 0.004790192697931378,
+          "missing_max": 0.004916852313108061,
+          "mono": -1.0,
+          "target": "late60"
+        },
+        {
+          "feature": "main_score",
+          "data_source": "champion",
+          "iv": 0.2645227015018463,
+          "ks": 21.72757947347752,
+          "auc": 0.6402028142155469,
+          "psi_max": 0.001454347171114377,
+          "rc_min": 1.0,
+          "lift_min": 0.48524231951685187,
+          "lift_max": 1.6390286799483655,
+          "missing": 0.004835848718939471,
+          "missing_min": 0.004790192697931378,
+          "missing_max": 0.004916852313108061,
+          "mono": -1.0,
+          "target": "bad30"
+        },
+        {
+          "feature": "channel",
+          "data_source": "application",
+          "iv": 0.0013337230775505304,
+          "ks": 0.797384378833832,
+          "auc": 0.5044445914784896,
+          "psi_max": 1.6354251431367013,
+          "rc_min": -1.0,
+          "lift_min": 0.9912851850516026,
+          "lift_max": 0.9946814180199289,
+          "missing": 0.0,
+          "missing_min": 0.0,
+          "missing_max": 0.0,
+          "mono": 1.0,
+          "target": "bad30"
+        },
+        {
+          "feature": "income",
+          "data_source": "application",
+          "iv": 0.0013195734936743975,
+          "ks": 1.4579855198092462,
+          "auc": 0.509548696619565,
+          "psi_max": 1.0858517444091749,
+          "rc_min": 0.4,
+          "lift_min": 0.9554752034159344,
+          "lift_max": 1.0364070115136335,
+          "missing": 0.005955647412688786,
+          "missing_min": 0.005689192448895324,
+          "missing_max": 0.00618288200715288,
+          "mono": 0.4,
+          "target": "late60"
+        },
+        {
+          "feature": "income",
+          "data_source": "application",
+          "iv": 0.0003961330803576857,
+          "ks": 0.7490206915989783,
+          "auc": 0.5046016576515537,
+          "psi_max": 1.085851744409175,
+          "rc_min": -0.8,
+          "lift_min": 0.9886575452391045,
+          "lift_max": 1.0234905230151143,
+          "missing": 0.005955647412688785,
+          "missing_min": 0.005689192448895323,
+          "missing_max": 0.00618288200715288,
+          "mono": 0.4,
+          "target": "bad30"
+        },
+        {
+          "feature": "channel",
+          "data_source": "application",
+          "iv": 1.1083395293098874e-05,
+          "ks": 0.1664385741648844,
+          "auc": 0.5008321931319052,
+          "psi_max": 1.6354251431367013,
+          "rc_min": -1.0,
+          "lift_min": 0.9972252478921685,
+          "lift_max": 1.0028692320732142,
+          "missing": 0.0,
+          "missing_min": 0.0,
+          "missing_max": 0.0,
+          "mono": 1.0,
+          "target": "late60"
+        }
+      ]
+    },
+    {
+      "question": "收入在多个分区和目标下的固定分箱风险表现如何？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "detail",
+        "query": {
+          "offset": 0,
+          "limit": 12,
+          "features": "income",
+          "sort_by": "bin_index"
+        }
+      },
+      "total_rows": 56,
+      "returned_rows": 12,
+      "omitted_rows": 44,
+      "next_offset": 12,
+      "rows": [
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "Total",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 140.48526473795187,
+          "observed_count": 120.29585124069828,
+          "bad": 17.484939616901077,
+          "good": 102.81091162379721,
+          "pct": 0.007821782288612628,
+          "bad_rate": 0.14534948160361497,
+          "lift": 0.9139374116868986,
+          "cum_count": 17960.774099078422,
+          "cum_observed_count": 16542.064956149163,
+          "cum_bad": 2630.7934597218614,
+          "cum_bad_rate": 0.1590365813878587,
+          "psi_bin": null,
+          "ks_bin": 0.1391665594829814,
+          "auc_bin": 6.465382119218923e-05,
+          "iv_bin": 7.897792966105044e-05,
+          "total_count": 17960.774099078422,
+          "bin_type": "特殊组",
+          "tot_amt": 2207836.4185381327,
+          "good_amt": 1588136.6418504762,
+          "bad_amt": 290548.8406575946,
+          "avg_amt": 15715.786439641375,
+          "amt_bad_rate": 0.15465539248736193,
+          "lift_amt": 0.98618958977813,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "discovery",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 43.512744774502785,
+          "observed_count": 33.154138200021734,
+          "bad": 2.381722077676958,
+          "good": 30.772416122344776,
+          "pct": 0.0072589424006156205,
+          "bad_rate": 0.07183785213501333,
+          "lift": 0.46684783071461483,
+          "cum_count": 5994.364243860824,
+          "cum_observed_count": 5510.593590118084,
+          "cum_bad": 847.961971895808,
+          "cum_bad_rate": 0.1538785174461827,
+          "psi_bin": null,
+          "ks_bin": 0.8256300708887868,
+          "auc_bin": 2.3944536520825454e-05,
+          "iv_bin": 0.003237888915464282,
+          "total_count": 5994.364243860823,
+          "bin_type": "特殊组",
+          "tot_amt": 725429.4091014662,
+          "good_amt": 511609.1096798108,
+          "bad_amt": 66056.82709130815,
+          "avg_amt": 16671.65362380327,
+          "amt_bad_rate": 0.11435125889633506,
+          "lift_amt": 0.7563178599914339,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "observation",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 48.56940975783636,
+          "observed_count": 44.57496491918933,
+          "bad": 7.908188283560838,
+          "good": 36.66677663562849,
+          "pct": 0.00811881085971301,
+          "bad_rate": 0.17741322506697918,
+          "lift": 1.086015116616701,
+          "cum_count": 5982.330491136126,
+          "cum_observed_count": 5500.045914720578,
+          "cum_bad": 898.4965935633771,
+          "cum_bad_rate": 0.1633616532470391,
+          "psi_bin": null,
+          "ks_bin": 0.4579643147074153,
+          "auc_bin": 0.007599311155763517,
+          "iv_bin": 8.285676449304447e-05,
+          "total_count": 5982.330491136126,
+          "bin_type": "特殊组",
+          "tot_amt": 725615.7788670184,
+          "good_amt": 542470.600459589,
+          "bad_amt": 116816.70043683094,
+          "avg_amt": 14939.769342161811,
+          "amt_bad_rate": 0.17718633481639576,
+          "lift_amt": 1.121971600577377,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "validation",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 48.403110205612734,
+          "observed_count": 42.566748121487215,
+          "bad": 7.1950292556632816,
+          "good": 35.37171886582394,
+          "pct": 0.008088647770304814,
+          "bad_rate": 0.16902933799707645,
+          "lift": 1.0572614372595868,
+          "cum_count": 5984.079364081471,
+          "cum_observed_count": 5531.425451310501,
+          "cum_bad": 884.3348942626764,
+          "cum_bad_rate": 0.1598746836682325,
+          "psi_bin": null,
+          "ks_bin": 1.7520655449545952,
+          "auc_bin": 0.006232541963474666,
+          "iv_bin": 3.4947988751810044e-05,
+          "total_count": 5984.079364081472,
+          "bin_type": "特殊组",
+          "tot_amt": 756791.2305696483,
+          "good_amt": 534056.9317110764,
+          "bad_amt": 107675.31312945552,
+          "avg_amt": 15635.177726283635,
+          "amt_bad_rate": 0.1677885348525886,
+          "lift_amt": 1.0402012125085778,
+          "data_source": "application"
+        },
+        {
+          "y": "late60",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "Total",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 140.48526473795187,
+          "observed_count": 69.55938431070285,
+          "bad": 9.688685518261874,
+          "good": 59.870698792440976,
+          "pct": 0.00782178228861263,
+          "bad_rate": 0.13928653357518447,
+          "lift": 0.9134765526951065,
+          "cum_count": 17960.77409907842,
+          "cum_observed_count": 9576.825661512046,
+          "cum_bad": 1460.270484596579,
+          "cum_bad_rate": 0.1524795935740176,
+          "psi_bin": null,
+          "ks_bin": 0.07415113412533678,
+          "auc_bin": 2.447057295465563e-05,
+          "iv_bin": 7.854767318349332e-05,
+          "total_count": 17960.77409907842,
+          "bin_type": "特殊组",
+          "tot_amt": 2207836.4185381327,
+          "good_amt": 1005457.1877686897,
+          "bad_amt": 146825.9108247528,
+          "avg_amt": 15715.786439641375,
+          "amt_bad_rate": 0.12742173429774228,
+          "lift_amt": 0.8496578237251385,
+          "data_source": "application"
+        },
+        {
+          "y": "late60",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "discovery",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 43.512744774502785,
+          "observed_count": 32.66415795888477,
+          "bad": 6.828428383853367,
+          "good": 25.835729575031404,
+          "pct": 0.0072589424006156205,
+          "bad_rate": 0.20904957637201263,
+          "lift": 1.364161217548857,
+          "cum_count": 5994.364243860823,
+          "cum_observed_count": 4762.600449466235,
+          "cum_bad": 729.8401335759304,
+          "cum_bad_rate": 0.15324403995672717,
+          "psi_bin": null,
+          "ks_bin": 0.512878608559042,
+          "auc_bin": 0.006304861058889698,
+          "iv_bin": 0.0011169175850227475,
+          "total_count": 5994.364243860823,
+          "bin_type": "特殊组",
+          "tot_amt": 725429.4091014662,
+          "good_amt": 485359.75735965266,
+          "bad_amt": 99881.67242272157,
+          "avg_amt": 16671.65362380327,
+          "amt_bad_rate": 0.17066746703127836,
+          "lift_amt": 1.1591420304605033,
+          "data_source": "application"
+        },
+        {
+          "y": "late60",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "observation",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 48.56940975783636,
+          "observed_count": 0.0,
+          "bad": 0.0,
+          "good": 0.0,
+          "pct": 0.00811881085971301,
+          "bad_rate": null,
+          "lift": null,
+          "cum_count": 5982.330491136126,
+          "cum_observed_count": 0.0,
+          "cum_bad": 0.0,
+          "cum_bad_rate": null,
+          "psi_bin": null,
+          "ks_bin": null,
+          "auc_bin": null,
+          "iv_bin": null,
+          "total_count": 5982.330491136126,
+          "bin_type": "特殊组",
+          "tot_amt": 725615.7788670184,
+          "good_amt": 0.0,
+          "bad_amt": 0.0,
+          "avg_amt": 14939.769342161811,
+          "amt_bad_rate": null,
+          "lift_amt": null,
+          "data_source": "application"
+        },
+        {
+          "y": "late60",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "validation",
+          "bin_index": -3,
+          "bin_label": "Special_-999",
+          "count": 48.403110205612734,
+          "observed_count": 36.895226351818074,
+          "bad": 2.8602571344085073,
+          "good": 34.03496921740957,
+          "pct": 0.008088647770304814,
+          "bad_rate": 0.07752377251014109,
+          "lift": 0.5109548079379354,
+          "cum_count": 5984.079364081471,
+          "cum_observed_count": 4814.2252120458115,
+          "cum_bad": 730.4303510206486,
+          "cum_bad_rate": 0.15172334463976006,
+          "psi_bin": null,
+          "ks_bin": 0.4418300542288893,
+          "auc_bin": 1.6317653779347167e-05,
+          "iv_bin": 0.0033366719726473093,
+          "total_count": 5984.079364081472,
+          "bin_type": "特殊组",
+          "tot_amt": 756791.2305696483,
+          "good_amt": 520097.43040903704,
+          "bad_amt": 46944.23840203121,
+          "avg_amt": 15635.177726283635,
+          "amt_bad_rate": 0.08278798716937412,
+          "lift_amt": 0.5422389333100635,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "Total",
+          "bin_index": -1,
+          "bin_label": "Missing",
+          "count": 106.96803779306711,
+          "observed_count": 98.74975545933687,
+          "bad": 14.272402409388109,
+          "good": 84.47735304994876,
+          "pct": 0.005955647412688618,
+          "bad_rate": 0.14453101522124975,
+          "lift": 0.908791008419417,
+          "cum_count": 17820.28883434047,
+          "cum_observed_count": 16421.769104908464,
+          "cum_bad": 2613.3085201049603,
+          "cum_bad_rate": 0.15913684472179326,
+          "psi_bin": null,
+          "ks_bin": 0.06474509257127103,
+          "auc_bin": 1.6472283331818027e-05,
+          "iv_bin": 7.298206037376076e-05,
+          "total_count": 17960.774099078422,
+          "bin_type": "空值组",
+          "tot_amt": 1527988.0124832303,
+          "good_amt": 1231307.1164004328,
+          "bad_amt": 156770.1533676207,
+          "avg_amt": 14284.528762125834,
+          "amt_bad_rate": 0.11294050899184946,
+          "lift_amt": 0.7201866837013587,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "discovery",
+          "bin_index": -1,
+          "bin_label": "Missing",
+          "count": 37.06244682769385,
+          "observed_count": 33.07375171853199,
+          "bad": 1.8856063768027904,
+          "good": 31.188145341729197,
+          "pct": 0.00618288200715288,
+          "bad_rate": 0.057012170643654,
+          "lift": 0.37050116892830703,
+          "cum_count": 5950.851499086321,
+          "cum_observed_count": 5477.439451918062,
+          "cum_bad": 845.580249818131,
+          "cum_bad_rate": 0.15437509756899823,
+          "psi_bin": null,
+          "ks_bin": 0.4465265486107678,
+          "auc_bin": 7.437091262939838e-06,
+          "iv_bin": 0.004916208330541849,
+          "total_count": 5994.364243860823,
+          "bin_type": "空值组",
+          "tot_amt": 508861.18552338606,
+          "good_amt": 433529.26396095555,
+          "bad_amt": 21336.37585919742,
+          "avg_amt": 13729.83246057986,
+          "amt_bad_rate": 0.04690698525312552,
+          "lift_amt": 0.31024223998666145,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "observation",
+          "bin_index": -1,
+          "bin_label": "Missing",
+          "count": 35.86101183364492,
+          "observed_count": 34.869275397341056,
+          "bad": 6.480241044389092,
+          "good": 28.389034352951963,
+          "pct": 0.005994488583800798,
+          "bad_rate": 0.185843868865805,
+          "lift": 1.1376223550561075,
+          "cum_count": 5933.761081378289,
+          "cum_observed_count": 5455.470949801389,
+          "cum_bad": 890.5884052798162,
+          "cum_bad_rate": 0.16324684220199887,
+          "psi_bin": null,
+          "ks_bin": 8.956522190572969e-08,
+          "auc_bin": 0.006147203257578997,
+          "iv_bin": 0.00016285029414575547,
+          "total_count": 5982.330491136126,
+          "bin_type": "空值组",
+          "tot_amt": 498761.5350381341,
+          "good_amt": 415689.82753488875,
+          "bad_amt": 56629.409979488635,
+          "avg_amt": 13908.183554659056,
+          "amt_bad_rate": 0.11989647145753794,
+          "lift_amt": 0.7592032202945367,
+          "data_source": "application"
+        },
+        {
+          "y": "bad30",
+          "feature": "income",
+          "trend": "peak",
+          "mars_group": "validation",
+          "bin_index": -1,
+          "bin_label": "Missing",
+          "count": 34.044579131728334,
+          "observed_count": 30.80672834346382,
+          "bad": 5.906554988196227,
+          "good": 24.900173355267594,
+          "pct": 0.005689192448895324,
+          "bad_rate": 0.19172938204745799,
+          "lift": 1.1992479200971247,
+          "cum_count": 5935.6762538758585,
+          "cum_observed_count": 5488.858703189014,
+          "cum_bad": 877.1398650070131,
+          "cum_bad_rate": 0.15980368824167343,
+          "psi_bin": null,
+          "ks_bin": 9.156047031666503e-08,
+          "auc_bin": 0.005340334501905049,
+          "iv_bin": 0.00029100209940224886,
+          "total_count": 5984.079364081472,
+          "bin_type": "空值组",
+          "tot_amt": 520365.29192171025,
+          "good_amt": 382088.0249045886,
+          "bad_amt": 78804.36752893463,
+          "avg_amt": 15284.82082002736,
+          "amt_bad_rate": 0.1709821399152319,
+          "lift_amt": 1.059999894589887,
+          "data_source": "application"
+        }
+      ]
+    },
+    {
+      "question": "未表现目标以什么状态保存？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "calculation_status",
+        "query": {
+          "offset": 0,
+          "limit": 8,
+          "filters": {
+            "target": "late60",
+            "group": "observation"
+          }
+        }
+      },
+      "total_rows": 4,
+      "returned_rows": 4,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_score",
+          "target": "late60",
+          "group": "observation",
+          "metric": "risk_metrics",
+          "status": "unobserved",
+          "reason": "no_observed_labels"
+        },
+        {
+          "feature": "channel",
+          "target": "late60",
+          "group": "observation",
+          "metric": "risk_metrics",
+          "status": "unobserved",
+          "reason": "no_observed_labels"
+        },
+        {
+          "feature": "income",
+          "target": "late60",
+          "group": "observation",
+          "metric": "risk_metrics",
+          "status": "unobserved",
+          "reason": "no_observed_labels"
+        },
+        {
+          "feature": "main_score",
+          "target": "late60",
+          "group": "observation",
+          "metric": "risk_metrics",
+          "status": "unobserved",
+          "reason": "no_observed_labels"
+        }
+      ]
+    },
+    {
+      "question": "bad30 的各分区 iv 如何对比？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "trend.iv",
+        "query": {
+          "offset": 0,
+          "limit": 4,
+          "features": [
+            "main_score",
+            "aux_score",
+            "income",
+            "channel"
+          ]
+        }
+      },
+      "total_rows": 4,
+      "returned_rows": 4,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 2.292691946029663,
+          "observation": 2.1346216201782227,
+          "validation": 2.097611427307129,
+          "Total": 2.164524555206299
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 0.0005681346519850194,
+          "observation": 0.002910556271672249,
+          "validation": 7.160484528867528e-05,
+          "Total": 0.0013337230775505304
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 0.011656183749437332,
+          "observation": 0.0008277490851469338,
+          "validation": 0.002576178638264537,
+          "Total": 0.0003961330803576857
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 0.31765294075012207,
+          "observation": 0.25749990344047546,
+          "validation": 0.23953279852867126,
+          "Total": 0.2645227015018463
+        }
+      ]
+    },
+    {
+      "question": "bad30 的各分区 ks 如何对比？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "trend.ks",
+        "query": {
+          "offset": 0,
+          "limit": 4,
+          "features": [
+            "main_score",
+            "aux_score",
+            "income",
+            "channel"
+          ]
+        }
+      },
+      "total_rows": 4,
+      "returned_rows": 4,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 59.6030492424841,
+          "observation": 57.49640894703949,
+          "validation": 57.2376196972209,
+          "Total": 58.02504105738247
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 1.1916513738191026,
+          "observation": 1.8924953509008247,
+          "validation": 0.4230412325032462,
+          "Total": 0.797384378833832
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 2.7675569717462825,
+          "observation": 0.7012699493024965,
+          "validation": 1.8919362872146572,
+          "Total": 0.7490206915989783
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 22.58206178335463,
+          "observation": 22.57806114554961,
+          "validation": 20.004102818689855,
+          "Total": 21.72757947347752
+        }
+      ]
+    },
+    {
+      "question": "bad30 的各分区 psi 如何对比？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "trend.psi",
+        "query": {
+          "offset": 0,
+          "limit": 4,
+          "features": [
+            "main_score",
+            "aux_score",
+            "income",
+            "channel"
+          ]
+        }
+      },
+      "total_rows": 4,
+      "returned_rows": 4,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 0.0016672474601409778,
+          "validation": 0.00010404975285366506,
+          "Total": 0.00024185393855596002
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 1.6354251431367013,
+          "validation": 7.870352309217402e-05,
+          "Total": 0.48674437916023566
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 1.085851744409175,
+          "validation": 0.3802354236225152,
+          "Total": 0.27767123792278464
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 0.0012623607168408268,
+          "validation": 0.001454347171114377,
+          "Total": 0.0003981462794075181
+        }
+      ]
+    },
+    {
+      "question": "辅助分正常箱在开发/验证的固定边界与加权风险如何比较？",
+      "reference": {
+        "report_id": "00a89e98-6896-4ab5-b337-2d06220e3723",
+        "table": "detail",
+        "query": {
+          "offset": 0,
+          "limit": 8,
+          "features": "aux_score",
+          "filters": {
+            "y": "bad30",
+            "mars_group": {
+              "op": "in",
+              "value": [
+                "discovery",
+                "validation"
+              ]
+            },
+            "bin_index": {
+              "op": "in",
+              "value": [
+                0,
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          "columns": [
+            "y",
+            "feature",
+            "mars_group",
+            "bin_index",
+            "bin_label",
+            "count",
+            "observed_count",
+            "bad",
+            "bad_rate",
+            "lift"
+          ],
+          "sort_by": [
+            "mars_group",
+            "bin_index"
+          ]
+        }
+      },
+      "total_rows": 8,
+      "returned_rows": 8,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "discovery",
+          "bin_index": 0,
+          "bin_label": "00_[-inf, 432.8093)",
+          "count": 1480.3096329317532,
+          "observed_count": 1374.285817684864,
+          "bad": 8.693541625354179,
+          "bad_rate": 0.006325861413602745,
+          "lift": 0.04110945122344978
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "discovery",
+          "bin_index": 1,
+          "bin_label": "01_[432.8093, 499.4162)",
+          "count": 1481.6071912633129,
+          "observed_count": 1361.4237365013512,
+          "bad": 46.202045226805396,
+          "bad_rate": 0.033936565073808336,
+          "lift": 0.22054127894632441
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "discovery",
+          "bin_index": 2,
+          "bin_label": "02_[499.4162, 568.1541)",
+          "count": 1466.3922443680885,
+          "observed_count": 1349.8519158976005,
+          "bad": 149.083614975494,
+          "bad_rate": 0.11044442225083557,
+          "lift": 0.7177377581588513
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "discovery",
+          "bin_index": 3,
+          "bin_label": "03_[568.1541, inf)",
+          "count": 1496.4544188206519,
+          "observed_count": 1363.5452860913654,
+          "bad": 636.9360876205249,
+          "bad_rate": 0.46711766313703973,
+          "lift": 3.0356262227071764
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "validation",
+          "bin_index": 0,
+          "bin_label": "00_[-inf, 432.8093)",
+          "count": 1482.1936524310859,
+          "observed_count": 1362.0185526149264,
+          "bad": 12.327285355696986,
+          "bad_rate": 0.009050747019583506,
+          "lift": 0.05661150848477728
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "validation",
+          "bin_index": 1,
+          "bin_label": "01_[432.8093, 499.4162)",
+          "count": 1468.995098324957,
+          "observed_count": 1357.1016112633256,
+          "bad": 50.826486692044476,
+          "bad_rate": 0.03745223369437319,
+          "lift": 0.23425993909400392
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "validation",
+          "bin_index": 2,
+          "bin_label": "02_[499.4162, 568.1541)",
+          "count": 1486.753194635344,
+          "observed_count": 1378.167267312453,
+          "bad": 166.95845391215389,
+          "bad_rate": 0.12114527595604378,
+          "lift": 0.7577514654687427
+        },
+        {
+          "y": "bad30",
+          "feature": "aux_score",
+          "mars_group": "validation",
+          "bin_index": 3,
+          "bin_label": "03_[568.1541, inf)",
+          "count": 1477.5862114884383,
+          "observed_count": 1367.5401428337054,
+          "bad": 643.0444131986205,
+          "bad_rate": 0.4702197712939938,
+          "lift": 2.9411771773889384
+        }
+      ]
+    }
+  ],
+  "findings": {
+    "summary_rows": [
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "iv": 2.164524555206299,
+        "ks": 58.02504105738247,
+        "auc": 0.8432240518441497,
+        "psi_max": 0.0016672474601409778,
+        "rc_min": 1.0,
+        "lift_min": 0.051650223056958135,
+        "lift_max": 2.9573616542189143,
+        "missing": 0.004960001045753993,
+        "missing_min": 0.004940005206229816,
+        "missing_max": 0.0049987763360838195,
+        "mono": 1.0,
+        "target": "bad30"
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "iv": 1.7028961181640625,
+        "ks": 50.88207636809907,
+        "auc": 0.8135024206210837,
+        "psi_max": 0.0016672474601409889,
+        "rc_min": 1.0,
+        "lift_min": 0.07284276071066938,
+        "lift_max": 2.7359171160359232,
+        "missing": 0.004960001045753993,
+        "missing_min": 0.004940005206229816,
+        "missing_max": 0.00499877633608382,
+        "mono": 1.0,
+        "target": "late60"
+      },
+      {
+        "feature": "main_score",
+        "data_source": "champion",
+        "iv": 0.2832363247871399,
+        "ks": 23.298610351774485,
+        "auc": 0.644419003579272,
+        "psi_max": 0.0014543471711143852,
+        "rc_min": 1.0,
+        "lift_min": 0.46419664832994545,
+        "lift_max": 1.6359974375725086,
+        "missing": 0.004835848718939471,
+        "missing_min": 0.004790192697931378,
+        "missing_max": 0.004916852313108061,
+        "mono": -1.0,
+        "target": "late60"
+      },
+      {
+        "feature": "main_score",
+        "data_source": "champion",
+        "iv": 0.2645227015018463,
+        "ks": 21.72757947347752,
+        "auc": 0.6402028142155469,
+        "psi_max": 0.001454347171114377,
+        "rc_min": 1.0,
+        "lift_min": 0.48524231951685187,
+        "lift_max": 1.6390286799483655,
+        "missing": 0.004835848718939471,
+        "missing_min": 0.004790192697931378,
+        "missing_max": 0.004916852313108061,
+        "mono": -1.0,
+        "target": "bad30"
+      },
+      {
+        "feature": "channel",
+        "data_source": "application",
+        "iv": 0.0013337230775505304,
+        "ks": 0.797384378833832,
+        "auc": 0.5044445914784896,
+        "psi_max": 1.6354251431367013,
+        "rc_min": -1.0,
+        "lift_min": 0.9912851850516026,
+        "lift_max": 0.9946814180199289,
+        "missing": 0.0,
+        "missing_min": 0.0,
+        "missing_max": 0.0,
+        "mono": 1.0,
+        "target": "bad30"
+      },
+      {
+        "feature": "income",
+        "data_source": "application",
+        "iv": 0.0013195734936743975,
+        "ks": 1.4579855198092462,
+        "auc": 0.509548696619565,
+        "psi_max": 1.0858517444091749,
+        "rc_min": 0.4,
+        "lift_min": 0.9554752034159344,
+        "lift_max": 1.0364070115136335,
+        "missing": 0.005955647412688786,
+        "missing_min": 0.005689192448895324,
+        "missing_max": 0.00618288200715288,
+        "mono": 0.4,
+        "target": "late60"
+      },
+      {
+        "feature": "income",
+        "data_source": "application",
+        "iv": 0.0003961330803576857,
+        "ks": 0.7490206915989783,
+        "auc": 0.5046016576515537,
+        "psi_max": 1.085851744409175,
+        "rc_min": -0.8,
+        "lift_min": 0.9886575452391045,
+        "lift_max": 1.0234905230151143,
+        "missing": 0.005955647412688785,
+        "missing_min": 0.005689192448895323,
+        "missing_max": 0.00618288200715288,
+        "mono": 0.4,
+        "target": "bad30"
+      },
+      {
+        "feature": "channel",
+        "data_source": "application",
+        "iv": 1.1083395293098874e-05,
+        "ks": 0.1664385741648844,
+        "auc": 0.5008321931319052,
+        "psi_max": 1.6354251431367013,
+        "rc_min": -1.0,
+        "lift_min": 0.9972252478921685,
+        "lift_max": 1.0028692320732142,
+        "missing": 0.0,
+        "missing_min": 0.0,
+        "missing_max": 0.0,
+        "mono": 1.0,
+        "target": "late60"
+      }
+    ],
+    "status_rows": [
+      {
+        "feature": "aux_score",
+        "target": "late60",
+        "group": "observation",
+        "metric": "risk_metrics",
+        "status": "unobserved",
+        "reason": "no_observed_labels"
+      },
+      {
+        "feature": "channel",
+        "target": "late60",
+        "group": "observation",
+        "metric": "risk_metrics",
+        "status": "unobserved",
+        "reason": "no_observed_labels"
+      },
+      {
+        "feature": "income",
+        "target": "late60",
+        "group": "observation",
+        "metric": "risk_metrics",
+        "status": "unobserved",
+        "reason": "no_observed_labels"
+      },
+      {
+        "feature": "main_score",
+        "target": "late60",
+        "group": "observation",
+        "metric": "risk_metrics",
+        "status": "unobserved",
+        "reason": "no_observed_labels"
+      }
+    ],
+    "reference_row_count": 6000,
+    "targets": [
+      "bad30",
+      "late60"
+    ],
+    "split_metrics": {
+      "iv": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 2.292691946029663,
+          "observation": 2.1346216201782227,
+          "validation": 2.097611427307129,
+          "Total": 2.164524555206299
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 0.0005681346519850194,
+          "observation": 0.002910556271672249,
+          "validation": 7.160484528867528e-05,
+          "Total": 0.0013337230775505304
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 0.011656183749437332,
+          "observation": 0.0008277490851469338,
+          "validation": 0.002576178638264537,
+          "Total": 0.0003961330803576857
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 0.31765294075012207,
+          "observation": 0.25749990344047546,
+          "validation": 0.23953279852867126,
+          "Total": 0.2645227015018463
+        }
+      ],
+      "ks": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 59.6030492424841,
+          "observation": 57.49640894703949,
+          "validation": 57.2376196972209,
+          "Total": 58.02504105738247
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 1.1916513738191026,
+          "observation": 1.8924953509008247,
+          "validation": 0.4230412325032462,
+          "Total": 0.797384378833832
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 2.7675569717462825,
+          "observation": 0.7012699493024965,
+          "validation": 1.8919362872146572,
+          "Total": 0.7490206915989783
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 22.58206178335463,
+          "observation": 22.57806114554961,
+          "validation": 20.004102818689855,
+          "Total": 21.72757947347752
+        }
+      ],
+      "psi": [
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 0.0016672474601409778,
+          "validation": 0.00010404975285366506,
+          "Total": 0.00024185393855596002
+        },
+        {
+          "feature": "channel",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 1.6354251431367013,
+          "validation": 7.870352309217402e-05,
+          "Total": 0.48674437916023566
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 1.085851744409175,
+          "validation": 0.3802354236225152,
+          "Total": 0.27767123792278464
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 0.0,
+          "observation": 0.0012623607168408268,
+          "validation": 0.001454347171114377,
+          "Total": 0.0003981462794075181
+        }
+      ]
+    },
+    "auxiliary_bin_risk": [
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "discovery",
+        "bin_index": 0,
+        "bin_label": "00_[-inf, 432.8093)",
+        "count": 1480.3096329317532,
+        "observed_count": 1374.285817684864,
+        "bad": 8.693541625354179,
+        "bad_rate": 0.006325861413602745,
+        "lift": 0.04110945122344978
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "discovery",
+        "bin_index": 1,
+        "bin_label": "01_[432.8093, 499.4162)",
+        "count": 1481.6071912633129,
+        "observed_count": 1361.4237365013512,
+        "bad": 46.202045226805396,
+        "bad_rate": 0.033936565073808336,
+        "lift": 0.22054127894632441
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "discovery",
+        "bin_index": 2,
+        "bin_label": "02_[499.4162, 568.1541)",
+        "count": 1466.3922443680885,
+        "observed_count": 1349.8519158976005,
+        "bad": 149.083614975494,
+        "bad_rate": 0.11044442225083557,
+        "lift": 0.7177377581588513
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "discovery",
+        "bin_index": 3,
+        "bin_label": "03_[568.1541, inf)",
+        "count": 1496.4544188206519,
+        "observed_count": 1363.5452860913654,
+        "bad": 636.9360876205249,
+        "bad_rate": 0.46711766313703973,
+        "lift": 3.0356262227071764
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "validation",
+        "bin_index": 0,
+        "bin_label": "00_[-inf, 432.8093)",
+        "count": 1482.1936524310859,
+        "observed_count": 1362.0185526149264,
+        "bad": 12.327285355696986,
+        "bad_rate": 0.009050747019583506,
+        "lift": 0.05661150848477728
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "validation",
+        "bin_index": 1,
+        "bin_label": "01_[432.8093, 499.4162)",
+        "count": 1468.995098324957,
+        "observed_count": 1357.1016112633256,
+        "bad": 50.826486692044476,
+        "bad_rate": 0.03745223369437319,
+        "lift": 0.23425993909400392
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "validation",
+        "bin_index": 2,
+        "bin_label": "02_[499.4162, 568.1541)",
+        "count": 1486.753194635344,
+        "observed_count": 1378.167267312453,
+        "bad": 166.95845391215389,
+        "bad_rate": 0.12114527595604378,
+        "lift": 0.7577514654687427
+      },
+      {
+        "y": "bad30",
+        "feature": "aux_score",
+        "mars_group": "validation",
+        "bin_index": 3,
+        "bin_label": "03_[568.1541, inf)",
+        "count": 1477.5862114884383,
+        "observed_count": 1367.5401428337054,
+        "bad": 643.0444131986205,
+        "bad_rate": 0.4702197712939938,
+        "lift": 2.9411771773889384
+      }
+    ],
+    "units": {
+      "ks": "percentage points on 0–100 scale",
+      "iv": "dimensionless",
+      "psi": "dimensionless",
+      "bad_rate": "fraction"
+    }
+  },
+  "unavailable": "分箱 IV/KS/PSI 不等于最终业务价值或因果增量；观察期 late60 未表现。"
+}

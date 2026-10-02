@@ -1,0 +1,558 @@
+{
+  "case": 1,
+  "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+  "question": "这份数据能直接用吗？",
+  "consumer": "deterministic public API queries; no LLM",
+  "description": {
+    "report_type": "MarsProfileReport",
+    "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+    "format_version": 1,
+    "feature_metadata": {
+      "aux_probability": {
+        "display_name": "辅助概率检查字段",
+        "data_source": "challenger",
+        "unit": "fraction",
+        "description": "由辅助分转换，含显式非法概率和特殊值；仅用于概率域审计"
+      },
+      "aux_score": {
+        "display_name": "辅助模型分",
+        "data_source": "challenger",
+        "description": "模拟固定分，高分高风险",
+        "unit": "score_points"
+      },
+      "income": {
+        "display_name": "申报月收入",
+        "data_source": "application",
+        "unit": "CNY/month",
+        "description": "模拟申报月收入；验证、观察期施加可复算分布变化"
+      },
+      "main_score": {
+        "display_name": "主模型分",
+        "data_source": "champion",
+        "description": "模拟固定分，高分低风险",
+        "unit": "score_points"
+      },
+      "sparse": {
+        "display_name": "高缺失字段",
+        "data_source": "application"
+      },
+      "channel": {
+        "display_name": "申请渠道",
+        "data_source": "application",
+        "unit": "category",
+        "description": "观察期出现仅在该期可见的 branch 渠道"
+      }
+    },
+    "source": {
+      "kind": "analysis",
+      "producer": "mars",
+      "input_provenance": "caller_provided_dataframe"
+    },
+    "context_source": {
+      "business_context": {
+        "label_definition": "unknown",
+        "observation_window": "unknown",
+        "currency": "user_provided",
+        "dataset_id": "user_provided",
+        "simulated": "user_provided",
+        "sample_unit": "user_provided",
+        "sample_count": "user_provided",
+        "seed": "user_provided",
+        "labels": "user_provided",
+        "splits": "user_provided",
+        "amount_definition": "user_provided",
+        "weight_definition": "user_provided",
+        "score_directions": "user_provided",
+        "binning_origin": "user_provided"
+      },
+      "parameters": "calculation"
+    },
+    "serialization": {
+      "non_finite": "tagged float: {$mars: float, value: nan/inf/-inf}",
+      "date": "ISO-8601",
+      "null": "missing; calculation state is separate"
+    },
+    "tables": {
+      "overview": {
+        "rows": 6,
+        "index": null,
+        "grain": "feature",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "missing_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "zeros_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "原始零值数/全样本数，非数值字段为 0"
+          },
+          "mean": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "非加权有效值均值；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算"
+          }
+        }
+      },
+      "calculation_status": {
+        "rows": 3,
+        "index": null,
+        "grain": "target/feature/group/metric",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量"
+          },
+          "metric": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "计算状态适用的指标或指标族"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "computed 已计算（有效零仍为零）；not_computed 未计算；unobserved 无观测标签；undefined 无法定义；insufficient_samples 样本不足；failed 计算失败；skipped 跳过；结合 reason"
+          },
+          "reason": {
+            "dtype": "String",
+            "unit": "state_reason",
+            "meaning": "no_target 未提供目标；no_observed_labels 无已观测标签；single_observed_class 仅一种观测类别；其他失败、跳过、样本不足或无法定义原因；空值不替代有效零"
+          }
+        }
+      },
+      "dq.missing": {
+        "rows": 6,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          },
+          "total": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"
+          }
+        }
+      },
+      "dq.zeros": {
+        "rows": 6,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "原始零值数/全样本数，非数值字段为 0"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "原始零值数/全样本数，非数值字段为 0"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "原始零值数/全样本数，非数值字段为 0"
+          },
+          "total": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "原始零值数/全样本数，非数值字段为 0"
+          }
+        }
+      },
+      "stats.mean": {
+        "rows": 6,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "非加权有效值均值；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "非加权有效值均值；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "非加权有效值均值；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算"
+          },
+          "total": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "非加权有效值均值；排除 Null、NaN、配置缺失值和特殊值；非数值字段未计算"
+          }
+        }
+      },
+      "stats.psi": {
+        "rows": 6,
+        "index": null,
+        "grain": "feature (groups in columns)",
+        "fields": {
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称"
+          },
+          "dtype": {
+            "dtype": "String",
+            "unit": "type",
+            "meaning": "原输入字段的数据类型"
+          },
+          "discovery": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "observation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "validation": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          },
+          "total": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "各箱 (actual-expected)×ln(actual/expected) 之和；参考及箱范围见参数"
+          }
+        }
+      }
+    },
+    "calculation_state": {
+      "table": "calculation_status",
+      "diagnostics": "parameters.diagnostics/fit_failures/raw_ks_diagnostics",
+      "scope": "feature/target/group/metric; profile status contains exceptional outcomes only, not all trend cells"
+    },
+    "parameters": {
+      "mars_version": "0.0.28",
+      "polars_version": "1.42.0",
+      "generated_at_utc": "2026-10-02T13:06:49.040584+00:00",
+      "input_type": "polars",
+      "row_count": 18000,
+      "column_count": 17,
+      "features": [
+        "main_score",
+        "aux_score",
+        "income",
+        "channel",
+        "sparse",
+        "aux_probability"
+      ],
+      "metrics": [
+        "missing",
+        "zeros",
+        "mean",
+        "psi"
+      ],
+      "group_col": "dataset",
+      "time_col": null,
+      "time_grain": null,
+      "benchmark_row_count": 6000,
+      "categorical_features": [
+        "channel"
+      ],
+      "profile_config": {
+        "missing_values": [],
+        "special_values": [
+          -999
+        ],
+        "overview_batch_size": 500,
+        "psi_batch_size": 50,
+        "psi_remove_empty_bins": true,
+        "psi_merge_small_bins": true,
+        "psi_min_bin_size": 0.02,
+        "psi_cv_ignore_threshold": 0.05,
+        "enable_sparkline": false,
+        "sparkline_sample_size": 200000,
+        "sparkline_bins": 8,
+        "psi_n_bins": 10,
+        "psi_bin_method": "quantile",
+        "psi_include_missing": false,
+        "psi_include_special": false
+      },
+      "diagnostics": [
+        {
+          "component": "psi",
+          "features": [
+            "sparse"
+          ],
+          "reason": "Degenerate feature: single unique value."
+        }
+      ]
+    },
+    "business_context": {
+      "label_definition": "unknown",
+      "observation_window": "unknown",
+      "currency": "CNY",
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "simulated": true,
+      "sample_unit": "one synthetic application; unique sample_id",
+      "sample_count": 18000,
+      "seed": 20261001,
+      "labels": {
+        "bad30": {
+          "definition": "模拟30日违约",
+          "performance_window": "30天"
+        },
+        "late60": {
+          "definition": "模拟60日逾期",
+          "performance_window": "60天"
+        }
+      },
+      "splits": {
+        "discovery": "1–3月；参考分箱与候选发现",
+        "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+        "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
+      },
+      "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
+      "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "binning_origin": "discovery only; frozen definitions"
+    },
+    "limitations": [
+      "只组织已有统计，未计算表不在目录中；失败和跳过见 parameters.diagnostics / fit_failures。",
+      "Null 不是数值 0；风险指标需结合标签表现状态，样本分布使用全样本。",
+      "比较前核对样本范围、权重、缺失/特殊箱、拟合来源、排序口径及参考来源；关联不代表因果。"
+    ]
+  },
+  "queries": [
+    {
+      "question": "首先检查哪些字段的数据质量？",
+      "reference": {
+        "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+        "table": "overview",
+        "query": {
+          "offset": 0,
+          "limit": 8
+        }
+      },
+      "total_rows": 6,
+      "returned_rows": 6,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_probability",
+          "dtype": "Float64",
+          "missing_rate": 0.005,
+          "zeros_rate": 0.0,
+          "mean": 0.5068335591819082
+        },
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "missing_rate": 0.005,
+          "zeros_rate": 0.0,
+          "mean": {
+            "$mars": "float",
+            "value": "inf"
+          }
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "missing_rate": 0.005833333333333334,
+          "zeros_rate": 0.0,
+          "mean": 6691.763730688807
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "missing_rate": 0.0047777777777777775,
+          "zeros_rate": 0.0,
+          "mean": 600.170177748387
+        },
+        {
+          "feature": "sparse",
+          "dtype": "Float64",
+          "missing_rate": 0.98,
+          "zeros_rate": 0.0,
+          "mean": 1.0
+        },
+        {
+          "feature": "channel",
+          "dtype": "String",
+          "missing_rate": 0.0,
+          "zeros_rate": 0.0,
+          "mean": null
+        }
+      ]
+    },
+    {
+      "question": "各分区缺失率如何？",
+      "reference": {
+        "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+        "table": "dq.missing",
+        "query": {
+          "offset": 0,
+          "limit": 8
+        }
+      },
+      "total_rows": 6,
+      "returned_rows": 6,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "feature": "aux_probability",
+          "dtype": "Float64",
+          "discovery": 0.005,
+          "observation": 0.005,
+          "validation": 0.005,
+          "total": 0.005
+        },
+        {
+          "feature": "aux_score",
+          "dtype": "Float64",
+          "discovery": 0.005,
+          "observation": 0.005,
+          "validation": 0.005,
+          "total": 0.005
+        },
+        {
+          "feature": "income",
+          "dtype": "Float64",
+          "discovery": 0.005833333333333334,
+          "observation": 0.005833333333333334,
+          "validation": 0.005833333333333334,
+          "total": 0.005833333333333334
+        },
+        {
+          "feature": "main_score",
+          "dtype": "Float64",
+          "discovery": 0.004833333333333334,
+          "observation": 0.004833333333333334,
+          "validation": 0.004666666666666667,
+          "total": 0.0047777777777777775
+        },
+        {
+          "feature": "sparse",
+          "dtype": "Float64",
+          "discovery": 0.98,
+          "observation": 0.98,
+          "validation": 0.98,
+          "total": 0.98
+        },
+        {
+          "feature": "channel",
+          "dtype": "String",
+          "discovery": 0.0,
+          "observation": 0.0,
+          "validation": 0.0,
+          "total": 0.0
+        }
+      ]
+    }
+  ],
+  "findings": {
+    "input_row_count": 18000,
+    "labels_by_split": [
+      {
+        "dataset": "discovery",
+        "sample_count": 6000,
+        "bad30_observed": 5513,
+        "late60_observed": 4778
+      },
+      {
+        "dataset": "validation",
+        "sample_count": 6000,
+        "bad30_observed": 5551,
+        "late60_observed": 4814
+      },
+      {
+        "dataset": "observation",
+        "sample_count": 6000,
+        "bad30_observed": 5515,
+        "late60_observed": 0
+      }
+    ],
+    "unseen_observation_categories": [
+      "branch"
+    ],
+    "schema_probe": {
+      "consumer": "case-side prerequisite check; not a MARS automatic cleaning API",
+      "missing_columns": [
+        "income_copy"
+      ],
+      "dtype_differences": {
+        "main_score": [
+          "Float64",
+          "String"
+        ]
+      }
+    },
+    "invalid_probability_count": 177
+  },
+  "unavailable": "观察期 late60 没有有效标签，画像和 PSI 无法判断这个目标的模型效果下降。"
+}

@@ -1,0 +1,84 @@
+{
+  "case": 3,
+  "consumer": "deterministic public API queries; no LLM",
+  "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+  "question": "为什么保留这个特征，删除另一个？",
+  "query": {
+    "question": "raw 空间删除了哪些冗余特征？",
+    "reference": {
+      "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+      "table": "correlation_decisions",
+      "query": {
+        "offset": 0,
+        "limit": 8
+      }
+    },
+    "total_rows": 4,
+    "returned_rows": 4,
+    "omitted_rows": 0,
+    "next_offset": null,
+    "rows": [
+      {
+        "event_order": 0,
+        "feature": "score_inverse",
+        "trigger_feature": "main_score",
+        "action": "drop",
+        "correlation": -1.0,
+        "abs_correlation": 1.0,
+        "threshold": 0.95,
+        "operator": ">=",
+        "priority_metric": "absolute target Spearman",
+        "feature_priority": 0.2068392338423599,
+        "trigger_priority": 0.2068392338423599,
+        "tie_rule": "left candidate retained on >= strength; legacy NaN candidates excluded before corr",
+        "white_list_protected": false
+      },
+      {
+        "event_order": 1,
+        "feature": "income_copy",
+        "trigger_feature": "income",
+        "action": "drop",
+        "correlation": 1.0,
+        "abs_correlation": 1.0,
+        "threshold": 0.95,
+        "operator": ">=",
+        "priority_metric": "absolute target Spearman",
+        "feature_priority": 0.0041789279984723775,
+        "trigger_priority": 0.0041789279984723775,
+        "tie_rule": "left candidate retained on >= strength; legacy NaN candidates excluded before corr",
+        "white_list_protected": false
+      },
+      {
+        "event_order": 2,
+        "feature": "main_score",
+        "trigger_feature": null,
+        "action": "keep",
+        "correlation": null,
+        "abs_correlation": null,
+        "threshold": 0.95,
+        "operator": ">=",
+        "priority_metric": "absolute target Spearman",
+        "feature_priority": 0.2068392338423599,
+        "trigger_priority": null,
+        "tie_rule": "left candidate retained on >= strength; legacy NaN candidates excluded before corr",
+        "white_list_protected": false
+      },
+      {
+        "event_order": 3,
+        "feature": "income",
+        "trigger_feature": null,
+        "action": "keep",
+        "correlation": null,
+        "abs_correlation": null,
+        "threshold": 0.95,
+        "operator": ">=",
+        "priority_metric": "absolute target Spearman",
+        "feature_priority": 0.0041789279984723775,
+        "trigger_priority": null,
+        "tie_rule": "left candidate retained on >= strength; legacy NaN candidates excluded before corr",
+        "white_list_protected": false
+      }
+    ]
+  },
+  "unavailable": "相关性不能说明业务因果；raw 与 WOE 有不同表示、候选集及标签口径。"
+}

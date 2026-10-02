@@ -28,6 +28,7 @@ hide:
 
 <div class="mars-home-actions">
 <a class="mars-home-button mars-home-button-primary" href="getting-started/quickstart/">开始人工分析 →</a>
+<a class="mars-home-button" href="demos/">选择实战案例 →</a>
 <a class="mars-home-button" href="user-guide/external-agents/">将报告交给 AI Agent →</a>
 </div>
 
@@ -35,20 +36,32 @@ hide:
 
 </div>
 
+<figure class="mars-home-preview">
+<a href="demos/score-cross/">
+<picture>
+<source media="(max-width: 600px)" srcset="assets/cases/readme-preview-mobile.png">
+<img src="assets/cases/readme-preview.png" alt="真实 Score Cross：发现期202601，X b1 / Y b3坏率56.72%，相对行基线+37.51pp；旁侧为同一Report查询证据">
+</picture>
+</a>
+<figcaption>同一份真实报告：人工矩阵与 Agent 查询。18,000 行合成申请；非真实业务效果。<a href="demos/score-cross/">查看交互与证据 →</a></figcaption>
+</figure>
+
 ## 从工作任务开始
 
 <div class="mars-task-grid">
-<a class="mars-task-card" href="user-guide/data-profiling/"><em>PROFILE</em><strong>数据能直接用吗？</strong><span>缺失、分布、样本概况、分组和时间变化</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/data-quality/"><em>PROFILE</em><strong>数据能直接用吗？</strong><span>18,000 行画像；观察期 late60 有效标签为 0</span><span class="mars-card-link">查看案例 →</span></a>
 
-<a class="mars-task-card" href="user-guide/binning-risk-evaluation/"><em>BIN / EVALUATE</em><strong>哪些特征有区分度？</strong><span>分箱、IV、KS、坏率与稳定性</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/binning-stability/"><em>BIN / EVALUATE</em><strong>哪些特征有区分度，而且稳定？</strong><span>固定参考分箱；区分度、箱风险与 PSI 对比</span><span class="mars-card-link">查看案例 →</span></a>
 
-<a class="mars-task-card" href="user-guide/feature-selection/"><em>SELECT / CORRELATION</em><strong>哪些特征值得保留？</strong><span>筛选记录、相关性和取舍证据</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/selection-correlation/"><em>SELECT / CORRELATION</em><strong>为什么保留这个，删除另一个？</strong><span>真实决策；raw ±1 冗余与目标感知 WOE 分开解释</span><span class="mars-card-link">查看案例 →</span></a>
 
-<a class="mars-task-card" href="user-guide/correlation-and-score-cross/#固定分段交叉"><em>SCORE CROSS</em><strong>两个模型分如何组合？</strong><span>固定分段、交叉表现、客群定位、策略回放</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/score-cross/"><em>SCORE CROSS</em><strong>同一主等级内，辅助分还有用吗？</strong><span>真实矩阵、Δ pp、格子状态与聚合回放</span><span class="mars-card-link">查看案例 →</span></a>
 
-<a class="mars-task-card" href="user-guide/rule-mining/"><em>RULE MINING</em><strong>哪些组合条件需要关注？</strong><span>候选规则、覆盖率、风险表现和验证 · Experimental</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/rule-evidence/"><em>RULE MINING</em><strong>候选规则如何走到审查证据？</strong><span>5 个候选，2 个入选；发现与独立验证审计 · Experimental</span><span class="mars-card-link">查看案例 →</span></a>
 
-<a class="mars-task-card" href="user-guide/external-agents/"><em>REPORT</em><strong>如何把分析结果继续用？</strong><span>查询、展示、导出、保存与外部 Agent 使用</span><span class="mars-card-link">查看指南 →</span></a>
+<a class="mars-task-card" href="demos/saved-reports/"><em>REPORT / QUERY</em><strong>保存后如何继续查询？</strong><span>独立新进程恢复，分页、预算与不足回答</span><span class="mars-card-link">查看案例 →</span></a>
+
+<a class="mars-task-card" href="demos/report-delivery/"><em>REPORT / DELIVERY</em><strong>同次分析如何交付给不同使用者？</strong><span>HTML、静态 Excel、快照、有限 JSON 与 TXT</span><span class="mars-card-link">查看案例 →</span></a>
 </div>
 
 ## 计算一次，持续使用
@@ -94,10 +107,12 @@ JSON 摘要适合粘贴到对话框，`max_chars` 是字符预算，不是 token
 
 ## 具体分析场景
 
-- [同一主模型等级内，辅助分能否进一步区分风险？](user-guide/correlation-and-score-cross.md#固定分段交叉)
-- [这个特征为什么在筛选中被剔除？](user-guide/correlation-and-score-cross.md#相关性报告)
-- [两个时期的分布变化体现在哪些特征？](user-guide/data-profiling.md)
-- [怎样将报告交给另一个 Agent，继续读取证据？](user-guide/external-agents.md#分页与证据回放)
+- [同一主模型等级内，辅助分能否进一步区分风险？](demos/score-cross.md)
+- [这个特征为什么在筛选中被剔除？](demos/selection-correlation.md)
+- [两个时期的分布变化体现在哪些特征？](demos/data-quality.md)
+- [怎样将报告交给另一个 Agent，继续读取证据？](demos/saved-reports.md)
+
+[七案例索引与产物能力矩阵](demos/index.md) · [历史 LightGBM 与维护边界](demos/history.md)
 
 <div class="mars-callout" markdown="1">
 

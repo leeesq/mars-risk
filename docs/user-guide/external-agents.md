@@ -4,6 +4,9 @@ description: 人工对话与外部 AI Agent 通过公共报告读取元数据、
 
 # 将报告交给外部 AI Agent
 
+从[案例 6：只加载快照继续查询](../demos/saved-reports.md)和
+[案例 7：不同使用者的交付](../demos/report-delivery.md)查看实际有限 JSON 与下载文件。
+
 MARS 是面向人和 AI Agent 的风控分析工具箱。外部 Agent 直接消费公共分析与
 `mars.reporting` 接口，无需 `MarsAgentSession` 或模型 SDK。先计算报告，再按需读取证据；
 查询已有报告不会重新分箱、重算指标或访问原始样本。
