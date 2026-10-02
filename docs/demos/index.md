@@ -7,10 +7,17 @@ hide:
 # 从问题选择实战案例
 
 **数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**。
-从一份合成申请数据开始，先判断能否分析，再比较特征、复核候选规则，最后保存和交付同一份报告。
-人工图表与 Agent JSON 都读取实际 Report；以下示例回答由人工依据确定性查询整理，不是 LLM 实验。
+从一份合成申请数据开始，先检查质量，再评估与筛选特征、发现并验证规则，最后保存和交付分析结果。
+每个案例提供人工可读的结果、可运行代码和 Agent 查询证据，方便替换成自己的数据继续分析。
 
 <div class="mars-cases" markdown="1">
+
+<figure class="mars-native-preview">
+<a href="../assets/cases/binning-native-main-score.svg" aria-label="查看分箱趋势图高清原图">
+<img src="../assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：分区分布、件数与金额 bad rate、区分度和稳定性">
+</a>
+<figcaption>原生分箱图直接导出，图表与查询结果共享同一份报告。<a href="binning-stability/">进入分箱实战 →</a></figcaption>
+</figure>
 
 <div class="mars-case-grid" markdown="1">
 
@@ -24,7 +31,7 @@ hide:
 
 --8<-- "docs/assets/cases/previews.txt:card1"
 
-[真实质量摘要与前置检查 →](data-quality.md)
+[质量摘要与前置检查 →](data-quality.md)
 
 </div>
 
@@ -38,7 +45,7 @@ hide:
 
 --8<-- "docs/assets/cases/previews.txt:card2"
 
-[真实指标与分箱证据 →](binning-stability.md)
+[趋势图、指标与分箱证据 →](binning-stability.md)
 
 </div>
 
@@ -66,7 +73,7 @@ hide:
 
 --8<-- "docs/assets/cases/previews.txt:card4"
 
-[真实交互与格子查询 →](score-cross.md)
+[交互矩阵与格子查询 →](score-cross.md)
 
 </div>
 
@@ -80,7 +87,7 @@ hide:
 
 --8<-- "docs/assets/cases/previews.txt:card5"
 
-[真实发现与验证结果 →](rule-evidence.md)
+[候选发现与验证结果 →](rule-evidence.md)
 
 </div>
 
@@ -114,30 +121,12 @@ HTML、静态 Excel、快照、有限 JSON 和外部 Agent TXT 的真实边界�
 
 </div>
 
-<div class="mars-case-preview" markdown="1">
-
-<div class="mars-preview-desktop" markdown="1">
-
-[![同一份 Score Cross 报告的矩阵与查询证据](../assets/cases/readme-preview.png)](score-cross.md)
-
-</div>
-
-<div class="mars-preview-mobile" markdown="1">
-
-[![手机实际选格详情与同源JSON](../assets/cases/readme-preview-mobile.png)](score-cross.md)
-
-</div>
-
-固定主模型等级后查看辅助分的风险梯度；矩阵、选格详情和 Agent 查询来源相同。
-[打开真实交互报告](../assets/cases/score-cross.html) · [查看公共查询证据](../assets/cases/case-4.json)
-
-</div>
-
 </div>
 
 ## 先看产物能力，再选择格式 { #formats }
 
-下表描述本轮实际生成路线。案例 6/7 复用已有报告和共享包，不复制七套计算或快照。
+按接收方选择格式：人工阅读用 HTML／Excel，高清图用于汇报，完整快照用于跨进程查询。
+案例 6/7 复用已有报告和共享包。
 文件目录、大小、哈希和同批报告身份见[manifest.json](../assets/cases/manifest.json)。
 
 | 案例 | 报告／真实结果 | HTML | 静态 Excel | .marsreport | 有限 JSON / TXT |
@@ -174,11 +163,13 @@ IV、PSI、Lift 无量纲，Δ 用百分点（pp）。各页说明真实口径�
 ## 运行与下载 { #run }
 
 这组案例随当前源码 `0.0.28` 维护；PyPI 发布边界见[安装页](../getting-started/installation.md)。
-先克隆包含本轮案例的源码分支，在仓库根目录安装。所有核心案例无需 API Key、联网 LLM 或可选模型训练 extra。
+从 main 克隆源码，在仓库根目录安装。所有核心案例无需 API Key、联网 LLM 或可选模型训练 extra。
 本批公开结果由 Python 3.11.15、Pandas 3.0.3、Polars 1.42.0 运行，
 完整依赖和源码导入／已安装 distribution 的区别见[生成环境](../assets/cases/generation-environment.json)。
 
 ```bash
+git clone https://github.com/leeesq/mars-risk.git
+cd mars-risk
 python -m pip install -e ".[docs]"
 python docs/snippets/task_cases.py --output-dir output/task-cases --rows 18000 --seed 20261001
 ```

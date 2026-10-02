@@ -82,8 +82,9 @@ def build_html_styles() -> str:
             .mars-result-status { min-height:16px; font-size:12px; margin:6px 0 10px 0; }
             .mars-table-scroll { position:relative; overflow:auto; border:1px solid var(--line-soft); border-radius:14px; background:#fff; }
             .mars-data-table { width:max-content; min-width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
-            .mars-th,.mars-td { border-bottom:1px solid var(--line-soft); padding:8px 10px; white-space:nowrap; text-align:left; vertical-align:top; }
-            .mars-th { position:sticky; top:0; background:#eef6fb; z-index:1; }
+            .mars-th,.mars-td,.mars-semantic-table th,.mars-semantic-table td { border-bottom:1px solid var(--line-soft); padding:8px 10px; white-space:nowrap; text-align:left; vertical-align:top; }
+            .mars-th,.mars-semantic-table th { position:sticky; top:0; background:#eef6fb; z-index:1; }
+            .mars-semantic-table td { white-space:normal; max-width:64ch; overflow-wrap:anywhere; line-height:1.5; }
             .mars-td { position:relative; z-index:0; }
             .mars-sticky-col { position:sticky; background-clip:padding-box; overflow:hidden; }
             .mars-feature-col { min-width:var(--mars-feature-col-width, 220px); width:var(--mars-feature-col-width, 220px); max-width:var(--mars-feature-col-width, 220px); box-sizing:border-box; }
@@ -206,7 +207,7 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
             function marsNormalizeFeatureValue(value) { return (value||"").trim().toLowerCase(); }
             function marsAvailablePages() { return Array.from(document.querySelectorAll("[data-mars-view]")); }
             function marsNormalizePage(value) {
-                const aliases={"overview-section":"overview","summary-section":"summary","missing-day-section":"missing-day","trend-section":"trends","pivot-section":"pivot","chart-section":"charts"};
+                const aliases={"overview-section":"overview","semantics-section":"semantics","summary-section":"summary","missing-day-section":"missing-day","trend-section":"trends","pivot-section":"pivot","chart-section":"charts"};
                 const candidate=(value||"").replace(/^#/,"").trim().toLowerCase();
                 const normalized=aliases[candidate]||candidate;
                 return marsAvailablePages().some((node)=>node.dataset.marsView===normalized) ? normalized : null;
@@ -219,7 +220,11 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                     else history.pushState(null,"",`#${normalized}`);
                 }
                 marsState.activePage=normalized;
-                marsAvailablePages().forEach((node)=>node.classList.toggle("is-active", node.dataset.marsView===normalized));
+                marsAvailablePages().forEach((node)=>{
+                    const active=node.dataset.marsView===normalized;
+                    node.classList.toggle("is-active", active);
+                    if(active && node.tagName==="DETAILS") node.open=true;
+                });
                 document.querySelectorAll(".mars-page-nav").forEach((node)=>node.classList.toggle("is-active", node.dataset.page===normalized));
                 if(normalized==="charts") {
                     marsObserveChartImages();

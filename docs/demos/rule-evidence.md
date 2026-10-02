@@ -17,10 +17,14 @@ Rule 为 **Experimental**；候选入选不代表生产策略批准、部署资�
 
 --8<-- "docs/assets/cases/previews.txt:case5"
 
-入选第一条 `mr_cb714e09ca8c064f8185` 在 validation/bad30/__overall__/hit 有效命中
-**322** 人、事件 **167**、事件率 **51.86%**、覆盖率 **5.80%**、Lift **3.2641**。
-第二条有效命中 345 人、事件率 40.29%、Lift 2.5357。
-失败候选的验证 Lift 1.7333 仍不足以通过原 production 门槛；不改阈值凑入选。
+格子候选的区域名称、保留状态与独立验证指标在上表对应；完整稳定 `rule_id` 与表达式保留在机器证据。
+正常箱规则按实际分段排除 missing、special 与 ±inf，逐个 sample_id 核对成员相同，
+不会把交叉的 invalid 分偷偷放进最高正常箱。人数与事件率按规则报告的有效标签口径解释。
+
+下方的自动组合生成器另外生成最多 24 个候选，并使用同样的 production 门禁及独立验证。
+它先显式排除非法／缺失模型分，剔除人数与生成来源一起记录，不能与格子种子报告混为同一样本范围。
+[查看自动挖掘报告](../assets/cases/auto-rules.html) ·
+[下载自动挖掘 Excel](../assets/cases/auto-rules.xlsx) · [生成器证据](../assets/cases/rule-generation.json)
 
 发现门槛与独立验证门槛分开执行。开发淘汰不是验证失败；信息不足也不是有效规则。
 候选来源关联发现格子，手工压力候选明确标记没有格子来源，不虚构起源。
@@ -38,6 +42,23 @@ coverage 的分母是同 dataset、target、slice 的总体有效表现人数；
 
 === "人工阅读"
 
+    已完成模型分域检查的 `train_df` 与 `validation_df` 是独立样本。换成自己的数据即可自动生成候选，
+    不需要先写出想保留的规则：
+
+    ```python
+    from mars.rule import MarsCombinationRuleGenerator, MarsRuleMiningSpec, mine_rules
+
+    result = mine_rules(
+        train_df, target="bad30", validation_df=validation_df,
+        features=["main_score", "aux_score"],
+        generators=[MarsCombinationRuleGenerator(n_bins=4, max_candidates=24, random_state=42)],
+        time_col="application_date", time_grain="month",
+        spec=MarsRuleMiningSpec.production(max_candidates=24, top_k=5),
+    )
+    result.to_report().write_html("automatic-rules.html")
+    ```
+
+    [已测试的完整自动生成源码](../snippets/task_cases.py)包括输入域检查、快照和生成来源。
     先看发现摘要，再看 `candidates` 的筛选阶段与原因，最后看最终规则在独立验证的表现。
     规则、规范条件、发现格子和验证行的关联用于复核，不能只交付自然语言总结。
     HTML 候选预览有真实限额；完整审计在 Excel、快照与公共分页查询中。
@@ -72,8 +93,8 @@ coverage 的分母是同 dataset、target、slice 的总体有效表现人数；
 
     **示例回答（人工依据确定性证据整理）：**`summary` 显示 production 的 5 个候选里 2 个入选；
     审计中 2 个在 `candidate_filter` 淘汰，1 个在 `validation_filter` 淘汰。
-    第一条入选规则的 validation/bad30/__overall__/hit 为 322 个有效标签、167 个事件，
-    引用同一 rule_id 与查询范围。
+    每条入选规则的 validation/bad30/__overall__/hit 有效人数和事件数按上表核对，
+    引用同一 rule_id 与查询范围；自动生成报告单独加载 `auto-rules.marsreport`。
     发现 Lift 不等于验证结果；未保留候选按真实审计解释。
 
     **无法回答的追问：returning 客群或未执行高级分析里的规则表现如何？**
@@ -92,11 +113,18 @@ python docs/snippets/task_cases.py --case 5 --output-dir output/task-cases --row
     --8<-- "docs/snippets/task_cases.py:rules"
     ```
 
+??? example "已测试共享源码：真实组合生成器"
+
+    ```python
+    --8<-- "docs/snippets/task_cases.py:automatic_rules"
+    ```
+
 ## 下载、复现与边界
 
 [完整源码](../snippets/task_cases.py) · [共享包](../assets/cases/cases.zip) ·
 [规则快照](../assets/cases/rules.marsreport) · [有限 JSON](../assets/cases/case-5.json) ·
-[外部 Agent TXT 任务材料](../assets/cases/external-agent-task.txt) · [来源与哈希](../assets/cases/manifest.json)
+[外部 Agent 规则 TXT 任务](../assets/cases/external-agent-rule-task.txt) ·
+[同任务 Markdown](../assets/cases/external-agent-task.md) · [来源与哈希](../assets/cases/manifest.json)
 
 默认流程是本地确定性工具消费。TXT 教外部 Agent 如何发现表、检查状态、引用证据和承认不足，
 不是已执行的 LLM 结果。实际模型试验须单独记录，不能把脚本成功冒充 Agent 自主结论。

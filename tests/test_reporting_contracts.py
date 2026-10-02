@@ -96,7 +96,7 @@ def test_binning_report_html_exports_public_sections(tmp_path) -> None:
 
     html_text = output_path.read_text(encoding="utf-8")
     assert "<title>MARS Evaluation Report</title>" in html_text
-    assert "Dataset Overview" in html_text
+    assert "Dataset Context" in html_text
     assert "Summary" in html_text
     assert "Trend Tables" in html_text
     assert "Grouped Pivot" in html_text

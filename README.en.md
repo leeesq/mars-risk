@@ -1,9 +1,14 @@
 [中文](README.md) / **English**
 
-<div align="center">
-<img src="docs/assets/mars-logo.svg" alt="MARS" width="480">
+<p align="center">
+<picture>
+<source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/mars-logo.svg">
+<source media="(prefers-color-scheme: dark)" srcset="docs/assets/mars-logo-dark.gif">
+<img src="docs/assets/mars-logo-light.gif" alt="MARS" width="480">
+</picture>
 <br>
 <img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
+</p>
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
   <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
@@ -12,67 +17,64 @@
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
-</div>
 
-# A risk analysis toolkit for humans and AI agents
+<h1 align="center">A risk analysis toolkit for humans and AI agents</h1>
+<p align="center"><strong>Data profiling · Binning evaluation · Feature selection · Correlation analysis · Score cross analysis · Rule mining</strong></p>
+<p align="center">Turn Pandas or Polars data into risk evidence you can inspect, query, deliver and reuse.<br>Native charts for analysts. Structured reports for your modeling, monitoring and analysis agents.</p>
+<p align="center"><a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">Start analyzing</a> · <a href="https://leeesq.github.io/mars-risk/demos/">Practical cases</a> · <a href="https://leeesq.github.io/mars-risk/user-guide/external-agents/">Build with AI agents</a> · <a href="https://leeesq.github.io/mars-risk/">Documentation · 中文</a></p>
 
-**Data profiling · Binning evaluation · Feature selection · Correlation analysis · Score cross analysis · Rule mining**
+<p align="center">
+<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
+<img src="docs/assets/cases/binning-native-main-score.png" alt="MARS native binning trends: fixed bins, distributions, bad rate, amount risk and stability" width="1040">
+</a>
+</p>
 
-Turn a Pandas or Polars wide table into analysis reports that people can read, query, deliver and reuse. Human views and external Agent evidence come from the same Report.
+<p align="center"><sub>Native MARS binning chart, exported from the same analysis as its tables. Click for the full-resolution SVG.</sub><br>
+<a href="https://leeesq.github.io/mars-risk/demos/binning-stability/">Binning and stability case</a> · <a href="https://leeesq.github.io/mars-risk/assets/cases/binning.html">Open the interactive report</a></p>
 
-<picture>
-  <source media="(max-width: 600px)" srcset="docs/assets/cases/readme-preview-mobile.png">
-  <img src="docs/assets/cases/readme-preview.png" alt="Actual Score Cross matrix and public Agent query from the same synthetic report" width="1040">
-</picture>
+## What MARS brings to your workflow
 
-Actual browser capture of a synthetic Score Cross report; the current report UI is in Chinese. The matrix and the JSON excerpt share the same report identity and query scope. [Full evidence and provenance](docs/assets/cases/case-4.json) · [Runnable case](docs/demos/score-cross.md).
+MARS uses Polars for calculation and accepts Pandas or Polars wide tables. It brings data profiling, binning, risk evaluation, feature selection, correlation and rule analysis into a shared set of reports. Inspect distributions, compare populations and periods, understand selection decisions, then deliver the results as charts, HTML or Excel.
 
-[Start analyzing](https://leeesq.github.io/mars-risk/getting-started/quickstart/) · [Seven practical cases](docs/demos/index.md) · [External Agent guide](https://leeesq.github.io/mars-risk/user-guide/external-agents/) · [Full documentation (Chinese)](https://leeesq.github.io/mars-risk/)
+The same results are available to **external AI agents** through public report APIs. Tables, metric semantics, feature metadata, calculation states and replayable evidence remain queryable after saving and loading. Your agent can use MARS as its analysis layer and combine it with the model libraries, experiment tools and business workflow you choose.
 
-## Choose a task
-
-| Your question | Capability | Result and runnable case |
+| Capability | What you can inspect | Practical example |
 | --- | --- | --- |
-| Can this data be used as it is? | Data profiling | [Quality, labels, schema and distribution evidence](docs/demos/data-quality.md) |
-| Which features discriminate risk and remain stable? | Binning evaluation | [Fixed reference bins, multi-target IV / KS / PSI](docs/demos/binning-stability.md) |
-| Why keep one feature and remove another? | Feature selection + correlation analysis | [Decisions, signed redundancy, separate raw / WOE representations](docs/demos/selection-correlation.md) |
-| Does an auxiliary score separate risk within a main-score tier? | Score cross analysis | [Interactive matrix, row-relative Δ, cell evidence and policy replay](docs/demos/score-cross.md) |
-| Which candidate rules warrant review? | Rule mining — Experimental | [Discovery audit, independent validation and coverage](docs/demos/rule-evidence.md) |
-| How can I save and query this analysis later? | Public reports | [Fresh-process loading, pagination and character budgets](docs/demos/saved-reports.md) |
-| How do I deliver one analysis to different users? | Report exports | [HTML / Excel / .marsreport / bounded JSON / Agent prompt materials](docs/demos/report-delivery.md) |
+| Data profiling | Missing and special values, sample and label coverage, distributions | [Check whether the data is ready](https://leeesq.github.io/mars-risk/demos/data-quality/) |
+| Binning and risk evaluation | Native trend charts, fixed bins, multi-target IV / KS / PSI, count and amount risk | [Compare discrimination and stability](https://leeesq.github.io/mars-risk/demos/binning-stability/) |
+| Feature selection | Candidate decisions and reasons across screening stages | [Understand retained and removed features](https://leeesq.github.io/mars-risk/demos/selection-correlation/) |
+| Correlation analysis | Signed redundancy and separate raw / WOE evidence | [Inspect related features](https://leeesq.github.io/mars-risk/demos/selection-correlation/#correlation) |
+| Score cross analysis | Risk separation within a main-score tier and combination evidence | [Compare auxiliary scores](https://leeesq.github.io/mars-risk/demos/score-cross/) |
+| Rule mining · Experimental | Candidate origins, screening, coverage and independent validation | [Review rules with evidence](https://leeesq.github.io/mars-risk/demos/rule-evidence/) |
 
-The seven cases share 18,000 synthetic rows with a fixed seed. Discovery and validation are separate; observation has no `late60` labels, while `bad30` remains observed where available. Synthetic statistics do not establish business profit, causal effects, approval decisions or production readiness. Detailed parameters have one authority: [API Reference (Chinese)](https://leeesq.github.io/mars-risk/reference/).
+[All seven cases](https://leeesq.github.io/mars-risk/demos/) use 18,000 synthetic applications with separate discovery, validation and observation partitions. Charts and Agent queries consume the actual reports. The statistics demonstrate the interfaces and do not establish real lending outcomes.
 
-## Installation and version boundaries
+## Build your agents on MARS
 
-The source version is **0.0.28**. The examples use current public report capabilities. Install the verified source commit:
+MARS provides the calculation and evidence layer. You supply orchestration, model training and business decisions.
 
-```bash
-pip install "git+https://github.com/leeesq/mars-risk.git@746b8fa76439e6841b466bd590c35249a975ab56"
-```
+| Your external agent | MARS building blocks | Useful output |
+| --- | --- | --- |
+| Modeling agent | Data quality, binning, feature selection, correlation and risk evaluation | Feature candidates, removal reasons and evaluation evidence for your chosen training tools |
+| Monitoring and diagnosis agent | Grouped profiles, missing and distribution changes, fixed-bin risk trends and stability | Locate changing populations or features, gather evidence and propose hypotheses to validate |
+| Rule analysis agent | Candidate rules, hit evaluation, discovery audit and independent validation | Reviewable candidates with risk, coverage and validation results |
+| Report analysis agent | Report catalog, business metadata, bounded queries, snapshots and evidence references | Continue an analysis across sessions and deliver traceable answers |
 
-On **2026-10-02**, the live [PyPI package](https://pypi.org/project/mars-risk/) was **0.0.27**. It does not contain all the capabilities shown here. Source 0.0.28 has not been published by this task. The six badges retain their actual dynamic sources.
+These are workflows you can build with MARS; complete agents are composed by the user. The optional <code>mars.agent</code> integration also consumes the public report interface. [External Agent guide · 中文](https://leeesq.github.io/mars-risk/user-guide/external-agents/) · [Rule evidence guide · 中文](https://leeesq.github.io/mars-risk/user-guide/rule-reports-and-agents/).
 
-```bash
-pip install mars-risk==0.0.27
-```
+## Install
 
-The base package supports Python **3.8–3.12**, with a frozen dependency stack for 3.8. Public cases were generated with Python 3.11 and are checked with Python 3.12; use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation guide (Chinese)](https://leeesq.github.io/mars-risk/getting-started/installation/) explains extras and constraints.
-
-To reproduce the new case scripts, use this task branch until it is merged:
+The examples follow **main / source version 0.0.28**. Install the current source:
 
 ```bash
-git clone --branch codex/task-cases-bilingual-readme https://github.com/leeesq/mars-risk.git
-cd mars-risk
-pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir docs/assets/cases
+pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-Case sources and committed downloads are available on this branch. New interactive URLs on the documentation site become available when the branch is merged and the existing Pages workflow deploys it. This task does not merge or request an additional deployment.
+PyPI currently publishes **0.0.27**, which does not contain all capabilities shown here. The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文](https://leeesq.github.io/mars-risk/getting-started/installation/).
 
-## A useful first report
+## Start with one report
 
-Run in an empty working directory. This self-contained example creates a risk summary, an HTML report and a snapshot:
+Run this self-contained example in an empty working directory:
 
 ```python
 import polars as pl
@@ -80,24 +82,25 @@ import polars as pl
 from mars.analysis import profile_risk
 
 df = pl.DataFrame({
+    "date": ["2026-01-01"] * 4 + ["2026-02-01"] * 4,
     "income": [3200, 3600, 5200, 6100, 3400, 4300, 5800, 6800],
     "utilization": [0.72, 0.61, 0.29, 0.18, 0.66, 0.48, 0.24, 0.12],
     "target": [1, 1, 0, 0, 1, 1, 0, 0],
-})
+}).with_columns(pl.col("date").str.to_date())
 report = profile_risk(
     df, target="target", features=["income", "utilization"],
-    method="quantile", n_bins=4,
+    time_col="date", method="quantile", n_bins=4,
 ).report
 print(report.get_table("summary", sort_by="iv", descending=True, limit=2))
-report.write_html("risk_report.html", include_charts=False)
+report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
 ```
 
-[Full tested script](docs/snippets/readme_quickstart.py) · [Quickstart (Chinese)](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The eight-row fixture demonstrates the interface; its IV values are not evidence of real model quality. HTML here omits charts; provide valid date context when calculating time trends.
+[Shared runnable source](docs/snippets/readme_quickstart.py) · [Full quickstart · 中文](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case](https://leeesq.github.io/mars-risk/demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
 
-## One Report for people and external Agents
+## Give the same result to an AI agent
 
-People can read the HTML. In a **new process**, an external consumer can load the snapshot without the original wide table, analyzer, LLM, API key or `MarsAgentSession`:
+In a new process, load the saved report and query only the evidence you need:
 
 ```python
 from mars.reporting import load_report
@@ -109,30 +112,25 @@ next_page = report.query_page("summary", offset=page["next_offset"], limit=1)
 context_json = report.to_ai_context(tables=["summary"], max_chars=16000)
 ```
 
-The loaded `report` is a ReportSnapshot; `report.write_excel("risk_report.xlsx")` exports current static tables. The original binning report's Excel method uses the legacy pivot template and may require native Excel refresh; use the loaded snapshot for this static delivery.
+<code>describe()</code> exposes the real table catalog, semantics, parameters and states. <code>query_page()</code> returns rows, pagination and a replayable evidence reference. <code>to_ai_context()</code> produces bounded JSON; **<code>max_chars</code> counts characters, not tokens**. The consumer does not need an LLM, API key, <code>MarsAgentSession</code>, original table or analyzer merely to query the saved results.
 
-`describe()` discovers the actual tables, schema, semantics and supported capabilities. `query_page()` returns a bounded page, counts, a continuation offset and a replayable evidence reference. `to_ai_context()` serializes bounded JSON: **`max_chars` measures final JSON characters, not tokens**. Check clipping and status before answering; an empty result, an unavailable value and a valid zero mean different things.
+Loading returns a **ReportSnapshot** with saved statistics and metadata. <code>report.write_excel("risk_report.xlsx")</code> exports static tables, and <code>report.show_table("summary", limit=10)</code> displays them. Questions requiring new dimensions or original records need a new calculation. [Save and query results](https://leeesq.github.io/mars-risk/demos/saved-reports/) · [Deliver HTML, Excel, snapshots and Agent materials](https://leeesq.github.io/mars-risk/demos/report-delivery/).
 
-Loading returns **ReportSnapshot**. It restores report identity, metadata and saved tables; use `show_table()` for generic display. Dedicated score-policy replay uses saved aggregates. Loading does not restore the analyzer, original records, arbitrary methods, a trained model or a deployable RuleSet. New dimensions and individual-record questions require new analysis.
+## Development focus
 
-[Persistence and query case](docs/demos/saved-reports.md) demonstrates next pages, empty results, invalid requests and actual budget clipping. [Delivery case](docs/demos/report-delivery.md) lists supported formats and limitations. Excel is a static delivery; HTML interactivity and offline behavior are verified for each actual export. TXT files are prompt materials, and the local deterministic consumer is explicitly identified as a script. Example answers are manually written and checked against the evidence; no LLM experiment is claimed.
+**Analysis, Feature and Reporting are Stable. Rule, Monitoring, Modeling, Pipeline, Scoring and Agent are Experimental.** These labels describe interface maturity.
 
-## Maturity and development focus
+Current development focuses on core analysis performance, memory efficiency, human use and external Agent consumption. **Monitoring, Modeling (including Pipeline) and Scoring are paused for feature development.** Existing functionality and documentation remain, with necessary fixes and direct adaptation to upstream changes. Combine AI, MARS analysis and your own model tools to build tailored workflows. These downstream modules adapt to the core; upstream code does not retain compatibility aliases or redundant computation for them.
 
-**Analysis, Feature and Reporting are Stable. Rule, Monitoring, Modeling, Pipeline, Scoring and Agent are Experimental.** Maturity and investment are separate.
+[Stability policy · 中文](https://leeesq.github.io/mars-risk/project/stability/) · [Retained LightGBM example · 中文](https://leeesq.github.io/mars-risk/demos/history/).
 
-Current work prioritizes core analysis performance, memory efficiency, human use and public report consumption by external Agents. **Monitoring, Modeling (including Pipeline) and Scoring are paused for feature development.** Existing functionality, documentation and historical cases remain, with correctness fixes, run fixes and direct adaptation to upstream changes. Those downstream modules do not cause upstream compatibility aliases or duplicate computation. This exception does not permit arbitrary changes to core public APIs or saved reports.
-
-[Stability policy (Chinese)](https://leeesq.github.io/mars-risk/project/stability/) · [Retained LightGBM case](docs/demos/history.md) · [Detailed rule and Agent guide](docs/user-guide/rule-reports-and-agents.md).
-
-## Reproduce, verify and contribute
-
-Generation, evidence verification and site building are explicit, separate steps. MkDocs renders preverified resources; `mkdocs-jupyter` uses `execute: false`, which does not execute notebooks. See the [case index](docs/demos/index.md) for the artifact capability matrix, shared downloads and reproducibility details.
+## Reproduce and contribute
 
 ```bash
-python scripts/check_case_assets.py
-python -m pytest -q tests/test_task_cases.py tests/test_documentation.py -m "not docs_ml"
-python -m mkdocs build --strict
+git clone https://github.com/leeesq/mars-risk.git
+cd mars-risk
+pip install -e ".[docs]"
+python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 ```
 
-Development checks, dependencies and actual browser acceptance are documented in [CONTRIBUTING.md](CONTRIBUTING.md). [Case provenance](docs/assets/cases/manifest.json) records seed, scale, source commit, dependency versions and file hashes. [MIT License](LICENSE).
+[Case downloads and reproducibility](https://leeesq.github.io/mars-risk/demos/#run) · [Contribution guide](CONTRIBUTING.md) · [Engineering Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE).

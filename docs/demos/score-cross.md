@@ -11,17 +11,7 @@ description: 固定主模型等级，复核辅助分梯度、格子状态及已�
 
 ## 真实结果预览
 
-<div class="mars-preview-desktop" markdown="1">
-
-[![实际 Score Cross 矩阵，保留轴、范围、基线与状态](../assets/cases/score-cross-matrix.png)](../assets/cases/score-cross.html)
-
-</div>
-
-<div class="mars-preview-mobile" markdown="1">
-
-[![手机实际选格详情：发现期202601，X b1 / Y b3及同源JSON](../assets/cases/readme-preview-mobile.png)](../assets/cases/score-cross.html)
-
-</div>
+[![实际 Score Cross 矩阵，保留轴、范围、基线与状态](../assets/cases/score-cross-matrix.jpg)](../assets/cases/score-cross.html)
 
 [打开真实交互报告](../assets/cases/score-cross.html) · [下载格子 Excel](../assets/cases/score-cross.xlsx) ·
 [查询格子证据](../assets/cases/case-4.json)
@@ -52,6 +42,21 @@ Lift = 当前格坏率 / 同范围整体坏率；整体分母无效或整体坏�
 双向梯度同时检查固定 X 内的 Y 和固定 Y 内的 X，不能只选一条方向制造结论。
 
 === "人工阅读"
+
+    用自己的开发样本确定分段，再将边界复用于待评估样本；分数方向按实际模型声明：
+
+    ```python
+    from mars.analysis import cross_scores, get_score_bin_definitions
+
+    directions = {"main_score": "lower_risk", "aux_score": "higher_risk"}
+    reference = cross_scores(train_df, score_x="main_score", score_y="aux_score", targets=["bad30"], score_directions=directions, n_bins=4)
+    report = cross_scores(
+        df, score_x="main_score", score_y="aux_score", targets=["bad30"],
+        score_directions=directions, bin_definitions=get_score_bin_definitions(reference),
+        group_col="dataset", time_col="application_date", time_grain="month",
+    )
+    report.write_html("score-cross.html")
+    ```
 
     打开交互 HTML，切换实际 target／group／period，选中格子后核对全样本数、表现分母、
     绝对坏率、Δ pp、Lift 与状态，再查看双向梯度和基线。

@@ -38,6 +38,23 @@ HTML 适合人工探索，静态 Excel 适合阅读归档，快照适合继续�
 
 === "人工阅读"
 
+    当前报告可以直接交付；静态 Excel 从已保存快照导出公共表，保持已有数值：
+
+    ```python
+    from pathlib import Path
+    from mars.reporting import load_report
+
+    report.write_html("analysis.html")
+    report.save("analysis.marsreport")
+    saved = load_report("analysis.marsreport")
+    saved.write_excel("analysis.xlsx")
+    context = saved.to_ai_context(
+        queries={"cells": {"columns": ["x_bin", "y_bin", "sample_count", "bad_rate", "status"], "limit": 5}},
+        max_chars=9000,
+    )
+    Path("agent-context.json").write_text(context, encoding="utf-8")
+    ```
+
     阅读者从 HTML 的真实格子、状态和规则详情入手，用静态 Excel 核对同表关键数值。
     Excel 是当前数值交付，不能点击后执行新策略或假定公式会重算原分析。
     公开包的内容、文件大小、来源和哈希见 manifest，不依赖会过期的 Actions artifact 链接。

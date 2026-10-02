@@ -1,6 +1,6 @@
 ---
 title: MARS
-description: 面向人和 AI Agent 的风控分析工具箱。数据画像、分箱评估、特征筛选、相关性分析、模型分交叉与规则挖掘。
+description: 面向人和 AI Agent 的风控分析工具箱。原生分箱图、数据画像、特征筛选、相关性、模型分交叉、规则与可复用报告。
 hide:
   - toc
 ---
@@ -8,7 +8,11 @@ hide:
 <div class="mars-home" markdown="1">
 
 <div class="mars-home-hero" markdown="1">
-<img class="mars-home-logo" src="assets/mars-logo.svg" alt="MARS">
+
+<picture class="mars-home-logo-wrap">
+<source media="(prefers-reduced-motion: reduce)" srcset="assets/mars-logo.svg">
+<img class="mars-home-logo" src="assets/mars-logo-animated.svg" alt="MARS">
+</picture>
 <img class="mars-home-wordmark" src="assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE">
 
 <p class="mars-home-badges">
@@ -22,65 +26,82 @@ hide:
 
 # 面向人和 AI Agent 的风控分析工具箱
 
-以 Polars 为计算基础，接收 Pandas 或 Polars 宽表，输出可查询、可交付、可复用的分析报告。
-
-用表格和图表支持人工分析，用结构化结果支持 AI Agent 继续工作。
-
-<div class="mars-home-actions">
-<a class="mars-home-button mars-home-button-primary" href="getting-started/quickstart/">开始人工分析 →</a>
-<a class="mars-home-button" href="demos/">选择实战案例 →</a>
-<a class="mars-home-button" href="user-guide/external-agents/">将报告交给 AI Agent →</a>
-</div>
-
 **数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**
 
+从 Pandas 或 Polars 宽表，得到可查看、可查询、可交付、可复用的风控分析结果。
+
+用原生图表支持人工判断，用结构化报告连接你的建模、监控归因与分析 Agent。
+
+<div class="mars-home-actions">
+<a class="mars-home-button mars-home-button-primary" href="getting-started/quickstart/">开始分析 →</a>
+<a class="mars-home-button" href="demos/">查看实战案例 →</a>
+<a class="mars-home-button" href="user-guide/external-agents/">面向 AI Agent →</a>
 </div>
 
-<figure class="mars-home-preview">
-<a href="demos/score-cross/">
-<picture>
-<source media="(max-width: 600px)" srcset="assets/cases/readme-preview-mobile.png">
-<img src="assets/cases/readme-preview.png" alt="真实 Score Cross：发现期202601，X b1 / Y b3坏率56.72%，相对行基线+37.51pp；旁侧为同一Report查询证据">
-</picture>
+</div>
+
+<figure class="mars-home-preview mars-native-preview">
+<a href="assets/cases/binning-native-main-score.svg" aria-label="查看原生分箱趋势图高清 SVG">
+<img src="assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、多分区稳定性" width="1600">
 </a>
-<figcaption>同一份真实报告：人工矩阵与 Agent 查询。18,000 行合成申请；非真实业务效果。<a href="demos/score-cross/">查看交互与证据 →</a></figcaption>
+<figcaption>直接导出自 MARS 分箱报告，保留原生布局与完整统计细节。点击查看高清图。<br>
+<a href="demos/binning-stability/">分箱与稳定性实战 →</a> · <a href="assets/cases/binning.html">打开交互式报告 →</a></figcaption>
 </figure>
+
+## 把分析结果变成可以继续使用的证据
+
+MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表。数据质量、分箱风险、
+特征取舍和规则表现都能留下统计表、图表与报告；按特征、标签、客群和时间比较，
+再将结果交付为 HTML、Excel 或高清图片。
+
+同一份报告也可以交给外部 AI Agent。表目录、指标口径、特征业务元数据、
+计算状态与证据引用随结果保存，让 Agent 按需查询，跨会话继续分析。
+你可以将这些能力与自选模型库、实验工具和业务流程组合。
 
 ## 从工作任务开始
 
 <div class="mars-task-grid">
-<a class="mars-task-card" href="demos/data-quality/"><em>PROFILE</em><strong>数据能直接用吗？</strong><span>18,000 行画像；观察期 late60 有效标签为 0</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/data-quality/"><em>PROFILE</em><strong>数据能直接用吗？</strong><span>先检查缺失与特殊值、标签覆盖、schema 和分布变化。</span><span class="mars-card-link">数据画像 →</span></a>
 
-<a class="mars-task-card" href="demos/binning-stability/"><em>BIN / EVALUATE</em><strong>哪些特征有区分度，而且稳定？</strong><span>固定参考分箱；区分度、箱风险与 PSI 对比</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/binning-stability/"><em>BIN / EVALUATE</em><strong>特征有区分度，而且稳定吗？</strong><span>用原生分箱图比较分布与风险，保留固定边界和多目标口径。</span><span class="mars-card-link">分箱与风险评估 →</span></a>
 
-<a class="mars-task-card" href="demos/selection-correlation/"><em>SELECT / CORRELATION</em><strong>为什么保留这个，删除另一个？</strong><span>真实决策；raw ±1 冗余与目标感知 WOE 分开解释</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/selection-correlation/"><em>SELECT</em><strong>为什么保留这个，删除另一个？</strong><span>查看候选、筛选步骤和保留／删除的实际理由。</span><span class="mars-card-link">特征筛选 →</span></a>
 
-<a class="mars-task-card" href="demos/score-cross/"><em>SCORE CROSS</em><strong>同一主等级内，辅助分还有用吗？</strong><span>真实矩阵、Δ pp、格子状态与聚合回放</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/selection-correlation/#correlation"><em>CORRELATION</em><strong>哪些特征提供了重复信息？</strong><span>分别审查 raw / WOE 的带符号相关性证据。</span><span class="mars-card-link">相关性分析 →</span></a>
 
-<a class="mars-task-card" href="demos/rule-evidence/"><em>RULE MINING</em><strong>候选规则如何走到审查证据？</strong><span>5 个候选，2 个入选；发现与独立验证审计 · Experimental</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/score-cross/"><em>SCORE CROSS</em><strong>辅助分还能进一步区分风险吗？</strong><span>在主模型同等级内比较风险梯度、格子证据和组合效果。</span><span class="mars-card-link">模型分交叉 →</span></a>
 
-<a class="mars-task-card" href="demos/saved-reports/"><em>REPORT / QUERY</em><strong>保存后如何继续查询？</strong><span>独立新进程恢复，分页、预算与不足回答</span><span class="mars-card-link">查看案例 →</span></a>
-
-<a class="mars-task-card" href="demos/report-delivery/"><em>REPORT / DELIVERY</em><strong>同次分析如何交付给不同使用者？</strong><span>HTML、静态 Excel、快照、有限 JSON 与 TXT</span><span class="mars-card-link">查看案例 →</span></a>
+<a class="mars-task-card" href="demos/rule-evidence/"><em>RULE MINING · EXPERIMENTAL</em><strong>规则能走到独立验证吗？</strong><span>从候选发现到筛选、覆盖和独立验证，查看完整证据。</span><span class="mars-card-link">规则挖掘 →</span></a>
 </div>
+
+[七个实战案例与完整下载](demos/index.md) · [保存后继续查询](demos/saved-reports.md) ·
+[交付给人和 Agent](demos/report-delivery.md)
+
+案例采用 18,000 行合成申请，人工图表与 Agent 查询读取同一批报告；展示结果不代表真实业务收益。
+
+## 基于 MARS，构建你的 Agent
+
+MARS 提供计算与证据层。Agent 的编排、训练工具和业务决策可以由你自由组合。
+
+| 场景 | 可复用能力 | 可以形成的结果 |
+| --- | --- | --- |
+| 建模 Agent | 数据质量、分箱评估、特征筛选、相关性、风险评估 | 特征候选与取舍理由，供自选训练工具继续使用的评估证据 |
+| 监控与归因 Agent | 分组画像、缺失和分布变化、固定分箱风险趋势、稳定性 | 定位变化人群与特征，提出待验证的归因假设 |
+| 规则分析 Agent | 候选规则、命中评估、发现审计、独立验证 | 带风险、覆盖和验证结果的可审查候选 |
+| 报告分析 Agent | 表目录、业务元数据、分页、快照、证据引用 | 跨会话继续分析，输出可追溯的回答 |
+
+这些是基于底层能力组合的工作流，完整 Agent 由使用者实现。可选的内部
+Agent 也消费公共报告接口。[查看外部 Agent 指南](user-guide/external-agents.md) ·
+[规则证据与 Agent](user-guide/rule-reports-and-agents.md)
 
 ## 计算一次，持续使用
 
-同一份报告，衔接人工分析与 Agent 工作。下面用小数据生成 `report`；
-第二个页签加载它保存的文件，在新进程也可继续查询。
+先生成图表、HTML 和快照，再在另一个进程加载同一份结果。
 
 === "人：查看与交付"
 
     ```python
-    import polars as pl
-    from mars.analysis import profile_risk
-
-    df = pl.DataFrame({
-        "income": [3200, 3600, 5200, 6100, 3400, 4300, 5800, 6800],
-        "utilization": [0.72, 0.61, 0.29, 0.18, 0.66, 0.48, 0.24, 0.12],
-        "target": [1, 1, 0, 0, 1, 1, 0, 0],
-    })
-    --8<-- "docs/snippets/minimal_report.py:analysis"
+    --8<-- "docs/snippets/readme_quickstart.py:quickstart"
     ```
 
 === "AI Agent：查询与复用"
@@ -91,8 +112,8 @@ hide:
     --8<-- "docs/snippets/minimal_report.py:agent"
     ```
 
-    上个页签已保存 `risk_report.marsreport`。查询无需原始宽表或内置 Agent 会话。
-    恢复后用 `restored.show_table("summary", limit=10)` 查看表格。
+    加载返回 ReportSnapshot；查询已保存统计无需原始宽表或内置 Agent 会话。
+    用 restored.show_table("summary", limit=10) 查看结果。
 
 <div class="mars-home-values">
 <div><strong>业务信息随结果保留</strong><span>标签定义、单位、来源与实际参数，未知信息如实标记。</span></div>
@@ -100,48 +121,35 @@ hide:
 <div><strong>跨会话继续分析</strong><span>保存完整快照，恢复报告身份、表目录与可查询证据。</span></div>
 </div>
 
-JSON 摘要适合粘贴到对话框，`max_chars` 是字符预算，不是 token 数。
-完整 `.marsreport` 适合具备 Python／工具能力的外部 Agent；
-普通对话模型接收文件后仍需要执行环境。
-恢复返回 `ReportSnapshot`，能力见[外部 Agent 指南](user-guide/external-agents.md)。
-
-## 具体分析场景
-
-- [同一主模型等级内，辅助分能否进一步区分风险？](demos/score-cross.md)
-- [这个特征为什么在筛选中被剔除？](demos/selection-correlation.md)
-- [两个时期的分布变化体现在哪些特征？](demos/data-quality.md)
-- [怎样将报告交给另一个 Agent，继续读取证据？](demos/saved-reports.md)
-
-[七案例索引与产物能力矩阵](demos/index.md) · [历史 LightGBM 与维护边界](demos/history.md)
+JSON 摘要可以粘贴到对话框；max_chars 是字符预算，不是 token 数。
+完整 .marsreport 供具备 Python／工具能力的 Agent 继续查询；
+新维度与原始记录问题需要发起新的计算。
 
 <div class="mars-callout" markdown="1">
 
-## 建模、监控、评分卡：保留功能，暂缓迭代
+## 当前迭代方向
 
-Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipeline、Scoring 和 Agent
-为 Experimental。成熟度与开发投入分别表达。
+**Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipeline、Scoring、Agent 为 Experimental。**
+这些标记说明接口成熟度。
 
-当前优先改进分析性能、内存效率、人工体验与 AI 可用性。
-建模（包含 Pipeline）、监控、评分卡暂时停止功能迭代；现有功能与文档保留。
-用户可借助编程型 AI、MARS 分析与报告能力及自己的数据和模型工具构建定制流程。
-三个模块直接适配核心接口变化，完整规则见[稳定性与兼容性](project/stability.md)。
+优先改进分析性能、内存效率、人工体验与外部 Agent 使用。
+**监控、建模（包含 Pipeline）、评分卡暂时停止功能迭代**；现有功能与文档保留，
+处理必要修复及上游适配。三个下游直接适配核心代码，上游不为它们增加兼容别名或冗余计算。
+你可以结合编程型 AI、MARS 分析报告与自选模型工具构建定制流程。
 
-[建模／Pipeline](user-guide/modeling-pipeline.md) · [监控](user-guide/monitoring.md) ·
-[评分卡](user-guide/scorecard.md)。它们继续标记 Experimental；暂停说明开发投入。
+[稳定性与适配原则](project/stability.md) · [建模／Pipeline](user-guide/modeling-pipeline.md) ·
+[监控](user-guide/monitoring.md) · [评分卡](user-guide/scorecard.md)
 
 </div>
 
-[安装](getting-started/installation.md) · [Quickstart](getting-started/quickstart.md) ·
-[API Reference](reference/index.md) · [可运行示例](user-guide/external-agents.md#完整示例) ·
-[GitHub](https://github.com/leeesq/mars-risk) · [MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE)
-
-本站对应当前源码 **0.0.28**，包含尚未发布的新能力。按本文运行，请安装源码：
+本站对应 **main / 源码 0.0.28**；PyPI 当前发布 0.0.27，新能力使用源码安装：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-截至 2026-10-02，PyPI 已发布版本为 [0.0.27](https://pypi.org/project/mars-risk/)；
-动态徽章展示发布来源，不代表 main 的能力已经发布。
+[安装与可选依赖](getting-started/installation.md) · [API Reference](reference/index.md) ·
+[历史 LightGBM 示例](demos/history.md) · [GitHub](https://github.com/leeesq/mars-risk) ·
+[MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE)
 
 </div>

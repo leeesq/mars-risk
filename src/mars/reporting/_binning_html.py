@@ -512,26 +512,18 @@ class _BinningHtmlRenderer:
             missing_day_subtitle = (
                 f"Daily missing-rate trend derived from dt_col={self.dt_col}."
             )
-        else:
-            missing_day_html = (
-                '<div class="mars-empty">No daily missing-rate table is available. '
-                "Evaluate with a valid time_col to generate Missing By Day data.</div>"
-            )
-            missing_day_subtitle = (
-                "No daily missing-rate data was generated for this report."
-            )
-        sections.append(
-            (
-                "missing-day-section",
-                "Missing By Day",
-                self._wrap_html_section(
-                    "Missing Trend By Day",
-                    missing_day_html,
+            sections.append(
+                (
                     "missing-day-section",
-                    subtitle=missing_day_subtitle,
-                ),
+                    "Missing By Day",
+                    self._wrap_html_section(
+                        "Missing Trend By Day",
+                        missing_day_html,
+                        "missing-day-section",
+                        subtitle=missing_day_subtitle,
+                    ),
+                )
             )
-        )
 
         trend_blocks: List[str] = []
         trend_legend_html = self._build_threshold_legend_html(
@@ -1437,7 +1429,11 @@ class _BinningHtmlRenderer:
                 )
             )
 
-        n_features = len(summary_pd) if not summary_pd.empty else detail_pd["feature"].nunique() if "feature" in detail_pd.columns else 0
+        n_features = (
+            summary_pd["feature"].nunique()
+            if not summary_pd.empty and "feature" in summary_pd.columns
+            else detail_pd["feature"].nunique() if "feature" in detail_pd.columns else 0
+        )
         group_label = self.group_col if self.group_col else "None (Total Only)"
         all_sources = sorted(
             set(feature_sources.values())
@@ -1456,21 +1452,12 @@ class _BinningHtmlRenderer:
 
         html_parts: List[str] = []
         nav_items: List[Tuple[str, str]] = []
-        semantics_html: str = "".join(
-            f'<h3>{html.escape(name)}</h3><div class="mars-table-scroll" tabindex="0" '
-            f'aria-label="{html.escape(name)} evidence table">'
-            f'{frame.to_html(index=False, escape=True)}</div>'
-            for name, frame in export_report_semantics(self).items()
-        )
-        html_parts.append(self._mark_page_view(self._wrap_html_section("Business Metadata", semantics_html, "semantics-section"), "overview"))
-        nav_items.append(("semantics-section", "Business Metadata"))
-
         overview_html = self._build_dataset_overview_html(self.report_meta)
         if overview_html:
             html_parts.append(
                 self._mark_page_view(
                     self._wrap_html_section(
-                        "Dataset Overview",
+                        "Dataset Context",
                         overview_html,
                         "overview-section",
                         subtitle="Dataset context, grouping setup, and target-level baseline stats.",
@@ -1478,7 +1465,16 @@ class _BinningHtmlRenderer:
                     "overview",
                 )
             )
-            nav_items.append(("overview-section", "Overview"))
+            nav_items.append(("overview-section", "Dataset Context"))
+
+        semantics_html: str = "".join(
+            f'<h3>{html.escape(name)}</h3><div class="mars-table-scroll" tabindex="0" '
+            f'aria-label="{html.escape(name)} evidence table">'
+            f'{frame.to_html(index=False, escape=True, border=0, classes=["mars-data-table", "mars-semantic-table"])}</div>'
+            for name, frame in export_report_semantics(self).items()
+        )
+        html_parts.append(self._mark_page_view(self._wrap_html_section("Business Metadata", semantics_html, "semantics-section"), "semantics"))
+        nav_items.append(("semantics-section", "Business Metadata"))
 
         if include_summary:
             summary_html = self._build_summary_section_html(
@@ -1514,7 +1510,7 @@ class _BinningHtmlRenderer:
                         pivot_body,
                         "pivot-section",
                         subtitle="Binned distribution and risk comparison across groups.",
-                        open_by_default=False,
+                        open_by_default=True,
                     ),
                     "pivot",
                 )
@@ -1566,7 +1562,7 @@ class _BinningHtmlRenderer:
             <div class="mars-page">
                 <div class="mars-hero">
                     <h1>{html.escape(safe_report_name)}</h1>
-                    <p>Interactive monitoring report with source-aware tables, Excel-like color scales, grouped pivot views, and shared trend charts.</p>
+                    <p>Feature risk and stability analysis with source-aware tables, grouped bin comparisons, and native risk trend charts.</p>
                     <div class="mars-meta">
                         <div class="mars-pill">Features: {n_features}</div>
                         <div class="mars-pill">Trend Metrics: {len(trend_pd_map)}</div>

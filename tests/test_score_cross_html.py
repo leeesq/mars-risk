@@ -222,3 +222,68 @@ def test_html_title_markers_are_literal_and_script_is_valid(tmp_path: Path) -> N
         capture_output=True, text=True, encoding="utf-8", check=True,
     )
     assert completed.stdout == "97.5%"
+
+
+def test_interval_labels_are_compact_distinct_and_keep_saved_precision(tmp_path: Path) -> None:
+    """验证真实小数切点在展示、快照和规则回放之间保持同一契约。"""
+    cutpoints = [0.234567891234567, 0.234567891234568, 0.876543219876543]
+    report = cross_scores(
+        pl.DataFrame({"x": [0.1, 0.234567891234567, 0.5, 0.9],
+                      "y": [0.2, 0.4, 0.6, 0.8], "bad": [0, 1, 0, 1]}),
+        score_x="x", score_y="y",
+        score_directions={"x": "higher_risk", "y": "lower_risk"},
+        cutpoints={"x": cutpoints, "y": [0.333333333333333]},
+        targets=["bad"], min_observed=1,
+    )
+    archive = tmp_path / "precise.marsreport"
+    report.save(archive)
+    restored = load_report(archive)
+    path = tmp_path / "precise.html"
+    write_score_cross_html(restored, path)
+    payload = _payload(path)
+    assert payload["bin_definitions"]["x"]["cutpoints"] == cutpoints
+    assert payload["tables"]["bins"] == report.get_table("bins").to_dicts()
+    assert payload["tables"]["cells"] == report.get_table("cells").to_dicts()
+    before = evaluate_score_policy(report, {"type": "expression", "expression": "X <= X2"})
+    after = evaluate_score_policy(restored, {"type": "expression", "expression": "X <= X2"})
+    assert before.get_table("summary").to_dicts() == after.get_table("summary").to_dicts()
+    text = path.read_text(encoding="utf-8")
+    assert "Saved interval: " in text and "Saved intervals: X " in text
+    assert ">Bad Rate</" in text and ">Event Count</" in text
+    assert "坏账" not in text and "坏样本" not in text
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node 未安装，区间标签的实际 JS 行为未运行。")
+    start = SCORE_CROSS_HTML.index("function formatScoreBoundary(")
+    end = SCORE_CROSS_HTML.index("\nconst boundaryLabels=", start)
+    script = (
+        "const input=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+        "const finite=v=>typeof v==='number'&&Number.isFinite(v),unique=a=>[...new Set(a)];"
+        + SCORE_CROSS_HTML[start:end]
+        + "const labels=input.map(values=>{const bins=values.map(lower=>"
+        "({kind:'normal',lower,upper_unbounded:true}));"
+        "return [...scoreBoundaryLabels(bins).entries()];});"
+        "process.stdout.write(JSON.stringify(labels));"
+    )
+    cases = [
+        [0.234567891234567, 0.876543219876543],
+        cutpoints,
+        [1.0000000000000002, 1.0000000000000004],
+        [-0.000000001234567, 0.0, 0.000000001234568],
+        [0.0009999999999, 0.001],
+        [1234567890123.4, 1234567890123.5],
+    ]
+    completed = subprocess.run(
+        [node, "-e", script], input=json.dumps(cases), capture_output=True,
+        text=True, encoding="utf-8", check=True,
+    )
+    labels = json.loads(completed.stdout)
+    assert labels[0] == [[cases[0][0], "0.235"], [cases[0][1], "0.877"]]
+    for values, entries in zip(cases, labels):
+        assert [entry[0] for entry in entries] == values
+        rendered = [float(entry[1]) for entry in entries]
+        assert len(set(rendered)) == len(values), entries
+        assert all(value == 0 or shown != 0 for value, shown in zip(values, rendered))
+    # 一组近邻切点不应使同轴上无关的边界也变成长小数。
+    assert labels[1][-1][1] == "0.877"

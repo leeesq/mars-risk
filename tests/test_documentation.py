@@ -357,6 +357,35 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
             "CI": "https://github.com/leeesq/mars-risk/actions/workflows/test.yml",
         }.items():
             assert links[label] == target
+
+
+def test_readme_hero_uses_same_native_binning_chart_in_both_languages() -> None:
+    """两语门面使用可追溯原生分箱图，并提供高清文件；不再复合交叉截图。"""
+    for name in ("README.md", "README.en.md"):
+        text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        png = "docs/assets/cases/binning-native-main-score.png"
+        svg = "docs/assets/cases/binning-native-main-score.svg"
+        svg_targets = (svg, "https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg")
+        assert png in text
+        assert any(f'href="{target}"' in text or f"]({target})" in text for target in svg_targets)
+        assert (PROJECT_ROOT / png).is_file() and (PROJECT_ROOT / svg).is_file()
+        assert text.index(png) < text.index("```python")
+        assert "readme-preview" not in text
+        assert "binning-risk.png" not in text
+        assert 'align="center"' in text
+
+
+def test_rule_case_agent_download_includes_rule_analysis_instructions() -> None:
+    """规则案例的外部任务入口应实际指向规则审计，不误链仅交叉格子的任务。"""
+    page = DOCS_ROOT / "demos/rule-evidence.md"
+    text = page.read_text(encoding="utf-8")
+    links = re.findall(r"\[外部 Agent[^\]]*\]\(([^)]+)\)", text)
+    assert links
+    for link in links:
+        target = (page.parent / link.split("#", maxsplit=1)[0]).resolve()
+        material = target.read_text(encoding="utf-8")
+        assert "rules.marsreport" in material
+        assert "candidates" in material and "validation" in material
         assert links["License"] in {"LICENSE", "https://github.com/leeesq/mars-risk/blob/main/LICENSE"}
 
 
