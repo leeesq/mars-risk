@@ -175,7 +175,7 @@ ignore = [
 "benchmarks/**" = ["D"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mars"]
+known-first-party = ["mars", "fixtures", "score_cross"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

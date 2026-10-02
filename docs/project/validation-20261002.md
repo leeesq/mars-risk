@@ -53,7 +53,7 @@ B的 `tests/fixtures/legacy_e990813_no_target.marsreport` 则由真实e990813源
 最终验证实际执行以下命令；Windows 使用上列环境的绝对解释器路径。
 
 ```bash
-python -m ruff check src tests scripts docs/snippets
+python -m ruff check src tests scripts docs/snippets --no-cache
 python -m mypy src/mars
 pydoclint src/mars
 python scripts/check_private_docstrings.py src/mars
@@ -137,6 +137,21 @@ overview10000行、趋势1行×365日期列、offset9000/limit10、10次中位�
 拟合、整体容量或普遍加速。原始JSON在任务验证目录report-contract-before/after.json。
 
 ## 远端验证边界
+
+首推 `027942f844380f2b3f32734e38b0f74c87717eb0` 的 CI
+[36987554951](https://github.com/leeesq/mars-risk/actions/runs/36987554951)
+终态为 failure：其余10项全部成功，quality仅Ruff I001失败，后续静态检查未执行。
+新增历史文件目录 `tests/fixtures` 与浏览器同级 `fixtures.py` 重名，CI上的Ruff0.16.10
+将该import归入first-party。本地Windows Ruff0.16.9禁用缓存也复现该失败；先前缓存检查
+没有发现目录增加后的归类变化，不能将差异归因于平台或工具版本。
+在现有isort配置中明确两个自有浏览器模块 `fixtures`、`score_cross` 的first-party归类，
+并重排time/contrast两个消费脚本的imports；不修改包版本、依赖、运行逻辑或检查项。
+修正后禁用缓存的全仓Ruff、Mypy、pydoclint、私有docstring与strict docs build均通过；
+16个真实浏览器周期夹具通过。对比度脚本使用现有standard快照并以当前代码reexport，
+参数 `--narrow --copy-feedback --hover-controls --channel chrome`，共23状态、0失败，
+最小普通文字对比度4.5047，HTML源码未改变，已查看hover截图。原始结果保存至
+任务验证目录 `score-time-ci-fix`、`contrast-ci-fix/contrast.json`。
+随后重新推送并核验新SHA的全部CI，最终状态随交付回复提供。
 
 仅推送核实的任务分支和origin，不force push。远端精确SHA及CI终态随最终回复核验。
 CI push覆盖quality、core3.10—3.12、legacy3.8/3.9、modeling、单次distribution、

@@ -15,11 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-import score_cross
 from PIL import Image
 from PIL import __version__ as pillow_version
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+import score_cross
 from mars.analysis import evaluate_score_policy, write_score_cross_html
 from mars.reporting import load_report
 

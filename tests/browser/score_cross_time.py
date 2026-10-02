@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
-from fixtures import _small_report
 from playwright.sync_api import Browser, Page, sync_playwright
+
+from fixtures import _small_report
+from mars.analysis import cross_scores, write_score_cross_html
+from mars.reporting import Report, ReportSnapshot, load_report
 from score_cross import (
     _apply,
     _assert_rule,
@@ -25,9 +28,6 @@ from score_cross import (
     _overflow,
     _scope,
 )
-
-from mars.analysis import cross_scores, write_score_cross_html
-from mars.reporting import Report, ReportSnapshot, load_report
 
 _SCOPE = ("target", "group", "period")
 
