@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "cbade2372badfb043879dfe18f5ff74b62af86b2",
+  "source_commit": "aa43995b2d670aeafdfb9536e24be4f171941032",
   "source_status": "known git checkout",
   "command": "python task_cases.py --case all --rows 18000 --seed 20261001 --output-dir cases",
   "data_config": {
@@ -41,7 +41,7 @@
   },
   "code_fingerprints": {
     "docs/snippets/task_cases.py": "509f86f7a1284dc8bd5d21075a4b736c00153a7047f7bef64181a11c24bd4cab",
-    "docs/snippets/external_agent_rule_case.py": "c07eb36557bea3365cf64de520665e14004b82bc3a326e9d255e581d0e83305e",
+    "docs/snippets/external_agent_rule_case.py": "16e428b65ebbe3fa8b6a65670bbcfc16dba606a797670a21cb7bcb6874d94510",
     "src/mars/analysis/score_cross.py": "d5eecb5f1253e5aa152483e959f1cc6689067276e93ea1b3676f156dc6060de7",
     "src/mars/analysis/score_cross_view.py": "1a15e7b754bc593f8ec769dac3cbce863c4ef9e79abe37d3f8c4647544885c96",
     "src/mars/analysis/profiler.py": "34fef57bc76ade1c812ed15ee5440b63ebde44f0b31e418def78eb5b80899459",
@@ -180,13 +180,13 @@
     },
     {
       "path": "external-agent-rule-task.txt",
-      "size_bytes": 3885,
-      "sha256": "9060ca63032174e73203a2331308eec618750a3898e098b69e16d12b5c4da149"
+      "size_bytes": 4092,
+      "sha256": "89009c42d3296cda5bc230958d19fb895741402ea26ba478d978edc413e7a6cd"
     },
     {
       "path": "external-agent-task.md",
-      "size_bytes": 3885,
-      "sha256": "9060ca63032174e73203a2331308eec618750a3898e098b69e16d12b5c4da149"
+      "size_bytes": 4092,
+      "sha256": "89009c42d3296cda5bc230958d19fb895741402ea26ba478d978edc413e7a6cd"
     },
     {
       "path": "external-agent-task.txt",
@@ -195,13 +195,13 @@
     },
     {
       "path": "external_agent_rule_case.py",
-      "size_bytes": 26306,
-      "sha256": "c642c23e07769183693f162693ed0fa45b3b2b29c6a024477a81cd42823d2f22"
+      "size_bytes": 27104,
+      "sha256": "a4d549e04f1cca6cb452ada1592186be2d0aab6f30607fe3ccb7fe6f3ecb904d"
     },
     {
       "path": "external_agent_rule_prompt.md",
-      "size_bytes": 3911,
-      "sha256": "627f1ccba9acbdcf7435074b3be40934211f34d2e80d6866e78be9ba8fc3ae65"
+      "size_bytes": 4118,
+      "sha256": "51a4ad8f87be0871aca7a3b964591bcc45c112de35f65bc9aaa7e2424a68f43e"
     },
     {
       "path": "generation-environment.json",
