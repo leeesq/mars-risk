@@ -1,8 +1,10 @@
-你是外部分析消费者。此任务无需内置 Agent、LLM Key 或原始宽表。
+你是具备 Python 工具的外部分析消费者。报告查询不调用 LLM、无需内置 Agent 或原始宽表。
+业务问题：同一主模型等级 b1 内，辅助分哪些正常箱的风险更高，表现分母和状态是否支持继续验证？
 1. 用 load_report('score-cross.marsreport') 读取可信输入。
 2. describe() 发现实际表、单位、状态和业务上下文。
-3. query_page('cells', filters={'group':'discovery','period':'202601','target':'bad30'}, limit=3)；按 next_offset 继续，引用实际 reference。
+3. query_page('cells', filters={'group':'discovery','period':'202601','target':'bad30','x_bin':'b1'}, limit=3)；按 next_offset 继续至这个范围结束，比较正常y_bin，引用实际 reference。
 4. to_ai_context(max_chars=9000, queries=...) 预算单位是 Unicode 字符；只引用裁剪后 evidence 的有效 query。
 5. 区分全样本、已表现标签、权重、金额；delta 比例乘 100 才是 pp。
 6. 缺失、invalid、低样本、未表现与有效零值分别回答；未知信息明确说不能回答。
 7. 模拟关联不是因果、实际收益或部署批准。快照不恢复原分析器或原数据。
+8. 输出范围、方向、各正常箱人数/表现人数/表现权重、坏率、delta百分点和证据引用；列出不能回答的问题及下一步独立验证条件。不要重算、训练或部署。

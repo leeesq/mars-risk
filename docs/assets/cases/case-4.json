@@ -1,10 +1,10 @@
 {
   "case": 4,
-  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
   "question": "主模型同等级内，辅助分还能进一步区分风险吗？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
     "report_type": "score_cross",
     "format_version": 1,
     "tables": {
@@ -1201,7 +1201,7 @@
     {
       "question": "主模型 b1 内，辅助分的风险梯度和分母是什么？",
       "reference": {
-        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
         "table": "cells",
         "query": {
           "offset": 0,
@@ -1385,7 +1385,7 @@
     {
       "question": "反向查看各 X 分层的边际风险；边际包含另一轴特殊箱",
       "reference": {
-        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
         "table": "row_summary",
         "query": {
           "offset": 0,
@@ -1600,7 +1600,7 @@
     {
       "question": "辅助分固定后，X 方向的风险梯度是什么？",
       "reference": {
-        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
         "table": "column_summary",
         "query": {
           "offset": 0,
@@ -1847,7 +1847,7 @@
     {
       "question": "观察期 late60 全未表现，不能据此判断模型效果",
       "reference": {
-        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
         "table": "cells",
         "query": {
           "offset": 0,
@@ -1925,7 +1925,7 @@
     {
       "question": "固定正常分箱表达式相对 X-only 基线的历史样本变化",
       "reference": {
-        "report_id": "df121489-258c-4b99-9338-c88759598869",
+        "report_id": "4154620a-048d-4437-b18c-c4dacc008dd9",
         "table": "changes",
         "query": {
           "offset": 0,
@@ -2192,7 +2192,7 @@
         }
       }
     },
-    "policy_report_id": "df121489-258c-4b99-9338-c88759598869"
+    "policy_report_id": "4154620a-048d-4437-b18c-c4dacc008dd9"
   },
   "unavailable": "这些是模拟关联与历史留存回放；无法证明新模型整体更好或真实因果增量。"
 }

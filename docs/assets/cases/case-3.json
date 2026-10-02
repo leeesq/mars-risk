@@ -1,10 +1,10 @@
 {
   "case": 3,
-  "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+  "report_id": "a7424f15-a116-4b93-9851-6ccb3491cc0e",
   "question": "为什么保留这个特征，删除另一个？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+    "report_id": "a7424f15-a116-4b93-9851-6ccb3491cc0e",
     "report_type": "correlation",
     "format_version": 1,
     "tables": {
@@ -369,7 +369,7 @@
     {
       "question": "raw 空间删除了哪些冗余特征？",
       "reference": {
-        "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+        "report_id": "a7424f15-a116-4b93-9851-6ccb3491cc0e",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -446,7 +446,7 @@
     {
       "question": "正负相关与绝对相关阈值如何区分？",
       "reference": {
-        "report_id": "41138ca9-6a11-4e52-9fc7-5c702a10cf34",
+        "report_id": "a7424f15-a116-4b93-9851-6ccb3491cc0e",
         "table": "pairs",
         "query": {
           "offset": 0,
@@ -505,21 +505,21 @@
     {
       "question": "目标感知 WOE 空间的决定是什么？",
       "reference": {
-        "report_id": "4b944dde-69e3-46f4-b73a-b1c0a16961b0",
+        "report_id": "dc3b9487-bd48-49f7-b4fe-73b71e643e8f",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
           "limit": 8
         }
       },
-      "total_rows": 4,
-      "returned_rows": 4,
+      "total_rows": 3,
+      "returned_rows": 3,
       "omitted_rows": 0,
       "next_offset": null,
       "rows": [
         {
           "event_order": 0,
-          "feature": "main_score",
+          "feature": "aux_score",
           "trigger_feature": null,
           "action": "keep",
           "correlation": null,
@@ -527,7 +527,7 @@
           "threshold": 0.8,
           "operator": ">",
           "priority_metric": "IV",
-          "feature_priority": 0.3210684359073639,
+          "feature_priority": 2.647951126098633,
           "trigger_priority": null,
           "tie_rule": "descending IV then ascending feature ID",
           "white_list_protected": false
@@ -535,21 +535,6 @@
         {
           "event_order": 1,
           "feature": "score_inverse",
-          "trigger_feature": "main_score",
-          "action": "drop",
-          "correlation": 0.9999681130129501,
-          "abs_correlation": 0.9999681130129501,
-          "threshold": 0.8,
-          "operator": ">",
-          "priority_metric": "IV",
-          "feature_priority": 0.32091811299324036,
-          "trigger_priority": 0.3210684359073639,
-          "tie_rule": "descending IV then ascending feature ID",
-          "white_list_protected": false
-        },
-        {
-          "event_order": 2,
-          "feature": "income",
           "trigger_feature": null,
           "action": "keep",
           "correlation": null,
@@ -557,23 +542,23 @@
           "threshold": 0.8,
           "operator": ">",
           "priority_metric": "IV",
-          "feature_priority": 0.007448240648955107,
+          "feature_priority": 0.40193307399749756,
           "trigger_priority": null,
           "tie_rule": "descending IV then ascending feature ID",
           "white_list_protected": false
         },
         {
-          "event_order": 3,
-          "feature": "income_copy",
-          "trigger_feature": "income",
+          "event_order": 2,
+          "feature": "main_score",
+          "trigger_feature": "score_inverse",
           "action": "drop",
-          "correlation": 1.0,
-          "abs_correlation": 1.0,
+          "correlation": 0.9982520332325072,
+          "abs_correlation": 0.9982520332325072,
           "threshold": 0.8,
           "operator": ">",
           "priority_metric": "IV",
-          "feature_priority": 0.007448240648955107,
-          "trigger_priority": 0.007448240648955107,
+          "feature_priority": 0.40134844183921814,
+          "trigger_priority": 0.40193307399749756,
           "tie_rule": "descending IV then ascending feature ID",
           "white_list_protected": false
         }
@@ -583,6 +568,8 @@
   "findings": {
     "candidate_features": [
       "main_score",
+      "aux_score",
+      "aux_drift",
       "score_inverse",
       "income",
       "income_copy",
@@ -590,26 +577,17 @@
       "sparse"
     ],
     "stats_selected": [
-      "main_score",
-      "income"
+      "aux_score",
+      "score_inverse"
     ],
     "stats_audit": [
       {
-        "feature": "income_copy",
-        "data_source": "application",
-        "status": "Dropped",
-        "stage": "Corr_Filter",
-        "reason": "Correlated with 'income'",
-        "value": 1.0,
-        "description": ""
-      },
-      {
-        "feature": "score_inverse",
+        "feature": "main_score",
         "data_source": "champion",
         "status": "Dropped",
         "stage": "Corr_Filter",
-        "reason": "Correlated with 'main_score'",
-        "value": 0.9999681130129501,
+        "reason": "Correlated with 'score_inverse'",
+        "value": 0.9982520332325072,
         "description": ""
       },
       {
@@ -633,19 +611,100 @@
       {
         "feature": "income",
         "data_source": "application",
+        "status": "Dropped",
+        "stage": "Rough_Scan",
+        "reason": "Low IV & Low Lift",
+        "value": 0.00911143608391285,
+        "description": ""
+      },
+      {
+        "feature": "income_copy",
+        "data_source": "application",
+        "status": "Dropped",
+        "stage": "Rough_Scan",
+        "reason": "Low IV & Low Lift",
+        "value": 0.007448240648955107,
+        "description": ""
+      },
+      {
+        "feature": "aux_drift",
+        "data_source": "challenger",
+        "status": "Dropped",
+        "stage": "Stability",
+        "reason": "High PSI (9.46)",
+        "value": 9.462003964126108,
+        "description": ""
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
         "status": "Selected",
         "stage": "Corr_Filter",
         "reason": "Independent",
-        "value": 0.007448240648955107,
+        "value": 2.647951126098633,
+        "description": ""
+      },
+      {
+        "feature": "score_inverse",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "Corr_Filter",
+        "reason": "Independent",
+        "value": 0.40193307399749756,
+        "description": ""
+      },
+      {
+        "feature": "aux_drift",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Fine_Scan",
+        "reason": "Pass (IV)",
+        "value": 0.9054592847824097,
+        "description": ""
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Fine_Scan",
+        "reason": "Pass (IV)",
+        "value": 2.647951126098633,
         "description": ""
       },
       {
         "feature": "main_score",
         "data_source": "champion",
         "status": "Selected",
-        "stage": "Corr_Filter",
-        "reason": "Independent",
-        "value": 0.3210684359073639,
+        "stage": "Fine_Scan",
+        "reason": "Pass (IV)",
+        "value": 0.40134844183921814,
+        "description": ""
+      },
+      {
+        "feature": "score_inverse",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "Fine_Scan",
+        "reason": "Pass (IV)",
+        "value": 0.40193307399749756,
+        "description": ""
+      },
+      {
+        "feature": "aux_drift",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Quality",
+        "reason": "Pass",
+        "value": 0.008666666666666666,
+        "description": ""
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Quality",
+        "reason": "Pass",
+        "value": 0.008666666666666666,
         "description": ""
       },
       {
@@ -685,21 +744,48 @@
         "description": ""
       },
       {
-        "feature": "income",
-        "data_source": "application",
+        "feature": "aux_score",
+        "data_source": "challenger",
         "status": "Selected",
-        "stage": "Rough_Scan",
-        "reason": "Pass (IV=0.007)",
-        "value": 0.007448240648955107,
+        "stage": "RiskCorr",
+        "reason": "Stable Logic",
+        "value": 1.0,
         "description": ""
       },
       {
-        "feature": "income_copy",
-        "data_source": "application",
+        "feature": "main_score",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "RiskCorr",
+        "reason": "Stable Logic",
+        "value": 0.9272727272727272,
+        "description": ""
+      },
+      {
+        "feature": "score_inverse",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "RiskCorr",
+        "reason": "Stable Logic",
+        "value": 0.9272727272727272,
+        "description": ""
+      },
+      {
+        "feature": "aux_drift",
+        "data_source": "challenger",
         "status": "Selected",
         "stage": "Rough_Scan",
-        "reason": "Pass (IV=0.007)",
-        "value": 0.007448240648955107,
+        "reason": "Pass (IV=0.653)",
+        "value": 0.6534533500671387,
+        "description": ""
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Rough_Scan",
+        "reason": "Pass (IV=2.297)",
+        "value": 2.2970714569091797,
         "description": ""
       },
       {
@@ -719,13 +805,40 @@
         "reason": "Pass (IV=0.321)",
         "value": 0.32091811299324036,
         "description": ""
+      },
+      {
+        "feature": "aux_score",
+        "data_source": "challenger",
+        "status": "Selected",
+        "stage": "Stability",
+        "reason": "Stable PSI",
+        "value": 0.0060770665642735314,
+        "description": ""
+      },
+      {
+        "feature": "main_score",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "Stability",
+        "reason": "Stable PSI",
+        "value": 0.008103952631859824,
+        "description": ""
+      },
+      {
+        "feature": "score_inverse",
+        "data_source": "champion",
+        "status": "Selected",
+        "stage": "Stability",
+        "reason": "Stable PSI",
+        "value": 0.007753347559946931,
+        "description": ""
       }
     ],
     "linear_selected": [
       "main_score",
       "income"
     ],
-    "woe_report_id": "4b944dde-69e3-46f4-b73a-b1c0a16961b0",
+    "woe_report_id": "dc3b9487-bd48-49f7-b4fe-73b71e643e8f",
     "raw_pairs": [
       {
         "feature_a": "main_score",
@@ -816,8 +929,7 @@
       "target_aware_transform": true,
       "target_rule": "normalized binary target non-null",
       "cleaning_field_pool": [
-        "income",
-        "income_copy",
+        "aux_score",
         "main_score",
         "score_inverse"
       ],
@@ -832,14 +944,12 @@
       "woe_source": "Stage 3 fitted binner",
       "binning_fit_source": "df",
       "binning_params": {
-        "method": "quantile",
-        "n_bins": 4,
-        "min_bin_size": 0.02,
-        "merge_small_bins": true
+        "prebinning_method": "cart",
+        "n_bins": 10,
+        "min_bin_size": 0.05
       },
       "candidate_scope": [
-        "income",
-        "income_copy",
+        "aux_score",
         "main_score",
         "score_inverse"
       ],

@@ -357,6 +357,7 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
             "CI": "https://github.com/leeesq/mars-risk/actions/workflows/test.yml",
         }.items():
             assert links[label] == target
+        assert links["License"] in {"LICENSE", "https://github.com/leeesq/mars-risk/blob/main/LICENSE"}
 
 
 def test_readme_hero_uses_same_native_binning_chart_in_both_languages() -> None:
@@ -386,7 +387,6 @@ def test_rule_case_agent_download_includes_rule_analysis_instructions() -> None:
         material = target.read_text(encoding="utf-8")
         assert "rules.marsreport" in material
         assert "candidates" in material and "validation" in material
-        assert links["License"] in {"LICENSE", "https://github.com/leeesq/mars-risk/blob/main/LICENSE"}
 
 
 def test_bilingual_readme_quickstart_uses_one_executable_source() -> None:

@@ -1,12 +1,12 @@
 {
   "case": 7,
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
   "question": "同一次分析，如何交付给不同使用者？",
   "query": {
     "question": "Excel 与快照的首行关键值对齐",
     "reference": {
-      "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+      "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
       "table": "cells",
       "query": {
         "offset": 0,

@@ -32,12 +32,14 @@ bad30；KS 为 0–100 点，IV/PSI 无量纲。分箱只由 discovery 参考拟
 --8<-- [start:case3]
 | 特征 | 状态 | 阶段 | 实际原因 |
 | --- | --- | --- | --- |
-| income_copy | Dropped | Corr_Filter | Correlated with 'income' |
-| score_inverse | Dropped | Corr_Filter | Correlated with 'main_score' |
+| main_score | Dropped | Corr_Filter | Correlated with 'score_inverse' |
 | constant | Dropped | Quality | Single Value (Mode) |
 | sparse | Dropped | Quality | High Missing |
-| income | Selected | Corr_Filter | Independent |
-| main_score | Selected | Corr_Filter | Independent |
+| income | Dropped | Rough_Scan | Low IV & Low Lift |
+| income_copy | Dropped | Rough_Scan | Low IV & Low Lift |
+| aux_drift | Dropped | Stability | High PSI (9.46) |
+| aux_score | Selected | Corr_Filter | Independent |
+| score_inverse | Selected | Corr_Filter | Independent |
 
 | 表示 | 方法 | 实际相关样本人数 | 阈值比较 |
 | --- | --- | --- | --- |
@@ -53,7 +55,7 @@ bad30；KS 为 0–100 点，IV/PSI 无量纲。分箱只由 discovery 参考拟
 --8<-- [start:card3]
 | Stats 保留 | Linear 保留 |
 | --- | --- |
-| main_score, income | main_score, income |
+| aux_score, score_inverse | main_score, income |
 --8<-- [end:card3]
 
 --8<-- [start:case4]
@@ -76,19 +78,25 @@ discovery / 202601 / bad30；X=b1，风险等级 X3。坏率按已表现权重�
 --8<-- [start:case5]
 | 规则 | 审计状态 | 拒绝阶段 | 实际原因 |
 | --- | --- | --- | --- |
-| mr_cb714e09ca8c064f8185 | selected | — | — |
-| mr_20fa26e2262d26742d78 | selected | — | — |
-| mr_8664f1fa21c9c7ac8a92 | rejected | candidate_filter | 未通过训练集候选阈值 |
-| mr_adcb27865a5ad7dbe5ef | rejected | validation_filter | 未通过验证阈值或切片通过率 |
-| mr_60edcd64fb81d6441861 | rejected | candidate_filter | 未通过训练集候选阈值 |
+| 主分 b1 × 辅助 b3 | selected | — | — |
+| 主分 b2 × 辅助 b3 | selected | — | — |
+| 主分 b1 × 辅助 b0 | rejected | candidate_filter | 未通过训练集候选阈值 |
+| 主分 b3 × 辅助 b3 | rejected | validation_filter | 未通过验证阈值或切片通过率 |
+| 手工覆盖压力候选 | rejected | candidate_filter | 未通过训练集候选阈值 |
 
 独立 validation / bad30 / hit；sample_count 是已表现人数。
 
 | 规则 | 已表现命中人数 | 事件人数 | 覆盖 | 坏率 | Lift | Lift 下界 |
 | --- | --- | --- | --- | --- | --- | --- |
-| mr_cb714e09ca8c064f8185 | 322 | 167 | 5.8008% | 51.8634% | 3.2641 | 2.9761 |
-| mr_20fa26e2262d26742d78 | 345 | 139 | 6.2151% | 40.2899% | 2.5357 | 2.2681 |
-| mr_adcb27865a5ad7dbe5ef | 374 | 103 | 6.7375% | 27.5401% | 1.7333 | 1.5049 |
+| 主分 b1 × 辅助 b3 | 316 | 167 | 5.6927% | 52.8481% | 3.3261 | 3.0351 |
+| 主分 b2 × 辅助 b3 | 339 | 137 | 6.1070% | 40.4130% | 2.5435 | 2.2734 |
+| 主分 b3 × 辅助 b3 | 372 | 103 | 6.7015% | 27.6882% | 1.7426 | 1.5132 |
+
+自动组合生成器（独立报告、24 候选预算）：
+
+| 来源 | 候选 | 实际保留 | 独立验证 | 排除非法/缺失分行数 |
+| --- | --- | --- | --- | --- |
+| MarsCombinationRuleGenerator | 24 | 2 | independent | 354 |
 --8<-- [end:case5]
 
 --8<-- [start:card5]

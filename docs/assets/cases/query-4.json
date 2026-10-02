@@ -1,12 +1,12 @@
 {
   "case": 4,
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
   "question": "主模型同等级内，辅助分还能进一步区分风险吗？",
   "query": {
     "question": "主模型 b1 内，辅助分的风险梯度和分母是什么？",
     "reference": {
-      "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+      "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
       "table": "cells",
       "query": {
         "offset": 0,

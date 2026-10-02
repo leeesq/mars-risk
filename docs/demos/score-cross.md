@@ -11,8 +11,6 @@ description: 固定主模型等级，复核辅助分梯度、格子状态及已�
 
 ## 真实结果预览
 
-[![实际 Score Cross 矩阵，保留轴、范围、基线与状态](../assets/cases/score-cross-matrix.jpg)](../assets/cases/score-cross.html)
-
 [打开真实交互报告](../assets/cases/score-cross.html) · [下载格子 Excel](../assets/cases/score-cross.xlsx) ·
 [查询格子证据](../assets/cases/case-4.json)
 

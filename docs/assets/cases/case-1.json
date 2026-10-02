@@ -1,11 +1,11 @@
 {
   "case": 1,
-  "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+  "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
   "question": "这份数据能直接用吗？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
     "report_type": "MarsProfileReport",
-    "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+    "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
     "format_version": 1,
     "feature_metadata": {
       "aux_probability": {
@@ -293,11 +293,11 @@
     },
     "parameters": {
       "mars_version": "0.0.28",
-      "polars_version": "1.42.0",
-      "generated_at_utc": "2026-10-02T13:06:49.040584+00:00",
+      "polars_version": "1.44.2",
+      "generated_at_utc": "2026-10-02T16:48:31.191592+00:00",
       "input_type": "polars",
       "row_count": 18000,
-      "column_count": 17,
+      "column_count": 18,
       "features": [
         "main_score",
         "aux_score",
@@ -390,7 +390,7 @@
     {
       "question": "首先检查哪些字段的数据质量？",
       "reference": {
-        "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+        "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
         "table": "overview",
         "query": {
           "offset": 0,
@@ -452,7 +452,7 @@
     {
       "question": "各分区缺失率如何？",
       "reference": {
-        "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+        "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
         "table": "dq.missing",
         "query": {
           "offset": 0,

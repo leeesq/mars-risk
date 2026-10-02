@@ -1,12 +1,12 @@
 {
   "case": 1,
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+  "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
   "question": "这份数据能直接用吗？",
   "query": {
     "question": "首先检查哪些字段的数据质量？",
     "reference": {
-      "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+      "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
       "table": "overview",
       "query": {
         "offset": 0,

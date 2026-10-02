@@ -17,7 +17,8 @@
 英文 feature/rule_id 是稳定身份，多 features 是规则成员并集，与 sources 条件交集，
 允许条件命中同一规则的不同特征；一条统计行不能因多特征重复计数。
 
-先查发现期 `cells`，固定一个主模型 x_bin，比较正常辅助 y_bin 的风险、全样本数和已表现人数。
+先查发现期 `cells`，固定同一个真实 period、主模型 x_bin，比较正常辅助 y_bin 的风险、
+全样本数、已表现人数和已表现权重分母；不把不同月份的格子混成同一范围。
 再查 `candidates` 与 `rules`，根据真实筛选阶段、阈值、轮次与资格解释入选或淘汰。
 追问至少一条规则在 validation 主目标、辅助目标和一个真实时间切片的表现；
 再追问 returning 客群、observation 规则评估和未执行的高级分析。
@@ -36,8 +37,10 @@ cross = load_report(root / "score-cross.marsreport")
 rules = load_report(root / "rules.marsreport")
 print(cross.describe())
 print(rules.describe())
-page = cross.query_page("cells", filters={"group": "discovery", "target": "bad30", "x_bin": "b1"},
-                        columns=["x_bin", "y_bin", "sample_count", "observed_sample_count",
+period = cross.get_table("overall", filters={"group": "discovery", "target": "bad30"},
+                         columns=["period"], limit=1)["period"][0]
+page = cross.query_page("cells", filters={"group": "discovery", "period": period, "target": "bad30", "x_bin": "b1"},
+                        columns=["period", "x_bin", "y_bin", "sample_count", "observed_sample_count", "observed_weight_sum",
                                  "bad_rate", "row_bad_rate", "delta_vs_row", "status"], limit=10)
 print(page["data"], page["reference"])
 audit = rules.query_page("candidates", features="main_score", sources="challenger", limit=2)
