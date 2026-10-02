@@ -1456,7 +1456,12 @@ class _BinningHtmlRenderer:
 
         html_parts: List[str] = []
         nav_items: List[Tuple[str, str]] = []
-        semantics_html = "".join(f"<h3>{html.escape(name)}</h3>{frame.to_html(index=False, escape=True)}" for name, frame in export_report_semantics(self).items())
+        semantics_html: str = "".join(
+            f'<h3>{html.escape(name)}</h3><div class="mars-table-scroll" tabindex="0" '
+            f'aria-label="{html.escape(name)} evidence table">'
+            f'{frame.to_html(index=False, escape=True)}</div>'
+            for name, frame in export_report_semantics(self).items()
+        )
         html_parts.append(self._mark_page_view(self._wrap_html_section("Business Metadata", semantics_html, "semantics-section"), "overview"))
         nav_items.append(("semantics-section", "Business Metadata"))
 

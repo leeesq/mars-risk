@@ -15,6 +15,7 @@ from mars.compute import amount_stats_agg_exprs, binary_stats_agg_exprs, missing
 from mars.reporting._artifact import Report, ReportSnapshot
 from mars.reporting._metadata import FeatureMetadata
 from mars.reporting._result import _result_report
+from mars.reporting._serialization import decode_json_value, json_safe
 
 from ._evaluation.context import normalize_binary_target_column, prepare_group_context
 from ._risk_profile import _normalize_profile_risk_binning_type, _ProfileRiskMonotonicTrend
@@ -408,6 +409,8 @@ def cross_scores(
         native 默认 quantile。自定义区间使用 cutpoints，不支持 method="custom"。
     min_bin_size : float | int | None
         透传共享分箱器的最小箱大小约束；None 使用引擎默认值。native CART 支持整数人数。
+        约束只针对拟合参考集；已启用时按同一成员适配右闭端点，无法满足写入拟合诊断。
+        显式切点和保存定义用于独立数据时保持固定分段，不重新约束箱占比。
     monotonic_trend : _ProfileRiskMonotonicTrend | None
         复用 profile_risk 趋势配置；监督最优分箱默认 auto_asc_desc，native 发警告并忽略。
     binner_params : dict[str, Any] | None
@@ -432,6 +435,7 @@ def cross_scores(
         每个 score 的显式有限特殊值，单独保存为特殊箱，不混入风险等级。
     missing_values : list[Any] | dict[str, list[Any]] | None
         共享缺失值语义；一个列表应用于两轴，或按原始 score ID 指定。随定义保存、加载复用。
+        已声明的 inf/-inf 优先进入缺失箱；未声明的非有限值继续进入 invalid。
     probability_scores : list[str] | None
         明确声明为 [0,1] 概率的 score；域外值进入 invalid，普通分不限制域。
     min_observed : int
@@ -619,6 +623,8 @@ def cross_scores(
             raise ValueError("Saved definitions must contain x and y.")
         for axis, score in zip(("x", "y"), scores):
             d = definitions[axis]
+            if "missing_values" in d:
+                d["missing_values"] = decode_json_value(d["missing_values"])
             if (
                 d.get("score") != score
                 or d.get("direction") != score_directions[score]
@@ -633,7 +639,7 @@ def cross_scores(
                 d["probability"],
                 d.get("missing_values"),
             )
-            if {k: v for k, v in d.items() if k != "fit"} != validated:
+            if json_safe({k: v for k, v in d.items() if k != "fit"}) != json_safe(validated):
                 raise ValueError("Invalid or inconsistent saved bin definition.")
             if "fit" in d and (
                 not isinstance(d["fit"], dict)
@@ -645,7 +651,9 @@ def cross_scores(
                 raise ValueError("special_values differ from saved definitions.")
             if probability_scores is not None and (score in probability_scores) != d["probability"]:
                 raise ValueError("probability_scores differ from saved definitions.")
-            if missing_values is not None and (missing_by_score[score] or []) != d.get("missing_values", []):
+            if missing_values is not None and json_safe(
+                missing_by_score[score] or []
+            ) != json_safe(d.get("missing_values", [])):
                 raise ValueError("missing_values differ from saved definitions.")
         fit_source = "saved_definition"
     bins = _bins(definitions)
@@ -833,6 +841,7 @@ def get_score_bin_definitions(report: Report) -> dict[str, dict[str, Any]]:
     -------
     dict[str, dict[str, Any]]
         方向、切点、端点和特殊值定义的独立副本。
+        自定义缺失列表中的受限非有限浮点标签恢复为 Python 值，供固定定义计算复用。
 
     Raises
     ------
@@ -845,7 +854,13 @@ def get_score_bin_definitions(report: Report) -> dict[str, dict[str, Any]]:
     """
     if report.report_type != "score_cross":
         raise ValueError("Expected a score_cross report.")
-    return deepcopy(report.describe()["parameters"]["bin_definitions"])
+    definitions: dict[str, dict[str, Any]] = deepcopy(
+        report.describe()["parameters"]["bin_definitions"]
+    )
+    for definition in definitions.values():
+        if "missing_values" in definition:
+            definition["missing_values"] = decode_json_value(definition["missing_values"])
+    return definitions
 
 
 def _policy_mask(

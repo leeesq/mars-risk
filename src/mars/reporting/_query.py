@@ -842,14 +842,11 @@ class _ReportQuery:
                 members = query_table(
                     self._query_tables()[relation["table"]],
                     filters={relation["key"]: {"op": "in", "value": list(set(ids))}},
-                    columns=[relation["key"], relation["feature"]],
+                    columns=list(dict.fromkeys([relation["key"], relation["feature"]])),
                 )
                 membership: dict[Any, set[str]] = {}
-                for key, feature in (
-                    members.iter_rows()
-                    if isinstance(members, pl.DataFrame)
-                    else members.itertuples(index=False, name=None)
-                ):
+                # key 与 feature 可指向同一列；按字段身份解析，避免依赖投影后的列数。
+                for key, feature in zip(members[relation["key"]], members[relation["feature"]]):
                     membership.setdefault(key, set()).add(feature)
                 for role in relation["roles"]:
                     for index, key in enumerate(identities[role]):

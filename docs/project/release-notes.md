@@ -6,6 +6,12 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 修复 Score Cross 自动拟合的左闭切点转右闭定义后最小箱约束失效，以及定义提取、保存加载
+  后自定义非有限缺失码变成 invalid 的问题；显式切点与固定定义不重新拟合。
+- 修复合法的同列 key/feature 桥接关系生成 AI 上下文失败，保留通用快照查询与统计行粒度。
+- 容量 benchmark 的直属 worker 退出状态仅由 Popen 回收，预算状态与真实退出码分别保存；
+  基线对照核对工作量、有效诊断分支、参与依赖和测量合同，不可比较时不输出常规性能结论。
+
 - Score Cross 自动分箱复用 `profile_risk` 的 native/optimal/lite_opt 引擎与配置解析，
   支持 quantile/uniform/cart、每轴箱数及明确监督拟合目标；旧切点与保存定义继续无拟合复用。
 - Score Cross 离线 HTML 接入固定风险编号矩阵、双向梯度、完整区间证据及受限正常分箱规则。

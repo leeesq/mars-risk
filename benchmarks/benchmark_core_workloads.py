@@ -11,6 +11,8 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
+WORKLOAD_CONTRACT = "core-capacity-workloads-v1"
+
 
 def workload(case: str, scale: str) -> dict[str, Any]:
     """按档位声明实际规模，扩行和扩列诊断显式选择。"""
@@ -60,6 +62,32 @@ def workload(case: str, scale: str) -> dict[str, Any]:
     if "batch100" in case:
         dimensions["batch_size"] = 100
     return dimensions
+
+
+def _linear_diagnostics(selector: Any) -> dict[str, Any]:
+    """记录生产入口实际导入与诊断执行状态；不补跑诊断改变测量工作量。"""
+    from benchmark_core_capacity import _dependency_state
+
+    available = selector._linear_diagnostics_available
+    dependency = _dependency_state("statsmodels", "statsmodels", unavailable=not available)
+    has_features = bool(selector.selected_features_)
+    diagnostics: dict[str, Any] = {"dependency": dependency}
+    for name, table in (("vif", selector.vif_table_), ("logit", selector.coef_table_)):
+        rows = len(table)
+        if rows:
+            status, reason = "executed", None
+        elif not available:
+            status, reason = "skipped", "statsmodels unavailable"
+        elif name == "logit" and has_features:
+            status, reason = "failed", "fit produced no coefficients"
+        else:
+            status, reason = "skipped", "no eligible features"
+        diagnostics[name] = {"status": status, "rows": rows, "reason": reason}
+    diagnostics["stepwise"] = {
+        "status": "executed" if selector.enable_stepwise else "skipped",
+        "reason": "enabled" if selector.enable_stepwise else "explicitly disabled",
+    }
+    return diagnostics
 
 
 def _metadata(features: list[str]) -> dict[str, Any]:
@@ -405,7 +433,12 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
     import numpy as np
     import pandas as pd
     import polars as pl
-    from benchmark_core_capacity import _launch, _signature, _write
+    from benchmark_core_capacity import (
+        _execution_parameters,
+        _launch,
+        _signature,
+        _write,
+    )
 
     from mars.analysis import (
         MarsBinEvaluator,
@@ -426,6 +459,8 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
         "missing": "NaN 1/101, special -999 1/211, legal zero 1/157; bad unobserved 1/19, late 1/7",
     }
     case = args.case
+    estimator_parameters: dict[str, Any] = {}
+    diagnostics: dict[str, Any] = {}
     if case.startswith("correlation"):
         meter.result["workload"].update(
             distribution="float64 Gaussian; feature1 = -feature0 + noise; last feature constant",
@@ -713,11 +748,13 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     "limit": 20,
                 }
             elif case.startswith("profile"):
+                profiler = MarsDataProfiler(
+                    overview_batch_size=dimensions["batch_size"], missing_values=[-999]
+                )
+                estimator_parameters = profiler.get_params(deep=False)
                 report = meter.run(
                     "public_compute",
-                    lambda: MarsDataProfiler(
-                        overview_batch_size=dimensions["batch_size"], missing_values=[-999]
-                    ).generate_profile(
+                    lambda: profiler.generate_profile(
                         data,
                         features=features,
                         group_col="group",
@@ -773,6 +810,7 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     batch_size=dimensions["batch_size"],
                     n_jobs=args.threads,
                 )
+                estimator_parameters = selector.get_params(deep=False)
                 with patch.object(
                     profiler_module.MarsDataProfiler, "generate_profile", capture_profile
                 ), patch.object(
@@ -823,6 +861,7 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     return corr(frame, **kwargs)
 
                 selector = MarsLinearSelector(corr_thr=0.8, n_jobs=args.threads)
+                estimator_parameters = selector.get_params(deep=False)
                 # 标准公共入口包括可用的默认 VIF/Logit 诊断；不以禁用诊断提速。
                 with patch.object(pd.DataFrame, "corr", capture_corr):
                     meter.run(
@@ -837,6 +876,8 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     )
                 assert len(calls) == 1
                 report = selector.get_correlation_report()
+                diagnostics = _linear_diagnostics(selector)
+                meter.result["linear_dependency_state"] = diagnostics["dependency"]
                 meter.result["selection"] = {
                     "matrix_calls": len(calls),
                     "selected_order": selector.selected_features_,
@@ -871,6 +912,7 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     ),
                 )
                 report = run.report
+                estimator_parameters = run.binner.get_params(deep=False)
                 meter.result["binner_n_jobs"] = run.binner.n_jobs
                 table = "summary"
                 query = {
@@ -888,6 +930,19 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
         )
         # 快照契约逐表全量哈希；有限证据单独校验，均不导出宽表或全表 Python 行。
         description = report.describe()
+        from mars.reporting._serialization import json_safe
+
+        algorithm, resources = _execution_parameters(json_safe({
+            "report": description["parameters"], "estimator": estimator_parameters,
+        }))
+        effective_workload, workload_resources = _execution_parameters(meter.result["workload"])
+        meter.result["execution_contract"] = {
+            "workload_id": WORKLOAD_CONTRACT,
+            "workload": {"case": case, **effective_workload},
+            "algorithm_parameters": algorithm,
+            "diagnostics": diagnostics,
+            "resource_strategy": {**resources, **workload_resources},
+        }
         signatures = meter.run(
             "table_correctness",
             lambda: {name: _signature(report.get_table(name)) for name in description["tables"]},

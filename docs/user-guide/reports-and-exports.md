@@ -197,6 +197,9 @@ selector 中为“来源 → 特征列表”，在分箱报告构造器中为“
 
 `to_ai_context(queries={table: get_table_options}, max_chars=16000)` 支持不同表使用不同条件；
 旧的 features/columns/filters/limit 等共同参数会适配到相同查询路径。摘要不能替代完整文件。
+桥接关系的 key 与 feature 可以指向同一列；原报告和保存后的快照均可筛选、分页和生成
+AI 证据，统计行不会按成员展开。有限上下文关联保留证据涉及的成员；查询明确指定的特征
+及报告声明的 feature_scope 也按既有契约保留其元数据。
 宽趋势的指标只定义一次，日期/分组以原始列标识为维度，证据保持与原表对应的紧凑宽行。
 预算涵盖整个最终 JSON 的 Unicode 字符，**不是 token 数**。超预算依次裁剪完整时间列、行及
 说明块，省略记录包含数量、原因和 describe/get_table 定位。极小预算容不下必要身份及引用时

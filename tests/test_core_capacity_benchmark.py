@@ -6,6 +6,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -48,10 +49,368 @@ def test_scheduler_terminates_worker_and_descendant(tmp_path: Path, protection: 
         10**12 if protection == "timeout" else 40 * 1024**2,
     )
     assert result["status"] == protection
+    assert result["exit_status"] == "known"
+    assert result["exit_code"] is not None
     assert result["exit_code"] != 0
     if child_file.exists():
         assert not psutil.pid_exists(int(child_file.read_text()))
         assert result["stage"] == "deliberate_wait"
+
+
+def test_cleanup_reaps_direct_worker_only_with_popen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    waited_pids: list[int] = []
+    original = psutil.wait_procs
+
+    def capture(processes: list[Any], **kwargs: Any) -> Any:
+        waited_pids.extend(item.pid for item in processes)
+        return original(processes, **kwargs)
+
+    monkeypatch.setattr(psutil, "wait_procs", capture)
+    try:
+        runner._stop_tree(process)
+        assert process.returncode is not None and process.returncode != 0
+        assert process.pid not in waited_pids
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_scheduler_keeps_normal_and_abnormal_real_exit_codes(tmp_path: Path, exit_code: int) -> None:
+    runner = _module("benchmark_core_capacity")
+    out = tmp_path / "result.json"
+    code = (
+        "import json,pathlib,sys; "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'stage':'complete','status':'passed'})); "
+        "sys.exit(int(sys.argv[2]))"
+    )
+    result = runner._launch([sys.executable, "-c", code, str(out), str(exit_code)], out, 10, 1024**3)
+    assert result["exit_code"] == exit_code
+    assert result["exit_status"] == "known"
+    assert result["stage"] == "complete"
+    assert result["status"] == ("passed" if exit_code == 0 else "failed")
+
+
+def test_scheduler_cleans_known_descendant_after_parent_naturally_exits(tmp_path: Path) -> None:
+    runner = _module("benchmark_core_capacity")
+    out = tmp_path / "result.json"
+    code = (
+        "import json,pathlib,subprocess,sys,time; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'stage':'complete','status':'passed','child':child.pid})); "
+        "time.sleep(0.4)"
+    )
+    result = runner._launch([sys.executable, "-c", code, str(out)], out, 10, 1024**3)
+    assert result["status"] == "passed" and result["exit_code"] == 0
+    assert result["cleanup"]["remaining_pids"] == []
+    assert result["cleanup"]["descendant_status"] == "stopped"
+    child = psutil.Process(result["child"]) if psutil.pid_exists(result["child"]) else None
+    assert child is None or not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+
+
+def test_cleanup_preserves_unknown_worker_exit_and_wait_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+
+    class UnknownProcess:
+        """模拟 OS 回收失败，不伪造正常或固定非零退出码。"""
+
+        pid = 123456789
+        returncode = None
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            raise ProcessLookupError("already exited")
+
+        def wait(self, timeout: float) -> None:
+            assert timeout <= 5
+            raise subprocess.TimeoutExpired("controlled", timeout)
+
+    def missing(pid: int) -> Any:
+        raise psutil.NoSuchProcess(pid)
+
+    monkeypatch.setattr(psutil, "Process", missing)
+    process = UnknownProcess()
+    cleanup = runner._stop_tree(process)
+    assert process.returncode is None
+    assert cleanup["worker_exit_status"] == "unknown"
+    assert any("worker wait: TimeoutExpired" in reason for reason in cleanup["errors"])
+
+
+@pytest.mark.parametrize("failure", ["access_denied", "os_error", "suspend_access_denied"])
+def test_cleanup_discovery_failure_preserves_unknown_descendants_and_real_exit(
+    monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+
+    def denied(parent: psutil.Process, recursive: bool = False) -> list[psutil.Process]:
+        assert recursive
+        if failure == "access_denied":
+            raise psutil.AccessDenied(parent.pid)
+        raise OSError("controlled descendant discovery failure")
+
+    def suspend_denied(parent: psutil.Process) -> None:
+        raise psutil.AccessDenied(parent.pid)
+
+    if failure == "suspend_access_denied":
+        monkeypatch.setattr(psutil.Process, "suspend", suspend_denied)
+    else:
+        monkeypatch.setattr(psutil.Process, "children", denied)
+    try:
+        cleanup = runner._stop_tree(process)
+        assert process.returncode is not None and process.returncode != 0
+        assert cleanup["worker_exit_status"] == "known"
+        assert cleanup["descendant_status"] == "unknown"
+        assert any(
+            reason.startswith(("parent suspend:", "descendant discovery:"))
+            for reason in cleanup["errors"]
+        )
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+
+
+def test_cleanup_discovers_cached_child_descendants_after_parent_exit(tmp_path: Path) -> None:
+    runner = _module("benchmark_core_capacity")
+    child_file, grandchild_file = tmp_path / "child.txt", tmp_path / "grandchild.txt"
+    child_code = (
+        "import pathlib,subprocess,sys,time; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid)); time.sleep(30)"
+    )
+    parent_code = (
+        "import pathlib,subprocess,sys,time\n"
+        "child=subprocess.Popen([sys.executable,'-c',sys.argv[3],sys.argv[2]])\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+        "while not pathlib.Path(sys.argv[2]).exists(): time.sleep(0.01)\n"
+    )
+    process = subprocess.Popen([
+        sys.executable, "-c", parent_code, str(child_file), str(grandchild_file), child_code,
+    ])
+    try:
+        assert process.wait(timeout=5) == 0
+        child_pid, grandchild_pid = int(child_file.read_text()), int(grandchild_file.read_text())
+        cleanup = runner._stop_tree(process, [psutil.Process(child_pid)])
+        assert process.returncode == 0
+        assert {child_pid, grandchild_pid}.issubset(cleanup["descendant_pids"])
+        assert cleanup["descendant_status"] == "stopped"
+        assert cleanup["remaining_pids"] == []
+        for pid in (child_pid, grandchild_pid):
+            child = psutil.Process(pid) if psutil.pid_exists(pid) else None
+            assert child is None or not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        for path in (grandchild_file, child_file):
+            if path.exists():
+                try:
+                    psutil.Process(int(path.read_text())).kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+
+def test_cleanup_diagnostic_failure_keeps_completed_worker_stage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+
+    def denied(processes: list[Any], timeout: float) -> Any:
+        raise psutil.AccessDenied(processes[0].pid)
+
+    monkeypatch.setattr(psutil, "wait_procs", denied)
+    out = tmp_path / "result.json"
+    code = (
+        "import json,pathlib,subprocess,sys,time; "
+        "subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'stage':'deliberate_wait','status':'running'})); "
+        "time.sleep(30)"
+    )
+    result = runner._launch([sys.executable, "-c", code, str(out)], out, 0.8, 1024**3)
+    assert result["status"] == "timeout" and result["exit_code"] != 0
+    assert result["stage"] == "deliberate_wait"
+    assert result["cleanup"]["descendant_status"] == "unknown"
+    assert any("AccessDenied" in reason for reason in result["cleanup"]["errors"])
+
+
+def test_dependency_state_distinguishes_missing_broken_and_imported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+    monkeypatch.delitem(sys.modules, "controlled_optional_module", raising=False)
+    monkeypatch.setattr(runner.importlib.metadata, "version", lambda name: "0.14")
+    assert runner._dependency_state("statsmodels", "controlled_optional_module")["status"] == "not_imported"
+    assert runner._dependency_state("statsmodels", "controlled_optional_module", True)["status"] == "import_failed"
+    monkeypatch.setitem(sys.modules, "controlled_optional_module", object())
+    assert runner._dependency_state("statsmodels", "controlled_optional_module")["status"] == "imported"
+
+    def missing(name: str) -> str:
+        raise runner.importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(runner.importlib.metadata, "version", missing)
+    assert runner._dependency_state("statsmodels", "controlled_optional_module", True)["status"] == "not_installed"
+
+
+def test_linear_diagnostics_record_actual_work_and_reject_optional_branch_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mars.feature.selection.linear as linear
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "benchmarks"))
+    fixtures = _module("benchmark_core_workloads")
+    data, features = fixtures._data(400, 8, 42, "pandas", constants=False)
+    selector = linear.MarsLinearSelector().fit(data, data["bad"], features=features)
+    actual = fixtures._linear_diagnostics(selector)
+    if selector._linear_diagnostics_available:
+        assert actual["dependency"]["status"] == "imported"
+        assert actual["vif"]["status"] == actual["logit"]["status"] == "executed"
+        assert actual["vif"]["rows"] > 0 and actual["logit"]["rows"] > 0
+    assert actual["stepwise"]["status"] == "skipped"
+    monkeypatch.setattr(linear, "optional_import", lambda name: None)
+    unavailable = linear.MarsLinearSelector().fit(data, data["bad"], features=features)
+    skipped = fixtures._linear_diagnostics(unavailable)
+    assert skipped["dependency"]["status"] in {"not_installed", "import_failed"}
+    assert skipped["vif"]["status"] == skipped["logit"]["status"] == "skipped"
+    assert skipped["vif"]["rows"] == skipped["logit"]["rows"] == 0
+    if selector._linear_diagnostics_available:
+        runner = _module("benchmark_core_capacity")
+        baseline, current = _comparison_fixture(), _comparison_fixture()
+        for payload, diagnostics in ((baseline, actual), (current, skipped)):
+            for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
+                round_["execution_contract"]["diagnostics"] = diagnostics
+        runner._compare_baseline(baseline, current)
+        assert current["comparison"][0]["status"] == "incomparable"
+        assert "time_ratio" not in current["comparison"][0]
+
+
+def _comparison_fixture() -> dict[str, Any]:
+    """构造含真实比较合同的有限轮次，不改动系统可选依赖。"""
+    contract = {
+        "workload_id": "linear-selection-v1",
+        "workload": {"rows": 400, "features": 8, "seed": 42},
+        "algorithm_parameters": {"corr_method": "spearman", "corr_thr": 0.8},
+        "diagnostics": {"vif": {"status": "executed", "rows": 8}},
+        "resource_strategy": {"batch_size": 50, "n_jobs": 4},
+    }
+    round_ = {
+        "status": "passed",
+        "stage": "complete",
+        "execution_contract": contract,
+        "environment": {
+            "python": "controlled interpreter",
+            "platform": "controlled platform",
+            "cpu": "controlled cpu",
+            "memory_total_bytes": 1024**3,
+            "polars_threads": 4,
+            "threads_environment": {"POLARS_MAX_THREADS": "4"},
+            "participating_dependencies": {
+                "statsmodels": {"version": "0.14", "status": "imported"},
+            },
+            "source_python_sha256": "before",
+        },
+        "effective_native_threadpools": [],
+    }
+    return {
+        "measurement_contract": {"id": "rss-stages-v1", "interval_seconds": 0.01},
+        "parameters": {"timeout": 30, "memory_budget_mib": 1024, "diagnostic_loops": 10},
+        "cases": [{
+            "case": "linear_selection", "backend": "polars", "status": "passed",
+            "workload": {"rows": 400, "features": 8, "batch_size": 50},
+            "warmup": deepcopy(round_), "rounds": [round_],
+            "summary": {"stages": {"public_compute": {
+                "median_seconds": 1.0, "highest_observed_rss_bytes": 1000,
+            }}},
+        }],
+    }
+
+
+def test_baseline_accepts_same_contract_and_source_provenance_changes() -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture()
+    current = deepcopy(baseline)
+    for round_ in [current["cases"][0]["warmup"], *current["cases"][0]["rounds"]]:
+        round_["environment"]["source_python_sha256"] = "after"
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "comparable"
+    assert current["comparison"][0]["time_ratio"] == 1.0
+
+
+@pytest.mark.parametrize("change", ["diagnostics", "algorithm", "workload", "measurement", "dependency"])
+def test_baseline_rejects_different_effective_work_without_performance_ratios(change: str) -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture()
+    current = deepcopy(baseline)
+    for round_ in [current["cases"][0]["warmup"], *current["cases"][0]["rounds"]]:
+        contract = round_["execution_contract"]
+        if change == "diagnostics":
+            contract["diagnostics"]["vif"] = {"status": "skipped", "rows": 0}
+        elif change == "algorithm":
+            contract["algorithm_parameters"]["corr_method"] = "pearson"
+        elif change == "workload":
+            contract["workload_id"] = "linear-selection-v2"
+        elif change == "dependency":
+            round_["environment"]["participating_dependencies"]["statsmodels"]["version"] = "0.15"
+    if change == "measurement":
+        current["measurement_contract"]["interval_seconds"] = 0.02
+    runner._compare_baseline(baseline, current)
+    comparison = current["comparison"][0]
+    assert comparison["status"] == "incomparable"
+    assert comparison["reasons"]
+    assert "time_ratio" not in comparison and "review_trigger" not in comparison
+
+
+def test_baseline_missing_historical_contract_is_explicitly_incomparable() -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture()
+    del baseline["measurement_contract"]
+    current = _comparison_fixture()
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    assert "measurement" in " ".join(current["comparison"][0]["reasons"])
+
+
+def test_baseline_refuses_incomplete_cold_consumer_contract_and_changed_dimensions() -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline, current = _comparison_fixture(), _comparison_fixture()
+    for payload in (baseline, current):
+        for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
+            round_["consumer"] = {"status": "passed"}
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    baseline, current = _comparison_fixture(), _comparison_fixture()
+    current["cases"][0]["workload"]["rows"] = 800
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    assert "case.workload.rows" in " ".join(current["comparison"][0]["reasons"])
+
+
+def test_baseline_distinguishes_execution_failure_and_resource_strategy_comparison() -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture()
+    failed = deepcopy(baseline)
+    failed["cases"][0]["status"] = "failed"
+    runner._compare_baseline(baseline, failed)
+    assert failed["comparison"][0]["status"] == "execution_failed"
+    current = deepcopy(baseline)
+    for round_ in [current["cases"][0]["warmup"], *current["cases"][0]["rounds"]]:
+        round_["execution_contract"]["resource_strategy"]["batch_size"] = 100
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    current["parameters"]["comparison_purpose"] = "batch memory strategy acceptance"
+    runner._compare_baseline(baseline, current)
+    comparison = current["comparison"][0]
+    assert comparison["status"] == "resource_strategy_comparison"
+    assert comparison["resource_differences"] and comparison["purpose"]
 
 
 def test_wide_score_fixture_keeps_identical_necessary_columns() -> None:

@@ -49,6 +49,25 @@ def encode(value: Any) -> str:
     return json.dumps(json_safe(value), ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
+def decode_json_value(value: Any) -> Any:
+    """只恢复报告的受限浮点标签；递归复制容器，不恢复任意 Python 对象。"""
+    if isinstance(value, list):
+        return [decode_json_value(item) for item in value]
+    if isinstance(value, dict):
+        if value.get("$mars") == "float":
+            float_values = {"nan": float("nan"), "inf": float("inf"), "-inf": float("-inf")}
+            label = value.get("value")
+            if (
+                set(value) != {"$mars", "value"}
+                or not isinstance(label, str)
+                or label not in float_values
+            ):
+                raise ValueError("Invalid report tagged float value.")
+            return float_values[label]
+        return {key: decode_json_value(item) for key, item in value.items()}
+    return value
+
+
 def table_rows(frame: pl.DataFrame | pd.DataFrame) -> list[dict[str, Any]]:
     """只转换已分页证据；Arrow 保留 null/NaN 及日期，避免旧 Polars 时区转换崩溃。"""
     rows: list[dict[str, Any]] = (
