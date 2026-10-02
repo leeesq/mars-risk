@@ -1,6 +1,6 @@
 ---
 title: MARS
-description: 面向人和 AI Agent 的风控分析工具箱。原生分箱图、数据画像、特征筛选、相关性、模型分交叉、规则与可复用报告。
+description: 面向人和 AI Agent 的高性能风控分析工具箱。原生分箱图、数据画像、特征筛选、相关性、模型分交叉、规则与可复用报告。
 hide:
   - toc
 ---
@@ -24,7 +24,7 @@ hide:
   <a href="https://github.com/leeesq/mars-risk/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
-# 面向人和 AI Agent 的风控分析工具箱
+# 面向人和 AI Agent 的高性能风控分析工具箱
 
 **数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**
 

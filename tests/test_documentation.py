@@ -326,11 +326,11 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
         assert f'docs/assets/{asset_name}' in english_readme
         assert f'assets/{asset_name}' in homepage
     for text in (readme, homepage):
-        assert "面向人和 AI Agent 的风控分析工具箱" in text
+        assert "面向人和 AI Agent 的高性能风控分析工具箱" in text
         assert "数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘" in text
         for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
             assert f'alt="{label}"' in text
-    assert "A risk analysis toolkit for humans and AI agents" in english_readme
+    assert "A high-performance risk analysis toolkit for humans and AI agents" in english_readme
     for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
         assert f'alt="{label}"' in english_readme
     for text in (readme, english_readme, homepage):

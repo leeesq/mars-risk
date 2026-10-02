@@ -40,8 +40,8 @@ def _brand() -> str:
 def _hero(english: bool) -> str:
     """为 GitHub 使用显式 HTML 居中，不依赖文档站 CSS。"""
     title = (
-        "A risk analysis toolkit for humans and AI agents"
-        if english else "面向人和 AI Agent 的风控分析工具箱"
+        "A high-performance risk analysis toolkit for humans and AI agents"
+        if english else "面向人和 AI Agent 的高性能风控分析工具箱"
     )
     capabilities = (
         "Data profiling · Binning evaluation · Feature selection · Correlation analysis · "
