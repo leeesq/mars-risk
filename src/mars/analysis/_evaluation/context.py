@@ -8,94 +8,13 @@ from typing import Any
 
 import polars as pl
 
+from mars.compute.binning import normalize_binary_target_column
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.lite_opt import MarsLiteOptBinner
 from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.binning.optimal import MarsOptimalBinner
 from mars.utils.date import MarsDate
 from mars.utils.logger import logger
-
-
-def normalize_binary_target_column(df: pl.DataFrame, target: str) -> pl.DataFrame:
-    """校验并归一化二分类 target 列。"""
-    dtype = df.schema[target]
-    if dtype == pl.Boolean:
-        return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
-
-    if dtype in {pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64}:
-        invalid_values = (
-            df
-            .filter(pl.col(target).is_not_null() & ~pl.col(target).is_in([0, 1]))
-            .select(pl.col(target).unique().head(5))
-            .to_series()
-            .to_list()
-        )
-        if invalid_values:
-            raise ValueError(
-                f"Target column '{target}' contains invalid values {invalid_values}. "
-                "Please clean it to 0/1/True/False/null before evaluation.",
-            )
-        return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
-
-    if dtype in {pl.Float32, pl.Float64}:
-        valid_expr = (
-            pl.col(target).is_null()
-            | pl.col(target).is_nan()
-            | pl.col(target).is_in([0.0, 1.0])
-        )
-        invalid_values = (
-            df
-            .filter(~valid_expr)
-            .select(pl.col(target).unique().head(5))
-            .to_series()
-            .to_list()
-        )
-        if invalid_values:
-            raise ValueError(
-                f"Target column '{target}' contains invalid values {invalid_values}. "
-                "Please clean it to 0/1/True/False/null before evaluation.",
-            )
-        return df.with_columns(pl.col(target).fill_nan(None).cast(pl.Int8).alias(target))
-
-    if dtype == pl.String:
-        valid_strings = ["0", "1", "true", "false", "True", "False", ""]
-        invalid_values = (
-            df
-            .filter(pl.col(target).is_not_null() & ~pl.col(target).is_in(valid_strings))
-            .select(pl.col(target).unique().head(5))
-            .to_series()
-            .to_list()
-        )
-        if invalid_values:
-            raise ValueError(
-                f"Target column '{target}' contains invalid values {invalid_values}. "
-                "Please clean it to 0/1/True/False/null before evaluation.",
-            )
-        normalized = (
-            pl.when(pl.col(target).is_null() | (pl.col(target) == ""))
-            .then(None)
-            .when(pl.col(target).str.to_lowercase() == "true")
-            .then(1)
-            .when(pl.col(target).str.to_lowercase() == "false")
-            .then(0)
-            .otherwise(pl.col(target).cast(pl.Int8))
-            .alias(target)
-        )
-        return df.with_columns(normalized)
-
-    invalid_values = (
-        df
-        .filter(pl.col(target).is_not_null())
-        .select(pl.col(target).unique().head(5))
-        .to_series()
-        .to_list()
-    )
-    if invalid_values:
-        raise ValueError(
-            f"Target column '{target}' contains invalid values {invalid_values}. "
-            "Please clean it to 0/1/True/False/null before evaluation.",
-        )
-    return df.with_columns(pl.lit(None).cast(pl.Int8).alias(target))
 
 
 def count_observed_target_classes(df: pl.DataFrame, target: str) -> int:

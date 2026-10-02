@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from typing import Any, Dict, List, Literal, Tuple, Union
 
 import numpy as np
-import pandas as pd
 import polars as pl
 from joblib import Parallel, delayed
 from sklearn.tree import DecisionTreeClassifier
@@ -121,51 +120,6 @@ class MarsNativeBinner(MarsBinnerBase):
         )
         return params
 
-    def fit(
-        self,
-        X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
-        *,
-        features: list[str] | None = None,
-        cat_features: list[str] | None = None,
-    ) -> MarsNativeBinner:
-        """
-        拟合原生分箱器。
-
-        Parameters
-        ----------
-        X : pl.DataFrame | pd.DataFrame
-            输入特征矩阵。
-        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
-            目标变量。仅当 ``method="cart"`` 时必填。
-        features : list[str] | None
-            本次拟合的特征列；不传时使用全部候选列。
-        cat_features : list[str] | None
-            明确指定的类别特征列。
-
-        Returns
-        -------
-        MarsNativeBinner
-            拟合完成后的原生分箱器实例。
-
-        Raises
-        ------
-        ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
-
-        Examples
-        --------
-        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> binner = MarsNativeBinner(method="quantile", n_bins=2)
-        >>> binner.fit(X).feature_names_in_
-        ['age']
-        """
-        if self.method == "cart" and y is None:
-            raise ValueError("Decision Tree Binning ('cart') requires y.")
-
-        super().fit(X, y, features=features, cat_features=cat_features)
-        return self
-
     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
         """
         [Core Dispatcher] 原生分箱核心拟合与路由引擎。
@@ -198,6 +152,8 @@ class MarsNativeBinner(MarsBinnerBase):
         4. **异常容错**:
            - 捕获无法分箱的特征并存入 `self.fit_failures_`，不阻塞全局流程。
         """
+        if self.method == "cart" and y is None:
+            raise ValueError("Decision Tree Binning ('cart') requires y.")
         self._cache_X = X
         self._cache_y = y
         self.fit_failures_: Dict[str, str] = {}
@@ -226,7 +182,10 @@ class MarsNativeBinner(MarsBinnerBase):
                 num_cols.append(c)
 
         for c in null_cols:
-            self.bin_cuts_[c] = []
+            if c in cat_set or X.schema[c] in {pl.Boolean, pl.Utf8, pl.Categorical}:
+                self.cat_cuts_[c] = []
+            else:
+                self.bin_cuts_[c] = []
 
         if not num_cols and not cat_cols:
             logger.warning("No valid columns found for binning.")

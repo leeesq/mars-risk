@@ -48,6 +48,54 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 `features=[...]`；确实需要宽松处理时才使用 `on_missing="warn"` 或 `"ignore"`。
 `update_bins()` 对未知特征默认报错，`prune()` 和 `get_bin_mapping()` 也不再静默忽略未知名称。
 
+### 重复拟合与失败恢复
+
+每次 `fit()` 都重新学习本次特征的规则、WOE、映射和诊断。连续拟合相同数据与新实例等价；
+改变 target、特征集合或特征类型时不会复用上次学到的结果。构造参数保持不变，
+本次传入的 `features` 和 `cat_features` 决定本次范围。
+
+通过 `update_bins()` 明确设置的规则属于用户配置：后续拟合仍包含兼容类型的该特征时继续
+应用，并重新计算本轮 WOE；数值规则不会套用到新的类别特征。`prune()` 会同时移除被裁剪
+特征的明确规则。JSON 保存和加载保留这些规则；旧 schema 1 artifact 没有该可选字段时仍可加载。
+
+拟合失败后，转换、分箱表现评估、规则查询、SQL 导出和保存都不能读取上次成功结果，
+会按未拟合状态报错。`get_fit_report()` 可以查看本次生成的失败诊断（参数校验阶段失败
+可能为空），再次有效 `fit()` 可以恢复。宽表中有可用规则的局部失败和成功 fallback
+仍按原有契约保留，不要求每个特征都成功。
+
+### Boolean、类别与部分标签
+
+Pandas `bool` / nullable `boolean` 与 Polars `Boolean` 都按类别特征处理。原生分箱示例：
+
+```python
+import polars as pl
+from mars.feature import MarsNativeBinner
+
+features = pl.DataFrame({"flag": [False, False, True, True, None]})
+target = pl.Series("target", [0, 0, 1, 1, None])
+binner = MarsNativeBinner(n_bins=2).fit(features, target, cat_features=["flag"])
+bins = binner.transform(features)
+stats = binner.profile_bin_performance(features, target)
+assert set(bins["flag_bin"].head(4)) == {0, 1}
+assert bins["flag_bin"][-1] == -1
+```
+
+Boolean 类别使用有类型的匹配键；推理时整数 `0/1` 或文本 `"True"`、`"false"` 不会
+被悄悄解释为布尔值，未见类别沿用 Other。普通文本仍区分大小写，`"True"`、`"true"`、
+`"1"`、`"001"` 和字面 `"nan"` 是独立类别。原有非 Boolean 类别的字符串匹配保持不变，
+例如明确设为类别的整数 `1` 可以匹配文本 `"1"`，但不会匹配 `"001"` 或浮点表示 `1.0`。
+混合物理类型应在输入前清理；Pandas 转换无法保持类型时明确报错。Null 和数值 NaN 进入
+Missing，转换结果保留用户原列，不泄漏或覆盖内部临时列。Native/LiteOpt 的全空 Boolean
+列保留空类别规则，后续非空值进入 Other，null 进入 Missing；Optimal 的全空输入仍沿用
+没有可用规则时明确失败的契约，不将其伪装成求解成功。
+
+`profile_bin_performance()` 与高层风险评估共享二分类标签校验：观测值允许 `0/1`、
+Boolean，及文本 `"0"`、`"1"`、`"true"`、`"false"`、`"True"`、`"False"`。
+Null、NaN 和空字符串表示未表现；`-1` 在此接口不是未表现哨兵，和 `2`、`0.5` 等一样
+在聚合前报错，不会参与坏样本求和或覆盖 WOE。直接表现接口保留合法单类别的计数和坏账率，
+没有任何观测标签则报错；高层监督分箱仍要求满足所选算法的标签条件。
+直接分箱器的监督拟合要求保持原样，部分标签的高层评估会按既有规则筛选拟合样本。
+
 ## 分箱诊断与 JSON artifact
 
 `get_fit_report()` 固定返回 Polars 表，包含 `feature`、`dtype`、`feature_type`、
@@ -75,6 +123,23 @@ JSON 顶层包含 `artifact_type`、`schema_version`、`binner_type`、`mars_ver
 | `detail_table` | 分箱样本数、坏账率、WOE 和 IV 明细 |
 | `trend_tables` | PSI、缺失率和坏账率等分组趋势 |
 | `missing_by_day_table` | 使用 `time_col` 计算的按日缺失趋势 |
+
+## 多目标与默认特征
+
+`target=["bad30", "bad60"]` 使用首个目标作为分箱参考，只拟合一次；后续目标复用同一组
+边界，各自按本目标的有效标签计算风险指标。提供 `benchmark_df` 时，监督分箱使用基准表中的
+首目标。没有独立的参考目标选择参数，调整目标列表顺序会改变参考。
+
+省略 `features` 时，高层入口只推断一次，排除全部目标列及声明的 `group_col`、`time_col`、
+`weights_col`、`amount_col`；raw KS 和所有目标评估使用同一特征集。显式 `features` 保留现有
+选择优先级和校验。目标不能同时声明为分组、时间、权重或金额角色；排除后没有特征会明确报错。
+
+```python
+--8<-- "docs/snippets/multitarget_risk.py"
+```
+
+`summary_table` 的 `target` 和 `detail_table` 的 `y` 区分各目标；`trend_tables` 仍只展示
+首目标。null/NaN 标签各自排除，不用另一个目标的观测状态补全。
 
 ## 原始数值 KS
 

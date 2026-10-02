@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from typing import Any, Dict, List, Literal, Tuple
 
 import numpy as np
-import pandas as pd
 import polars as pl
 from joblib import Parallel, delayed
 from optbinning import OptimalBinning
@@ -244,52 +243,6 @@ class MarsOptimalBinner(MarsBinnerBase):
         )
         return params
 
-    def fit(
-        self,
-        X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
-        *,
-        features: list[str] | None = None,
-        cat_features: list[str] | None = None,
-    ) -> MarsOptimalBinner:
-        """
-        拟合最优分箱器。
-
-        Parameters
-        ----------
-        X : pl.DataFrame | pd.DataFrame
-            输入特征矩阵。
-        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
-            目标变量。最优分箱依赖监督信息；省略或传入 ``None`` 时抛出 ``ValueError``。
-        features : list[str] | None
-            本次拟合的特征列；不传时使用全部候选列。
-        cat_features : list[str] | None
-            明确指定的类别特征列。
-
-        Returns
-        -------
-        MarsOptimalBinner
-            拟合完成后的最优分箱器实例。
-
-        Raises
-        ------
-        ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
-
-        Examples
-        --------
-        >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
-        >>> y = pl.Series("target", [0, 0, 1, 1])
-        >>> binner = MarsOptimalBinner(n_bins=2, min_bin_n_event=30)
-        >>> binner.fit(X, y).feature_names_in_
-        ['age']
-        """
-        if y is None:
-            raise ValueError("MarsOptimalBinner.fit requires y.")
-
-        super().fit(X, y, features=features, cat_features=cat_features)
-        return self
-
     def _fit_impl(self, X: pl.DataFrame, y: pl.Series | None = None) -> None:
         """
         自动执行特征识别与任务流分发。
@@ -306,7 +259,7 @@ class MarsOptimalBinner(MarsBinnerBase):
         self._cache_y = y
 
         if y is None:
-            raise ValueError("Optimal Binning requires target 'y' to calculate IV/WOE.")
+            raise ValueError("MarsOptimalBinner.fit requires y.")
 
         y_np = np.ascontiguousarray(y.to_numpy()).astype(np.int32)
 
@@ -590,6 +543,17 @@ class MarsOptimalBinner(MarsBinnerBase):
           Worker 进程拿到的直接是满足 `optbinning` 输入要求的 `pl.Utf8` 映射数据。
         """
         raw_exclude = self.special_values + self.missing_values
+        unique_values = {col: X[col].drop_nulls().unique() for col in cat_cols}
+        original_values: dict[str, dict[str, Any]] = {
+            col: {
+                str(key): value
+                for key, value in zip(
+                    unique_values[col].cast(pl.Utf8).to_list(), unique_values[col].to_list()
+                )
+                if value is not None
+            }
+            for col in cat_cols
+        }
 
         def cat_worker(
             col: str,
@@ -617,8 +581,9 @@ class MarsOptimalBinner(MarsBinnerBase):
         def cat_task_gen() -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
             """逐列生成类别型最优分箱任务。"""
             for c in cat_cols:
-                series = X.get_column(c)
-                col_dtype = series.dtype
+                original_series = X.get_column(c)
+                col_dtype = original_series.dtype
+                series = original_series.cast(pl.Utf8)
 
                 # [核心提速] Top-K 预处理使用 Polars 原生操作
                 if self.max_cats_to_solver is not None:
@@ -626,14 +591,20 @@ class MarsOptimalBinner(MarsBinnerBase):
                     top_vals = top_k_df.get_column(c)
 
                     truncated_expr: pl.Expr = (
-                        pl.when(polars_is_in(pl.col(c), top_vals))
-                        .then(pl.col(c))
+                        pl.when(pl.col(c).is_null())
+                        .then(None)
+                        .when(polars_is_in(pl.col(c).cast(pl.Utf8), top_vals))
+                        .then(pl.col(c).cast(pl.Utf8))
                         .otherwise(pl.lit("__Mars_Other_Pre__"))
                     )
                     series = X.select(truncated_expr).to_series()
 
                 # 获取该列的安全排除列表
-                safe_exclude = self._get_safe_values(col_dtype, raw_exclude)
+                safe_exclude = (
+                    pl.Series(self._get_safe_values(col_dtype, raw_exclude), dtype=col_dtype)
+                    .cast(pl.Utf8)
+                    .to_list()
+                )
 
                 # 过滤条件: 非空 且 不在排除列表中
                 valid_mask = series.is_not_null()
@@ -659,6 +630,10 @@ class MarsOptimalBinner(MarsBinnerBase):
 
         for col, splits, error_msg in results:
             if splits is not None:
-                self.cat_cuts_[col] = splits
+                # 求解器使用字符串类别，正式规则保留原值类型以供转换与 JSON 重放。
+                self.cat_cuts_[col] = [
+                    [original_values[col].get(str(value), value) for value in group]
+                    for group in splits
+                ]
             if error_msg:
                 self.fit_failures_[col] = error_msg

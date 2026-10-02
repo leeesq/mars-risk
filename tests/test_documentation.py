@@ -28,6 +28,7 @@ BASIC_SNIPPETS = [
     "quickstart.py",
     "data_profiling.py",
     "baseline_evaluation.py",
+    "multitarget_risk.py",
     "feature_selection.py",
     "rule_mining.py",
     "monitoring.py",
