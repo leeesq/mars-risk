@@ -19,6 +19,11 @@ Report 保存汇总表、明细表、趋势表和元数据。它适合在 Python
 [外部 Agent 指南](../user-guide/external-agents.md)。对人工交付，再调用
 `write_excel()` 或 `write_html()`。
 
+`to_ai_context()` 的 `evidence.query` 表示预算内实际展示的查询范围，保存加载后可直接精确回放。
+数值投影省略特征列时，`identities` 按行保留既有身份，业务元数据只关联当前页及必要关系端点。
+字符预算覆盖这些身份、有效查询、说明与完整 JSON；最小必要信封无法容纳时明确报错。
+同名 `status` 按真实报告与表解释，通用计算状态、模型分交叉风险状态和字段比较状态分别定义。
+
 ## HTML 与 Excel
 
 Excel 适合归档和人工筛选。HTML 适合大量特征的搜索、图表浏览和离线分享。大报告的 HTML 可将

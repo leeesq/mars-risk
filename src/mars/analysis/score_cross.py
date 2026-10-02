@@ -463,6 +463,9 @@ def cross_scores(
     -----
     计数和占比包含所有特殊箱；多个 target 的人数不可相加。比例为小数，delta
     为小数差。规则只精确回放完整保存分段，不支持箱内连续阈值的插值。
+    parameters.scope_dimensions 记录 group/period 的实际来源、列和生效时间粒度，
+    不从标签或周期数量猜测时间维度；未声明时间时内部 Total 只用于统计 scope。
+    此元数据随快照保存；旧快照缺少字段时保留原统计与参数，由展示端明确降级。
 
     Examples
     --------
@@ -785,6 +788,19 @@ def cross_scores(
         "group_col": group_col,
         "time_col": time_col,
         "time_grain": time_grain,
+        # 记录独立上下文的实际来源；内部占位标签与真实分组标签可以同名。
+        "scope_dimensions": {
+            "group": {
+                "source": "group" if group_col is not None else "none",
+                "column": group_col,
+                "grain": None,
+            },
+            "period": {
+                "source": "time" if time_col is not None else "none",
+                "column": time_col,
+                "grain": (time_grain or "month") if time_col is not None else None,
+            },
+        },
         "actual_scope_count": scopes.height,
         "max_scopes": max_scopes,
         "weights_col": weights_col,

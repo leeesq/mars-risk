@@ -11,6 +11,67 @@ from mars.core.constants import DIVISION_EPSILON, METRIC_EPSILON
 OrderedMetricSortBy = Literal["woe", "bin_index"]
 
 
+def normalize_binary_target_column(df: pl.DataFrame, target: str) -> pl.DataFrame:
+    """校验二分类标签，保留 null/NaN 的未观测语义并拒绝 -1 等非法值。"""
+    dtype = df.schema[target]
+    if dtype == pl.Boolean:
+        return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
+
+    if dtype in {pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64}:
+        invalid_values = (
+            df.filter(pl.col(target).is_not_null() & ~pl.col(target).is_in([0, 1]))
+            .select(pl.col(target).unique().head(5)).to_series().to_list()
+        )
+        if invalid_values:
+            raise ValueError(
+                f"Target column '{target}' contains invalid values {invalid_values}. "
+                "Please clean it to 0/1/True/False/null before evaluation."
+            )
+        return df.with_columns(pl.col(target).cast(pl.Int8).alias(target))
+
+    if dtype in {pl.Float32, pl.Float64}:
+        valid_expr = pl.col(target).is_null() | pl.col(target).is_nan() | pl.col(target).is_in([0.0, 1.0])
+        invalid_values = (
+            df.filter(~valid_expr).select(pl.col(target).unique().head(5)).to_series().to_list()
+        )
+        if invalid_values:
+            raise ValueError(
+                f"Target column '{target}' contains invalid values {invalid_values}. "
+                "Please clean it to 0/1/True/False/null before evaluation."
+            )
+        return df.with_columns(pl.col(target).fill_nan(None).cast(pl.Int8).alias(target))
+
+    if dtype == pl.String:
+        valid_strings = ["0", "1", "true", "false", "True", "False", ""]
+        invalid_values = (
+            df.filter(pl.col(target).is_not_null() & ~pl.col(target).is_in(valid_strings))
+            .select(pl.col(target).unique().head(5)).to_series().to_list()
+        )
+        if invalid_values:
+            raise ValueError(
+                f"Target column '{target}' contains invalid values {invalid_values}. "
+                "Please clean it to 0/1/True/False/null before evaluation."
+            )
+        normalized = (
+            pl.when(pl.col(target).is_null() | (pl.col(target) == "")).then(None)
+            .when(pl.col(target).str.to_lowercase() == "true").then(1)
+            .when(pl.col(target).str.to_lowercase() == "false").then(0)
+            .otherwise(pl.col(target).cast(pl.Int8, strict=False)).alias(target)
+        )
+        return df.with_columns(normalized)
+
+    invalid_values = (
+        df.filter(pl.col(target).is_not_null())
+        .select(pl.col(target).unique().head(5)).to_series().to_list()
+    )
+    if invalid_values:
+        raise ValueError(
+            f"Target column '{target}' contains invalid values {invalid_values}. "
+            "Please clean it to 0/1/True/False/null before evaluation."
+        )
+    return df.with_columns(pl.lit(None).cast(pl.Int8).alias(target))
+
+
 def normalize_ordered_metric_sort_by(value: str | None) -> OrderedMetricSortBy:
     """校验并规范化 KS/AUC 有序指标排序口径。"""
     normalized = "woe" if value is None else str(value).strip().lower()

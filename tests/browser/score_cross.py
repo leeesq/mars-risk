@@ -72,8 +72,10 @@ def _select_scope(page: Page, scope: dict[str, Any]) -> None:
     assert page.evaluate("document.activeElement.matches('#dataset-seg button.active')")
     after_group = _scope(page)
     assert after_group["target"] == scope["target"] and after_group["group"] == scope["group"]
-    if scope["period"] is not None:
-        page.get_by_label("周期", exact=True).select_option(label=str(scope["period"]))
+    if scope["period"] != after_group["period"]:
+        page.locator("#period").select_option(
+            label="未解析时间" if scope["period"] is None else str(scope["period"])
+        )
     assert _scope(page) == scope
 
 

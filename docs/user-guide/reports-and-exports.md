@@ -31,13 +31,15 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 | --- | --- | --- |
 | `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables`、`comparison_tables`、`report_meta` |
 | `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
+| `CorrelationReport` | Stable | `features`、`pairs`、`correlation_decisions` 等公共表；[相关性指南](correlation-and-score-cross.md#相关性报告) |
+| `ScoreCrossReport`（`mars.analysis`） | Stable | `cells`、边际、`overall`、`bins`；[模型分交叉指南](correlation-and-score-cross.md#固定分段交叉) |
 | `MarsRuleReport` | Experimental | `summary_table`、`detail_tables`、`metadata`；公共查询、桥接关联、保存恢复 |
 | `MarsMonitoringReport` | Experimental | 监控汇总、分箱统计、表现覆盖率和元数据 |
 | `MarsModelingReport` | Experimental | 多样本切片的汇总、明细、趋势和元数据 |
 
 ## 查询已有报告和交给 AI
 
-画像与分箱报告提供 Stable `describe()`、`get_table()`、`to_ai_context()` 和 `get_feature()`。
+画像、分箱、相关性与模型分交叉报告提供 Stable `describe()`、`get_table()`、`to_ai_context()` 和 `get_feature()`。
 这些方法只查询已计算结果，不调用 LLM、不重新计算统计，也不修改原报告。
 
 规则报告也满足公共 Report 契约，summary 为挖掘级汇总；成员特征查询通过轻量桥接，
@@ -95,6 +97,29 @@ report.write_html(
 `MarsProfileReport.write_html()` 始终生成无外部资源的单文件，包含 Metadata、Overview、
 DQ、Stats 和 Comparisons 页面；它不生成图表。所有 Stable 报告导出已改为严格失败：
 资源缺失、请求内容未生成或写入失败都会抛异常，不再只记日志后返回成功。
+全局搜索与每张表的局部搜索按交集生效；清空其中一个仍保留另一个条件。
+局部搜索只影响所属表，排序和页面切换保留条件。当前是页面导航，没有行级分页。
+
+分箱报告的原始 Excel 入口保留透视模板；缓存可能仍是模板占位值，需要在原生 Excel 中
+刷新透视表并保存。`openpyxl.load_workbook(..., data_only=True)` 不会执行这个刷新。
+向人工用户交付本次当前数值时，使用已有静态快照入口：
+
+```python
+from mars.reporting import snapshot_report, load_report
+
+snapshot_report(report).write_excel("risk_static.xlsx")
+report.save("risk.marsreport")
+# 另一进程只持有保存文件时，也能直接静态导出。
+restored = load_report("risk.marsreport")
+restored.write_excel("risk_restored_static.xlsx")
+```
+
+静态工作簿逐公共表写出当前值，不依赖透视缓存；它不提供原模板的可刷新透视交互。
+最短完整示例同时包含保存、加载和实际 Notebook 比较表渲染：
+
+```python
+--8<-- "docs/snippets/report_presentations.py"
+```
 
 ## 3. 单独复用趋势图
 
@@ -118,8 +143,9 @@ fragment = report.render_risk_trends_html(
 
 !!! warning "Scoring：Experimental"
 
-    评分映射、刻度参数和 SQL 输出仍可能调整。受控生产使用应固定 `mars-risk==0.0.28`，
-    并为 `points_table` 和生成 SQL 增加契约测试。
+    评分映射、刻度参数和 SQL 输出仍可能调整。当前 0.0.28 是源码版本，按
+    [安装指南](../getting-started/installation.md)安装并固定核验过的源码提交；正式发布后再固定
+    对应 PyPI 版本，并为 `points_table` 和生成 SQL 增加契约测试。
 
 ```python
 --8<-- "docs/snippets/reporting_scorecard.py"
@@ -198,10 +224,15 @@ selector 中为“来源 → 特征列表”，在分箱报告构造器中为“
 `to_ai_context(queries={table: get_table_options}, max_chars=16000)` 支持不同表使用不同条件；
 旧的 features/columns/filters/limit 等共同参数会适配到相同查询路径。摘要不能替代完整文件。
 桥接关系的 key 与 feature 可以指向同一列；原报告和保存后的快照均可筛选、分页和生成
-AI 证据，统计行不会按成员展开。有限上下文关联保留证据涉及的成员；查询明确指定的特征
-及报告声明的 feature_scope 也按既有契约保留其元数据。
+AI 证据，统计行不会按成员展开。有限上下文关联保留实际返回页涉及的成员和关系两端；
+报告声明的 `feature_scope` 用于解释实际返回的汇总行，不附带未返回特征的字典。
+窄投影省略身份列时，`evidence.identities` 与 `rows` 一一对应，保留既有身份字段；裁行同步裁身份。
 宽趋势的指标只定义一次，日期/分组以原始列标识为维度，证据保持与原表对应的紧凑宽行。
-预算涵盖整个最终 JSON 的 Unicode 字符，**不是 token 数**。超预算依次裁剪完整时间列、行及
+`evidence.query` 是实际展示子集的有效查询；预算裁剪后 `columns/limit` 同步缩减，
+可直接传回 `get_table` 重建展示行和列。原筛选后的 `total_rows` 与省略说明保留。
+非有限值筛选使用既有 `$mars` float 标记，标量与 `in` 列表均可 JSON 回放；畸形标签明确报错，
+普通字符串不转换，NaN 相等和空判断沿用各后端现有规则。
+预算涵盖整个最终 JSON 的 Unicode 字符，包含查询与身份，**不是 token 数**。超预算依次裁剪完整时间列、行及
 说明块，省略记录包含数量、原因和 describe/get_table 定位。极小预算容不下必要身份及引用时
 报 ValueError。未选择特征的项目字典不会默认注入上下文。
 

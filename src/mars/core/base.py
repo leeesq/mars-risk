@@ -204,8 +204,16 @@ class MarsBaseEstimator(BaseEstimator):
             pd_dtype = df_pd[col].dtype
             pl_dtype = pl_schema.get(col)
 
-            is_pd_numeric = pd.api.types.is_numeric_dtype(pd_dtype)
+            is_pd_boolean = pd.api.types.is_bool_dtype(pd_dtype)
+            is_pd_numeric = pd.api.types.is_numeric_dtype(pd_dtype) and not is_pd_boolean
             is_pl_numeric = pl_dtype in self._PL_NUMERIC_TYPES
+
+            if is_pd_boolean and pl_dtype not in {pl.Boolean, pl.Null}:
+                raise DataTypeError(
+                    f"Column '{col}' is Boolean in Pandas ({pd_dtype}) "
+                    f"but converted to {pl_dtype} in Polars.",
+                    context={"feature": str(col), "polars_dtype": str(pl_dtype)},
+                )
 
             if is_pd_numeric and not is_pl_numeric:
                 if pl_dtype == pl.Null:

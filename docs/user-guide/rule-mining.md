@@ -6,8 +6,9 @@ description: 使用 mars.rule 生成、验证、筛选、部署和报告策略�
 
 !!! warning "Experimental"
 
-    `mars.rule` 首版随 MARS 0.0.28 发布。它不兼容旧 `deimos.*` 导入或旧 RuleSet JSON；生产流程
-    应固定 `mars-risk==0.0.28` 并保存候选审计、解析后的 spec 和验证状态。
+    当前 MARS 0.0.28 源码提供 `mars.rule` 首版，尚未作为该版本发布到 PyPI。
+    它不兼容旧 `deimos.*` 导入或旧 RuleSet JSON；按[安装指南](../getting-started/installation.md)
+    安装并固定核验过的源码提交，保存候选审计、解析后的 spec 和验证状态。
 
 ## 最小工作流
 

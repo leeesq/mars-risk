@@ -179,44 +179,6 @@ class MarsLiteOptBinner(MarsBinnerBase):
         self.fitted_trends_: dict[str, str] = {}
         self.candidate_scores_: dict[str, dict[str, float]] = {}
 
-    def fit(
-        self,
-        X: pl.DataFrame | pd.DataFrame,
-        y: pl.Series | pd.Series | np.ndarray | list[Any] | None = None,
-        *,
-        features: list[str] | None = None,
-        cat_features: list[str] | None = None,
-    ) -> MarsLiteOptBinner:
-        """
-        拟合轻量级最优分箱规则。
-
-        Parameters
-        ----------
-        X : pl.DataFrame | pd.DataFrame
-            输入特征矩阵。
-        y : pl.Series | pd.Series | np.ndarray | list[Any] | None
-            二分类目标变量，必须为 0/1 或布尔值；省略或传入 ``None`` 时抛出 ``ValueError``。
-        features : list[str] | None
-            本次拟合的特征列；不传时使用全部候选列。
-        cat_features : list[str] | None
-            明确指定为类别型的特征列。
-
-        Returns
-        -------
-        MarsLiteOptBinner
-            拟合完成后的当前实例。
-
-        Raises
-        ------
-        ValueError
-            当 ``y`` 缺失、标签非法或输入列配置不满足拟合要求时抛出。
-        """
-        if y is None:
-            raise ValueError("MarsLiteOptBinner.fit requires y.")
-
-        super().fit(X, y, features=features, cat_features=cat_features)
-        return self
-
     def _serialization_params(self) -> dict[str, Any]:
         """返回轻量最优分箱器的完整构造配置。"""
         params = super()._serialization_params()
@@ -255,10 +217,15 @@ class MarsLiteOptBinner(MarsBinnerBase):
             for feature, scores in state.get("candidate_scores_", {}).items()
         }
 
+    def _reset_extra_fit_state(self) -> None:
+        """清理本轮学习的趋势选择与候选评分。"""
+        self.fitted_trends_ = {}
+        self.candidate_scores_ = {}
+
     def _fit_impl(self, X: pl.DataFrame, y: pl.Series | None = None) -> None:
         """识别列类型并分别拟合数值轻量最优分箱与类别 Top-K 分箱。"""
         if y is None:
-            raise ValueError("MarsLiteOptBinner requires target 'y'.")
+            raise ValueError("MarsLiteOptBinner.fit requires y.")
 
         y_series = self._validate_binary_y(y, expected_len=X.height)
         self._cache_X = X
@@ -286,7 +253,10 @@ class MarsLiteOptBinner(MarsBinnerBase):
                 num_cols.append(col)
 
         for col in null_cols:
-            self.bin_cuts_[col] = []
+            if col in cat_set or X.schema[col] in {pl.Boolean, pl.Utf8, pl.Categorical}:
+                self.cat_cuts_[col] = []
+            else:
+                self.bin_cuts_[col] = []
 
         if num_cols:
             self._fit_numerical_impl(X, y_series, num_cols)

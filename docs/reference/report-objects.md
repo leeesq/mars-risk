@@ -11,6 +11,8 @@ Report 保存多粒度结构化数据；导出文件只是可选呈现。概念�
 | --- | --- | --- |
 | `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables` |
 | `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
+| `CorrelationReport` | Stable | `features`、`pairs`、`correlation_decisions`、`selection`；[相关性指南](../user-guide/correlation-and-score-cross.md#相关性报告) |
+| `ScoreCrossReport`（`mars.analysis`） | Stable | `cells`、`row_summary`、`column_summary`、`overall`、`bins`；[交叉指南](../user-guide/correlation-and-score-cross.md#固定分段交叉) |
 | `MarsRuleReport` | Experimental | `summary_table`、`detail_tables`、`metadata`，公共 Report 查询/保存；规则成员桥接 |
 | `MarsMonitoringReport` | Experimental | 汇总、分箱统计、表现覆盖率、`metadata` |
 | `MarsScorecard` | Experimental | `points_table`、评分刻度参数和 SQL 导出 |

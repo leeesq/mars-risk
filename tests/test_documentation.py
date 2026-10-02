@@ -28,11 +28,13 @@ BASIC_SNIPPETS = [
     "quickstart.py",
     "data_profiling.py",
     "baseline_evaluation.py",
+    "multitarget_risk.py",
     "feature_selection.py",
     "rule_mining.py",
     "monitoring.py",
     "reporting_scorecard.py",
     "report_queries.py",
+    "report_presentations.py",
     "portable_reports.py",
 ]
 

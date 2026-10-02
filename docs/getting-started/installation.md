@@ -23,7 +23,8 @@ python -m pip install -e .
 
 ## 已发布版本
 
-截至 2026-10-01，[PyPI](https://pypi.org/project/mars-risk/)已发布 **0.0.27**。
+截至 2026-10-02，核验[PyPI](https://pypi.org/project/mars-risk/)和
+[最新 GitHub release](https://github.com/leeesq/mars-risk/releases/tag/0.0.27)均为 **0.0.27**。
 它不包含本文全部新能力；动态徽章展示发布状态，不代表 main 已发布。
 
 ```bash

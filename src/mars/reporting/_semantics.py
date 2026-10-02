@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 # 定义来自 compute/binning、profiling/metrics；业务单位未登记时不能推断。
 _DEFINITIONS: dict[str, tuple[str, str]] = {
     "missing": ("ratio", "缺失箱样本量/全样本量；画像包括 Null、NaN 和配置缺失值"),
@@ -70,7 +72,7 @@ _DEFINITIONS: dict[str, tuple[str, str]] = {
     "metric": ("identifier", "计算状态适用的指标或指标族"),
     "status": (
         "state",
-        "computed/not_computed/unobserved/undefined/insufficient_samples/failed/skipped；结合 reason",
+        "computed 已计算（有效零仍为零）；not_computed 未计算；unobserved 无观测标签；undefined 无法定义；insufficient_samples 样本不足；failed 计算失败；skipped 跳过；结合 reason",
     ),
     "reason": ("state_reason", "计算失败、跳过、无法定义或尚未表现的具体原因"),
     "group": ("dimension", "状态所属分组；Total 为全量"),
@@ -136,16 +138,80 @@ _DEFINITIONS.update({
     "y_bin": ("identifier", "Y 轴固定 bin_id，区间见 bins"),
     "lower": ("score_unit", "原始分段数值下界；null 与 lower_unbounded 一起解释"),
     "upper": ("score_unit", "原始分段数值上界；null 与 upper_unbounded 一起解释"),
-    "status": ("state", "valid/low_sample/empty/unobserved/not_requested/invalid_denominator/unavailable；不是风险结论"),
-    "sample_status": ("state", "empty 或 populated；与是否请求标签分开"),
-    "unweighted_ci_status": ("state", "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested"),
-    "weighted_ci_status": ("state", "加权置信区间 unsupported，未请求 not_requested"),
-    "overall_status": ("state", "同 target/group/period 全样本总体坏率的状态，包含特殊箱"),
-    "lift_status": ("state", "相对整体风险倍数的 valid/empty/unobserved/not_requested/invalid_denominator 等状态；有效零分子仍为 valid"),
 })
 
 
-def _definition(column: str) -> dict[str, str]:
+_SCORE_STATE_DEFINITIONS: dict[str, tuple[str, str]] = {
+    "status": ("state", "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论"),
+    "sample_status": ("state", "empty 无样本或 populated 有样本；与是否请求标签分开"),
+    "unweighted_ci_status": ("state", "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested"),
+    "weighted_ci_status": ("state", "加权置信区间 unsupported；未请求 not_requested"),
+    "overall_status": ("state", "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱"),
+    "lift_status": ("state", "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid"),
+}
+
+
+def _scoped_definition(
+    column: str, report_type: str | None, table: str | None
+) -> tuple[str, str] | None:
+    """同名状态字段按真实表选择状态机，不扩大任何表的可用状态。"""
+    score_tables: dict[str, set[str]] = {
+        "score_cross": {"cells", "row_summary", "column_summary", "overall"},
+        "score_policy": {"summary", "regions", "axis_regions"},
+    }
+    if table in score_tables.get(report_type or "", set()):
+        return _SCORE_STATE_DEFINITIONS.get(column)
+    if (
+        report_type in {"MarsBinningReport", "MarsProfileReport"}
+        and table == "calculation_status"
+        and column == "reason"
+    ):
+        return ("state_reason", "no_target 未提供目标；no_observed_labels 无已观测标签；single_observed_class 仅一种观测类别；其他失败、跳过、样本不足或无法定义原因；空值不替代有效零")
+    if report_type == "correlation":
+        if table == "pairs" and column == "status":
+            return ("state", "valid 有可用相关系数；unavailable 相关系数无法定义；有效零相关仍为 valid")
+        if table == "selection" and column == "status":
+            return ("state", "Dropped 已移除；Checked 已执行检查；Selected 已入选；筛选事件状态，结合 stage/reason")
+    if (
+        report_type == "MarsProfileReport"
+        and table == "comparison.schema"
+        and column == "status"
+    ):
+        return ("state", "matched 两侧同类型；compatible_change 同兼容族类型变化；incompatible_change 类型族不兼容；current_only 仅当前存在；benchmark_only 仅基准存在")
+    if (
+        report_type == "MarsProfileReport"
+        and table == "comparison.unseen"
+        and column == "status"
+    ):
+        return ("state", "comparable 可计算；current_only/benchmark_only 缺少一侧特征；not_applicable 非类别特征；incompatible_dtype 类型族不兼容；no_reference_values 基准无有效值；no_current_values 当前无有效值；有效零 unseen rate 仍可计算")
+    if (
+        report_type == "MarsProfileReport"
+        and table in {"comparison.schema", "comparison.unseen"}
+        and column == "reason"
+    ):
+        return ("state_reason", "两侧字段存在性、类型兼容或有效类别集合的具体原因；不是数值指标")
+    return None
+
+
+def _normalize_state_definitions(description: dict[str, Any]) -> None:
+    """在已有版本一目录的读取边界修正已知表文案，保留数值与自定义领域定义。"""
+    report_type = description.get("report_type")
+    for table, entry in description.get("tables", {}).items():
+        for column, field in entry.get("fields", {}).items():
+            scoped = _scoped_definition(column, report_type, table)
+            if scoped is not None:
+                field.update(unit=scoped[0], meaning=scoped[1])
+            elif (
+                report_type in {"MarsBinningReport", "MarsProfileReport"}
+                and table == "calculation_status"
+                and column == "status"
+            ):
+                field.update(_definition(column))
+
+
+def _definition(
+    column: str, *, report_type: str | None = None, table: str | None = None
+) -> dict[str, str]:
     """映射显式登记的指标变体；其余字段明确标为未知。"""
     aliases = {
         "missing_rate": "missing",
@@ -159,7 +225,9 @@ def _definition(column: str) -> dict[str, str]:
         "missing_max": "missing",
     }
     name = aliases.get(column, column)
-    unit, meaning = _DEFINITIONS.get(name, ("unknown", "描述字段或未登记指标；含义未知"))
+    unit, meaning = _scoped_definition(name, report_type, table) or _DEFINITIONS.get(
+        name, ("unknown", "描述字段或未登记指标；含义未知")
+    )
     if name != column and column.endswith("_max"):
         meaning += "；跨有效分组最大值"
     elif name != column and column.endswith("_min"):

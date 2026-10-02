@@ -10,8 +10,9 @@ Experimental 说明接口成熟度，与暂停独立。可借助编程型 AI、M
 
 !!! warning "Experimental"
 
-    Monitoring 的 report 字段、target 校验和报警结果仍可能调整。受控生产使用应固定
-    `mars-risk==0.0.28`，并为依赖的 report 字段和报警结果增加契约测试。
+    Monitoring 的 report 字段、target 校验和报警结果仍可能调整。当前 0.0.28 是源码版本，
+    按[安装指南](../getting-started/installation.md)安装并固定核验过的源码提交；正式发布后
+    再固定对应 PyPI 版本，并为依赖的 report 字段和报警结果增加契约测试。
 
 ## 适用场景
 
@@ -54,6 +55,12 @@ target 的有效非空值只能是 `0`、`1`、`True` 或 `False`；空值表示
 | `metadata` | 规则来源、趋势顺序和 PSI 口径 |
 
 `trend_column_order="asc"` 从早到晚排列趋势列，`"desc"` 让最新分组靠前；`Total` 始终位于最后。
+
+内置 Agent 的 `monitor_data` 消费 `register_dataset(feature_metadata=...)` 登记的特征来源，
+保留本次特征的来源快照。`get_report_table(sources=..., features=...)` 复用公共查询的交集语义，
+证据引用只记录已执行条件；未知来源报 `INVALID_ARGUMENTS`。没有可靠来源信息的旧监控报告
+明确拒绝来源筛选，仍可不带 `sources` 查询。该适配不扩展监控分析能力，也不把旧 Monitoring
+报告变成通用可保存报告；现有保存边界见[报告与评分卡](reports-and-exports.md)。
 
 ## 报警摘要
 

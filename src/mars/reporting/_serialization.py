@@ -54,11 +54,12 @@ def decode_json_value(value: Any) -> Any:
     if isinstance(value, list):
         return [decode_json_value(item) for item in value]
     if isinstance(value, dict):
-        if value.get("$mars") == "float":
+        if "$mars" in value:
             float_values = {"nan": float("nan"), "inf": float("inf"), "-inf": float("-inf")}
             label = value.get("value")
             if (
-                set(value) != {"$mars", "value"}
+                value.get("$mars") != "float"
+                or set(value) != {"$mars", "value"}
                 or not isinstance(label, str)
                 or label not in float_values
             ):

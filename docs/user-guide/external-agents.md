@@ -32,6 +32,11 @@ MARS 是面向人和 AI Agent 的风控分析工具箱。外部 Agent 直接消�
 KS 使用百分制，坏率与缺失率用比例，IV／PSI 无量纲；金额与币种独立记录。
 `calculation_status`、诊断和原始空值一起解释未表现、未计算、失败、样本不足和未定义值。
 没有状态行也不能证明所有指标均可用；不要将缺失值解释为 0 或“没有风险”。
+字段语义按报告和表选择：画像／分箱的 `calculation_status` 使用
+`computed/not_computed/unobserved/undefined/insufficient_samples/failed/skipped`；
+`no_target` 是未提供目标，`no_observed_labels` 是目标没有已观测标签。
+Score Cross 的格子、边际和整体表另用 `valid/low_sample/empty/unobserved/not_requested/invalid_denominator`，
+不能将这些状态套到通用计算状态或 schema/unseen 的比较状态上。可计算的零与未计算、失败、空值分别解释。
 
 ## 业务元数据与稳定英文身份
 
@@ -86,6 +91,9 @@ if page["next_offset"] is not None:
 引用保留报告身份、表名和查询参数；保存后可在同一快照重放。
 先筛选／排序，再列投影和分页，避免先把完整表转换为 Pandas／JSON。
 筛选只支持已有字段及限定操作符，不执行 SQL 或任意表达式。
+仅投影数值时，`to_ai_context()` 的 `evidence.identities` 按相同顺序补充每行未输出的特征身份列；
+与 `rows` 按行对应。相关性等关系表保留两端身份，规则关系继续采用已保存的桥接身份。
+`description.feature_metadata` 只关联返回页涉及的实体和必要 scope，不含未返回的请求特征。
 
 ## JSON 摘要与字符预算
 
@@ -104,10 +112,26 @@ context_json = restored.to_ai_context(
 预算覆盖最终序列化 JSON 的 Unicode 字符，包括目录、元数据与省略说明，**不是 token 数**。
 可以选择表、特征、来源、筛选条件及列；不同表使用 `queries` 指定不同参数。
 超预算会省略完整字段、行或说明块，记录数量、原因与继续查询引用。
+`evidence.query` 始终表示最终生效的查询；裁列后写入实际 `columns`，裁行后写入实际 `limit`。
+直接使用这份查询可重建展示的行、列、顺序和值，无需自行补裁剪参数：
+
+```python
+import json
+
+context = json.loads(context_json)
+for item in context["evidence"]:
+    replayed = restored.get_table(item["reference"], **item["query"])
+```
+
+`identities` 与业务元数据也计入预算；裁行时同步裁减，元数据不会夹带后续页特征。
 非空查询至少保留一条完整证据；必要说明和这条证据无法一起放入预算时抛 `ValueError`。
 可提高预算，或用 `columns` 投影需要的字段。计算为空与预算拒绝保持区别，完整数据仍在报告和快照中。
 多个字段相同的空值口径可合并到表级 `field_defaults.null`，字段继承该默认定义；指标单位和含义仍逐列说明。
 Null 使用 JSON null；非有限浮点使用 `$mars` 类型标记；数值 0 保持 0。
+筛选标量及 `eq`／`in` 的值接受同一受限标签，因此 JSON 往返、保存加载及新进程可直接重放。
+只接受 `{"$mars":"float","value":"nan"}`、`"inf"`、`"-inf"` 三种值且不允许多余字段；
+未知或畸形标签明确报错。普通 `"inf"`、`"-inf"`、`"NaN"` 字符串保持原类型，
+NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不新增过滤操作符。
 
 人工对话：将 `context_json` 粘贴到另一个对话框，并要求回答引用表与样本口径；摘要范围外的
 问题需补充查询结果。具备工具能力的外部 Agent：在 Python 环境加载完整快照，按目录读取

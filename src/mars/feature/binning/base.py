@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import multiprocessing
 from collections import defaultdict
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Set, TypeVar, Union, cast
 
@@ -21,6 +22,7 @@ from mars.compute import (
     normalized_auc_expr,
     ordered_binary_metric_exprs,
 )
+from mars.compute.binning import normalize_binary_target_column
 from mars.core.base import MarsTransformer
 from mars.feature.binning._json_codec import (
     decode_json_value,
@@ -139,6 +141,7 @@ class MarsBinnerBase(MarsTransformer):
 
         self.fit_failures_: Dict[str, str] = {}
         self._fit_report_rows: list[dict[str, Any]] = []
+        self._user_bin_rules: dict[str, Any] = {}
 
     def fit(
         self: _MarsBinnerT,
@@ -172,6 +175,12 @@ class MarsBinnerBase(MarsTransformer):
         ValueError
             请求的特征或类别特征不在输入中时抛出。
 
+        Notes
+        -----
+        重复拟合会重新学习本轮规则、WOE 和诊断，保留构造配置。
+        ``update_bins`` 明确设置的规则在本轮仍有同类型特征时继续生效。
+        失败拟合后不能转换、评估或保存旧结果；可以读取本轮诊断并再次拟合。
+
         Examples
         --------
         >>> X = pl.DataFrame({"age": [20, 30, 40, 50]})
@@ -179,29 +188,77 @@ class MarsBinnerBase(MarsTransformer):
         >>> binner.fit(X, features=["age"]).features
         ['age']
         """
+        self._reset_fit_state()
         self.features = list(features or [])
         self.cat_features = list(cat_features or [])
-        input_columns = list(X.columns)
-        missing_features = [feature for feature in self.features if feature not in input_columns]
-        missing_cat_features = [
-            feature for feature in self.cat_features if feature not in input_columns
-        ]
-        if missing_features or missing_cat_features:
-            raise ValueError(
-                "Binner fit received feature names that are absent from X: "
-                f"features={missing_features}, cat_features={missing_cat_features}."
-            )
-        super().fit(X, y)
-        X_pl = cast(pl.DataFrame, self._ensure_polars_dataframe(X))
-        self._finalize_fit_report(X_pl)
-        self._transform_impl(
-            X_pl,
-            features=self._usable_rule_features(),
-            return_type="index",
-            woe_batch_size=200,
-            lazy=True,
-        )
+        succeeded = False
+        try:
+            input_columns = list(X.columns)
+            missing_features = [feature for feature in self.features if feature not in input_columns]
+            missing_cat_features = [
+                feature for feature in self.cat_features if feature not in input_columns
+            ]
+            if missing_features or missing_cat_features:
+                raise ValueError(
+                    "Binner fit received feature names that are absent from X: "
+                    f"features={missing_features}, cat_features={missing_cat_features}."
+                )
+            super().fit(X, y)
+            # 父类完成算法调度后，仍需验证诊断及映射，才发布本轮可用状态。
+            self._is_fitted = False
+            X_pl = cast(pl.DataFrame, self._ensure_polars_dataframe(X))
+            self._apply_user_bin_rules()
+            self._finalize_fit_report(X_pl)
+            self._transform_impl(
+                X_pl,
+                features=self._usable_rule_features(),
+                return_type="index",
+                woe_batch_size=200,
+                lazy=True,
+            ).collect_schema()
+            succeeded = True
+        finally:
+            if not succeeded:
+                # 仅保留本轮失败诊断，清掉任何局部规则和训练缓存，拒绝读取旧成果。
+                self._reset_fit_state(clear_diagnostics=False)
+                for row in self._fit_report_rows:
+                    row["usable"] = False
+                    row["status"] = "failed"
+        self._is_fitted = True
         return self
+
+    def _reset_fit_state(self, *, clear_diagnostics: bool = True) -> None:
+        """清理每次拟合的已学状态，保留构造参数和用户明确更新的规则。"""
+        self._is_fitted = False
+        self.feature_names_in_ = []
+        self.bin_cuts_ = {}
+        self.cat_cuts_ = {}
+        self.bin_mappings_ = {}
+        self.bin_woes_ = {}
+        self._cache_X = None
+        self._cache_y = None
+        if clear_diagnostics:
+            self.fit_failures_ = {}
+            self._fit_report_rows = []
+        self._reset_extra_fit_state()
+
+    def _reset_extra_fit_state(self) -> None:
+        """供子类清理专属已学状态，不改变算法配置。"""
+
+    def _apply_user_bin_rules(self) -> None:
+        """仅对本轮已有同类型规则的特征应用用户明确更新的规则。"""
+        for feature, splits in self._user_bin_rules.items():
+            categorical = bool(splits) and isinstance(splits[0], list)
+            if categorical and feature in self.cat_cuts_:
+                dtype = self._cache_X.schema[feature] if self._cache_X is not None else pl.Null
+                expected_prefix = self._category_key_expr_prefix(dtype)
+                if all(
+                    self._category_key(value).startswith(expected_prefix)
+                    for group in splits for value in group
+                ):
+                    self.cat_cuts_[feature] = deepcopy(splits)
+            elif not categorical and feature in self.bin_cuts_:
+                self.bin_cuts_[feature] = deepcopy(splits)
 
     def _usable_rule_features(self) -> list[str]:
         """按拟合顺序返回具备数值或类别规则的特征。"""
@@ -517,6 +574,7 @@ class MarsBinnerBase(MarsTransformer):
             "bin_woes_": self.bin_woes_,
             "fit_failures_": self.fit_failures_,
             "fit_report_rows": self._fit_report_rows,
+            "user_bin_rules": self._user_bin_rules,
         }
 
     @staticmethod
@@ -633,6 +691,12 @@ class MarsBinnerBase(MarsTransformer):
         missing_state = sorted(required_state - set(state))
         if missing_state:
             raise ValueError(f"Binner artifact state is missing required fields: {missing_state}.")
+        user_rules = state.get("user_bin_rules", {})
+        if not isinstance(user_rules, dict) or any(
+            not isinstance(feature, str) or not isinstance(splits, list)
+            for feature, splits in user_rules.items()
+        ):
+            raise ValueError("Binner artifact `user_bin_rules` must map feature names to lists.")
 
         instance = target_cls(**params)
         instance._restore_serialization_state(state)
@@ -649,6 +713,8 @@ class MarsBinnerBase(MarsTransformer):
         self.bin_woes_ = dict(state["bin_woes_"])
         self.fit_failures_ = dict(state["fit_failures_"])
         self._fit_report_rows = list(state["fit_report_rows"])
+        self._user_bin_rules = deepcopy(state.get("user_bin_rules", {}))
+        self._restore_legacy_boolean_rules()
         self._cache_X = None
         self._cache_y = None
         self._restore_extra_serialization_state(state)
@@ -656,6 +722,22 @@ class MarsBinnerBase(MarsTransformer):
 
     def _restore_extra_serialization_state(self, state: dict[str, Any]) -> None:
         """供子类恢复额外拟合状态。"""
+
+    def _restore_legacy_boolean_rules(self) -> None:
+        """仅依据已保存 Boolean schema 恢复旧求解器的字符串布尔类别。"""
+        for row in self._fit_report_rows:
+            feature = row.get("feature")
+            if row.get("dtype") != "Boolean" or feature not in self.cat_cuts_:
+                continue
+            self.cat_cuts_[feature] = [
+                [
+                    value.lower() == "true"
+                    if isinstance(value, str) and value.lower() in {"true", "false"}
+                    else value
+                    for value in group
+                ]
+                for group in self.cat_cuts_[feature]
+            ]
 
     def save_json(self, path: str | Path) -> None:
         """
@@ -743,6 +825,9 @@ class MarsBinnerBase(MarsTransformer):
             self._fit_report_rows = []
         if "_requested_n_jobs" not in self.__dict__:
             self._requested_n_jobs = self.n_jobs
+        if "_user_bin_rules" not in self.__dict__:
+            self._user_bin_rules = {}
+        self._restore_legacy_boolean_rules()
 
     def clear_cache(self) -> None:
         """
@@ -817,6 +902,10 @@ class MarsBinnerBase(MarsTransformer):
                 # 数值列: 严格保留数值, 剔除 bool (True==1 歧义) 和字符串
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
                     safe_vals.append(v)
+            elif dtype == pl.Boolean:
+                # 布尔配置只匹配原生布尔值，避免 True 与数字 1 的隐式等价。
+                if isinstance(v, bool):
+                    safe_vals.append(v)
             else:
                 # 非数值列: 宽容处理, 全部转为字符串以匹配 Categorical/String 列
                 safe_vals.append(str(v))
@@ -849,6 +938,7 @@ class MarsBinnerBase(MarsTransformer):
         >>> isinstance(binner.get_bin_mapping("age"), dict)
         True
         """
+        self._check_is_fitted()
         if col not in self.bin_mappings_:
             raise KeyError(f"Feature {col!r} has no fitted bin mapping.")
         return dict(self.bin_mappings_[col])
@@ -858,6 +948,26 @@ class MarsBinnerBase(MarsTransformer):
         if series.dtype == pl.Null:
             return False
         return series.dtype in self.NUMERIC_DTYPES
+
+    @staticmethod
+    def _category_key(value: Any) -> str:
+        """编码原生类别键，区分 Boolean，其余沿用既有字符串匹配语义。"""
+        if isinstance(value, (bool, np.bool_)):
+            return "b:true" if value else "b:false"
+        return f"s:{value}"
+
+    @staticmethod
+    def _category_key_expr(col: str, dtype: pl.DataType) -> pl.Expr:
+        """生成与持久化类别值一致的类型感知匹配表达式，保留空值。"""
+        prefix = MarsBinnerBase._category_key_expr_prefix(dtype)
+        return pl.lit(prefix) + pl.col(col).cast(pl.Utf8)
+
+    @staticmethod
+    def _category_key_expr_prefix(dtype: pl.DataType) -> str:
+        """获取类别匹配的物理类型前缀，不改变字符串大小写或编号。"""
+        if dtype == pl.Boolean:
+            return "b:"
+        return "s:"
 
     def _materialize_woe(self, batch_size: int = 200) -> None:
         """
@@ -948,7 +1058,7 @@ class MarsBinnerBase(MarsTransformer):
         - 转换结束后, 会自动清理所有产生的中间 Join 列和临时缓存列, 保证输出 Schema 纯净。
         """
         exprs = []
-        temp_join_cols = []
+        temp_join_cols: list[str] = []
 
         # 索引协议常量: 与下游 Profiler 对齐
         IDX_MISSING = -1
@@ -958,6 +1068,15 @@ class MarsBinnerBase(MarsTransformer):
         # 获取 Schema
         schema_map = X.collect_schema() if isinstance(X, pl.LazyFrame) else X.schema
         current_columns = schema_map.names()
+        reserved_columns = set(current_columns)
+
+        def _temporary_column(base_name: str) -> str:
+            """为本次转换分配不覆盖用户输入或其他转换结果的临时列。"""
+            candidate = base_name
+            while candidate in reserved_columns:
+                candidate += "_"
+            reserved_columns.add(candidate)
+            return candidate
 
         all_train_cols = (
             list(features)
@@ -1050,20 +1169,22 @@ class MarsBinnerBase(MarsTransformer):
                     suffix = ",..." if len(group) > 3 else ""
                     idx_to_label[i] = f"{i:02d}_[{','.join(str(g) for g in disp_grp) + suffix}]"
                     for val in group:
-                        val_str = str(val)
+                        val_str = self._category_key(val)
                         cat_to_idx[val_str] = i
                         # 若训练阶段预聚合了 Other 占位类别，则沿用该箱作为默认去向。
-                        if val_str == "__Mars_Other_Pre__":
+                        if isinstance(val, str) and val == "__Mars_Other_Pre__":
                             default_bin_idx = i
 
                 self.bin_mappings_[col] = idx_to_label
                 # 强转 String, 确保类别匹配安全
-                target_col = pl.col(col).cast(pl.Utf8)
+                target_col = self._category_key_expr(col, col_dtype)
 
                 # 缺失值
-                missing_cond = target_col.is_null() | (target_col == "nan") # Polars 中 NaN 的字符串表现形式
+                missing_cond = pl.col(col).is_null()
+                if col_dtype in {pl.Float32, pl.Float64}:
+                    missing_cond |= pl.col(col).is_nan()
                 for v in safe_missing_vals:
-                    missing_cond |= (target_col == str(v))
+                    missing_cond |= (target_col == self._category_key(v))
                 layer_missing = pl.when(missing_cond).then(pl.lit(IDX_MISSING, dtype=pl.Int16))
 
                 # 特殊值
@@ -1074,31 +1195,27 @@ class MarsBinnerBase(MarsTransformer):
                         idx = IDX_SPECIAL_START - i
                         # 如果是特殊值则赋予 -3，否则掉入上一层的 current_branch (即 default_bin_idx)
                         current_branch = (
-                            pl.when(target_col == str(v))
+                            pl.when(target_col == self._category_key(v))
                             .then(pl.lit(idx, dtype=pl.Int16))
                             .otherwise(current_branch)
                        )
 
-                target_col_name = col
-                if col_dtype != pl.Utf8:
-                    target_col_name = f"_{col}_utf8_tmp"
-                    X = X.with_columns(pl.col(col).cast(pl.Utf8).alias(target_col_name))
-
                 # 路由: Join (高基数) vs Replace (低基数)
                 if len(cat_to_idx) > self.join_threshold:
+                    target_col_name = _temporary_column(f"_{col}_utf8_tmp")
+                    index_col_name = _temporary_column(f"_idx_{col}")
+                    X = X.with_columns(target_col.alias(target_col_name))
                     map_df = pl.DataFrame({
                         "_k": list(cat_to_idx.keys()),
-                        f"_idx_{col}": list(cat_to_idx.values())
-                    }).cast({"_k": pl.Utf8, f"_idx_{col}": pl.Int16})
+                        index_col_name: list(cat_to_idx.values())
+                    }).cast({"_k": pl.Utf8, index_col_name: pl.Int16})
 
                     # 跟随输入数据的 eager/lazy 形态，避免额外的执行模式切换。
                     join_tbl = map_df.lazy() if isinstance(X, pl.LazyFrame) else map_df
                     X = X.join(join_tbl, left_on=target_col_name, right_on="_k", how="left")
-                    temp_join_cols.append(f"_idx_{col}")
-                    if target_col_name != col:
-                        temp_join_cols.append(target_col_name)
+                    temp_join_cols.extend([index_col_name, target_col_name])
 
-                    layer_normal = pl.col(f"_idx_{col}")
+                    layer_normal = pl.col(index_col_name)
                 else:
                     # 类别型特征的 Replace 逻辑
                     # 1. 显式转 String 确保匹配安全
@@ -1214,7 +1331,8 @@ class MarsBinnerBase(MarsTransformer):
         X : pl.DataFrame | pd.DataFrame
             原始特征数据集。
         y : pl.Series | pd.Series
-            二分类目标标签。空值和 NaN 表示未表现样本，不参与任何监督指标计算。
+            二分类目标标签，仅接受 0/1、Boolean 及对应的合法字符串。
+            空值、NaN 和空字符串表示未表现样本。``-1`` 不属于本接口的标签哨兵。
         update_woe : bool
             是否将本次计算得到的 WOE 同步回写到 ``bin_woes_``。
         batch_size : int
@@ -1237,13 +1355,14 @@ class MarsBinnerBase(MarsTransformer):
         Raises
         ------
         ValueError
-            ``X`` 与 ``y`` 行数不一致，或 ``y`` 中没有任何已表现样本时抛出。
+            标签含非法值、``X`` 与 ``y`` 行数不一致，或没有任何已表现样本时抛出。
 
         Notes
         -----
         该方法依赖当前分箱器已完成拟合，并会复用 ``transform(return_type="index")``
         的输出结果来执行聚合统计。分箱规则不受本次评估标签空值影响，但所有标签
-        依赖指标只使用非空、非 NaN 的已表现样本。
+        依赖指标只使用已表现样本。合法单类别可生成计数和坏账率，
+        缺少两类支持的监督指标沿用缺失状态；校验失败不更新已有 WOE。
 
         Examples
         --------
@@ -1254,6 +1373,7 @@ class MarsBinnerBase(MarsTransformer):
         >>> "feature" in stats.columns
         True
         """
+        self._check_is_fitted()
         X = self._ensure_polars_dataframe(X)
         effective_ordered_metric_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
 
@@ -1266,6 +1386,9 @@ class MarsBinnerBase(MarsTransformer):
 
         if len(y) != X.height:
             raise ValueError(f"Target 'y' length mismatch: X({X.height}) vs y({len(y)})")
+
+        # 复用高层评估的标签契约，非法标签不能进入 bad 聚合或覆盖 WOE。
+        y = normalize_binary_target_column(y.to_frame(), y_name).get_column(y_name)
 
         # 在分箱转换前剔除未表现样本，避免空标签被误计为好样本。
         observed_mask: pl.Series = y.is_not_null()
@@ -1494,7 +1617,8 @@ class MarsBinnerBase(MarsTransformer):
         X : Union[pl.DataFrame, pd.DataFrame] | None
             用于重新计算 WOE 的数据。若为 None，将尝试使用 fit 时缓存的 _cache_X。
         y : Any | None
-            目标标签。若为 None，将尝试使用 fit 时缓存的 _cache_y。
+            二分类目标标签，支持 0/1、Boolean 及既有字符串表示；null/NaN 和空字符串
+            不参与统计。此接口不将 -1 作为未表现哨兵。若为 None，尝试使用拟合缓存。
         on_unknown : Literal['error', 'warn', 'ignore']
             ``bin_rules`` 包含未知或无规则特征时的处理策略。
 
@@ -1506,7 +1630,8 @@ class MarsBinnerBase(MarsTransformer):
         Raises
         ------
         ValueError
-            当缺少用于重算 WOE 的 ``X``/``y``、或没有任何已知特征被更新时抛出。
+            缺少重算所需的 ``X``/``y``、标签非法或长度不匹配、没有观测标签、
+            ``on_unknown`` 非法或没有已知特征被更新。标签校验失败不会修改规则和 WOE。
 
         Examples
         --------
@@ -1540,6 +1665,16 @@ class MarsBinnerBase(MarsTransformer):
 
         updated_features = []
 
+        # 在修改规则前校验标签；错误评估不能使原有规则和 WOE 半更新。
+        target_name = calc_y.name or "target"
+        calc_y = normalize_binary_target_column(
+            calc_y.rename(target_name).to_frame(), target_name,
+        ).get_column(target_name)
+        if len(calc_y) != calc_X.height:
+            raise ValueError(f"Target 'y' length mismatch: X({calc_X.height}) vs y({len(calc_y)}).")
+        if calc_y.drop_nulls().len() == 0:
+            raise ValueError("Target 'y' must contain at least one observed value.")
+
         # 遍历更新物理切点状态
         for feature, splits in bin_rules.items():
             if feature not in known_features:
@@ -1554,11 +1689,13 @@ class MarsBinnerBase(MarsTransformer):
                 clean_splits = sorted(set(float(value) for value in numeric_splits))
                 new_cuts = [float('-inf'), *clean_splits, float('inf')]
                 self.bin_cuts_[feature] = new_cuts
+                self.cat_cuts_.pop(feature, None)
             else:
                 # 类别型特征
                 if not hasattr(self, "cat_cuts_"):
                     self.cat_cuts_ = {}
                 self.cat_cuts_[feature] = cast(List[List[Any]], splits)
+                self.bin_cuts_.pop(feature, None)
 
             # 清理旧的映射与 WOE 缓存
             if feature in self.bin_mappings_:
@@ -1578,6 +1715,12 @@ class MarsBinnerBase(MarsTransformer):
             update_woe=True,
             features=updated_features,
         )
+
+        for feature in updated_features:
+            self._user_bin_rules[feature] = deepcopy(
+                self.cat_cuts_[feature]
+                if feature in self.cat_cuts_ else self.bin_cuts_[feature]
+            )
 
         return stats_df
 
@@ -1602,7 +1745,7 @@ class MarsBinnerBase(MarsTransformer):
 
         Notes
         -----
-        该方法会同步裁剪切点、类别分组、标签映射、WOE 映射以及 ``feature_names_in_``，
+        该方法会同步裁剪切点、类别分组、用户明确更新的规则、标签映射、WOE 映射以及 ``feature_names_in_``，
         常用于特征筛选完成后缩小序列化模型体积。
 
         Examples
@@ -1628,6 +1771,9 @@ class MarsBinnerBase(MarsTransformer):
 
         self.bin_mappings_ = {k: v for k, v in self.bin_mappings_.items() if k in keep_set}
         self.bin_woes_ = {k: v for k, v in self.bin_woes_.items() if k in keep_set}
+        self._user_bin_rules = {
+            feature: splits for feature, splits in self._user_bin_rules.items() if feature in keep_set
+        }
 
         # 更新输入特征名单
         self.feature_names_in_ = [f for f in self.feature_names_in_ if f in keep_set]

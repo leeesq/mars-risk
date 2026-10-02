@@ -117,6 +117,7 @@ nav:
   - 项目:
       - 稳定性与兼容性: project/stability.md
       - Release Notes: project/release-notes.md
+      - 计算、报告与展示验收: project/validation-20261002.md
       - 规则模块来源: project/rule-origin.md
       - Deimos 迁移矩阵: project/deimos-rule-migration.md
       - 性能基准: performance/benchmark.md

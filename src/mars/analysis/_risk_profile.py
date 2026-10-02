@@ -295,8 +295,10 @@ def profile_risk(
         待评估样本表。
     target : str | list[str] | None
         目标列名或目标列列表。传入 `None` 时进入无标签模式，只计算分布指标与 PSI。
+        多目标用首个目标拟合一次，所有目标共享边界；趋势表仅描述首个目标。
     features : list[str] | None
-        本次参与评估的特征列。传入 `None` 时自动从输入表推断。
+        本次参与评估的特征列。传入 `None` 时一次性排除全部目标列以及已声明的
+        分组、时间、权重、金额列，再将同一特征集用于所有目标和 raw KS。
     feature_data_source : dict[str, list[str]] | None
         特征来源映射，用于在报告中保留数据源维度。
     feature_metadata : FeatureMetadata | None
@@ -456,6 +458,23 @@ def profile_risk(
         target_list = [target] if isinstance(target, str) else list(target)
         primary_target = target_list[0]
         is_multi_target = len(target_list) > 1
+
+    # 角色声明不能把标签同时当作分组、权重或金额；避免统计语义发生隐式变化。
+    role_columns = {group_col, time_col, weights_col, amount_col} - {None}
+    conflicting_targets = sorted(set(target_list) & role_columns)
+    if conflicting_targets:
+        raise ValueError(
+            "Target columns cannot also be declared as group/time/weight/amount roles: "
+            f"{conflicting_targets}."
+        )
+    # 在高层只推断一次，次目标评估与 raw KS 必须使用同一份候选列。
+    if not features:
+        excluded_columns = set(target_list) | role_columns | {MarsBinEvaluator.MARS_GROUP_COL}
+        if not target_list:
+            excluded_columns.add("dummy_target")
+        features = [column for column in df.columns if column not in excluded_columns]
+        if not features:
+            raise ValueError("No feature columns remain after excluding targets and declared roles.")
 
     normalized_binning_type = _normalize_profile_risk_binning_type(binning_type)
     effective_binning_type = normalized_binning_type

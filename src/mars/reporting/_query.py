@@ -15,7 +15,7 @@ import polars as pl
 from mars._compat import polars_is_in
 from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
 from mars.reporting._semantics import _definition
-from mars.reporting._serialization import JSON_RULES, table_rows
+from mars.reporting._serialization import JSON_RULES, decode_json_value, table_rows
 from mars.reporting._serialization import encode as _encode
 from mars.reporting._serialization import json_safe as _json_safe
 
@@ -99,6 +99,11 @@ def query_table(
         "ge": operator.ge,
     }
     for column, condition in conditions:
+        # 浮点标量标签先在协议边界恢复，避免将合法标签误当作操作符字典。
+        try:
+            condition = decode_json_value(condition)
+        except ValueError as exc:
+            raise ValueError(f"Invalid filter for {column}: {exc}") from exc
         op, value = "eq", condition
         if isinstance(condition, dict):
             if set(condition) not in [{"op", "value"}, {"op"}]:
@@ -420,8 +425,10 @@ class _ReportQuery:
                         "dtype": str(dtype),
                         **_definition(
                             metric
-                            if metric and c not in {"feature", "dtype", "data_source"}
-                            else str(c)
+                            if metric and c not in {"feature", "dtype", "data_source", "status", "reason", "current_dtype", "benchmark_dtype"}
+                            else str(c),
+                            report_type=self.report_type,
+                            table=name,
                         ),
                     }
                     for c, dtype in schema.items()
@@ -480,8 +487,6 @@ class _ReportQuery:
                             meaning="有效类别样本或不同值计数；详细状态见 status / reason",
                         )
                     elif column in {
-                        "status",
-                        "reason",
                         "is_categorical",
                         "current_dtype",
                         "benchmark_dtype",
@@ -561,6 +566,7 @@ class _ReportQuery:
             投影字段；在筛选、排序之后投影。
         filters : dict[str, Any] | None
             字段到标量相等条件或 {op, value}；支持 eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null。
+            非有限值接受既有 {$mars: float, value: nan/inf/-inf} 标签；普通字符串不转换。
         sort_by : str | list[str] | None
             排序字段。
         descending : bool
@@ -693,7 +699,8 @@ class _ReportQuery:
         -------
         str
             标准 JSON；定义仅出现一次，相同 null 口径存放在表级 field_defaults，
-            字段定义继承该默认值。省略记录包含数量、原因及继续查询定位。
+            字段定义继承该默认值。evidence.query 表示裁剪后的有效查询，可直接精确回放；
+            identities 按行补充投影省略的特征身份。省略记录包含数量、原因及继续查询定位。
 
         Raises
         ------
@@ -764,6 +771,7 @@ class _ReportQuery:
             page = self.query_page(name, **options)
             frame = page["data"]
             entry = table_definitions[name]
+            identity_entry: dict[str, Any] = entry
             wide = name.startswith(("trend.", "dq.", "stats.")) or name == "missing_by_day"
             identifiers = {"feature", "dtype", "data_source", "target"}
             # 日期是维度，指标定义仅保存一次；证据仍使用原表列名以便精确重放。
@@ -808,30 +816,36 @@ class _ReportQuery:
                 "truncated": page["truncated"],
             }
             payload["evidence"].append(item)
-            roles = entry.get("feature_roles", {"feature": "feature"})
-            selected_features = list(entry.get("feature_scope", []))
-            fixed_features = set(selected_features) | set(
-                _names(options.get("features"), "features") or []
+            roles: dict[str, str] = identity_entry.get("feature_roles", {"feature": "feature"})
+            relation: dict[str, Any] | None = identity_entry.get("feature_relation")
+            identity_columns: list[str] = list(
+                relation["roles"] if relation is not None else roles
             )
-            row_features = [set(fixed_features) for _ in rows]
+            identity_columns = [c for c in identity_columns if c in available[name].columns]
+            # 同一筛选、排序和分页后的真实身份独立于最终数值投影，不带回未返回特征。
+            identities: ReportFrame = (
+                frame
+                if all(c in frame.columns for c in identity_columns)
+                else self.get_table(name, **{**options, "columns": identity_columns})
+            )
+            missing_identities: list[str] = [
+                c for c in identity_columns if c not in frame.columns
+            ]
+            if missing_identities:
+                identity_page: ReportFrame = (
+                    identities.select(missing_identities)
+                    if isinstance(identities, pl.DataFrame)
+                    else identities.loc[:, missing_identities]
+                )
+                item["identities"] = table_rows(identity_page)
+            fixed_features: set[str] = set(identity_entry.get("feature_scope", []))
+            row_features: list[set[str]] = [set(fixed_features) for _ in rows]
             for role in roles:
-                if role in frame.columns:
-                    for index, value in enumerate(frame[role]):
+                if role in identities.columns:
+                    for index, value in enumerate(identities[role]):
                         if isinstance(value, str):
                             row_features[index].add(value)
-                    selected_features.extend(
-                        frame[role].to_list()
-                        if isinstance(frame, pl.DataFrame)
-                        else frame[role].tolist()
-                    )
-            selected_features.extend(_names(options.get("features"), "features") or [])
-            relation = entry.get("feature_relation")
             if relation is not None:
-                identities = (
-                    frame
-                    if all(role in frame.columns for role in relation["roles"])
-                    else self.get_table(name, **{**options, "columns": list(relation["roles"])})
-                )
                 ids: list[Any] = []
                 for role in relation["roles"]:
                     ids.extend(
@@ -851,11 +865,9 @@ class _ReportQuery:
                 for role in relation["roles"]:
                     for index, key in enumerate(identities[role]):
                         row_features[index].update(membership.get(key, set()))
-                selected_features.extend(
-                    members[relation["feature"]].to_list()
-                    if isinstance(members, pl.DataFrame)
-                    else members[relation["feature"]].tolist()
-                )
+            selected_features: list[str] = list(
+                dict.fromkeys(feature for scope in row_features for feature in sorted(scope))
+            )
             description["feature_metadata"].update(
                 {
                     f: deepcopy(self.feature_metadata.get(f, {}))
@@ -930,6 +942,28 @@ class _ReportQuery:
                 omitted.append(found)
             return found
 
+        def project_width(
+            item: dict[str, Any],
+            omission: dict[str, Any],
+            rows: list[dict[str, Any]],
+            dimensions: list[str],
+            width: int,
+            previously_omitted: int,
+        ) -> None:
+            """保持原列顺序，只裁末尾维度，有效查询与省略开销参加同一计量。"""
+            retained = set(dimensions[:width])
+            dimension_set = set(dimensions)
+            projected = [
+                column for column in rows[0]
+                if column not in dimension_set or column in retained
+            ]
+            item["rows"] = [
+                {column: row[column] for column in projected} for row in rows
+            ]
+            item["query"]["columns"] = projected
+            omission["columns"] = previously_omitted + len(dimensions) - width
+            omission["continue_at"]["column"] = dimensions[width]
+
         while len(_encode(payload)) > max_chars:
             candidates = [item for item in payload["evidence"] if item["rows"]]
             # 宽表先移除末尾完整时间段，保证单特征仍有有效证据。
@@ -950,15 +984,26 @@ class _ReportQuery:
                 else []
             )
             if wide_item is not None and len(dimensions) > 1:
-                column = dimensions[-1]
                 m = marker(
-                    wide_item, "columns", {"column": column, "query": "get_table(columns=...)"}
+                    wide_item,
+                    "columns",
+                    {"column": dimensions[-1], "query": "get_table(columns=...)"},
                 )
-                m["columns"] += 1
-                m["continue_at"]["column"] = column
-                for row in wide_item["rows"]:
-                    row.pop(column)
+                original_rows: list[dict[str, Any]] = wide_item["rows"]
+                omitted_columns = m["columns"]
                 wide_item["truncated"] = True
+
+                # 二分寻找预算内最大的稳定前缀，避免宽表逐列反复编码整个信封。
+                lower, upper, fitting = 1, len(dimensions) - 1, 1
+                while lower <= upper:
+                    width = (lower + upper) // 2
+                    project_width(wide_item, m, original_rows, dimensions, width, omitted_columns)
+                    if len(_encode(payload)) <= max_chars:
+                        fitting = width
+                        lower = width + 1
+                    else:
+                        upper = width - 1
+                project_width(wide_item, m, original_rows, dimensions, fitting, omitted_columns)
                 continue
             if candidates and any(len(item["rows"]) > 1 for item in candidates):
                 item = max(candidates, key=lambda entry: len(_encode(entry["rows"])))
@@ -968,6 +1013,8 @@ class _ReportQuery:
                         key=lambda entry: len(_encode(entry["rows"])),
                     )
                 item["rows"].pop()
+                if "identities" in item:
+                    item["identities"].pop()
                 evidence_features[item["reference"]].pop()
                 retained = set().union(
                     *(scope for scopes in evidence_features.values() for scope in scopes)
@@ -978,6 +1025,7 @@ class _ReportQuery:
                     if feature in retained
                 }
                 item["returned_rows"] -= 1
+                item["query"]["limit"] = item["returned_rows"]
                 item["next_offset"] = item["query"]["offset"] + item["returned_rows"]
                 item["truncated"] = True
                 m = marker(item, "rows", {"offset": item["next_offset"]})
