@@ -41,3 +41,8 @@ description: Reporting stable API：画像、分箱报告和 HTML 渲染结果�
 ::: mars.reporting.get_related_features
 
 ::: mars.reporting.show_correlation_matrix
+
+## 模型分交叉报告
+
+`ScoreCrossReport` 的公开导入位于 `mars.analysis`，签名见[Analysis API](analysis.md)，
+导出和保存后的规则回放见[模型分交叉指南](../user-guide/correlation-and-score-cross.md#固定分段交叉)。

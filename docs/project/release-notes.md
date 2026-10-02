@@ -6,6 +6,13 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 画像 Notebook 比较表按实际 schema 选择默认排序；数值渐变和格式只作用于数值列，
+  文本状态、nullable、全空列和空查询结果可实际渲染。
+- Profile 与通用快照 HTML 的全局和局部搜索按交集生效，清空、排序和页面导航保留当前条件。
+- 补齐已有 `snapshot_report(...).write_excel(...)` 静态当前值交付示例与独立进程回归，
+  原分箱透视模板保留，原生 Excel 刷新需求单独说明；报告索引补齐相关性与模型分交叉。
+  安装提示区分未发布源码0.0.28与已发布0.0.27，不提升版本。
+
 - 分箱器每次 fit 重建已学规则、WOE、映射与诊断；失败重拟合使成果入口失效，
   再次成功拟合可恢复。构造配置和显式更新的适用规则保留。
 - 修复 Pandas bool/nullable Boolean 与 Polars Boolean 的类别映射，保留 Missing、Other、

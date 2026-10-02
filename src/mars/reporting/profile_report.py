@@ -415,7 +415,7 @@ class MarsProfileReport(_ReportQuery):
                    metric: str,
                    features: Union[str, List[str]] | None = None,
                    group_ascending: bool = True,
-                   sort_by: Union[List[str], str] = "total",
+                   sort_by: Union[List[str], str] | None = None,
                    sort_ascending: bool = False,
                    *, columns: list[str] | None = None,
                    limit: int | None = None,
@@ -426,13 +426,15 @@ class MarsProfileReport(_ReportQuery):
         Parameters
         ----------
         metric : str
-            指标名称，例如 ``"missing"``、``"mean"`` 或 ``"psi"``。
+            指标或比较表名称，例如 ``"missing"``、``"mean"``、``"psi"``、
+            ``"schema"`` 或 ``"unseen"``。
         features : Union[str, List[str]] | None
             需要展示的特征名称。若为 ``None``，展示全部特征。
         group_ascending : bool
             分组列或时间切片列的横向排序方向。
-        sort_by : Union[List[str], str]
-            趋势表内部排序依据，可以是单列或多列列表。
+        sort_by : Union[List[str], str] | None
+            表内排序依据，可以是单列或多列列表。``None`` 优先选择 ``total``；
+            没有该列的比较表按 ``feature`` 排序，均遵守 ``sort_ascending``。
         sort_ascending : bool
             是否按 ``sort_by`` 升序排列。
         columns : list[str] | None
@@ -445,12 +447,12 @@ class MarsProfileReport(_ReportQuery):
         Returns
         -------
         pd.io.formats.style.Styler
-            样式化趋势热力表。
+            样式化表；文本类型与计算状态保留原值，空查询结果仍可渲染。
 
         Raises
         ------
         ValueError
-            当 ``metric`` 不在当前报告支持的指标范围内时抛出。
+            当 ``metric`` 不受支持或显式排序列不存在时抛出。
 
         Examples
         --------
@@ -490,8 +492,13 @@ class MarsProfileReport(_ReportQuery):
             vmin, vmax = 0.0, 0.5 # 锚定阈值
 
         prefix = {"dq": "dq", "stat": "stats", "comparison": "comparison"}[source_type]
-        df = to_pandas_frame(self.get_table(
-            f"{prefix}.{metric}", features=features, columns=columns,
+        # 按原始表 schema 选择默认排序，显式请求仍由公共查询校验。
+        table_name = f"{prefix}.{metric}"
+        if sort_by is None:
+            table_columns: list[str] = list(self._query_tables()[table_name].columns)
+            sort_by = next((column for column in ("total", "feature") if column in table_columns), None)
+        df: pd.DataFrame = to_pandas_frame(self.get_table(
+            table_name, features=features, columns=columns,
             sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
         ))
         df = self._display_frame(df)

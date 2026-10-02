@@ -10,8 +10,9 @@ Experimental 说明接口成熟度，与暂停独立。可借助编程型 AI、M
 
 !!! warning "Experimental"
 
-    Monitoring 的 report 字段、target 校验和报警结果仍可能调整。受控生产使用应固定
-    `mars-risk==0.0.28`，并为依赖的 report 字段和报警结果增加契约测试。
+    Monitoring 的 report 字段、target 校验和报警结果仍可能调整。当前 0.0.28 是源码版本，
+    按[安装指南](../getting-started/installation.md)安装并固定核验过的源码提交；正式发布后
+    再固定对应 PyPI 版本，并为依赖的 report 字段和报警结果增加契约测试。
 
 ## 适用场景
 

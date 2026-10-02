@@ -126,7 +126,7 @@ Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipel
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-截至 2026-10-01，PyPI 已发布版本为 [0.0.27](https://pypi.org/project/mars-risk/)；
+截至 2026-10-02，PyPI 已发布版本为 [0.0.27](https://pypi.org/project/mars-risk/)；
 动态徽章展示发布来源，不代表 main 的能力已经发布。
 
 </div>

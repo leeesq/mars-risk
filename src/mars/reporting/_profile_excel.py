@@ -226,9 +226,6 @@ class _ProfileExcelWriter:
         df: pd.DataFrame = to_pandas_frame(df_input)
         if sort_by is not None:
             df = df.sort_values(by=sort_by, ascending=sort_ascending) # 使用统一参数进行底层排序
-        if df.empty:
-            raise ValueError("Requested profile table is empty.")
-
         # 元数据排除列表
         exclude_meta: List[str] = [
             "feature", "display_name", "dtype",
@@ -236,11 +233,13 @@ class _ProfileExcelWriter:
             "mode_value"
             ]
 
-        # 确定色彩渐变范围
-        if subset_cols:
-            gradient_cols: List[str] = [c for c in subset_cols if c in df.columns]
-        else:
-            gradient_cols = [c for c in df.columns if c not in exclude_meta]
+        # 只对真实数值列应用渐变；文本状态、Boolean 和全空列保留原值。
+        num_cols: pd.Index = df.select_dtypes(include=['number']).columns
+        candidates: List[str] = subset_cols if subset_cols is not None else list(df.columns)
+        gradient_cols: List[str] = [
+            column for column in candidates
+            if column in num_cols and column not in exclude_meta and df[column].notna().any()
+        ]
 
         styler = df.style.set_caption(f"<b>{title}</b>").hide(axis="index")
 
@@ -255,7 +254,6 @@ class _ProfileExcelWriter:
             )
 
         # 数值格式化逻辑
-        num_cols: pd.Index = df.select_dtypes(include=['number']).columns
         data_cols: List[str] = [c for c in num_cols if c != "distribution"]
 
         pct_format: str = "{:.2%}"

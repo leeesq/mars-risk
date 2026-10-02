@@ -34,6 +34,7 @@ BASIC_SNIPPETS = [
     "monitoring.py",
     "reporting_scorecard.py",
     "report_queries.py",
+    "report_presentations.py",
     "portable_reports.py",
 ]
 

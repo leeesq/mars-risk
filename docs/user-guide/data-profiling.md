@@ -101,7 +101,16 @@ comparison_report = profiler.generate_profile(
 )
 schema_drift = comparison_report.comparison_tables["schema"]
 unseen_rate = comparison_report.comparison_tables["unseen"]
+schema_view = comparison_report.show_trend("schema")
+unseen_view = comparison_report.show_trend("unseen", sort_by="feature", sort_ascending=True)
+schema_html = schema_view.to_html()
+unseen_html = unseen_view.to_html()
 ```
+
+默认按表内 `total` 排序；没有 `total` 的 schema 表按 `feature` 稳定排序。
+合法显式 `sort_by` 仍优先，非法字段明确报错。dtype、status、reason 保持文本，
+只对实际数值列施加渐变和格式，nullable/全空数值列与空查询结果可以渲染。
+完整输入示例见[报告展示与静态导出](reports-and-exports.md)。
 
 `unseen` 自动适用于字符串、Categorical、Enum 和 Boolean；整数编码类别必须放入
 `categorical_features`。缺失值、NaN、自定义缺失码和特殊值不进入分子或分母。
