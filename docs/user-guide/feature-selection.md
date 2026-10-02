@@ -4,6 +4,9 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 
 # 特征筛选
 
+先看[案例 3：为什么保留这个，删除另一个？](../demos/selection-correlation.md)，
+用真实决策和[相关性证据](../demos/selection-correlation.md#correlation)复核取舍。
+
 ## 适用场景
 
 特征筛选用于将宽表候选特征压缩成可建模、可监控的集合。MARS 提供统计筛选、线性筛选和重要性

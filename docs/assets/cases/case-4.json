@@ -1,0 +1,2198 @@
+{
+  "case": 4,
+  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "question": "主模型同等级内，辅助分还能进一步区分风险吗？",
+  "consumer": "deterministic public API queries; no LLM",
+  "description": {
+    "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "report_type": "score_cross",
+    "format_version": 1,
+    "tables": {
+      "cells": {
+        "rows": 756,
+        "grain": "target/group/period/x_bin/y_bin",
+        "schema_version": 1,
+        "fields": {
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "X 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "Y 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "X 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "Y 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "row_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同标签、同范围、同 X 分段边际的同口径坏率",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "delta_vs_row": {
+            "dtype": "Float64",
+            "unit": "ratio_difference",
+            "meaning": "bad_rate - X marginal bad_rate; fraction difference",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_row": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子坏率/X 边际坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "row_summary": {
+        "rows": 108,
+        "grain": "target/group/period/x_bin",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "X 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "X 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "column_summary": {
+        "rows": 126,
+        "grain": "target/group/period/y_bin",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "Y 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "Y 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "overall": {
+        "rows": 18,
+        "grain": "target/group/period",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "bins": {
+        "rows": 13,
+        "grain": "axis/bin_id",
+        "schema_version": 1,
+        "fields": {
+          "axis": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bin_id": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "保存的稳定分段 ID，不因展示方向改变",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "raw_order": {
+            "dtype": "Int64",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "正常分段低风险到高风险的 1 起始顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "display_label": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "保存的固定展示编号 X1/Y1 等，按 risk_rank 排序；不表示原始分数阈值",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "kind": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower": {
+            "dtype": "Float64",
+            "unit": "score_unit",
+            "meaning": "原始分段数值下界；null 与 lower_unbounded 一起解释",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper": {
+            "dtype": "Float64",
+            "unit": "score_unit",
+            "meaning": "原始分段数值上界；null 与 upper_unbounded 一起解释",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower_unbounded": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper_unbounded": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower_closed": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper_closed": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "special_value": {
+            "dtype": "Float64",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "direction": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "fit_source": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_roles": {
+          "feature": "feature"
+        }
+      }
+    },
+    "parameters": {
+      "score_x": "main_score",
+      "score_y": "aux_score",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "targets": [
+        "bad30",
+        "late60"
+      ],
+      "requested_n_bins": 5,
+      "actual_n_bins": {
+        "main_score": 4,
+        "aux_score": 4
+      },
+      "bin_definitions": {
+        "x": {
+          "score": "main_score",
+          "direction": "lower_risk",
+          "cutpoints": [
+            546.042988729658,
+            601.2262132556998,
+            653.7750315986514
+          ],
+          "special_values": [],
+          "probability": false,
+          "closed": "right",
+          "actual_n_bins": 4,
+          "fit": {
+            "binning_type": "native",
+            "binner_params": {
+              "cart_params": {},
+              "join_threshold": 100,
+              "merge_small_bins": false,
+              "method": "quantile",
+              "min_bin_size": 0.05,
+              "missing_values": [],
+              "n_bins": 4,
+              "n_jobs": -1,
+              "remove_empty_bins": false,
+              "special_values": []
+            },
+            "source": "current_input",
+            "target": null,
+            "reference_row_count": 6000,
+            "valid_score_row_count": 5971,
+            "fit_row_count": 6000,
+            "usable_fit_row_count": 5971,
+            "observed_class_count": null,
+            "requested_n_bins": 4,
+            "actual_n_bins": 4,
+            "diagnostic": null,
+            "fitted_trend": null,
+            "closed": "right"
+          }
+        },
+        "y": {
+          "score": "aux_score",
+          "direction": "higher_risk",
+          "cutpoints": [
+            432.41255966198844,
+            498.7917609295865,
+            567.1738809810513
+          ],
+          "special_values": [
+            -999
+          ],
+          "probability": false,
+          "closed": "right",
+          "actual_n_bins": 4,
+          "fit": {
+            "binning_type": "native",
+            "binner_params": {
+              "cart_params": {},
+              "join_threshold": 100,
+              "merge_small_bins": false,
+              "method": "quantile",
+              "min_bin_size": 0.05,
+              "missing_values": [],
+              "n_bins": 4,
+              "n_jobs": -1,
+              "remove_empty_bins": false,
+              "special_values": [
+                -999
+              ]
+            },
+            "source": "current_input",
+            "target": null,
+            "reference_row_count": 6000,
+            "valid_score_row_count": 5910,
+            "fit_row_count": 6000,
+            "usable_fit_row_count": 5910,
+            "observed_class_count": null,
+            "requested_n_bins": 4,
+            "actual_n_bins": 4,
+            "diagnostic": null,
+            "fitted_trend": null,
+            "closed": "right"
+          }
+        }
+      },
+      "binning_type": null,
+      "binning_target": null,
+      "fitted_targets": {
+        "x": null,
+        "y": null
+      },
+      "fit_performed": false,
+      "binning_parameters": {
+        "x": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": []
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5971,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5971,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        },
+        "y": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": [
+              -999
+            ]
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5910,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5910,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        }
+      },
+      "binning_reference_policy": "explicit reference or current input; fitted once per axis across all scopes/targets",
+      "fit_source": "saved_definition",
+      "input_row_count": 18000,
+      "projected_columns": [
+        "main_score",
+        "aux_score",
+        "bad30",
+        "late60",
+        "dataset",
+        "application_date",
+        "weight",
+        "amount"
+      ],
+      "group_col": "dataset",
+      "time_col": "application_date",
+      "time_grain": "month",
+      "scope_dimensions": {
+        "group": {
+          "source": "group",
+          "column": "dataset",
+          "grain": null
+        },
+        "period": {
+          "source": "time",
+          "column": "application_date",
+          "grain": "month"
+        }
+      },
+      "actual_scope_count": 9,
+      "max_scopes": 10000,
+      "weights_col": "weight",
+      "amount_col": "amount",
+      "min_observed": 30,
+      "confidence_level": 0.95,
+      "sample_share_denominator": "all samples including special bins, per target/group/period",
+      "bad_rate_denominator": "observed_weight_sum",
+      "confidence_interval": "unweighted integer Wilson; weighted CI unsupported",
+      "amount_policy": "existing helper: nonnegative amounts contribute; negative/null/NaN contribute zero; infinity rejected",
+      "score_missing_policy": "null/NaN/custom missing_values -> missing; nonfinite/nonnumeric/probability domain violation -> invalid",
+      "ratio_unit": "fraction; delta fraction difference",
+      "sample_semantics": "historical sample retention; population extrapolation unknown"
+    },
+    "feature_metadata": {
+      "main_score": {
+        "display_name": "主模型分",
+        "data_source": "champion",
+        "description": "模拟固定分，高分低风险",
+        "unit": "score_points"
+      },
+      "aux_score": {
+        "display_name": "辅助模型分",
+        "data_source": "challenger",
+        "description": "模拟固定分，高分高风险",
+        "unit": "score_points"
+      }
+    },
+    "business_context": {
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "sample_unit": "one synthetic application; unique sample_id",
+      "label_definition": "unknown",
+      "observation_window": "unknown",
+      "simulated": true,
+      "sample_count": 18000,
+      "seed": 20261001,
+      "currency": "CNY",
+      "labels": {
+        "bad30": {
+          "definition": "模拟30日违约",
+          "performance_window": "30天"
+        },
+        "late60": {
+          "definition": "模拟60日逾期",
+          "performance_window": "60天"
+        }
+      },
+      "splits": {
+        "discovery": "1–3月；参考分箱与候选发现",
+        "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+        "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
+      },
+      "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
+      "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "binning_origin": "discovery only; frozen definitions"
+    },
+    "source": {
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "computation": "score_cross"
+    },
+    "public_functions": [
+      "mars.analysis.get_score_bin_definitions",
+      "mars.analysis.get_score_cell",
+      "mars.analysis.show_score_matrix",
+      "mars.analysis.evaluate_score_policy",
+      "mars.analysis.write_score_cross_html"
+    ],
+    "saved_operations": "public functions accept load_report ReportSnapshot; no source samples or fitted objects required",
+    "operations": [
+      "describe",
+      "get_table",
+      "query_page",
+      "get_feature",
+      "search_features",
+      "to_ai_context",
+      "save",
+      "show_table",
+      "write_excel",
+      "write_html"
+    ],
+    "limitations": [
+      "Only saved aggregate evidence; no causal or deployment conclusion.",
+      "Null is unavailable, not numeric zero. See status and denominators."
+    ]
+  },
+  "queries": [
+    {
+      "question": "主模型 b1 内，辅助分的风险梯度和分母是什么？",
+      "reference": {
+        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "table": "cells",
+        "query": {
+          "offset": 0,
+          "limit": 10,
+          "filters": {
+            "group": "discovery",
+            "period": "202601",
+            "target": "bad30",
+            "x_bin": "b1"
+          },
+          "sort_by": "y_risk_rank",
+          "columns": [
+            "group",
+            "period",
+            "target",
+            "x_bin",
+            "y_bin",
+            "x_risk_rank",
+            "y_risk_rank",
+            "sample_count",
+            "observed_sample_count",
+            "bad_sample_count",
+            "weight_sum",
+            "observed_weight_sum",
+            "bad_weight_sum",
+            "bad_rate",
+            "row_bad_rate",
+            "delta_vs_row",
+            "lift_vs_overall",
+            "status"
+          ]
+        }
+      },
+      "total_rows": 7,
+      "returned_rows": 7,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "b0",
+          "x_risk_rank": 3,
+          "y_risk_rank": 1,
+          "sample_count": 122,
+          "observed_sample_count": 112,
+          "bad_sample_count": 2,
+          "weight_sum": 123.44125837684598,
+          "observed_weight_sum": 112.78380809491529,
+          "bad_weight_sum": 1.6532429028332567,
+          "bad_rate": 0.01465851287307075,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": -0.17736077994252333,
+          "lift_vs_overall": 0.0917422047677607,
+          "status": "valid"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "b1",
+          "x_risk_rank": 3,
+          "y_risk_rank": 2,
+          "sample_count": 115,
+          "observed_sample_count": 103,
+          "bad_sample_count": 4,
+          "weight_sum": 115.84166496032631,
+          "observed_weight_sum": 104.0491927825791,
+          "bad_weight_sum": 4.083880541353905,
+          "bad_rate": 0.03924951681160632,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": -0.15276977600398775,
+          "lift_vs_overall": 0.24564819361595508,
+          "status": "valid"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "b2",
+          "x_risk_rank": 3,
+          "y_risk_rank": 3,
+          "sample_count": 122,
+          "observed_sample_count": 110,
+          "bad_sample_count": 13,
+          "weight_sum": 120.48374552718245,
+          "observed_weight_sum": 108.99372380981252,
+          "bad_weight_sum": 12.723360178146923,
+          "bad_rate": 0.11673479658653024,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": -0.07528449622906383,
+          "lift_vs_overall": 0.7305998708531244,
+          "status": "valid"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "b3",
+          "x_risk_rank": 3,
+          "y_risk_rank": 4,
+          "sample_count": 122,
+          "observed_sample_count": 117,
+          "bad_sample_count": 65,
+          "weight_sum": 125.39263908134349,
+          "observed_weight_sum": 119.31605708882033,
+          "bad_weight_sum": 67.67070266830763,
+          "bad_rate": 0.5671550361233672,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": 0.3751357433077731,
+          "lift_vs_overall": 3.549613382315548,
+          "status": "valid"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "invalid",
+          "x_risk_rank": 3,
+          "y_risk_rank": null,
+          "sample_count": 0,
+          "observed_sample_count": 0,
+          "bad_sample_count": 0,
+          "weight_sum": 0.0,
+          "observed_weight_sum": 0.0,
+          "bad_weight_sum": 0.0,
+          "bad_rate": null,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": null,
+          "lift_vs_overall": null,
+          "status": "empty"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "missing",
+          "x_risk_rank": 3,
+          "y_risk_rank": null,
+          "sample_count": 3,
+          "observed_sample_count": 3,
+          "bad_sample_count": 0,
+          "weight_sum": 2.999839832976738,
+          "observed_weight_sum": 2.999839832976738,
+          "bad_weight_sum": 0.0,
+          "bad_rate": 0.0,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": -0.19201929281559407,
+          "lift_vs_overall": 0.0,
+          "status": "low_sample"
+        },
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b1",
+          "y_bin": "s0",
+          "x_risk_rank": 3,
+          "y_risk_rank": null,
+          "sample_count": 5,
+          "observed_sample_count": 4,
+          "bad_sample_count": 1,
+          "weight_sum": 5.350567882345655,
+          "observed_weight_sum": 4.092229955464955,
+          "bad_weight_sum": 0.7066300933519715,
+          "bad_rate": 0.1726760472999091,
+          "row_bad_rate": 0.19201929281559407,
+          "delta_vs_row": -0.019343245515684976,
+          "lift_vs_overall": 1.0807154468567306,
+          "status": "low_sample"
+        }
+      ]
+    },
+    {
+      "question": "反向查看各 X 分层的边际风险；边际包含另一轴特殊箱",
+      "reference": {
+        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "table": "row_summary",
+        "query": {
+          "offset": 0,
+          "limit": 10,
+          "filters": {
+            "group": "discovery",
+            "period": "202601",
+            "target": "bad30"
+          },
+          "sort_by": "x_risk_rank"
+        }
+      },
+      "total_rows": 6,
+      "returned_rows": 6,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "b3",
+          "x_risk_rank": 1,
+          "sample_count": 508,
+          "observed_sample_count": 468,
+          "bad_sample_count": 32,
+          "weight_sum": 510.5696108487808,
+          "observed_weight_sum": 469.79207295158443,
+          "bad_weight_sum": 32.342828669069334,
+          "tot_amt": 8188633.4451656,
+          "good_amt": 6929992.799547785,
+          "bad_amt": 533067.8476247833,
+          "sample_status": "populated",
+          "bad_rate": 0.06884498596553056,
+          "observed_coverage": 0.9212598425196851,
+          "unweighted_ci_lower": 0.04884746199479586,
+          "unweighted_ci_upper": 0.09493273695222959,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7463060.647172568,
+          "amt_bad_rate": 0.07142751115478871,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.254,
+          "lift_vs_overall": 0.4308752773472993,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "b2",
+          "x_risk_rank": 2,
+          "sample_count": 478,
+          "observed_sample_count": 434,
+          "bad_sample_count": 55,
+          "weight_sum": 487.23311065562933,
+          "observed_weight_sum": 444.0290851705666,
+          "bad_weight_sum": 57.44617922004916,
+          "tot_amt": 7819812.492601601,
+          "good_amt": 6081570.344296154,
+          "bad_amt": 984842.0957440211,
+          "sample_status": "populated",
+          "bad_rate": 0.1293748115576306,
+          "observed_coverage": 0.9079497907949791,
+          "unweighted_ci_lower": 0.09867118812793074,
+          "unweighted_ci_upper": 0.16133493172951918,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7066412.440040175,
+          "amt_bad_rate": 0.13936946139226794,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.239,
+          "lift_vs_overall": 0.8097090445999783,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "b1",
+          "x_risk_rank": 3,
+          "sample_count": 489,
+          "observed_sample_count": 449,
+          "bad_sample_count": 85,
+          "weight_sum": 493.5097156610206,
+          "observed_weight_sum": 452.23485156456894,
+          "bad_weight_sum": 86.83781638399368,
+          "tot_amt": 7466162.740730545,
+          "good_amt": 5619184.539195907,
+          "bad_amt": 1252800.32968813,
+          "sample_status": "populated",
+          "bad_rate": 0.19201929281559407,
+          "observed_coverage": 0.918200408997955,
+          "unweighted_ci_lower": 0.15576718551433044,
+          "unweighted_ci_upper": 0.22812314836414938,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 6871984.868884037,
+          "amt_bad_rate": 0.1823054552056335,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.2445,
+          "lift_vs_overall": 1.2017776587154216,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "b0",
+          "x_risk_rank": 4,
+          "sample_count": 515,
+          "observed_sample_count": 475,
+          "bad_sample_count": 119,
+          "weight_sum": 511.5675974315331,
+          "observed_weight_sum": 471.341269878538,
+          "bad_weight_sum": 118.22088907456383,
+          "tot_amt": 8349545.146556758,
+          "good_amt": 5756694.044955779,
+          "bad_amt": 1986013.6293306667,
+          "sample_status": "populated",
+          "bad_rate": 0.2508180306490639,
+          "observed_coverage": 0.9223300970873787,
+          "unweighted_ci_lower": 0.21366492417127483,
+          "unweighted_ci_upper": 0.2913904639237931,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7742707.674286446,
+          "amt_bad_rate": 0.25650117670414235,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.2575,
+          "lift_vs_overall": 1.5697771886209426,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "invalid",
+          "x_risk_rank": null,
+          "sample_count": 0,
+          "observed_sample_count": 0,
+          "bad_sample_count": 0,
+          "weight_sum": 0.0,
+          "observed_weight_sum": 0.0,
+          "bad_weight_sum": 0.0,
+          "tot_amt": 0.0,
+          "good_amt": 0.0,
+          "bad_amt": 0.0,
+          "sample_status": "empty",
+          "bad_rate": null,
+          "observed_coverage": null,
+          "unweighted_ci_lower": null,
+          "unweighted_ci_upper": null,
+          "status": "empty",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "unavailable",
+          "observed_amt": 0.0,
+          "amt_bad_rate": null,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.0,
+          "lift_vs_overall": null,
+          "lift_status": "empty"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "x_bin": "missing",
+          "x_risk_rank": null,
+          "sample_count": 10,
+          "observed_sample_count": 9,
+          "bad_sample_count": 0,
+          "weight_sum": 8.676986178409697,
+          "observed_weight_sum": 7.9453911051205734,
+          "bad_weight_sum": 0.0,
+          "tot_amt": 177200.75826255005,
+          "good_amt": 164674.60463838896,
+          "bad_amt": 0.0,
+          "sample_status": "populated",
+          "bad_rate": 0.0,
+          "observed_coverage": 0.9,
+          "unweighted_ci_lower": 0.0,
+          "unweighted_ci_upper": 0.299145048419544,
+          "status": "low_sample",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 164674.60463838896,
+          "amt_bad_rate": 0.0,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.005,
+          "lift_vs_overall": 0.0,
+          "lift_status": "valid"
+        }
+      ]
+    },
+    {
+      "question": "辅助分固定后，X 方向的风险梯度是什么？",
+      "reference": {
+        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "table": "column_summary",
+        "query": {
+          "offset": 0,
+          "limit": 10,
+          "filters": {
+            "group": "discovery",
+            "period": "202601",
+            "target": "bad30"
+          },
+          "sort_by": "y_risk_rank"
+        }
+      },
+      "total_rows": 7,
+      "returned_rows": 7,
+      "omitted_rows": 0,
+      "next_offset": null,
+      "rows": [
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "b0",
+          "y_risk_rank": 1,
+          "sample_count": 467,
+          "observed_sample_count": 433,
+          "bad_sample_count": 4,
+          "weight_sum": 469.25094709799276,
+          "observed_weight_sum": 435.3980868158776,
+          "bad_weight_sum": 4.246161195362788,
+          "tot_amt": 7444133.659555174,
+          "good_amt": 6869732.381001311,
+          "bad_amt": 58863.175943215334,
+          "sample_status": "populated",
+          "bad_rate": 0.009752365304164547,
+          "observed_coverage": 0.9271948608137045,
+          "unweighted_ci_lower": 0.0035981274854358924,
+          "unweighted_ci_upper": 0.02350886655460225,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 6928595.556944527,
+          "amt_bad_rate": 0.008495686529749425,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.2335,
+          "lift_vs_overall": 0.06103644363190037,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "b1",
+          "y_risk_rank": 2,
+          "sample_count": 509,
+          "observed_sample_count": 464,
+          "bad_sample_count": 16,
+          "weight_sum": 515.1059870014296,
+          "observed_weight_sum": 468.72772171031966,
+          "bad_weight_sum": 16.135956764367478,
+          "tot_amt": 8002635.39601417,
+          "good_amt": 7100104.6919097835,
+          "bad_amt": 244904.64109243022,
+          "sample_status": "populated",
+          "bad_rate": 0.034425010548746096,
+          "observed_coverage": 0.9115913555992141,
+          "unweighted_ci_lower": 0.021334983006435933,
+          "unweighted_ci_upper": 0.055275283452293614,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7345009.333002213,
+          "amt_bad_rate": 0.033342999305941985,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.2545,
+          "lift_vs_overall": 0.21545339518699644,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "b2",
+          "y_risk_rank": 3,
+          "sample_count": 504,
+          "observed_sample_count": 454,
+          "bad_sample_count": 55,
+          "weight_sum": 501.51618756227583,
+          "observed_weight_sum": 451.9603787296308,
+          "bad_weight_sum": 55.20486056683541,
+          "tot_amt": 8185158.7815249665,
+          "good_amt": 6395774.303788699,
+          "bad_amt": 883742.0953361077,
+          "sample_status": "populated",
+          "bad_rate": 0.12214535424986832,
+          "observed_coverage": 0.9007936507936508,
+          "unweighted_ci_lower": 0.09426715896438038,
+          "unweighted_ci_upper": 0.15438105020812753,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7279516.399124807,
+          "amt_bad_rate": 0.1214012094872617,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.252,
+          "lift_vs_overall": 0.7644625480125268,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "b3",
+          "y_risk_rank": 4,
+          "sample_count": 490,
+          "observed_sample_count": 458,
+          "bad_sample_count": 213,
+          "weight_sum": 495.25681908827966,
+          "observed_weight_sum": 462.9775824794051,
+          "bad_weight_sum": 216.560940164373,
+          "tot_amt": 7906434.328402082,
+          "good_amt": 3831616.584077503,
+          "bad_amt": 3534033.1733780666,
+          "sample_status": "populated",
+          "bad_rate": 0.46775685985618193,
+          "observed_coverage": 0.9346938775510204,
+          "unweighted_ci_lower": 0.4198658755320236,
+          "unweighted_ci_upper": 0.5108462781977183,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 7365649.75745557,
+          "amt_bad_rate": 0.47979924239553884,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.245,
+          "lift_vs_overall": 2.9275169991688874,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "invalid",
+          "y_risk_rank": null,
+          "sample_count": 8,
+          "observed_sample_count": 8,
+          "bad_sample_count": 2,
+          "weight_sum": 8.752432640742104,
+          "observed_weight_sum": 8.752432640742104,
+          "bad_weight_sum": 1.9931645633853707,
+          "tot_amt": 157534.72272626727,
+          "good_amt": 124993.83794898304,
+          "bad_amt": 32540.884777284242,
+          "sample_status": "populated",
+          "bad_rate": 0.22772692406763542,
+          "observed_coverage": 1.0,
+          "unweighted_ci_lower": 0.07147921275210906,
+          "unweighted_ci_upper": 0.5907245696898311,
+          "status": "low_sample",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 157534.7227262673,
+          "amt_bad_rate": 0.2065632529396542,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.004,
+          "lift_vs_overall": 1.4252585019948678,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "missing",
+          "y_risk_rank": null,
+          "sample_count": 10,
+          "observed_sample_count": 8,
+          "bad_sample_count": 0,
+          "weight_sum": 9.747663344775628,
+          "observed_weight_sum": 7.720414184906781,
+          "bad_weight_sum": 0.0,
+          "tot_amt": 136983.23214524443,
+          "good_amt": 102100.84228604758,
+          "bad_amt": 0.0,
+          "sample_status": "populated",
+          "bad_rate": 0.0,
+          "observed_coverage": 0.8,
+          "unweighted_ci_lower": 0.0,
+          "unweighted_ci_upper": 0.3244075648838801,
+          "status": "low_sample",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 102100.84228604758,
+          "amt_bad_rate": 0.0,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.005,
+          "lift_vs_overall": 0.0,
+          "lift_status": "valid"
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "y_bin": "s0",
+          "y_risk_rank": null,
+          "sample_count": 12,
+          "observed_sample_count": 10,
+          "bad_sample_count": 1,
+          "weight_sum": 11.926984039877983,
+          "observed_weight_sum": 9.80605410949648,
+          "bad_weight_sum": 0.7066300933519715,
+          "tot_amt": 168474.46294914943,
+          "good_amt": 127793.69162168648,
+          "bad_amt": 2639.9318604969208,
+          "sample_status": "populated",
+          "bad_rate": 0.07206059496119335,
+          "observed_coverage": 0.8333333333333334,
+          "unweighted_ci_lower": 0.017876213095072896,
+          "unweighted_ci_upper": 0.40415002679523837,
+          "status": "low_sample",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 130433.6234821834,
+          "amt_bad_rate": 0.02023965745962369,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.006,
+          "lift_vs_overall": 0.4510005834740285,
+          "lift_status": "valid"
+        }
+      ]
+    },
+    {
+      "question": "观察期 late60 全未表现，不能据此判断模型效果",
+      "reference": {
+        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "table": "cells",
+        "query": {
+          "offset": 0,
+          "limit": 6,
+          "filters": {
+            "group": "observation",
+            "period": "202607",
+            "target": "late60"
+          },
+          "columns": [
+            "x_bin",
+            "y_bin",
+            "sample_count",
+            "observed_sample_count",
+            "bad_rate",
+            "status"
+          ]
+        }
+      },
+      "total_rows": 42,
+      "returned_rows": 6,
+      "omitted_rows": 36,
+      "next_offset": 6,
+      "rows": [
+        {
+          "x_bin": "b3",
+          "y_bin": "b0",
+          "sample_count": 110,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        },
+        {
+          "x_bin": "b3",
+          "y_bin": "b1",
+          "sample_count": 117,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        },
+        {
+          "x_bin": "b3",
+          "y_bin": "b2",
+          "sample_count": 120,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        },
+        {
+          "x_bin": "b3",
+          "y_bin": "b3",
+          "sample_count": 117,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        },
+        {
+          "x_bin": "b3",
+          "y_bin": "invalid",
+          "sample_count": 1,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        },
+        {
+          "x_bin": "b3",
+          "y_bin": "missing",
+          "sample_count": 2,
+          "observed_sample_count": 0,
+          "bad_rate": null,
+          "status": "unobserved"
+        }
+      ]
+    },
+    {
+      "question": "固定正常分箱表达式相对 X-only 基线的历史样本变化",
+      "reference": {
+        "report_id": "df121489-258c-4b99-9338-c88759598869",
+        "table": "changes",
+        "query": {
+          "offset": 0,
+          "limit": 4
+        }
+      },
+      "total_rows": 18,
+      "returned_rows": 4,
+      "omitted_rows": 14,
+      "next_offset": 4,
+      "rows": [
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202601",
+          "candidate_retained_count": 483,
+          "candidate_retained_share": 0.2415,
+          "candidate_bad_rate": 0.005754988234902175,
+          "baseline_retained_count": 986,
+          "baseline_retained_share": 0.493,
+          "baseline_bad_rate": 0.0982566523997208,
+          "retained_count_delta": -503,
+          "retained_share_delta": -0.2515,
+          "bad_rate_delta": -0.09250166416481863
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202602",
+          "candidate_retained_count": 511,
+          "candidate_retained_share": 0.2555,
+          "candidate_bad_rate": 0.01102124031866483,
+          "baseline_retained_count": 1008,
+          "baseline_retained_share": 0.504,
+          "baseline_bad_rate": 0.09131379635530681,
+          "retained_count_delta": -497,
+          "retained_share_delta": -0.2485,
+          "bad_rate_delta": -0.08029255603664198
+        },
+        {
+          "target": "bad30",
+          "group": "discovery",
+          "period": "202603",
+          "candidate_retained_count": 475,
+          "candidate_retained_share": 0.2375,
+          "candidate_bad_rate": 0.005095914888665117,
+          "baseline_retained_count": 991,
+          "baseline_retained_share": 0.4955,
+          "baseline_bad_rate": 0.09542286030944552,
+          "retained_count_delta": -516,
+          "retained_share_delta": -0.258,
+          "bad_rate_delta": -0.0903269454207804
+        },
+        {
+          "target": "bad30",
+          "group": "observation",
+          "period": "202607",
+          "candidate_retained_count": 455,
+          "candidate_retained_share": 0.2275,
+          "candidate_bad_rate": 0.005785876573969389,
+          "baseline_retained_count": 969,
+          "baseline_retained_share": 0.4845,
+          "baseline_bad_rate": 0.09888118250404968,
+          "retained_count_delta": -514,
+          "retained_share_delta": -0.257,
+          "bad_rate_delta": -0.09309530593008028
+        }
+      ]
+    }
+  ],
+  "findings": {
+    "scope": {
+      "group": "discovery",
+      "period": "202601",
+      "target": "bad30"
+    },
+    "x_bin": "b1",
+    "normal_cells": [
+      {
+        "group": "discovery",
+        "period": "202601",
+        "target": "bad30",
+        "x_bin": "b1",
+        "y_bin": "b0",
+        "x_risk_rank": 3,
+        "y_risk_rank": 1,
+        "sample_count": 122,
+        "observed_sample_count": 112,
+        "bad_sample_count": 2,
+        "weight_sum": 123.44125837684598,
+        "observed_weight_sum": 112.78380809491529,
+        "bad_weight_sum": 1.6532429028332567,
+        "bad_rate": 0.01465851287307075,
+        "row_bad_rate": 0.19201929281559407,
+        "delta_vs_row": -0.17736077994252333,
+        "lift_vs_overall": 0.0917422047677607,
+        "status": "valid"
+      },
+      {
+        "group": "discovery",
+        "period": "202601",
+        "target": "bad30",
+        "x_bin": "b1",
+        "y_bin": "b1",
+        "x_risk_rank": 3,
+        "y_risk_rank": 2,
+        "sample_count": 115,
+        "observed_sample_count": 103,
+        "bad_sample_count": 4,
+        "weight_sum": 115.84166496032631,
+        "observed_weight_sum": 104.0491927825791,
+        "bad_weight_sum": 4.083880541353905,
+        "bad_rate": 0.03924951681160632,
+        "row_bad_rate": 0.19201929281559407,
+        "delta_vs_row": -0.15276977600398775,
+        "lift_vs_overall": 0.24564819361595508,
+        "status": "valid"
+      },
+      {
+        "group": "discovery",
+        "period": "202601",
+        "target": "bad30",
+        "x_bin": "b1",
+        "y_bin": "b2",
+        "x_risk_rank": 3,
+        "y_risk_rank": 3,
+        "sample_count": 122,
+        "observed_sample_count": 110,
+        "bad_sample_count": 13,
+        "weight_sum": 120.48374552718245,
+        "observed_weight_sum": 108.99372380981252,
+        "bad_weight_sum": 12.723360178146923,
+        "bad_rate": 0.11673479658653024,
+        "row_bad_rate": 0.19201929281559407,
+        "delta_vs_row": -0.07528449622906383,
+        "lift_vs_overall": 0.7305998708531244,
+        "status": "valid"
+      },
+      {
+        "group": "discovery",
+        "period": "202601",
+        "target": "bad30",
+        "x_bin": "b1",
+        "y_bin": "b3",
+        "x_risk_rank": 3,
+        "y_risk_rank": 4,
+        "sample_count": 122,
+        "observed_sample_count": 117,
+        "bad_sample_count": 65,
+        "weight_sum": 125.39263908134349,
+        "observed_weight_sum": 119.31605708882033,
+        "bad_weight_sum": 67.67070266830763,
+        "bad_rate": 0.5671550361233672,
+        "row_bad_rate": 0.19201929281559407,
+        "delta_vs_row": 0.3751357433077731,
+        "lift_vs_overall": 3.549613382315548,
+        "status": "valid"
+      }
+    ],
+    "status_counts": [
+      {
+        "status": "empty",
+        "len": 192
+      },
+      {
+        "status": "low_sample",
+        "len": 218
+      },
+      {
+        "status": "unobserved",
+        "len": 106
+      },
+      {
+        "status": "valid",
+        "len": 240
+      }
+    ],
+    "input_row_count": 18000,
+    "bad_rate_denominator": "observed_weight_sum",
+    "ratio_unit": "fraction; delta shown as pp = 100 * delta_vs_row",
+    "bin_definitions": {
+      "x": {
+        "score": "main_score",
+        "direction": "lower_risk",
+        "cutpoints": [
+          546.042988729658,
+          601.2262132556998,
+          653.7750315986514
+        ],
+        "special_values": [],
+        "probability": false,
+        "closed": "right",
+        "actual_n_bins": 4,
+        "fit": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": []
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5971,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5971,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        }
+      },
+      "y": {
+        "score": "aux_score",
+        "direction": "higher_risk",
+        "cutpoints": [
+          432.41255966198844,
+          498.7917609295865,
+          567.1738809810513
+        ],
+        "special_values": [
+          -999
+        ],
+        "probability": false,
+        "closed": "right",
+        "actual_n_bins": 4,
+        "fit": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": [
+              -999
+            ]
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5910,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5910,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        }
+      }
+    },
+    "policy_report_id": "df121489-258c-4b99-9338-c88759598869"
+  },
+  "unavailable": "这些是模拟关联与历史留存回放；无法证明新模型整体更好或真实因果增量。"
+}

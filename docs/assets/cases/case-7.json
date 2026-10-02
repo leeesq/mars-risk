@@ -1,0 +1,1302 @@
+{
+  "case": 7,
+  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "question": "同一次分析，如何交付给不同使用者？",
+  "consumer": "deterministic public API queries; no LLM",
+  "description": {
+    "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+    "report_type": "score_cross",
+    "format_version": 1,
+    "tables": {
+      "cells": {
+        "rows": 756,
+        "grain": "target/group/period/x_bin/y_bin",
+        "schema_version": 1,
+        "fields": {
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "X 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "Y 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "X 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "Y 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "row_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同标签、同范围、同 X 分段边际的同口径坏率",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "delta_vs_row": {
+            "dtype": "Float64",
+            "unit": "ratio_difference",
+            "meaning": "bad_rate - X marginal bad_rate; fraction difference",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_row": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子坏率/X 边际坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "row_summary": {
+        "rows": 108,
+        "grain": "target/group/period/x_bin",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "X 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "x_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "X 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "column_summary": {
+        "rows": 126,
+        "grain": "target/group/period/y_bin",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_bin": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "Y 轴固定 bin_id，区间见 bins",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "y_risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "Y 轴正常分段低风险到高风险顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "overall": {
+        "rows": 18,
+        "grain": "target/group/period",
+        "schema_version": 1,
+        "fields": {
+          "target": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "真实目标列标识",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "group": {
+            "dtype": "String",
+            "unit": "dimension",
+            "meaning": "状态所属分组；Total 为全量",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "period": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "all samples in cell/scope including score specials",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "non-null normalized binary label count",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "label=1 count among observed",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "该范围全部样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现样本权重和，加权风险的实际分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_weight_sum": {
+            "dtype": "Float64",
+            "unit": "weight",
+            "meaning": "有表现坏样本权重和",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "tot_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "全样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "good_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "好样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "坏样本金金额和；业务币种未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "empty 无样本或 populated 有样本；与是否请求标签分开",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "坏人数/有表现人数；加权时为坏权重/有表现权重，见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_coverage": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "有表现整数样本数/全部整数样本数",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_lower": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson lower; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_upper": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "integer bad/n Wilson upper; never weighted rate CI",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "valid 有效（零值仍有效）；low_sample 已观测样本低于阈值；empty 无样本；unobserved 无观测标签；not_requested 未请求目标；invalid_denominator 风险分母无效；不是风险结论",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "weighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "加权置信区间 unsupported；未请求 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "unweighted_ci_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "有效整数 Wilson 区间 valid；无表现 unavailable；无标签 not_requested",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "observed_amt": {
+            "dtype": "Float64",
+            "unit": "unknown_business_unit",
+            "meaning": "good_amt+bad_amt，有表现非负金额分母，币种见 business_context",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "amt_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "bad_amt/observed_amt；未表现金额不计入分母，分母非正时为空",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "scope_sample_count": {
+            "dtype": "Int64",
+            "unit": "count",
+            "meaning": "同 target/group/period 全部真实样本人数，包含特殊箱；sample_share 的分母",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_bad_rate": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "同 target/group/period 全部样本总体坏率，包含特殊箱；权重口径见 parameters",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "overall_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "同 target/group/period 全样本总体坏率的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态，包含特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "sample_share": {
+            "dtype": "Float64",
+            "unit": "ratio",
+            "meaning": "样本数/同标签同范围全部样本数，含所有特殊箱",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_vs_overall": {
+            "dtype": "Float64",
+            "unit": "dimensionless",
+            "meaning": "同口径格子或边际坏率/总体坏率；零分母不可用",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lift_status": {
+            "dtype": "String",
+            "unit": "state",
+            "meaning": "相对整体风险倍数的 valid/low_sample/empty/unobserved/not_requested/invalid_denominator 状态；有效零分子仍为 valid",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_scope": [
+          "main_score",
+          "aux_score"
+        ],
+        "feature_scope_roles": {
+          "score_x": "main_score",
+          "score_y": "aux_score"
+        }
+      },
+      "bins": {
+        "rows": 13,
+        "grain": "axis/bin_id",
+        "schema_version": 1,
+        "fields": {
+          "axis": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "feature": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "原输入特征名称",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "bin_id": {
+            "dtype": "String",
+            "unit": "identifier",
+            "meaning": "保存的稳定分段 ID，不因展示方向改变",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "raw_order": {
+            "dtype": "Int64",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "risk_rank": {
+            "dtype": "Int64",
+            "unit": "ordinal",
+            "meaning": "正常分段低风险到高风险的 1 起始顺序；特殊箱为 null",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "display_label": {
+            "dtype": "String",
+            "unit": "category",
+            "meaning": "保存的固定展示编号 X1/Y1 等，按 risk_rank 排序；不表示原始分数阈值",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "kind": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower": {
+            "dtype": "Float64",
+            "unit": "score_unit",
+            "meaning": "原始分段数值下界；null 与 lower_unbounded 一起解释",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper": {
+            "dtype": "Float64",
+            "unit": "score_unit",
+            "meaning": "原始分段数值上界；null 与 upper_unbounded 一起解释",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower_unbounded": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper_unbounded": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "lower_closed": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "upper_closed": {
+            "dtype": "Boolean",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "special_value": {
+            "dtype": "Float64",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "direction": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          },
+          "fit_source": {
+            "dtype": "String",
+            "unit": "unknown",
+            "meaning": "描述字段或未登记指标；含义未知",
+            "null": "unavailable; inspect status and report parameters"
+          }
+        },
+        "feature_roles": {
+          "feature": "feature"
+        }
+      }
+    },
+    "parameters": {
+      "score_x": "main_score",
+      "score_y": "aux_score",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "targets": [
+        "bad30",
+        "late60"
+      ],
+      "requested_n_bins": 5,
+      "actual_n_bins": {
+        "main_score": 4,
+        "aux_score": 4
+      },
+      "bin_definitions": {
+        "x": {
+          "score": "main_score",
+          "direction": "lower_risk",
+          "cutpoints": [
+            546.042988729658,
+            601.2262132556998,
+            653.7750315986514
+          ],
+          "special_values": [],
+          "probability": false,
+          "closed": "right",
+          "actual_n_bins": 4,
+          "fit": {
+            "binning_type": "native",
+            "binner_params": {
+              "cart_params": {},
+              "join_threshold": 100,
+              "merge_small_bins": false,
+              "method": "quantile",
+              "min_bin_size": 0.05,
+              "missing_values": [],
+              "n_bins": 4,
+              "n_jobs": -1,
+              "remove_empty_bins": false,
+              "special_values": []
+            },
+            "source": "current_input",
+            "target": null,
+            "reference_row_count": 6000,
+            "valid_score_row_count": 5971,
+            "fit_row_count": 6000,
+            "usable_fit_row_count": 5971,
+            "observed_class_count": null,
+            "requested_n_bins": 4,
+            "actual_n_bins": 4,
+            "diagnostic": null,
+            "fitted_trend": null,
+            "closed": "right"
+          }
+        },
+        "y": {
+          "score": "aux_score",
+          "direction": "higher_risk",
+          "cutpoints": [
+            432.41255966198844,
+            498.7917609295865,
+            567.1738809810513
+          ],
+          "special_values": [
+            -999
+          ],
+          "probability": false,
+          "closed": "right",
+          "actual_n_bins": 4,
+          "fit": {
+            "binning_type": "native",
+            "binner_params": {
+              "cart_params": {},
+              "join_threshold": 100,
+              "merge_small_bins": false,
+              "method": "quantile",
+              "min_bin_size": 0.05,
+              "missing_values": [],
+              "n_bins": 4,
+              "n_jobs": -1,
+              "remove_empty_bins": false,
+              "special_values": [
+                -999
+              ]
+            },
+            "source": "current_input",
+            "target": null,
+            "reference_row_count": 6000,
+            "valid_score_row_count": 5910,
+            "fit_row_count": 6000,
+            "usable_fit_row_count": 5910,
+            "observed_class_count": null,
+            "requested_n_bins": 4,
+            "actual_n_bins": 4,
+            "diagnostic": null,
+            "fitted_trend": null,
+            "closed": "right"
+          }
+        }
+      },
+      "binning_type": null,
+      "binning_target": null,
+      "fitted_targets": {
+        "x": null,
+        "y": null
+      },
+      "fit_performed": false,
+      "binning_parameters": {
+        "x": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": []
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5971,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5971,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        },
+        "y": {
+          "binning_type": "native",
+          "binner_params": {
+            "cart_params": {},
+            "join_threshold": 100,
+            "merge_small_bins": false,
+            "method": "quantile",
+            "min_bin_size": 0.05,
+            "missing_values": [],
+            "n_bins": 4,
+            "n_jobs": -1,
+            "remove_empty_bins": false,
+            "special_values": [
+              -999
+            ]
+          },
+          "source": "current_input",
+          "target": null,
+          "reference_row_count": 6000,
+          "valid_score_row_count": 5910,
+          "fit_row_count": 6000,
+          "usable_fit_row_count": 5910,
+          "observed_class_count": null,
+          "requested_n_bins": 4,
+          "actual_n_bins": 4,
+          "diagnostic": null,
+          "fitted_trend": null,
+          "closed": "right"
+        }
+      },
+      "binning_reference_policy": "explicit reference or current input; fitted once per axis across all scopes/targets",
+      "fit_source": "saved_definition",
+      "input_row_count": 18000,
+      "projected_columns": [
+        "main_score",
+        "aux_score",
+        "bad30",
+        "late60",
+        "dataset",
+        "application_date",
+        "weight",
+        "amount"
+      ],
+      "group_col": "dataset",
+      "time_col": "application_date",
+      "time_grain": "month",
+      "scope_dimensions": {
+        "group": {
+          "source": "group",
+          "column": "dataset",
+          "grain": null
+        },
+        "period": {
+          "source": "time",
+          "column": "application_date",
+          "grain": "month"
+        }
+      },
+      "actual_scope_count": 9,
+      "max_scopes": 10000,
+      "weights_col": "weight",
+      "amount_col": "amount",
+      "min_observed": 30,
+      "confidence_level": 0.95,
+      "sample_share_denominator": "all samples including special bins, per target/group/period",
+      "bad_rate_denominator": "observed_weight_sum",
+      "confidence_interval": "unweighted integer Wilson; weighted CI unsupported",
+      "amount_policy": "existing helper: nonnegative amounts contribute; negative/null/NaN contribute zero; infinity rejected",
+      "score_missing_policy": "null/NaN/custom missing_values -> missing; nonfinite/nonnumeric/probability domain violation -> invalid",
+      "ratio_unit": "fraction; delta fraction difference",
+      "sample_semantics": "historical sample retention; population extrapolation unknown"
+    },
+    "feature_metadata": {
+      "main_score": {
+        "display_name": "主模型分",
+        "data_source": "champion",
+        "description": "模拟固定分，高分低风险",
+        "unit": "score_points"
+      },
+      "aux_score": {
+        "display_name": "辅助模型分",
+        "data_source": "challenger",
+        "description": "模拟固定分，高分高风险",
+        "unit": "score_points"
+      }
+    },
+    "business_context": {
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "sample_unit": "one synthetic application; unique sample_id",
+      "label_definition": "unknown",
+      "observation_window": "unknown",
+      "simulated": true,
+      "sample_count": 18000,
+      "seed": 20261001,
+      "currency": "CNY",
+      "labels": {
+        "bad30": {
+          "definition": "模拟30日违约",
+          "performance_window": "30天"
+        },
+        "late60": {
+          "definition": "模拟60日逾期",
+          "performance_window": "60天"
+        }
+      },
+      "splits": {
+        "discovery": "1–3月；参考分箱与候选发现",
+        "validation": "4–6月；独立验证，不重新拟合分箱或选择候选",
+        "observation": "7–9月；bad30 有模拟标签，late60 全未表现"
+      },
+      "amount_definition": "模拟申请金额 CNY；不是损失、利润或预期收益",
+      "weight_definition": "模拟分析权重；与原始申请人数分别保存",
+      "score_directions": {
+        "main_score": "lower_risk",
+        "aux_score": "higher_risk"
+      },
+      "binning_origin": "discovery only; frozen definitions"
+    },
+    "source": {
+      "dataset_id": "synthetic-consumer-credit-20261001",
+      "computation": "score_cross"
+    },
+    "public_functions": [
+      "mars.analysis.get_score_bin_definitions",
+      "mars.analysis.get_score_cell",
+      "mars.analysis.show_score_matrix",
+      "mars.analysis.evaluate_score_policy",
+      "mars.analysis.write_score_cross_html"
+    ],
+    "saved_operations": "public functions accept load_report ReportSnapshot; no source samples or fitted objects required",
+    "operations": [
+      "describe",
+      "get_table",
+      "query_page",
+      "get_feature",
+      "search_features",
+      "to_ai_context",
+      "save",
+      "show_table",
+      "write_excel",
+      "write_html"
+    ],
+    "limitations": [
+      "Only saved aggregate evidence; no causal or deployment conclusion.",
+      "Null is unavailable, not numeric zero. See status and denominators."
+    ]
+  },
+  "queries": [
+    {
+      "question": "Excel 与快照的首行关键值对齐",
+      "reference": {
+        "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+        "table": "cells",
+        "query": {
+          "offset": 0,
+          "limit": 1
+        }
+      },
+      "total_rows": 756,
+      "returned_rows": 1,
+      "omitted_rows": 755,
+      "next_offset": 1,
+      "rows": [
+        {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30",
+          "x_bin": "b3",
+          "y_bin": "b0",
+          "x_risk_rank": 1,
+          "y_risk_rank": 1,
+          "sample_count": 113,
+          "observed_sample_count": 106,
+          "bad_sample_count": 1,
+          "weight_sum": 115.03036635625527,
+          "observed_weight_sum": 107.32129757700278,
+          "bad_weight_sum": 1.2115983369513796,
+          "tot_amt": 1908750.0376513607,
+          "good_amt": 1806435.5196573855,
+          "bad_amt": 13032.149514887991,
+          "sample_status": "populated",
+          "bad_rate": 0.011289449198860652,
+          "observed_coverage": 0.9380530973451328,
+          "unweighted_ci_lower": 0.0016672717027588942,
+          "unweighted_ci_upper": 0.051513548029704384,
+          "status": "valid",
+          "weighted_ci_status": "unsupported",
+          "unweighted_ci_status": "valid",
+          "observed_amt": 1819467.6691722735,
+          "amt_bad_rate": 0.007162616701409528,
+          "scope_sample_count": 2000,
+          "overall_bad_rate": 0.15977938300237934,
+          "overall_status": "valid",
+          "sample_share": 0.0565,
+          "lift_vs_overall": 0.07065648262449815,
+          "lift_status": "valid",
+          "row_bad_rate": 0.06884498596553056,
+          "delta_vs_row": -0.057555536766669906,
+          "lift_vs_row": 0.16398360810928303
+        }
+      ]
+    }
+  ],
+  "findings": {
+    "formats": [
+      {
+        "format": "HTML",
+        "path": "score-cross.html",
+        "use": "当前矩阵、选格和正常箱表达式交互；离线请求由浏览器验收"
+      },
+      {
+        "format": "Excel",
+        "path": "score-cross.xlsx",
+        "use": "静态工作表；不提供 HTML 等价交互或计算"
+      },
+      {
+        "format": ".marsreport",
+        "path": "score-cross.marsreport",
+        "use": "报告目录、查询、聚合 policy 回放；不是原始数据或分析器"
+      },
+      {
+        "format": "bounded JSON",
+        "path": "agent-context.json",
+        "use": "真实目录和预算内 evidence，最终 Unicode 字符计数"
+      },
+      {
+        "format": "TXT",
+        "path": "external-agent-task.txt",
+        "use": "外部消费者提示材料；不声称实际 LLM 分析"
+      }
+    ],
+    "excel_sheets": [
+      "FeatureMetadata",
+      "BusinessContext",
+      "ReportSemantics",
+      "000_cells",
+      "001_row_summary",
+      "002_column_summary",
+      "003_overall",
+      "004_bins"
+    ],
+    "excel_key_values_match": true,
+    "shared_cases": [
+      4,
+      6,
+      7
+    ]
+  },
+  "unavailable": "各格式用途不同；静态 Excel 不恢复交互或计算，快照不恢复任意 Python 对象。"
+}

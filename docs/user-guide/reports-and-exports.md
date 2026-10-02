@@ -4,6 +4,9 @@ description: 查询、展示、导出与保存公共分析报告；保留评分�
 
 # 报告查询与导出
 
+任务型入口：[案例 6：保存后继续查询](../demos/saved-reports.md) ·
+[案例 7：同次分析的多种交付](../demos/report-delivery.md)。
+
 外部 Agent、业务元数据、证据与跨会话使用见[外部 Agent 指南](external-agents.md)。
 评分卡另见[评分卡](scorecard.md)，本页旧章节及锚点继续保留。
 
@@ -236,7 +239,7 @@ AI 证据，统计行不会按成员展开。有限上下文关联保留实际�
 说明块，省略记录包含数量、原因和 describe/get_table 定位。极小预算容不下必要身份及引用时
 报 ValueError。未选择特征的项目字典不会默认注入上下文。
 
-### 单文件格式与恢复
+### 单文件格式与恢复 { #snapshot-format }
 
 `.marsreport` 是 ZIP，格式版本 **1**：`manifest.json` 保存持久身份、报告类型、全部表目录、
 粒度、字段类型、指标定义、参数、上下文、元数据、状态/诊断及来源；`tables/0000.parquet` 等

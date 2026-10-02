@@ -1,0 +1,57 @@
+{
+  "case": 6,
+  "consumer": "deterministic public API queries; no LLM",
+  "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+  "question": "分析完成后，如何保存并继续查询？",
+  "query": {
+    "question": "发现目录后的第一页",
+    "reference": {
+      "report_id": "066dccc0-b803-4f2a-8f3c-2ace86cf0ada",
+      "table": "cells",
+      "query": {
+        "offset": 0,
+        "limit": 3,
+        "filters": {
+          "group": "discovery",
+          "period": "202601",
+          "target": "bad30"
+        },
+        "columns": [
+          "x_bin",
+          "y_bin",
+          "sample_count",
+          "bad_rate",
+          "status"
+        ]
+      }
+    },
+    "total_rows": 42,
+    "returned_rows": 3,
+    "omitted_rows": 39,
+    "next_offset": 3,
+    "rows": [
+      {
+        "x_bin": "b3",
+        "y_bin": "b0",
+        "sample_count": 113,
+        "bad_rate": 0.011289449198860652,
+        "status": "valid"
+      },
+      {
+        "x_bin": "b3",
+        "y_bin": "b1",
+        "sample_count": 131,
+        "bad_rate": 0.0,
+        "status": "valid"
+      },
+      {
+        "x_bin": "b3",
+        "y_bin": "b2",
+        "sample_count": 137,
+        "bad_rate": 0.043472026341170394,
+        "status": "valid"
+      }
+    ]
+  },
+  "unavailable": "ReportSnapshot 不恢复原分析器、原始宽表、任意新分段或 RuleSet 部署资格。"
+}

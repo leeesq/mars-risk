@@ -40,6 +40,9 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+hooks:
+  - scripts/case_docs_hooks.py
+
 plugins:
   - search
   - mkdocs-jupyter:
@@ -111,13 +114,24 @@ nav:
       - Scoring: reference/scoring.md
       - Reporting: reference/reporting.md
       - Report 对象: reference/report-objects.md
-  - 示例:
-      - 模型分交叉与保存后回放: demos/correlation_and_score_cross.ipynb
-      - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
+  - 实战案例:
+      - 从问题选择案例: demos/index.md
+      - 1 · 这份数据能直接用吗: demos/data-quality.md
+      - 2 · 区分度与稳定性: demos/binning-stability.md
+      - 3 · 特征保留与相关冗余: demos/selection-correlation.md
+      - 4 · 同等级内的辅助分: demos/score-cross.md
+      - 5 · 候选规则与审查证据: demos/rule-evidence.md
+      - 6 · 保存后继续查询: demos/saved-reports.md
+      - 7 · 同次分析的多种交付: demos/report-delivery.md
+      - 保留的 Score Cross Notebook: demos/correlation_and_score_cross.ipynb
+      - 历史／保留案例:
+          - 维护边界与安装: demos/history.md
+          - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
   - 项目:
       - 稳定性与兼容性: project/stability.md
       - Release Notes: project/release-notes.md
       - 计算、报告与展示验收: project/validation-20261002.md
+      - 七实战案例与双语 README 验收: project/task-cases-validation.md
       - 规则模块来源: project/rule-origin.md
       - Deimos 迁移矩阵: project/deimos-rule-migration.md
       - 性能基准: performance/benchmark.md

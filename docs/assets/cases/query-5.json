@@ -1,0 +1,32 @@
+{
+  "case": 5,
+  "consumer": "deterministic public API queries; no LLM",
+  "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+  "question": "从候选规则走到可以审查的证据",
+  "query": {
+    "question": "生产规格实际保留多少候选？",
+    "reference": {
+      "report_id": "a7c565bd-eb83-408b-88e6-791eccd5c87f",
+      "table": "summary",
+      "query": {
+        "offset": 0,
+        "limit": 1
+      }
+    },
+    "total_rows": 1,
+    "returned_rows": 1,
+    "omitted_rows": 0,
+    "next_offset": null,
+    "rows": [
+      {
+        "status": "success",
+        "candidate_count": 5,
+        "selected_count": 2,
+        "validation_status": "independent",
+        "profile": "production",
+        "qualification": "temporally_validated"
+      }
+    ]
+  },
+  "unavailable": "报告不代表生产策略批准；没有规则 observation 客群评估或高级分析，不能推断其结果。"
+}

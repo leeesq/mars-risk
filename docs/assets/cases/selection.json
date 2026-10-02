@@ -1,0 +1,128 @@
+[
+  {
+    "feature": "income_copy",
+    "data_source": "application",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'income'",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'main_score'",
+    "value": 0.9999681130129501,
+    "description": ""
+  },
+  {
+    "feature": "constant",
+    "data_source": "application",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "Single Value (Mode)",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "sparse",
+    "data_source": "application",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Missing",
+    "value": 0.98,
+    "description": ""
+  },
+  {
+    "feature": "income",
+    "data_source": "application",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.007448240648955107,
+    "description": ""
+  },
+  {
+    "feature": "main_score",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.3210684359073639,
+    "description": ""
+  },
+  {
+    "feature": "income",
+    "data_source": "application",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.005833333333333334,
+    "description": ""
+  },
+  {
+    "feature": "income_copy",
+    "data_source": "application",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.005833333333333334,
+    "description": ""
+  },
+  {
+    "feature": "main_score",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.004833333333333334,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.004833333333333334,
+    "description": ""
+  },
+  {
+    "feature": "income",
+    "data_source": "application",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.007)",
+    "value": 0.007448240648955107,
+    "description": ""
+  },
+  {
+    "feature": "income_copy",
+    "data_source": "application",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.007)",
+    "value": 0.007448240648955107,
+    "description": ""
+  },
+  {
+    "feature": "main_score",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.321)",
+    "value": 0.3210684359073639,
+    "description": ""
+  },
+  {
+    "feature": "score_inverse",
+    "data_source": "champion",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.321)",
+    "value": 0.32091811299324036,
+    "description": ""
+  }
+]

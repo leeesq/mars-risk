@@ -39,11 +39,13 @@ jobs:
         if: inputs.release_tag != ''
         run: python scripts/check_release_version.py --release-tag "${{ inputs.release_tag }}"
       - name: Check documentation code style
-        run: python -m ruff check tests/test_documentation.py scripts/check_release_version.py docs/snippets
+        run: python -m ruff check tests/test_documentation.py tests/test_task_cases.py scripts/check_release_version.py scripts/check_case_assets.py scripts/case_docs_hooks.py docs/snippets
       - name: Run documentation tests
-        run: python -m pytest -q tests/test_documentation.py --basetemp .pytest-tmp-docs
+        run: python -m pytest -q tests/test_documentation.py tests/test_task_cases.py --basetemp .pytest-tmp-docs
       - name: Build documentation
         run: python -m mkdocs build --strict
+      - name: Check published case evidence and built downloads
+        run: python scripts/check_case_assets.py --site-dir site
 
   deploy:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

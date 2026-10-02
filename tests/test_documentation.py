@@ -5,9 +5,12 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import inspect
+import json
+import math
 import re
 import runpy
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 import pytest
@@ -23,6 +26,7 @@ DOCS_ROOT = PROJECT_ROOT / "docs"
 SNIPPETS_ROOT = DOCS_ROOT / "snippets"
 
 BASIC_SNIPPETS = [
+    "readme_quickstart.py",
     "minimal_report.py",
     "external_candidate_selection.py",
     "quickstart.py",
@@ -125,6 +129,19 @@ def test_demo_notebook_is_clean_and_executes() -> None:
     )
 
 
+def test_historical_notebook_is_clean_and_records_current_install_boundary() -> None:
+    """即使可选模型依赖缺失，历史 Notebook 的发布内容与安装边界仍需验证。"""
+    notebook_path = DOCS_ROOT / "demos" / "lgb-modeling-monitoring.ipynb"
+    notebook: dict[str, Any] = json.loads(notebook_path.read_text(encoding="utf-8"))
+    code_cells = [cell for cell in notebook["cells"] if cell["cell_type"] == "code"]
+    assert code_cells
+    assert all(cell["execution_count"] is None and not cell["outputs"] for cell in code_cells)
+    prose = "\n".join("".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "markdown")
+    assert "历史／保留案例" in prose and "暂停功能迭代" in prose
+    assert 'python -m pip install -e ".[ml,tuning,notebook]"' in prose
+    assert "execute: false" in prose
+
+
 def test_internal_documentation_links_resolve() -> None:
     """Markdown 和首页任务卡中的内部链接必须指向现有文档。"""
     markdown_link = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
@@ -214,14 +231,17 @@ def test_documented_version_matches_package_metadata() -> None:
     assert package_match.group(1) == project_version == "0.0.28"
 
     # main 的新能力从源码安装，不能用未发布版本的 PyPI 命令充当可用性证明。
-    required_install_command = 'pip install "git+https://github.com/leeesq/mars-risk.git"'
+    source_install = re.compile(
+        r'pip install "git\+https://github\.com/leeesq/mars-risk\.git(?:@[A-Za-z0-9._/-]+)?"'
+    )
     for path in [
         PROJECT_ROOT / "README.md",
+        PROJECT_ROOT / "README.en.md",
         DOCS_ROOT / "index.md",
         DOCS_ROOT / "getting-started" / "installation.md",
         DOCS_ROOT / "getting-started" / "quickstart.md",
     ]:
-        assert required_install_command in path.read_text(encoding="utf-8")
+        assert source_install.search(path.read_text(encoding="utf-8")), path
 
 
 def test_python_version_dependency_markers_cover_supported_range() -> None:
@@ -276,9 +296,10 @@ def test_default_dependencies_include_pandas_styler_runtime() -> None:
     assert "markupsafe==2.1.5" in python38_constraints
 
 
-def test_readme_restores_dynamic_python_and_download_badges() -> None:
+@pytest.mark.parametrize("readme_name", ["README.md", "README.en.md"])
+def test_readme_restores_dynamic_python_and_download_badges(readme_name: str) -> None:
     """README badge 应使用动态 PyPI/PePy 数据并保持约定顺序。"""
-    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    readme = (PROJECT_ROOT / readme_name).read_text(encoding="utf-8")
     badge_fragments = [
         "img.shields.io/pypi/v/mars-risk",
         "img.shields.io/badge/Docs-GitHub%20Pages",
@@ -296,18 +317,130 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
     """保留 Logo、英文全称与六类徽章，定位用可搜索的文字。"""
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     homepage = (DOCS_ROOT / "index.md").read_text(encoding="utf-8")
+    english_readme = (PROJECT_ROOT / "README.en.md").read_text(encoding="utf-8")
     for asset_name in [
         "mars-logo.svg",
         "mars-wordmark.svg",
     ]:
         assert f'docs/assets/{asset_name}' in readme
+        assert f'docs/assets/{asset_name}' in english_readme
         assert f'assets/{asset_name}' in homepage
-    assert "mars-home-hero--compact" not in homepage
     for text in (readme, homepage):
         assert "面向人和 AI Agent 的风控分析工具箱" in text
         assert "数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘" in text
         for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
             assert f'alt="{label}"' in text
+    assert "A risk analysis toolkit for humans and AI agents" in english_readme
+    for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
+        assert f'alt="{label}"' in english_readme
+    for text in (readme, english_readme, homepage):
+        for fragment in (
+            "img.shields.io/pypi/v/mars-risk",
+            "img.shields.io/badge/Docs-GitHub%20Pages",
+            "img.shields.io/pypi/pyversions/mars-risk",
+            "img.shields.io/pepy/dt/mars-risk",
+            "img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml",
+            "img.shields.io/github/license/leeesq/mars-risk",
+        ):
+            assert fragment in text
+        links = dict(
+            (label, href) for href, label in re.findall(
+                r'<a\b[^>]*href="([^"]+)"[^>]*>\s*<img\b[^>]*alt="(PyPI|Docs|Python|Downloads|CI|License)"',
+                text,
+            )
+        )
+        for label, target in {
+            "PyPI": "https://pypi.org/project/mars-risk/",
+            "Docs": "https://leeesq.github.io/mars-risk/",
+            "Python": "https://pypi.org/project/mars-risk/",
+            "Downloads": "https://pepy.tech/project/mars-risk",
+            "CI": "https://github.com/leeesq/mars-risk/actions/workflows/test.yml",
+        }.items():
+            assert links[label] == target
+        assert links["License"] in {"LICENSE", "https://github.com/leeesq/mars-risk/blob/main/LICENSE"}
+
+
+def test_bilingual_readme_quickstart_uses_one_executable_source() -> None:
+    """两语短代码必须逐行同步共享 snippet，语言跳转和本地资源真实存在。"""
+    snippet = (SNIPPETS_ROOT / "readme_quickstart.py").read_text(encoding="utf-8")
+    match = re.search(
+        r"# --8<-- \[start:quickstart\]\n(.*?)\n# --8<-- \[end:quickstart\]",
+        snippet,
+        re.S,
+    )
+    assert match is not None
+    quickstart = match.group(1).strip()
+    readmes = {
+        name: (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        for name in ("README.md", "README.en.md")
+    }
+    for name, text in readmes.items():
+        blocks = re.findall(r"```python\n(.*?)\n```", text, re.S)
+        assert quickstart in [block.strip() for block in blocks], name
+        assert "docs/snippets/readme_quickstart.py" in text, name
+        other = "README.en.md" if name == "README.md" else "README.md"
+        assert re.search(rf"\]\({re.escape(other)}\)", text), name
+        for path in re.findall(r'(?:src|srcset|href)="(docs/[^"?#]+)"', text):
+            assert (PROJECT_ROOT / path).is_file(), f"{name}: missing {path}"
+        for path in re.findall(r"!?\[[^\]]*\]\((docs/[^)#?]+)", text):
+            assert (PROJECT_ROOT / path).is_file(), f"{name}: missing {path}"
+
+
+@pytest.mark.parametrize("readme_name", ["README.md", "README.en.md"])
+def test_readme_snapshot_queries_and_static_excel_match_current_report(
+    readme_name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """两语第二代码块独立加载结果，静态 Excel 应包含当前快照的真实表值。"""
+    import openpyxl
+
+    from mars.reporting import ReportSnapshot
+
+    monkeypatch.chdir(tmp_path)
+    generated: dict[str, Any] = runpy.run_path(str(SNIPPETS_ROOT / "readme_quickstart.py"))
+    source_report = generated["report"]
+    readme = (PROJECT_ROOT / readme_name).read_text(encoding="utf-8")
+    blocks = re.findall(r"```python\n(.*?)\n```", readme, re.S)
+    other_name = "README.en.md" if readme_name == "README.md" else "README.md"
+    other_blocks = re.findall(
+        r"```python\n(.*?)\n```", (PROJECT_ROOT / other_name).read_text(encoding="utf-8"), re.S,
+    )
+    assert blocks[1].strip() == other_blocks[1].strip()
+    # 消费代码使用新的命名空间，仅能从文件恢复，不能复用 quickstart 的宽表或分析器。
+    consumed: dict[str, Any] = {}
+    exec(compile(blocks[1], readme_name + ":snapshot-consumer", "exec"), consumed)
+    snapshot = consumed["report"]
+    assert isinstance(snapshot, ReportSnapshot)
+    assert snapshot.report_id == source_report.report_id
+    page = consumed["page"]
+    next_page = consumed["next_page"]
+    assert page["returned_rows"] == next_page["returned_rows"] == 1
+    assert next_page["reference"]["query"]["offset"] == page["next_offset"]
+    assert page["data"].to_dicts() != next_page["data"].to_dicts()
+    context_json = consumed["context_json"]
+    context: dict[str, Any] = json.loads(context_json)
+    json.dumps(context, allow_nan=False)
+    assert len(context_json) <= 16000
+    assert context["description"]["report_id"] == snapshot.report_id
+    assert context["evidence"]
+    for evidence in context["evidence"]:
+        assert evidence["report_id"] == snapshot.report_id
+        replay = snapshot.get_table(evidence["reference"], **evidence["query"])
+        assert replay.to_dicts() == evidence["rows"]
+
+    snapshot.write_excel("risk_report.xlsx")
+    workbook = openpyxl.load_workbook("risk_report.xlsx", read_only=True, data_only=True)
+    try:
+        sheet_rows = workbook["000_summary"].iter_rows(values_only=True)
+        header = list(next(sheet_rows))
+        exported = list(sheet_rows)
+        expected = snapshot.get_table("summary").to_dicts()
+        assert len(exported) == len(expected) == 2
+        for exported_row, expected_row in zip(exported, expected):
+            assert exported_row[header.index("feature")] == expected_row["feature"]
+            for field in ("iv", "ks"):
+                assert math.isclose(exported_row[header.index(field)], expected_row[field], rel_tol=1e-12)
+    finally:
+        workbook.close()
 
 
 def test_docs_workflow_deploys_pages_after_main_validation() -> None:
@@ -425,6 +558,16 @@ def test_stability_summaries_and_mixed_guides_are_explicit() -> None:
         text = path.read_text(encoding="utf-8")
         assert stable_labels in text
         assert experimental_labels in text
+    english = (PROJECT_ROOT / "README.en.md").read_text(encoding="utf-8")
+    statements = re.findall(r"([^\n.]+?)\bare (Stable|Experimental)\b", english)
+    for status in ("Stable", "Experimental"):
+        expected = {label for label, (_, value, _) in MODULE_STABILITY.items() if value == status}
+        stated = {
+            label for sentence, stated_status in statements if stated_status == status
+            for label in MODULE_STABILITY if re.search(rf"\b{label}\b", sentence)
+        }
+        assert expected == stated
+    assert re.search(r"Monitoring[^\n.]+Modeling[^\n.]+Pipeline[^\n.]+Scoring[^\n.]+paused", english)
 
     monitoring_guide = (DOCS_ROOT / "user-guide" / "monitoring.md").read_text(
         encoding="utf-8"

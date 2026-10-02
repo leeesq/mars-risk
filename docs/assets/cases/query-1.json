@@ -1,0 +1,69 @@
+{
+  "case": 1,
+  "consumer": "deterministic public API queries; no LLM",
+  "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+  "question": "这份数据能直接用吗？",
+  "query": {
+    "question": "首先检查哪些字段的数据质量？",
+    "reference": {
+      "report_id": "f9800620-f9c9-4190-9620-733700d525fb",
+      "table": "overview",
+      "query": {
+        "offset": 0,
+        "limit": 8
+      }
+    },
+    "total_rows": 6,
+    "returned_rows": 6,
+    "omitted_rows": 0,
+    "next_offset": null,
+    "rows": [
+      {
+        "feature": "aux_probability",
+        "dtype": "Float64",
+        "missing_rate": 0.005,
+        "zeros_rate": 0.0,
+        "mean": 0.5068335591819082
+      },
+      {
+        "feature": "aux_score",
+        "dtype": "Float64",
+        "missing_rate": 0.005,
+        "zeros_rate": 0.0,
+        "mean": {
+          "$mars": "float",
+          "value": "inf"
+        }
+      },
+      {
+        "feature": "income",
+        "dtype": "Float64",
+        "missing_rate": 0.005833333333333334,
+        "zeros_rate": 0.0,
+        "mean": 6691.763730688807
+      },
+      {
+        "feature": "main_score",
+        "dtype": "Float64",
+        "missing_rate": 0.0047777777777777775,
+        "zeros_rate": 0.0,
+        "mean": 600.170177748387
+      },
+      {
+        "feature": "sparse",
+        "dtype": "Float64",
+        "missing_rate": 0.98,
+        "zeros_rate": 0.0,
+        "mean": 1.0
+      },
+      {
+        "feature": "channel",
+        "dtype": "String",
+        "missing_rate": 0.0,
+        "zeros_rate": 0.0,
+        "mean": null
+      }
+    ]
+  },
+  "unavailable": "观察期 late60 没有有效标签，画像和 PSI 无法判断这个目标的模型效果下降。"
+}

@@ -1,0 +1,131 @@
+--8<-- [start:case1]
+| 分区 | 全样本人数 | bad30 已表现人数 | late60 已表现人数 |
+| --- | --- | --- | --- |
+| discovery | 6000 | 5513 | 4778 |
+| validation | 6000 | 5551 | 4814 |
+| observation | 6000 | 5515 | 0 |
+--8<-- [end:case1]
+
+--8<-- [start:card1]
+| 总样本 | 观察期 late60 已表现 | 新类别 |
+| --- | --- | --- |
+| 18000 | 0 | branch |
+--8<-- [end:card1]
+
+--8<-- [start:case2]
+bad30；KS 为 0–100 点，IV/PSI 无量纲。分箱只由 discovery 参考拟合。
+
+| 特征 | 发现 IV | 验证 IV | 发现 KS | 验证 KS | 验证 PSI | 观察 PSI |
+| --- | --- | --- | --- | --- | --- | --- |
+| main_score | 0.3177 | 0.2395 | 22.5821 | 20.0041 | 0.0015 | 0.0013 |
+| aux_score | 2.2927 | 2.0976 | 59.6030 | 57.2376 | 0.0001 | 0.0017 |
+| income | 0.0117 | 0.0026 | 2.7676 | 1.8919 | 0.3802 | 1.0859 |
+| channel | 0.0006 | 0.0001 | 1.1917 | 0.4230 | 0.0001 | 1.6354 |
+--8<-- [end:case2]
+
+--8<-- [start:card2]
+| 辅助分验证 KS | 参考行数 |
+| --- | --- |
+| 57.2376 | 6000 |
+--8<-- [end:card2]
+
+--8<-- [start:case3]
+| 特征 | 状态 | 阶段 | 实际原因 |
+| --- | --- | --- | --- |
+| income_copy | Dropped | Corr_Filter | Correlated with 'income' |
+| score_inverse | Dropped | Corr_Filter | Correlated with 'main_score' |
+| constant | Dropped | Quality | Single Value (Mode) |
+| sparse | Dropped | Quality | High Missing |
+| income | Selected | Corr_Filter | Independent |
+| main_score | Selected | Corr_Filter | Independent |
+
+| 表示 | 方法 | 实际相关样本人数 | 阈值比较 |
+| --- | --- | --- | --- |
+| raw | spearman | 5459 | >= 0.95 |
+| woe | pearson | 5513 | > 0.8 |
+
+| raw 特征对 | 有符号相关 | 绝对相关 |
+| --- | --- | --- |
+| main_score / score_inverse | -1.0000 | 1.0000 |
+| income / income_copy | 1.0000 | 1.0000 |
+--8<-- [end:case3]
+
+--8<-- [start:card3]
+| Stats 保留 | Linear 保留 |
+| --- | --- |
+| main_score, income | main_score, income |
+--8<-- [end:card3]
+
+--8<-- [start:case4]
+discovery / 202601 / bad30；X=b1，风险等级 X3。坏率按已表现权重计算。
+
+| 辅助箱 / 风险等级 | 全样本人数 | 已表现人数 | 已表现权重和 | 坏率 | Δ 行基线 pp | 整体 Lift |
+| --- | --- | --- | --- | --- | --- | --- |
+| b0 / Y1 | 122 | 112 | 112.7838 | 1.4659% | -17.7361 | 0.0917 |
+| b1 / Y2 | 115 | 103 | 104.0492 | 3.9250% | -15.2770 | 0.2456 |
+| b2 / Y3 | 122 | 110 | 108.9937 | 11.6735% | -7.5284 | 0.7306 |
+| b3 / Y4 | 122 | 117 | 119.3161 | 56.7155% | 37.5136 | 3.5496 |
+--8<-- [end:case4]
+
+--8<-- [start:card4]
+| 同一 X3 层最低加权坏率 | 最高加权坏率 |
+| --- | --- |
+| 1.4659% | 56.7155% |
+--8<-- [end:card4]
+
+--8<-- [start:case5]
+| 规则 | 审计状态 | 拒绝阶段 | 实际原因 |
+| --- | --- | --- | --- |
+| mr_cb714e09ca8c064f8185 | selected | — | — |
+| mr_20fa26e2262d26742d78 | selected | — | — |
+| mr_8664f1fa21c9c7ac8a92 | rejected | candidate_filter | 未通过训练集候选阈值 |
+| mr_adcb27865a5ad7dbe5ef | rejected | validation_filter | 未通过验证阈值或切片通过率 |
+| mr_60edcd64fb81d6441861 | rejected | candidate_filter | 未通过训练集候选阈值 |
+
+独立 validation / bad30 / hit；sample_count 是已表现人数。
+
+| 规则 | 已表现命中人数 | 事件人数 | 覆盖 | 坏率 | Lift | Lift 下界 |
+| --- | --- | --- | --- | --- | --- | --- |
+| mr_cb714e09ca8c064f8185 | 322 | 167 | 5.8008% | 51.8634% | 3.2641 | 2.9761 |
+| mr_20fa26e2262d26742d78 | 345 | 139 | 6.2151% | 40.2899% | 2.5357 | 2.2681 |
+| mr_adcb27865a5ad7dbe5ef | 374 | 103 | 6.7375% | 27.5401% | 1.7333 | 1.5049 |
+--8<-- [end:case5]
+
+--8<-- [start:card5]
+| 候选数 | 保留数 | 验证范围 |
+| --- | --- | --- |
+| 5 | 2 | independent |
+--8<-- [end:card5]
+
+--8<-- [start:case6]
+| 实际验证 | 结果 |
+| --- | --- |
+| 第一页 / 下一页 | 3 / 3 |
+| next_offset | 3 |
+| 合法空结果 | 0 |
+| 无效列请求 | ValueError |
+| 最终 Unicode 字符 / 上限 | 8929 / 9000 |
+| 只读聚合 policy 回放与保存结果一致 | True |
+--8<-- [end:case6]
+
+--8<-- [start:card6]
+| 恢复对象 | 预算字符上限 |
+| --- | --- |
+| ReportSnapshot | 9000 |
+--8<-- [end:card6]
+
+--8<-- [start:case7]
+| 格式 | 共享文件 | 用途与边界 |
+| --- | --- | --- |
+| HTML | `score-cross.html` | 当前矩阵、选格和正常箱表达式交互；离线请求由浏览器验收 |
+| Excel | `score-cross.xlsx` | 静态工作表；不提供 HTML 等价交互或计算 |
+| .marsreport | `score-cross.marsreport` | 报告目录、查询、聚合 policy 回放；不是原始数据或分析器 |
+| bounded JSON | `agent-context.json` | 真实目录和预算内 evidence，最终 Unicode 字符计数 |
+| TXT | `external-agent-task.txt` | 外部消费者提示材料；不声称实际 LLM 分析 |
+--8<-- [end:case7]
+
+--8<-- [start:card7]
+| 实际格式数 | Excel 关键值与快照对齐 |
+| --- | --- |
+| 5 | True |
+--8<-- [end:card7]
