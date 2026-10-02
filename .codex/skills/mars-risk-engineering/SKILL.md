@@ -6,7 +6,7 @@ description: 用于 leeesq/mars-risk 本身的实现、审查、重构、测试�
 # MARS Risk Engineering
 
 开发、维护和审查 MARS 本身；普通分析使用方法见 docs/user-guide。
-项目定位：**面向人和 AI Agent 的高性能风控分析工具箱**。
+项目定位：**面向人和 AI Agent 的高性能信贷风控工具箱**。
 核心能力：**数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**。
 
 ## 开始工作

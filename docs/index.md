@@ -1,6 +1,6 @@
 ---
 title: MARS
-description: 面向人和 AI Agent 的高性能风控分析工具箱。原生分箱图、数据画像、特征筛选、相关性、模型分交叉、规则与可复用报告。
+description: 面向人和 AI Agent 的高性能信贷风控工具箱。原生分箱图、数据画像、特征筛选、相关性、模型分交叉、规则与可复用报告。
 hide:
   - toc
 ---
@@ -18,13 +18,13 @@ hide:
 <p class="mars-home-badges">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
   <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
-  <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square&label=Python&color=364f6b"></a>
+  <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/badge/Python-3.8--3.12-364f6b?style=flat-square"></a>
   <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
   <a href="https://github.com/leeesq/mars-risk/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
-# 面向人和 AI Agent 的高性能风控分析工具箱
+# 面向人和 AI Agent 的高性能信贷风控工具箱
 
 **数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘**
 

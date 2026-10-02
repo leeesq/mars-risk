@@ -7,7 +7,7 @@ description: 人工对话与外部 AI Agent 通过公共报告读取元数据、
 从[案例 6：只加载快照继续查询](../demos/saved-reports.md)和
 [案例 7：不同使用者的交付](../demos/report-delivery.md)查看实际有限 JSON 与下载文件。
 
-MARS 是面向人和 AI Agent 的高性能风控分析工具箱。具备 Python 工具的外部 Agent 可以调用
+MARS 是面向人和 AI Agent 的高性能信贷风控工具箱。具备 Python 工具的外部 Agent 可以调用
 MARS 的画像、分箱评估、筛选、相关性和规则能力，取得结构化报告后继续查询、复核与交付。
 这些公共入口可以接入自建 Agent，无需 `MarsAgentSession` 或指定模型 SDK。
 查询已有报告不会重新分箱、重算指标或访问原始样本；需要新范围或新维度时，

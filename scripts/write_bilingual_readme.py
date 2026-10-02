@@ -18,7 +18,7 @@ def _quickstart() -> str:
 
 
 def _brand() -> str:
-    """保留原字形、英文全称和六类动态徽章的真实链接。"""
+    """保留原字形、英文全称和六类徽章的真实链接。"""
     original = (ROOT / "docs/index.md").read_text(encoding="utf-8")
     badges = original.split('<p class="mars-home-badges">', 1)[1].split("</p>", 1)[0]
     badges = badges.replace(
@@ -40,8 +40,8 @@ def _brand() -> str:
 def _hero(english: bool) -> str:
     """为 GitHub 使用显式 HTML 居中，不依赖文档站 CSS。"""
     title = (
-        "A high-performance risk analysis toolkit for humans and AI agents"
-        if english else "面向人和 AI Agent 的高性能风控分析工具箱"
+        "A high-performance credit risk toolkit for humans and AI agents"
+        if english else "面向人和 AI Agent 的高性能信贷风控工具箱"
     )
     capabilities = (
         "Data profiling · Binning evaluation · Feature selection · Correlation analysis · "

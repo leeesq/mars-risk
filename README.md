@@ -12,13 +12,13 @@
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
   <a href="https://leeesq.github.io/mars-risk/"><img alt="Docs" src="https://img.shields.io/badge/Docs-GitHub%20Pages-7c3aed?style=flat-square"></a>
-  <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/pypi/pyversions/mars-risk?style=flat-square&label=Python&color=364f6b"></a>
+  <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/badge/Python-3.8--3.12-364f6b?style=flat-square"></a>
   <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
-<h1 align="center">面向人和 AI Agent 的高性能风控分析工具箱</h1>
+<h1 align="center">面向人和 AI Agent 的高性能信贷风控工具箱</h1>
 <p align="center"><strong>数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘</strong></p>
 <p align="center">从 Pandas 或 Polars 宽表，得到可查看、可查询、可交付、可复用的风控分析结果。<br>用原生图表支持人工判断，用结构化报告连接你的建模、监控归因与分析 Agent。</p>
 <p align="center"><a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">开始分析</a> · <a href="https://leeesq.github.io/mars-risk/demos/">实战案例</a> · <a href="https://leeesq.github.io/mars-risk/user-guide/external-agents/">面向 AI Agent</a> · <a href="https://leeesq.github.io/mars-risk/">完整文档</a></p>

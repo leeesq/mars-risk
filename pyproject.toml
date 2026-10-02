@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mars-risk"      
 version = "0.0.28"
-description = "面向人和 AI Agent 的高性能风控分析工具箱"
+description = "面向人和 AI Agent 的高性能信贷风控工具箱"
 readme = "README.md"
 requires-python = ">=3.8,<3.13"
 classifiers = [

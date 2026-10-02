@@ -297,13 +297,13 @@ def test_default_dependencies_include_pandas_styler_runtime() -> None:
 
 
 @pytest.mark.parametrize("readme_name", ["README.md", "README.en.md"])
-def test_readme_restores_dynamic_python_and_download_badges(readme_name: str) -> None:
-    """README badge 应使用动态 PyPI/PePy 数据并保持约定顺序。"""
+def test_readme_preserves_compact_python_and_dynamic_download_badges(readme_name: str) -> None:
+    """README 使用简洁 Python 范围，保留其余动态徽章与约定顺序。"""
     readme = (PROJECT_ROOT / readme_name).read_text(encoding="utf-8")
     badge_fragments = [
         "img.shields.io/pypi/v/mars-risk",
         "img.shields.io/badge/Docs-GitHub%20Pages",
-        "img.shields.io/pypi/pyversions/mars-risk",
+        "img.shields.io/badge/Python-3.8--3.12-364f6b",
         "img.shields.io/pepy/dt/mars-risk",
         "img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml",
         "img.shields.io/github/license/leeesq/mars-risk",
@@ -326,18 +326,18 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
         assert f'docs/assets/{asset_name}' in english_readme
         assert f'assets/{asset_name}' in homepage
     for text in (readme, homepage):
-        assert "面向人和 AI Agent 的高性能风控分析工具箱" in text
+        assert "面向人和 AI Agent 的高性能信贷风控工具箱" in text
         assert "数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘" in text
         for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
             assert f'alt="{label}"' in text
-    assert "A high-performance risk analysis toolkit for humans and AI agents" in english_readme
+    assert "A high-performance credit risk toolkit for humans and AI agents" in english_readme
     for label in ("PyPI", "Docs", "Python", "Downloads", "CI", "License"):
         assert f'alt="{label}"' in english_readme
     for text in (readme, english_readme, homepage):
         for fragment in (
             "img.shields.io/pypi/v/mars-risk",
             "img.shields.io/badge/Docs-GitHub%20Pages",
-            "img.shields.io/pypi/pyversions/mars-risk",
+            "img.shields.io/badge/Python-3.8--3.12-364f6b",
             "img.shields.io/pepy/dt/mars-risk",
             "img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml",
             "img.shields.io/github/license/leeesq/mars-risk",
