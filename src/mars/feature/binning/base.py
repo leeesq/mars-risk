@@ -1617,7 +1617,8 @@ class MarsBinnerBase(MarsTransformer):
         X : Union[pl.DataFrame, pd.DataFrame] | None
             用于重新计算 WOE 的数据。若为 None，将尝试使用 fit 时缓存的 _cache_X。
         y : Any | None
-            目标标签。若为 None，将尝试使用 fit 时缓存的 _cache_y。
+            二分类目标标签，支持 0/1、Boolean 及既有字符串表示；null/NaN 和空字符串
+            不参与统计。此接口不将 -1 作为未表现哨兵。若为 None，尝试使用拟合缓存。
         on_unknown : Literal['error', 'warn', 'ignore']
             ``bin_rules`` 包含未知或无规则特征时的处理策略。
 
@@ -1629,7 +1630,8 @@ class MarsBinnerBase(MarsTransformer):
         Raises
         ------
         ValueError
-            当缺少用于重算 WOE 的 ``X``/``y``、或没有任何已知特征被更新时抛出。
+            缺少重算所需的 ``X``/``y``、标签非法或长度不匹配、没有观测标签、
+            ``on_unknown`` 非法或没有已知特征被更新。标签校验失败不会修改规则和 WOE。
 
         Examples
         --------
