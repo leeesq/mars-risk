@@ -39,8 +39,9 @@ Scoring 的调用代码及对应行为测试。上游不为三个下游模块保
 
 ## 升级规则
 
-- 已发布包固定精确版本；当前 0.0.28 源码按[安装指南](../getting-started/installation.md)
-  安装并固定核验过的提交，不使用尚未发布版本的 PyPI 固定安装命令。
+- 版本安装固定精确版本：0.0.28 发布后使用 `pip install mars-risk==0.0.28`。
+  若 PyPI 尚未提供该版本，按[安装指南](../getting-started/installation.md)使用 main 源码，
+  并记录实际核验的提交；仓库版本号不代表已经上传 PyPI。
 - 升级前阅读[Release Notes](release-notes.md)，并在测试数据上验证依赖的字段和文件路径。
 - Experimental 模块的调用方应为关键结果对象增加契约测试。
 - `main` 文档可以作为预览部署；只有对应版本发布到 PyPI 后，安装命令才表示正式可用。

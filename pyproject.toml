@@ -43,7 +43,7 @@ authors = [
 
 dependencies = [
     "polars==1.8.2; python_version < '3.9'",
-    "polars>=1.33.1; python_version >= '3.9'",
+    "polars>=1.33.1,<2; python_version >= '3.9'",
     "numpy>=1.24.0",      
     "pandas>=2.0.0",     
     "jinja2>=3.1.2",

@@ -1,13 +1,13 @@
-**中文** / [English](README.en.md)
+**中文** / [English](https://github.com/leeesq/mars-risk/blob/main/README.en.md)
 
 <p align="center">
 <picture>
-<source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/mars-logo.svg">
-<source media="(prefers-color-scheme: dark)" srcset="docs/assets/mars-logo-dark.gif">
-<img src="docs/assets/mars-logo-light.gif" alt="MARS" width="480">
+<source media="(prefers-reduced-motion: reduce)" srcset="https://leeesq.github.io/mars-risk/assets/mars-logo.svg">
+<source media="(prefers-color-scheme: dark)" srcset="https://leeesq.github.io/mars-risk/assets/mars-logo-dark.gif">
+<img src="https://leeesq.github.io/mars-risk/assets/mars-logo-light.gif" alt="MARS" width="480">
 </picture>
 <br>
-<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
+<img src="https://leeesq.github.io/mars-risk/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
 </p>
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/badge/Python-3.8--3.12-364f6b?style=flat-square"></a>
   <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
+  <a href="https://github.com/leeesq/mars-risk/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
 <h1 align="center">面向人和 AI Agent 的高性能信贷风控工具箱</h1>
@@ -25,7 +25,7 @@
 
 <p align="center">
 <a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
-<img src="docs/assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性" width="1040">
+<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性" width="1040">
 </a>
 </p>
 
@@ -64,13 +64,19 @@ MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型�
 
 ## 安装
 
-本页示例对应 **main / 源码版本 0.0.28**，使用当前源码安装：
+本页示例对应 **MARS 0.0.28**。0.0.28 发布到 PyPI 后安装：
+
+```bash
+pip install mars-risk==0.0.28
+```
+
+若 PyPI 尚未提供 0.0.28，或需要开发分支，先从源码安装：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-PyPI 当前发布 **0.0.27**，尚不包含这里展示的全部新能力。基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖](https://leeesq.github.io/mars-risk/getting-started/installation/)。
+基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖](https://leeesq.github.io/mars-risk/getting-started/installation/)。
 
 ## 先得到一份报告
 
@@ -96,7 +102,7 @@ report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
 ```
 
-[共享可运行源码](docs/snippets/readme_quickstart.py) · [完整 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战](https://leeesq.github.io/mars-risk/demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
+[共享可运行源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [完整 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战](https://leeesq.github.io/mars-risk/demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
 
 ## 将同一份结果交给 AI Agent
 
@@ -133,4 +139,4 @@ pip install -e ".[docs]"
 python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 ```
 
-[案例下载与复现说明](https://leeesq.github.io/mars-risk/demos/#run) · [贡献指南](CONTRIBUTING.md) · [工程 Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE)。
+[案例下载与复现说明](https://leeesq.github.io/mars-risk/demos/#run) · [贡献指南](https://github.com/leeesq/mars-risk/blob/main/CONTRIBUTING.md) · [工程 Skill](https://github.com/leeesq/mars-risk/blob/main/.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE)。

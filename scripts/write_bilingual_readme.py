@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = "https://leeesq.github.io/mars-risk/"
+SOURCE = "https://github.com/leeesq/mars-risk/blob/main/"
 FENCE = chr(96) * 3
 
 
@@ -21,17 +22,14 @@ def _brand() -> str:
     """保留原字形、英文全称和六类徽章的真实链接。"""
     original = (ROOT / "docs/index.md").read_text(encoding="utf-8")
     badges = original.split('<p class="mars-home-badges">', 1)[1].split("</p>", 1)[0]
-    badges = badges.replace(
-        'href="https://github.com/leeesq/mars-risk/blob/main/LICENSE"', 'href="LICENSE"'
-    )
     return (
         '<p align="center">\n'
         '<picture>\n'
-        '<source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/mars-logo.svg">\n'
-        '<source media="(prefers-color-scheme: dark)" srcset="docs/assets/mars-logo-dark.gif">\n'
-        '<img src="docs/assets/mars-logo-light.gif" alt="MARS" width="480">\n'
+        f'<source media="(prefers-reduced-motion: reduce)" srcset="{SITE}assets/mars-logo.svg">\n'
+        f'<source media="(prefers-color-scheme: dark)" srcset="{SITE}assets/mars-logo-dark.gif">\n'
+        f'<img src="{SITE}assets/mars-logo-light.gif" alt="MARS" width="480">\n'
         '</picture>\n<br>\n'
-        '<img src="docs/assets/mars-wordmark.svg" '
+        f'<img src="{SITE}assets/mars-wordmark.svg" '
         'alt="MODELING ANALYSIS RISK SCORE" width="480">\n</p>\n'
         '<p align="center">' + badges + '</p>'
     )
@@ -87,7 +85,7 @@ def _preview(english: bool) -> str:
     return (
         '<p align="center">\n'
         f'<a href="{SITE}assets/cases/binning-native-main-score.svg">\n'
-        '<img src="docs/assets/cases/binning-native-main-score.png" '
+        f'<img src="{SITE}assets/cases/binning-native-main-score.png" '
         f'alt="{alt}" width="1040">\n</a>\n</p>\n\n'
         f'<p align="center"><sub>{caption}</sub><br>\n'
         f'<a href="{SITE}demos/binning-stability/">{case_label}</a> · '
@@ -108,7 +106,7 @@ page = report.query_page("summary", limit=1)
 next_page = report.query_page("summary", offset=page["next_offset"], limit=1)
 context_json = report.to_ai_context(tables=["summary"], max_chars=16000)"""
     if english:
-        return f"""[中文](README.md) / **English**
+        return f"""[中文]({SOURCE}README.md) / **English**
 
 {hero}
 
@@ -146,13 +144,19 @@ These are workflows you can build with MARS; complete agents are composed by the
 
 ## Install
 
-The examples follow **main / source version 0.0.28**. Install the current source:
+These examples target **MARS 0.0.28**. Once the release is available on PyPI, install:
+
+{FENCE}bash
+pip install mars-risk==0.0.28
+{FENCE}
+
+If PyPI does not yet provide 0.0.28, or you want to work with the development branch, install from source:
 
 {FENCE}bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-PyPI currently publishes **0.0.27**, which does not contain all capabilities shown here. The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
+The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
 
 ## Start with one report
 
@@ -162,7 +166,7 @@ Run this self-contained example in an empty working directory:
 {code}
 {FENCE}
 
-[Shared runnable source](docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case]({SITE}demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
+[Shared runnable source]({SOURCE}docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case]({SITE}demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
 
 ## Give the same result to an AI agent
 
@@ -193,9 +197,9 @@ pip install -e ".[docs]"
 python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 {FENCE}
 
-[Case downloads and reproducibility]({SITE}demos/#run) · [Contribution guide](CONTRIBUTING.md) · [Engineering Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE).
+[Case downloads and reproducibility]({SITE}demos/#run) · [Contribution guide]({SOURCE}CONTRIBUTING.md) · [Engineering Skill]({SOURCE}.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License]({SOURCE}LICENSE).
 """
-    return f"""**中文** / [English](README.en.md)
+    return f"""**中文** / [English]({SOURCE}README.en.md)
 
 {hero}
 
@@ -233,13 +237,19 @@ MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型�
 
 ## 安装
 
-本页示例对应 **main / 源码版本 0.0.28**，使用当前源码安装：
+本页示例对应 **MARS 0.0.28**。0.0.28 发布到 PyPI 后安装：
+
+{FENCE}bash
+pip install mars-risk==0.0.28
+{FENCE}
+
+若 PyPI 尚未提供 0.0.28，或需要开发分支，先从源码安装：
 
 {FENCE}bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-PyPI 当前发布 **0.0.27**，尚不包含这里展示的全部新能力。基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
+基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
 
 ## 先得到一份报告
 
@@ -249,7 +259,7 @@ PyPI 当前发布 **0.0.27**，尚不包含这里展示的全部新能力。基�
 {code}
 {FENCE}
 
-[共享可运行源码](docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战]({SITE}demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
+[共享可运行源码]({SOURCE}docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战]({SITE}demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
 
 ## 将同一份结果交给 AI Agent
 
@@ -280,7 +290,7 @@ pip install -e ".[docs]"
 python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 {FENCE}
 
-[案例下载与复现说明]({SITE}demos/#run) · [贡献指南](CONTRIBUTING.md) · [工程 Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE)。
+[案例下载与复现说明]({SITE}demos/#run) · [贡献指南]({SOURCE}CONTRIBUTING.md) · [工程 Skill]({SOURCE}.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License]({SOURCE}LICENSE)。
 """
 
 

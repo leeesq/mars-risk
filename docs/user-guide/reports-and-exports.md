@@ -146,9 +146,9 @@ fragment = report.render_risk_trends_html(
 
 !!! warning "Scoring：Experimental"
 
-    评分映射、刻度参数和 SQL 输出仍可能调整。当前 0.0.28 是源码版本，按
-    [安装指南](../getting-started/installation.md)安装并固定核验过的源码提交；正式发布后再固定
-    对应 PyPI 版本，并为 `points_table` 和生成 SQL 增加契约测试。
+    评分映射、刻度参数和 SQL 输出仍可能调整。本文对应 0.0.28，发布后按
+    [安装指南](../getting-started/installation.md)固定该版本；若 PyPI 尚未提供，使用 main 源码
+    并记录核验的提交。为 `points_table` 和生成 SQL 增加契约测试。
 
 ```python
 --8<-- "docs/snippets/reporting_scorecard.py"

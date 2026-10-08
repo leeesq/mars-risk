@@ -1,19 +1,31 @@
 ---
-description: 区分 PyPI 已发布版本与当前源码，说明 Python 兼容策略和可选依赖。
+description: MARS 0.0.28 的版本安装、main 开发安装、Python 兼容策略和可选依赖。
 ---
 
 # 安装
 
-## 当前源码与本文新能力
+## 安装 0.0.28
 
-本站及 README 对应源码 **0.0.28**，公共报告、外部 Agent 与新分析能力按当前源码验证。
-请先从源码安装：
+本站及 README 对应 **MARS 0.0.28**。0.0.28 发布后使用以下命令；
+若 PyPI 尚未提供该版本，先使用下方源码安装。
+
+```bash
+pip install mars-risk==0.0.28
+```
+
+版本发布情况以 [PyPI](https://pypi.org/project/mars-risk/)和
+[GitHub Releases](https://github.com/leeesq/mars-risk/releases)为准。
+动态版本徽章展示发布来源；不能将仓库版本号或文档更新视为已经上传 PyPI。
+
+## 源码安装与 main 开发
+
+发布前体验本文能力，或参与 main 开发时，从当前源码安装：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-或克隆仓库进行开发：
+需要修改代码或运行仓库内案例时，克隆仓库并在根目录安装：
 
 ```bash
 git clone https://github.com/leeesq/mars-risk.git
@@ -21,28 +33,20 @@ cd mars-risk
 python -m pip install -e .
 ```
 
-## 已发布版本
-
-截至 2026-10-02，核验[PyPI](https://pypi.org/project/mars-risk/)和
-[最新 GitHub release](https://github.com/leeesq/mars-risk/releases/tag/0.0.27)均为 **0.0.27**。
-它不包含本文全部新能力；动态徽章展示发布状态，不代表 main 已发布。
-
-```bash
-pip install mars-risk==0.0.27
-```
-
-本任务不发布版本。正式版本变更以 PyPI、pyproject.toml 和 Release Notes 为准。
+版本安装固定发布产物；main 可能继续变化。复现分析时记录实际版本或源码提交，
+升级变化见 [Release Notes](../project/release-notes.md)。
 
 ## Python 兼容策略
 
 基础包的元数据要求 Python >=3.8,<3.13；当前核心 CI 验证 3.8–3.12。
 Python 3.8 使用冻结依赖栈，Polars 1.8.2 与 scikit-learn 1.3.x；
+Python 3.9–3.12 使用 `polars>=1.33.1,<2`，本版尚未支持 Polars 2.0 的类型规则。
 3.9 使用依赖边界栈。可选模型、调参、Notebook、文档／开发工具及内置 Agent
 以 Python 3.10+ 为支持环境；并非每个 extra 都通过包元数据自动禁止旧解释器安装。
 Agent 的 SDK 带 Python >=3.10 条件，模块导入也会校验版本。
 
 Python 3.8 已停止官方安全维护，运行兼容不等于解释器继续获得维护。
-旧环境源码安装使用仓库约束：
+需要复现 Python 3.8 的冻结源码验证栈时，在克隆目录内使用仓库约束：
 
 ```bash
 python -m pip install -c constraints/python38.txt -e .
@@ -50,16 +54,17 @@ python -m pip install -c constraints/python38.txt -e .
 
 ## 可选依赖
 
-在源码目录内按任务安装，未发布版本不要使用 `mars-risk==0.0.28` 的 PyPI 命令：
+以下版本命令在 **0.0.28 发布后**使用；PyPI 尚未提供该版本时，
+先克隆 main，并在仓库根目录使用右侧的源码命令。可选能力使用 Python 3.10+。
 
-| 场景 | 源码安装命令 |
-| --- | --- |
-| Notebook | `pip install -e ".[notebook]"` |
-| 树模型 | `pip install -e ".[ml]"` |
-| 调参 | `pip install -e ".[ml,tuning]"` |
-| 文档构建 | `pip install -e ".[docs]"` |
-| 开发检查 | `pip install -e ".[dev]"` |
-| 可选内置 Agent SDK | `pip install -e ".[agent]"` |
+| 场景 | 0.0.28 版本安装 | main 源码安装 |
+| --- | --- | --- |
+| Notebook | `pip install "mars-risk[notebook]==0.0.28"` | `pip install -e ".[notebook]"` |
+| 树模型 | `pip install "mars-risk[ml]==0.0.28"` | `pip install -e ".[ml]"` |
+| 调参 | `pip install "mars-risk[ml,tuning]==0.0.28"` | `pip install -e ".[ml,tuning]"` |
+| 文档构建 | `pip install "mars-risk[docs]==0.0.28"` | `pip install -e ".[docs]"` |
+| 开发检查 | `pip install "mars-risk[dev]==0.0.28"` | `pip install -e ".[dev]"` |
+| 可选内置 Agent SDK | `pip install "mars-risk[agent]==0.0.28"` | `pip install -e ".[agent]"` |
 
 基础包包含画像、分箱、筛选、报告与 Excel／HTML 导出；保留的监控、评分卡不需要模型 SDK。
 `ml` 提供 XGBoost、LightGBM、CatBoost、SHAP 与 statsmodels，`tuning` 提供 Optuna。
@@ -71,7 +76,7 @@ python -m pip install -c constraints/python38.txt -e .
 python -c "import mars; print(mars.__version__)"
 ```
 
-当前源码输出 0.0.28；已发布安装输出其对应版本。随后运行[Quickstart](quickstart.md)；
+0.0.28 版本安装应输出 0.0.28；main 安装输出当前源码版本。随后运行[Quickstart](quickstart.md)；
 公共报告交接见[外部 Agent 指南](../user-guide/external-agents.md)。
 
 ## 常见问题

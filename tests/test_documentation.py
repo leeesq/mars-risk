@@ -11,7 +11,7 @@ import re
 import runpy
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import pytest
 from packaging.requirements import Requirement
@@ -24,6 +24,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = PROJECT_ROOT / "docs"
 SNIPPETS_ROOT = DOCS_ROOT / "snippets"
+DOCS_SITE = "https://leeesq.github.io/mars-risk/"
+REPOSITORY_SOURCE = "https://github.com/leeesq/mars-risk/blob/main/"
 
 BASIC_SNIPPETS = [
     "readme_quickstart.py",
@@ -230,7 +232,10 @@ def test_documented_version_matches_package_metadata() -> None:
     assert package_match is not None
     assert package_match.group(1) == project_version == "0.0.28"
 
-    # main 的新能力从源码安装，不能用未发布版本的 PyPI 命令充当可用性证明。
+    # 发布版本优先，同时保留 PyPI 尚未提供该版本时的源码入口。
+    version_install = re.compile(
+        rf"pip install mars-risk=={re.escape(project_version)}\b"
+    )
     source_install = re.compile(
         r'pip install "git\+https://github\.com/leeesq/mars-risk\.git(?:@[A-Za-z0-9._/-]+)?"'
     )
@@ -241,7 +246,15 @@ def test_documented_version_matches_package_metadata() -> None:
         DOCS_ROOT / "getting-started" / "installation.md",
         DOCS_ROOT / "getting-started" / "quickstart.md",
     ]:
-        assert source_install.search(path.read_text(encoding="utf-8")), path
+        text = path.read_text(encoding="utf-8")
+        version_match = version_install.search(text)
+        source_match = source_install.search(text)
+        assert version_match is not None, path
+        assert source_match is not None, path
+        assert version_match.start() < source_match.start(), path
+        installation_intro = text[:source_match.start()]
+        assert project_version in installation_intro and "PyPI" in installation_intro, path
+        assert re.search(r"尚未|not yet", installation_intro, re.I), path
 
 
 def test_python_version_dependency_markers_cover_supported_range() -> None:
@@ -253,10 +266,10 @@ def test_python_version_dependency_markers_cover_supported_range() -> None:
     requirements = [Requirement(value) for value in project["dependencies"]]
     expected = {
         "3.8": {"polars": "==1.8.2", "scikit-learn": "<1.4,>=1.3.2"},
-        "3.9": {"polars": ">=1.33.1", "scikit-learn": "<1.7,>=1.6.1"},
-        "3.10": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
-        "3.11": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
-        "3.12": {"polars": ">=1.33.1", "scikit-learn": ">=1.7.2"},
+        "3.9": {"polars": "<2,>=1.33.1", "scikit-learn": "<1.7,>=1.6.1"},
+        "3.10": {"polars": "<2,>=1.33.1", "scikit-learn": ">=1.7.2"},
+        "3.11": {"polars": "<2,>=1.33.1", "scikit-learn": ">=1.7.2"},
+        "3.12": {"polars": "<2,>=1.33.1", "scikit-learn": ">=1.7.2"},
     }
 
     for python_version, expected_specs in expected.items():
@@ -322,8 +335,9 @@ def test_brand_hero_preserves_identity_and_complete_badges() -> None:
         "mars-logo.svg",
         "mars-wordmark.svg",
     ]:
-        assert f'docs/assets/{asset_name}' in readme
-        assert f'docs/assets/{asset_name}' in english_readme
+        assert f"{DOCS_SITE}assets/{asset_name}" in readme
+        assert f"{DOCS_SITE}assets/{asset_name}" in english_readme
+        assert (DOCS_ROOT / "assets" / asset_name).is_file()
         assert f'assets/{asset_name}' in homepage
     for text in (readme, homepage):
         assert "面向人和 AI Agent 的高性能信贷风控工具箱" in text
@@ -364,12 +378,12 @@ def test_readme_hero_uses_same_native_binning_chart_in_both_languages() -> None:
     """两语门面使用可追溯原生分箱图，并提供高清文件；不再复合交叉截图。"""
     for name in ("README.md", "README.en.md"):
         text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
-        png = "docs/assets/cases/binning-native-main-score.png"
-        svg = "docs/assets/cases/binning-native-main-score.svg"
-        svg_targets = (svg, "https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg")
+        png = f"{DOCS_SITE}assets/cases/binning-native-main-score.png"
+        svg = f"{DOCS_SITE}assets/cases/binning-native-main-score.svg"
         assert png in text
-        assert any(f'href="{target}"' in text or f"]({target})" in text for target in svg_targets)
-        assert (PROJECT_ROOT / png).is_file() and (PROJECT_ROOT / svg).is_file()
+        assert f'href="{svg}"' in text or f"]({svg})" in text
+        assert (DOCS_ROOT / "assets/cases/binning-native-main-score.png").is_file()
+        assert (DOCS_ROOT / "assets/cases/binning-native-main-score.svg").is_file()
         assert text.index(png) < text.index("```python")
         assert "readme-preview" not in text
         assert "binning-risk.png" not in text
@@ -390,7 +404,7 @@ def test_rule_case_agent_download_includes_rule_analysis_instructions() -> None:
 
 
 def test_bilingual_readme_quickstart_uses_one_executable_source() -> None:
-    """两语短代码必须逐行同步共享 snippet，语言跳转和本地资源真实存在。"""
+    """两语短代码同步共享 snippet，公开链接兼容 PyPI 且源码资源真实存在。"""
     snippet = (SNIPPETS_ROOT / "readme_quickstart.py").read_text(encoding="utf-8")
     match = re.search(
         r"# --8<-- \[start:quickstart\]\n(.*?)\n# --8<-- \[end:quickstart\]",
@@ -408,11 +422,19 @@ def test_bilingual_readme_quickstart_uses_one_executable_source() -> None:
         assert quickstart in [block.strip() for block in blocks], name
         assert "docs/snippets/readme_quickstart.py" in text, name
         other = "README.en.md" if name == "README.md" else "README.md"
-        assert re.search(rf"\]\({re.escape(other)}\)", text), name
-        for path in re.findall(r'(?:src|srcset|href)="(docs/[^"?#]+)"', text):
-            assert (PROJECT_ROOT / path).is_file(), f"{name}: missing {path}"
-        for path in re.findall(r"!?\[[^\]]*\]\((docs/[^)#?]+)", text):
-            assert (PROJECT_ROOT / path).is_file(), f"{name}: missing {path}"
+        target = f"{REPOSITORY_SOURCE}{other}"
+        assert re.search(rf"\]\({re.escape(target)}\)", text), name
+        targets = re.findall(r'(?:src|srcset|href)="([^"]+)"', text)
+        targets.extend(re.findall(r"!?\[[^\]]*\]\(([^)\s]+)\)", text))
+        for target in targets:
+            parsed = urlsplit(target)
+            assert parsed.scheme == "https" and parsed.netloc, f"{name}: relative link {target}"
+            if target.startswith(f"{DOCS_SITE}assets/"):
+                path = unquote(urlsplit(target[len(DOCS_SITE):]).path)
+                assert (DOCS_ROOT / path).is_file(), f"{name}: missing {path}"
+            elif target.startswith(REPOSITORY_SOURCE):
+                path = unquote(urlsplit(target[len(REPOSITORY_SOURCE):]).path)
+                assert (PROJECT_ROOT / path).is_file(), f"{name}: missing {path}"
 
 
 @pytest.mark.parametrize("readme_name", ["README.md", "README.en.md"])

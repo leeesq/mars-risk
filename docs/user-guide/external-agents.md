@@ -12,7 +12,8 @@ MARS 的画像、分箱评估、筛选、相关性和规则能力，取得结构
 这些公共入口可以接入自建 Agent，无需 `MarsAgentSession` 或指定模型 SDK。
 查询已有报告不会重新分箱、重算指标或访问原始样本；需要新范围或新维度时，
 Agent 应在调用方提供的数据和计算预算内明确发起新的分析。
-本文使用[当前源码安装](../getting-started/installation.md)，新能力不代表已发布 PyPI 包的能力。
+本文对应 MARS **0.0.28**。发布后可按[安装指南](../getting-started/installation.md)安装该版本；
+若 PyPI 尚未提供 0.0.28，先使用指南中的 main 源码安装。
 
 ## 基于 MARS 构建 Agent { #agent-scenarios }
 

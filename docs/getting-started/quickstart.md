@@ -4,11 +4,20 @@ description: 从安装后的空环境完成一次可运行的风险评估，并�
 
 # 10 分钟 Quickstart
 
-本页从一个小型 Polars 数据集开始，完成风险评估并读取返回对象。本文新能力对应当前源码；[安装指南](installation.md)区分源码与已发布版本：
+本页使用 MARS **0.0.28**，从小型 Polars 数据集完成风险评估并读取返回对象。
+0.0.28 发布后使用以下命令；若 PyPI 尚未提供该版本，先使用下方源码安装。
+
+```bash
+pip install mars-risk==0.0.28
+```
+
+发布前体验或 main 开发使用源码：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
+
+Python 兼容策略与可选依赖见[安装指南](installation.md)。
 
 ## 1. 运行完整示例
 

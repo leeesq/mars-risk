@@ -162,8 +162,9 @@ IV、PSI、Lift 无量纲，Δ 用百分点（pp）。各页说明真实口径�
 
 ## 运行与下载 { #run }
 
-这组案例随当前源码 `0.0.28` 维护；PyPI 发布边界见[安装页](../getting-started/installation.md)。
-从 main 克隆源码，在仓库根目录安装。所有核心案例无需 API Key、联网 LLM 或可选模型训练 extra。
+这组案例对应 **MARS 0.0.28**。发布后可使用 `pip install mars-risk==0.0.28`；
+若 PyPI 尚未提供该版本，先按[安装页](../getting-started/installation.md)使用 main 源码。
+所有核心案例无需 API Key、联网 LLM 或可选模型训练 extra。
 本批公开结果由 Python 3.11.15、Pandas 3.0.3、Polars 1.42.0 运行，
 完整依赖和源码导入／已安装 distribution 的区别见[生成环境](../assets/cases/generation-environment.json)。
 
@@ -173,6 +174,9 @@ cd mars-risk
 python -m pip install -e ".[docs]"
 python docs/snippets/task_cases.py --output-dir output/task-cases --rows 18000 --seed 20261001
 ```
+
+上面从 main 运行仓库脚本，也适用于文档开发；发布后复现固定版本可检出相应发布标签。
+运行案例脚本需要取得源码文件，单独安装 wheel 不包含文档和 Notebook。
 
 [完整共享源码](../snippets/task_cases.py) · [共享下载包](../assets/cases/cases.zip) ·
 [真实结果摘要](../assets/cases/summary.json) · [生成来源与文件哈希](../assets/cases/manifest.json)

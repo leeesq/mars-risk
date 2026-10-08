@@ -8,8 +8,9 @@ description: 规则发现与独立验证接入公共报告、关联检索、快�
 本页保留完整公共契约与外部 Agent 提示材料。
 
 `MarsRuleMiningResult.to_report()` 返回满足 `mars.reporting.Report` 契约的
-`MarsRuleReport`。Rule 仍为 **Experimental**；以下能力以当前 main 源码为准，
-不代表已发布 PyPI 包已经包含。规则生成器、DSL、RuleSet JSON 和部署门禁没有因此改变。
+`MarsRuleReport`。Rule 仍为 **Experimental**；本文对应 MARS **0.0.28**。
+发布后按[安装指南](../getting-started/installation.md)固定该版本；若 PyPI 尚未提供，使用 main 源码。
+公共报告接入没有改变规则生成器、DSL、RuleSet JSON 和部署门禁。
 
 ## 公共报告与关联
 
@@ -104,7 +105,7 @@ RuleSet JSON 仍是独立定义与部署产物，SQL 导出仍检查验证摘要
 
 业务问题是：**同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？**
 
-执行当前源码安装环境中的脚本，无需 API Key、LLM、网络或训练模型：
+取得案例脚本后，在对应版本的安装环境中执行，无需 API Key、LLM、网络或训练模型：
 
 ```bash
 python docs/snippets/external_agent_rule_case.py --output-dir output/agent-rule-case

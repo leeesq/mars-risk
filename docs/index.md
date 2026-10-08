@@ -142,7 +142,14 @@ JSON 摘要可以粘贴到对话框；max_chars 是字符预算，不是 token �
 
 </div>
 
-本站对应 **main / 源码 0.0.28**；PyPI 当前发布 0.0.27，新能力使用源码安装：
+本站介绍 **MARS 0.0.28**。0.0.28 发布后使用以下命令；
+若 PyPI 尚未提供该版本，先使用下方源码安装。
+
+```bash
+pip install mars-risk==0.0.28
+```
+
+发布前体验或 main 开发使用源码：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"

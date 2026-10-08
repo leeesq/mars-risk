@@ -11,17 +11,24 @@ Experimental 表示成熟度，暂停表示投入，两者不能互相代替。
 该 Notebook 使用 seed `1206`、240 行独立合成数据完成时间切分、轻量调参、打分与监控。
 它不属于七个核心实战案例的共享 18,000 行数据，也不作为正在扩展的训练路线。
 
-## 在当前源码中运行
+## 在 0.0.28 环境中运行
 
-先按[源码安装指南](../getting-started/installation.md)克隆仓库，再在仓库根目录安装可选依赖：
+使用 Python 3.10+。0.0.28 发布后安装可选依赖，再取得并打开上面的 Notebook：
+
+```bash
+python -m pip install "mars-risk[ml,tuning,notebook]==0.0.28"
+```
+
+若 PyPI 尚未提供该版本，先按[安装指南](../getting-started/installation.md)克隆 main，
+在仓库根目录使用源码安装并打开 Notebook：
 
 ```bash
 python -m pip install -e ".[ml,tuning,notebook]"
 python -m jupyter lab docs/demos/lgb-modeling-monitoring.ipynb
 ```
 
-本页随源码 `0.0.28` 维护；旧材料中的 `mars-risk[ml,tuning]==0.0.24` 不适用于当前 Notebook。
-PyPI 已发布版本由[安装页](../getting-started/installation.md)记录，不以源码版本代替。
+本页对应 `0.0.28`；旧材料中的 `mars-risk[ml,tuning]==0.0.24` 不适用于当前 Notebook。
+版本命令须在 PyPI 提供 0.0.28 后使用；发布前的 main 安装与固定版本安装分别记录。
 LightGBM、其他模型后端与 Optuna 属于可选 `ml,tuning` extra；七个核心案例不要求这些训练依赖。
 
 !!! warning "渲染与执行分别验收"

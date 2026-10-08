@@ -1,13 +1,13 @@
-[中文](README.md) / **English**
+[中文](https://github.com/leeesq/mars-risk/blob/main/README.md) / **English**
 
 <p align="center">
 <picture>
-<source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/mars-logo.svg">
-<source media="(prefers-color-scheme: dark)" srcset="docs/assets/mars-logo-dark.gif">
-<img src="docs/assets/mars-logo-light.gif" alt="MARS" width="480">
+<source media="(prefers-reduced-motion: reduce)" srcset="https://leeesq.github.io/mars-risk/assets/mars-logo.svg">
+<source media="(prefers-color-scheme: dark)" srcset="https://leeesq.github.io/mars-risk/assets/mars-logo-dark.gif">
+<img src="https://leeesq.github.io/mars-risk/assets/mars-logo-light.gif" alt="MARS" width="480">
 </picture>
 <br>
-<img src="docs/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
+<img src="https://leeesq.github.io/mars-risk/assets/mars-wordmark.svg" alt="MODELING ANALYSIS RISK SCORE" width="480">
 </p>
 <p align="center">
   <a href="https://pypi.org/project/mars-risk/"><img alt="PyPI" src="https://img.shields.io/pypi/v/mars-risk?style=flat-square&label=PyPI&color=2f6f8f"></a>
@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/mars-risk/"><img alt="Python" src="https://img.shields.io/badge/Python-3.8--3.12-364f6b?style=flat-square"></a>
   <a href="https://pepy.tech/project/mars-risk"><img alt="Downloads" src="https://img.shields.io/pepy/dt/mars-risk?style=flat-square&label=Downloads&color=0f766e"></a>
   <a href="https://github.com/leeesq/mars-risk/actions/workflows/test.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/leeesq/mars-risk/test.yml?branch=main&style=flat-square&label=CI&color=1f7a5a"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
+  <a href="https://github.com/leeesq/mars-risk/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/leeesq/mars-risk?style=flat-square&label=License&color=6c5ce7"></a>
 </p>
 
 <h1 align="center">A high-performance credit risk toolkit for humans and AI agents</h1>
@@ -25,7 +25,7 @@
 
 <p align="center">
 <a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
-<img src="docs/assets/cases/binning-native-main-score.png" alt="MARS native binning trends: fixed bins, distributions, bad rate, amount risk and stability" width="1040">
+<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.png" alt="MARS native binning trends: fixed bins, distributions, bad rate, amount risk and stability" width="1040">
 </a>
 </p>
 
@@ -64,13 +64,19 @@ These are workflows you can build with MARS; complete agents are composed by the
 
 ## Install
 
-The examples follow **main / source version 0.0.28**. Install the current source:
+These examples target **MARS 0.0.28**. Once the release is available on PyPI, install:
+
+```bash
+pip install mars-risk==0.0.28
+```
+
+If PyPI does not yet provide 0.0.28, or you want to work with the development branch, install from source:
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-PyPI currently publishes **0.0.27**, which does not contain all capabilities shown here. The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文](https://leeesq.github.io/mars-risk/getting-started/installation/).
+The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文](https://leeesq.github.io/mars-risk/getting-started/installation/).
 
 ## Start with one report
 
@@ -96,7 +102,7 @@ report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
 ```
 
-[Shared runnable source](docs/snippets/readme_quickstart.py) · [Full quickstart · 中文](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case](https://leeesq.github.io/mars-risk/demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
+[Shared runnable source](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [Full quickstart · 中文](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case](https://leeesq.github.io/mars-risk/demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
 
 ## Give the same result to an AI agent
 
@@ -133,4 +139,4 @@ pip install -e ".[docs]"
 python docs/snippets/task_cases.py --case all --output-dir output/task-cases
 ```
 
-[Case downloads and reproducibility](https://leeesq.github.io/mars-risk/demos/#run) · [Contribution guide](CONTRIBUTING.md) · [Engineering Skill](.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](LICENSE).
+[Case downloads and reproducibility](https://leeesq.github.io/mars-risk/demos/#run) · [Contribution guide](https://github.com/leeesq/mars-risk/blob/main/CONTRIBUTING.md) · [Engineering Skill](https://github.com/leeesq/mars-risk/blob/main/.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE).
