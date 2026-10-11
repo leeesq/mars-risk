@@ -1,19 +1,22 @@
-"""重算公开案例语义，核对证据、快照、下载包和站点资源；不修改公开产物。"""
+"""核对公开快照证据；显式提供 Home Credit 原文件时进行完整复算。"""
 
 from __future__ import annotations
 
 import argparse
 import ast
 import hashlib
+import html
 import json
 import math
+import os
 import re
-import runpy
 import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
+from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Any
 from xml.etree import ElementTree
@@ -27,7 +30,7 @@ CASE_PAGES = (
 )
 VOLATILE_FIELDS = frozenset({
     "report_id", "created_at", "generated_at", "created_at_utc", "generated_at_utc",
-    "source_commit", "source_revision", "elapsed_seconds", "polars_version",
+    "source_commit", "source_revision", "elapsed_seconds",
 })
 
 
@@ -96,9 +99,10 @@ def _table_rows(frame: Any) -> list[dict[str, Any]]:
     """仅物化已经分页的小证据表，支持公共接口的两个后端。"""
     from mars.reporting._serialization import json_safe
 
-    if hasattr(frame, "to_dicts"):
-        return json_safe(frame.to_dicts())
-    return json_safe(frame.to_dict("records"))
+    rows: list[dict[str, Any]] = json_safe(
+        frame.to_dicts() if hasattr(frame, "to_dicts") else frame.to_dict("records")
+    )
+    return rows
 
 
 def _code_digest(path: Path) -> str:
@@ -111,6 +115,333 @@ def _code_digest(path: Path) -> str:
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
                     node.body.pop(0)
     return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
+
+
+def _validate_preparation(directory: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """无 CSV 模式只核对聚合输入证据与分母，不宣称重新验证真实成员。"""
+    preparation: dict[str, Any] = _read_json(directory / "preparation-summary.json")
+    _assert_equal(manifest["data_config"]["preparation"], preparation, "manifest.preparation")
+    if preparation["preparation_version"] != "home-credit-2018-v1":
+        raise ValueError("Unsupported Home Credit preparation version")
+    files = {entry["role"]: entry for entry in preparation["input_files"]}
+    if len(files) != 3 or set(files) != {"train", "test", "description"}:
+        raise ValueError("Preparation must identify exactly the three required input files")
+    for role, entry in files.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) or entry["bytes"] <= 0:
+            raise ValueError(f"Invalid source SHA256 or byte count: {role}")
+        if Path(entry["name"]).name != entry["name"] or re.search(r"[\\/:]", entry["name"]):
+            raise ValueError(f"Source fingerprint leaks a private path: {role}")
+    total = files["train"]["rows"] + files["test"]["rows"]
+    width = files["train"]["columns"]
+    _assert_equal([total, width], preparation["merged_shape_before_roles"], "preparation.merged_shape")
+    _assert_equal([total, width + 2], preparation["final_shape"], "preparation.final_shape")
+    if files["test"]["columns"] != width - 1:
+        raise ValueError("Original test must have one fewer column because TARGET is unavailable")
+    if preparation["full_dataset"]:
+        for role, shape in (("train", [307511, 122]), ("test", [48744, 121]), ("description", [219, 5])):
+            _assert_equal(shape, [files[role]["rows"], files[role]["columns"]], f"input.{role}.shape")
+    for key in ("seed", "rows"):
+        _assert_equal(preparation[key], manifest["data_config"][key], f"manifest.data_config.{key}")
+    if preparation["hash_config"]["algorithm"] != "SHA256" or preparation["hash_config"]["uses_binary_target_value"] is not False:
+        raise ValueError("Preparation must use stable SHA256 independent of binary target values")
+    if preparation["hash_config"]["encoding"] != "UTF-8":
+        raise ValueError("Stable ID hash encoding differs from the recorded UTF-8 contract")
+    roles = {"SK_ID_CURR", "TARGET", "APPLY_DATE", "dataset_flag", "AMT_CREDIT", "__home_credit_source"}
+    features = preparation["fcols"]
+    if len(features) != len(set(features)) or roles.intersection(features):
+        raise ValueError("Candidate features contain duplicate or role/source columns")
+    if len(features) != preparation["candidate_feature_count"] or len(features) != width - 3:
+        raise ValueError("Candidate count does not exclude ID, TARGET and the separate amount role")
+    if not set(preparation["display_features"]).issubset(features):
+        raise ValueError("Display features must be a declared subset of the complete candidate fields")
+    groups = preparation["partition_stats"]
+    labels = [entry["dataset_flag"] for entry in groups]
+    if labels != ["0train", "1val", "2test", "3oot", "4_oot_undue"]:
+        raise ValueError("Preparation must retain the five exact ordered partition labels")
+    if sum(entry["total_count"] for entry in groups) != total:
+        raise ValueError("Partition aggregates do not cover the merged row count")
+    previous_end: date | None = None
+    for entry in groups:
+        group = entry["dataset_flag"]
+        observed, unobserved = entry["observed_count"], entry["null_count"]
+        count = entry["total_count"]
+        start, end = date.fromisoformat(entry["date_min"]), date.fromisoformat(entry["date_max"])
+        if count <= 0 or start > end or (previous_end is not None and previous_end >= start):
+            raise ValueError(f"Partitions are empty, overlap, or violate date order: {group}")
+        previous_end = end
+        if observed + unobserved != count or entry["target_0_count"] + entry["target_1_count"] != observed:
+            raise ValueError(f"Observed/null and binary-label denominators differ: {group}")
+        _assert_equal(observed / count, entry["label_coverage"], f"preparation.{group}.coverage")
+        if group == "4_oot_undue":
+            if start < date(2026, 7, 1) or end > date(2026, 7, 31) or count != files["test"]["rows"]:
+                raise ValueError("All original application_test rows must remain in the July source group")
+            if observed != 0 or entry["observed_bad_rate"] is not None or entry["label_status"] != "unobserved":
+                raise ValueError("Original test labels cannot be invented or treated as good samples")
+        else:
+            if start < date(2026, 1, 1) or end > date(2026, 6, 30) or unobserved or observed != count:
+                raise ValueError(f"Labeled partition must preserve observed labels and Jan–Jun dates: {group}")
+            _assert_equal(entry["target_1_count"] / observed, entry["observed_bad_rate"], f"preparation.{group}.bad_rate")
+    if sum(entry["observed_count"] for entry in groups) != files["train"]["rows"]:
+        raise ValueError("Observed labels do not match the original training row count")
+    summary = _read_json(directory / "summary.json")
+    _assert_equal(total, summary["rows"], "summary.rows")
+    _assert_equal({entry["dataset_flag"]: entry["total_count"] for entry in groups}, summary["splits"], "summary.splits")
+    metadata = _read_json(directory / "feature-metadata.json")
+    for field, entry in metadata.items():
+        if set(entry) - {"display_name", "description", "data_source", "unit"}:
+            raise ValueError(f"Public feature metadata violates the MARS four-field contract: {field}")
+    if not set(features).issubset(metadata):
+        raise ValueError("Candidate features lack delivered business metadata")
+    return preparation
+
+
+def _validate_saved_denominators(preparation: dict[str, Any], snapshots: dict[str, Any]) -> None:
+    """将五组人数与保存的全量分箱/交叉对齐，监督量仅使用观测标签。"""
+    groups = {entry["dataset_flag"]: entry for entry in preparation["partition_stats"]}
+    all_groups = set(groups)
+    expected_total = {
+        "total_count": preparation["rows"],
+        "observed_count": sum(entry["observed_count"] for entry in groups.values()),
+        "target_1_count": sum(entry["target_1_count"] for entry in groups.values()),
+    }
+    checked_binning = False
+    checked_cross = False
+    for report in snapshots.values():
+        description = report.describe()
+        context = description["business_context"]
+        if context.get("dataset_id") != "home-credit-default-risk-2018":
+            raise ValueError("Saved report does not belong to the declared Home Credit batch")
+        if context["date"]["simulated"] is not True or context["real_features"]["simulated"] is not False:
+            raise ValueError("Saved context must distinguish real features from simulated dates")
+        for table in description["tables"]:
+            columns = report.get_table(table, limit=0).columns
+            if "SK_ID_CURR" in columns:
+                raise ValueError(f"Saved statistics must not distribute actual sample IDs: {table}")
+        if description["report_type"] == "MarsBinningReport":
+            details = _table_rows(report.get_table("detail"))
+            actual_groups = {row["mars_group"] for row in details}
+            if not all_groups.issubset(actual_groups):
+                continue  # 月趋势与单字段特殊值视图只检验适用维度。
+            checked_binning = True
+            keys: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+            for row in details:
+                keys.setdefault((row["feature"], row["y"], row["mars_group"]), []).append(row)
+            for (feature, target, group), rows in keys.items():
+                if target != "TARGET" or group not in all_groups | {"Total"}:
+                    raise ValueError("Binning uses an unexpected target or partition")
+                aggregate = [row for row in rows if row["bin_type"] == "汇总组"]
+                if len(aggregate) != 1:
+                    raise ValueError(f"Binning feature/group requires one aggregate row: {feature}/{group}")
+                total_row = aggregate[0]
+                expected = groups.get(group, expected_total)
+                for field, source in (("count", "total_count"), ("observed_count", "observed_count"), ("bad", "target_1_count")):
+                    _assert_equal(expected[source], total_row[field], f"binning.{feature}.{group}.{field}")
+                    _assert_equal(total_row[field], sum(row[field] for row in rows if row["bin_type"] != "汇总组"), f"binning.{feature}.{group}.{field}.bins")
+                if group == "4_oot_undue" and total_row["bad_rate"] is not None:
+                    raise ValueError("Binning must not create an unobserved bad rate")
+                if group == "4_oot_undue":
+                    for row in rows:
+                        for metric in ("bad_rate", "lift", "cum_bad_rate", "ks_bin", "auc_bin", "iv_bin", "amt_bad_rate", "lift_amt"):
+                            if metric in row and row[metric] is not None:
+                                raise ValueError(f"Unobserved bin including aggregate cannot have supervised {metric}: {feature}")
+            states = _table_rows(report.get_table("calculation_status", filters={"group": "4_oot_undue"}))
+            if not states or any(row["status"] != "unobserved" for row in states if row["metric"] == "risk_metrics"):
+                raise ValueError("Binning unobserved target requires its real calculation status")
+            for metric in ("iv", "ks", "auc", "bad_rate"):
+                for row in _table_rows(report.get_table(f"trend.{metric}")):
+                    if row["4_oot_undue"] is not None:
+                        raise ValueError(f"Unobserved group cannot have supervised {metric}")
+            if "4_oot_undue" not in report.get_table("trend.psi", limit=0).columns:
+                raise ValueError("Unlabeled distribution/PSI group was discarded")
+        elif description["report_type"] == "score_cross":
+            overall = _table_rows(report.get_table("overall"))
+            if {row["group"] for row in overall} != all_groups:
+                raise ValueError("Cross report must preserve all five source partitions")
+            checked_cross = True
+            cells = _table_rows(report.get_table("cells"))
+            for row in overall:
+                group = row["group"]
+                expected = groups[group]
+                subset = [cell for cell in cells if cell["group"] == group and cell["target"] == row["target"] and cell["period"] == row["period"]]
+                for field, source in (("sample_count", "total_count"), ("observed_sample_count", "observed_count"), ("bad_sample_count", "target_1_count")):
+                    _assert_equal(expected[source], row[field], f"cross.{group}.{field}")
+                    _assert_equal(row[field], sum(cell[field] for cell in subset), f"cross.{group}.{field}.cells")
+                _assert_equal(expected["observed_bad_rate"], row["bad_rate"], f"cross.{group}.bad_rate")
+                if group == "4_oot_undue" and (row["status"] != "unobserved" or any(cell["bad_rate"] is not None for cell in subset)):
+                    raise ValueError("Cross unlabeled state or observed denominator was fabricated")
+            fit = description["parameters"]["binning_parameters"]
+            for axis in ("x", "y"):
+                _assert_equal(groups["0train"]["total_count"], fit[axis]["reference_row_count"], f"cross.fit.{axis}.reference_rows")
+    if not checked_binning or not checked_cross:
+        raise ValueError("Batch lacks complete five-partition binning or score-cross denominator evidence")
+
+
+def _json_metadata_rows(rows: list[dict[str, Any]], label: str) -> dict[str, Any]:
+    """按 key/part 重组 HTML 与 Excel 的 JSON 片段，检测截断、缺片和重复片段。"""
+    chunks: dict[str, dict[int, str]] = {}
+    counts: dict[str, int] = {}
+    for row in rows:
+        key = row["key"]
+        part, parts = int(row.get("part", 1)), int(row.get("parts", 1))
+        if key is None or not isinstance(row["value"], str) or not 1 <= part <= parts:
+            raise ValueError(f"Invalid Excel metadata chunk: {label}/{key}")
+        if part in chunks.setdefault(key, {}) or (key in counts and counts[key] != parts):
+            raise ValueError(f"Duplicate or inconsistent Excel metadata chunk: {label}/{key}")
+        chunks[key][part], counts[key] = row["value"], parts
+    result: dict[str, Any] = {}
+    for key, indexed_parts in chunks.items():
+        if set(indexed_parts) != set(range(1, counts[key] + 1)):
+            raise ValueError(f"Missing Excel metadata chunk: {label}/{key}")
+        result[key] = json.loads("".join(indexed_parts[index] for index in range(1, counts[key] + 1)), parse_constant=_reject_constant)
+    return result
+
+
+def _excel_json_mapping(sheet: Any, label: str) -> dict[str, Any]:
+    """读取实际工作表的 key/value 及有顺序长 JSON 片段。"""
+    rows = sheet.iter_rows(values_only=True)
+    header = list(next(rows))
+    if not {"key", "value"}.issubset(header):
+        raise ValueError(f"Excel metadata has no key/value header: {label}")
+    return _json_metadata_rows([dict(zip(header, values)) for values in rows], label)
+
+
+class _HtmlEvidenceParser(HTMLParser):
+    """只读取静态 HTML 表格和原生分箱数值属性，不执行页面脚本。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tables: list[list[list[str]]] = []
+        self.metrics: list[tuple[str, dict[str, float]]] = []
+        self._table: list[list[str]] | None = None
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "table":
+            self._table = []
+        elif tag == "tr" and self._table is not None:
+            self._row = []
+            properties = dict(attrs)
+            payload = properties.get("data-metrics")
+            if payload:
+                self.metrics.append((properties.get("data-feature") or "", json.loads(payload)))
+        elif tag in {"td", "th"} and self._row is not None:
+            self._cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"td", "th"} and self._cell is not None and self._row is not None:
+            self._row.append("".join(self._cell))
+            self._cell = None
+        elif tag == "tr" and self._row is not None and self._table is not None:
+            self._table.append(self._row)
+            self._row = None
+        elif tag == "table" and self._table is not None:
+            self.tables.append(self._table)
+            self._table = None
+
+
+def _validate_html_exports(directory: Path) -> None:
+    """比对 HTML 的实际目录、业务元数据、交叉表及原生数值属性。"""
+    from mars.reporting import load_report
+
+    for path in directory.glob("*.marsreport"):
+        html_path = path.with_suffix(".html")
+        if not html_path.exists():
+            continue
+        report = load_report(path)
+        expected = report.describe()
+        content = html_path.read_text(encoding="utf-8")
+        if expected["report_type"] == "score_cross":
+            payload = re.search(r'<script type="application/json" id="data">(.*?)</script>', content, re.S)
+            if payload is None:
+                raise ValueError("Cross HTML lacks its actual saved payload")
+            actual = json.loads(payload[1], parse_constant=_reject_constant)
+            _assert_equal(expected, actual["description"], f"HTML.{path.stem}.description")
+            for name, values in actual["tables"].items():
+                _assert_equal(_table_rows(report.get_table(name)), values, f"HTML.{path.stem}.{name}")
+            continue
+        if expected["report_type"] == "rule":
+            descriptions = [json.loads(html.unescape(value), parse_constant=_reject_constant)
+                            for value in re.findall(r"<pre>(.*?)</pre>", content, re.S)
+                            if html.unescape(value).lstrip().startswith("{")]
+            if descriptions != [expected]:
+                raise ValueError(f"Rule HTML lacks the complete saved description: {path.stem}")
+            continue
+        parser = _HtmlEvidenceParser()
+        parser.feed(content)
+        contexts: list[dict[str, Any]] = []
+        catalogs: list[dict[str, Any]] = []
+        for table in parser.tables:
+            if not table:
+                continue
+            header = table[0]
+            if {"key", "value"}.issubset(header):
+                rows = [dict(zip(header, values)) for values in table[1:]]
+                keys = {row["key"] for row in rows}
+                if "report_id" in keys or "dataset_id" in keys:
+                    decoded = _json_metadata_rows(rows, f"HTML.{path.stem}.metadata")
+                    (catalogs if "report_id" in keys else contexts).append(decoded)
+        semantics = {key: value for key, value in expected.items() if key not in {"feature_metadata", "business_context"}}
+        if contexts != [expected["business_context"]] or catalogs != [semantics]:
+            raise ValueError(f"HTML metadata/parameters differ from its snapshot: {path.stem}")
+        candidates: dict[str, list[dict[str, Any]]] = {}
+        for table in expected["tables"]:
+            for row in _table_rows(report.get_table(table)):
+                if "feature" in row:
+                    candidates.setdefault(row["feature"], []).append(row)
+        for feature, values in parser.metrics:
+            if not any(all(key in row and isinstance(row[key], (int, float))
+                           and math.isclose(value, row[key], rel_tol=1e-7, abs_tol=1e-10)
+                           for key, value in values.items()) for row in candidates.get(feature, [])):
+                raise ValueError(f"Native HTML statistical values differ from saved evidence: {path.stem}/{feature}")
+
+
+def _validate_excel_tables(workbook: Any, report: Any, label: str) -> None:
+    """核对完整元数据和每张适用统计工作表，而非只抽交叉首行。"""
+    description = report.describe()
+    for name, expected in (
+        ("BusinessContext", description["business_context"]),
+        ("ReportSemantics", {key: value for key, value in description.items() if key not in {"business_context", "feature_metadata"}}),
+    ):
+        if name not in workbook.sheetnames:
+            raise ValueError(f"Excel delivery lacks {name}: {label}")
+        _assert_equal(expected, _excel_json_mapping(workbook[name], f"{label}.{name}"), f"Excel.{label}.{name}")
+    metadata_rows = workbook["FeatureMetadata"].iter_rows(values_only=True)
+    metadata_header = list(next(metadata_rows))
+    metadata = {row[0]: dict(zip(metadata_header[1:], row[1:])) for row in metadata_rows}
+    _assert_equal(description["feature_metadata"], metadata, f"Excel.{label}.FeatureMetadata")
+    for index, table in enumerate(description["tables"]):
+        source = _table_rows(report.get_table(table))
+        name = f"{index:03d}_{table}"[:31]
+        if name not in workbook.sheetnames:
+            name = table if table in workbook.sheetnames else {
+                "overview": "Overview", "calculation_status": "CalculationStatus",
+                "dq.missing": "DQ_Missing", "dq.zeros": "DQ_Zeros",
+                "stats.mean": "Trend_Mean", "stats.psi": "Trend_Psi",
+            }.get(table, "")
+        if not name or name not in workbook.sheetnames:
+            raise ValueError(f"Excel lacks a saved statistical table: {label}/{table}")
+        rows = workbook[name].iter_rows(values_only=True)
+        header = list(next(rows))
+        fields = list(report.get_table(table, limit=0).columns)
+        if not set(fields).issubset(header):
+            raise ValueError(f"Excel statistical header differs: {label}/{table}")
+        actual = [{field: values[header.index(field)] for field in fields} for values in rows]
+        if table in {"overview", "dq.missing", "dq.zeros", "stats.mean", "stats.psi"}:
+            source.sort(key=lambda row: row["feature"])
+            actual.sort(key=lambda row: row["feature"])
+        for expected_row, actual_row in zip(source, actual):
+            for field, expected in expected_row.items():
+                value = actual_row[field]
+                if isinstance(expected, (list, dict)) and isinstance(value, str):
+                    actual_row[field] = ast.literal_eval(value)
+                elif expected == "" and value is None:
+                    actual_row[field] = ""
+        _assert_equal(source, actual, f"Excel.{label}.{table}")
 
 
 def _validate_evidence(directory: Path) -> dict[str, Any]:
@@ -126,6 +457,7 @@ def _validate_evidence(directory: Path) -> dict[str, Any]:
         raise ValueError("Cases contain no loadable .marsreport files")
     manifest: dict[str, Any] = _read_json(directory / "manifest.json")
     summary: dict[str, Any] = _read_json(directory / "summary.json")
+    preparation = _validate_preparation(directory, manifest)
     for number in range(1, 8):
         case: dict[str, Any] = _read_json(directory / f"case-{number}.json")
         if str(case["case"]) != str(number) or case["report_id"] not in snapshots:
@@ -180,7 +512,9 @@ def _validate_evidence(directory: Path) -> dict[str, Any]:
             raise ValueError(f"Bounded evidence {index} has a foreign report identity")
         rows = _table_rows(report.get_table(entry["reference"], **entry["query"]))
         _assert_equal(entry["rows"], rows, f"bounded.evidence[{index}].rows")
-    # 对实际交付的静态工作簿检查可读性，并从同源快照核对代表性交叉首行。
+    _validate_saved_denominators(preparation, snapshots)
+    _validate_html_exports(directory)
+    # 每张报告工作簿重组长元数据，再逐表对照同源快照的真实统计。
     import openpyxl
 
     for path in directory.glob("*.xlsx"):
@@ -188,13 +522,28 @@ def _validate_evidence(directory: Path) -> dict[str, Any]:
         try:
             if not workbook.sheetnames or not any(sheet.max_row for sheet in workbook):
                 raise ValueError(f"Empty Excel delivery: {path.name}")
-            if path.name == "score-cross.xlsx":
-                sheet_rows = workbook["000_cells"].iter_rows(values_only=True)
-                header = list(next(sheet_rows))
-                excel_row = next(sheet_rows)
-                source_row = _table_rows(report.get_table("cells", limit=1))[0]
-                for field in ("sample_count", "observed_sample_count", "bad_sample_count", "bad_rate"):
-                    _assert_equal(source_row[field], excel_row[header.index(field)], f"Excel.cells.{field}")
+            snapshot_path = path.with_suffix(".marsreport")
+            if snapshot_path.exists():
+                _validate_excel_tables(workbook, load_report(snapshot_path), path.stem)
+            elif path.name == "selection.xlsx":
+                excel_rows = workbook.active.iter_rows(values_only=True)
+                header = list(next(excel_rows))
+                actual = [dict(zip(header, values)) for values in excel_rows]
+                selected = _read_json(directory / "selection.json")
+                for expected_row, actual_row in zip(selected, actual):
+                    for field, value in expected_row.items():
+                        if value == "" and actual_row[field] is None:
+                            actual_row[field] = ""
+                _assert_equal(selected, actual, "Excel.selection")
+            elif path.name == "correlation.xlsx":
+                from mars.reporting import show_correlation_matrix
+                from mars.reporting._serialization import json_safe
+
+                matrix = show_correlation_matrix(load_report(directory / "raw-correlation.marsreport")).data
+                excel_rows = workbook.active.iter_rows(values_only=True)
+                _assert_equal([None, *matrix.columns], list(next(excel_rows)), "Excel.correlation.header")
+                source_rows = [[feature, *values.to_list()] for feature, values in matrix.iterrows()]
+                _assert_equal(json_safe(source_rows), [list(values) for values in excel_rows], "Excel.correlation.matrix")
         finally:
             workbook.close()
     preview_path = directory / "preview-evidence.json"
@@ -255,32 +604,45 @@ def _validate_native_binning_preview(directory: Path, snapshots: dict[str, Any])
         raise ValueError("Native binning image feature has no business metadata")
     _replay_queries(evidence["queries"], report, "native-binning")
     for query in evidence["queries"]:
-        if any(row.get("feature") != evidence["feature"] for row in query["rows"]):
-            raise ValueError("Native binning evidence contains a different feature")
+        if any(row.get("feature") not in metadata for row in query["rows"]):
+            raise ValueError("Native binning comparative evidence contains an unknown feature")
+        if not any(row.get("feature") == evidence["feature"] for row in query["rows"]):
+            raise ValueError("Native binning query does not cite the actual image feature")
     png = _safe_path(directory, evidence["chart_png"]).read_bytes()
     if not png.startswith(b"\x89PNG\r\n\x1a\n") or len(png) < 24:
         raise ValueError("Native binning PNG is not a readable PNG")
     width, height = struct.unpack(">II", png[16:24])
     if width < 500 or height < 300:
         raise ValueError(f"Native binning PNG is too small for its panels: {width} x {height}")
+    offset = 8
+    density: tuple[int, int, int] | None = None
+    while offset + 12 <= len(png):
+        length = struct.unpack(">I", png[offset:offset + 4])[0]
+        kind = png[offset + 4:offset + 8]
+        if kind == b"pHYs" and length == 9:
+            density = struct.unpack(">IIB", png[offset + 8:offset + 17])
+            break
+        offset += length + 12
+    if density is None or density[2] != 1 or min(density[:2]) * 0.0254 < 299.99:
+        raise ValueError("Native PNG must preserve the actual at-least-300-dpi export")
+    if evidence["parameters"]["dpi"] < 300:
+        raise ValueError("Native image parameters do not record the required export DPI")
     svg = ElementTree.parse(_safe_path(directory, evidence["chart_svg"])).getroot()
     if svg.tag != "{http://www.w3.org/2000/svg}svg" or not list(svg.iter("{http://www.w3.org/2000/svg}path")):
         raise ValueError("Native binning SVG has no rendered chart paths")
 
 
-def _validate_rule_memberships(directory: Path, config: dict[str, Any]) -> None:
-    """用同源合成样本核对正常格候选的成员口径，而非重放同一个错误摘要。"""
+def _validate_rule_memberships(
+    directory: Path, config: dict[str, Any], data: Any = None,
+) -> None:
+    """显式原数据复算正常格规则成员；公开模式只验证保存统计。"""
     import polars as pl
 
     from mars.reporting import load_report
     from mars.rule import MarsRule, MarsRuleSet
 
-    sys.path.insert(0, str(GENERATOR.parent))
-    try:
-        generator = runpy.run_path(str(GENERATOR))
-    finally:
-        sys.path.pop(0)
-    data = generator["_data"](config["rows"], config["seed"])
+    if data is None:
+        raise ValueError("Rule membership verification requires explicit prepared inputs")
     cross = load_report(directory / "score-cross.marsreport")
     rules = load_report(directory / "rules.marsreport")
     description = rules.describe()
@@ -296,8 +658,8 @@ def _validate_rule_memberships(directory: Path, config: dict[str, Any]) -> None:
         rule = MarsRule(candidate["expression"])
         applied = MarsRuleSet(rules=[rule]).transform(data)
         hit_column = f"rule__{rule.rule_id}"
-        for group in data["dataset"].unique().to_list():
-            hits = applied.filter((pl.col("dataset") == group) & (pl.col(hit_column) == 1))
+        for group in data["dataset_flag"].unique().to_list():
+            hits = applied.filter((pl.col("dataset_flag") == group) & (pl.col(hit_column) == 1))
             normal = [row for row in cells if row["group"] == group
                       and row["target"] == filters["target"]
                       and row["x_bin"] == filters["x_bin"] and row["y_bin"] == filters["y_bin"]]
@@ -323,9 +685,9 @@ def _validate_manifest(directory: Path, site_dir: Path | None) -> dict[str, Any]
     if not re.search(r"^docs/assets/cases/\*\*\s+-text\s*$", attributes, re.M):
         raise ValueError("Missing .gitattributes byte preservation for docs/assets/cases/** -text")
     manifest: dict[str, Any] = _read_json(directory / "manifest.json")
-    if manifest["schema_version"] != 1 or not manifest["artifacts"]:
+    if manifest["schema_version"] != 2 or not manifest["artifacts"]:
         raise ValueError("Case manifest has unsupported schema or no artifacts")
-    for name in ("task_cases.py", "external_agent_rule_case.py"):
+    for name in ("task_cases.py", "external_agent_rule_case.py", "home_credit_data.py"):
         delivered = _safe_path(directory, name)
         current = ROOT / "docs/snippets" / name
         if _code_digest(delivered) != _code_digest(current):
@@ -333,6 +695,8 @@ def _validate_manifest(directory: Path, site_dir: Path | None) -> dict[str, Any]
     seen: set[str] = set()
     for artifact in manifest["artifacts"]:
         name = artifact["path"]
+        if Path(name).suffix.lower() in {".csv", ".parquet", ".pickle", ".pkl"} or "human-writing" in name:
+            raise ValueError(f"Raw data or personal Skill is forbidden in public downloads: {name}")
         if name in seen:
             raise ValueError(f"Duplicate artifact in manifest: {name}")
         seen.add(name)
@@ -369,6 +733,8 @@ def _validate_manifest(directory: Path, site_dir: Path | None) -> dict[str, Any]
         required = (seen - {"cases.zip"}) | {"manifest.json"}
         if required != set(names):
             raise ValueError(f"cases.zip members differ from manifest: {sorted(required.symmetric_difference(names))}")
+        if set(manifest["zip_allowlist"]) != required or len(manifest["zip_allowlist"]) != len(required):
+            raise ValueError("ZIP members differ from the explicit, duplicate-free publication allowlist")
     if site_dir is not None:
         for name in ("manifest.json", "cases.zip"):
             built = site_dir / "assets/cases" / name
@@ -380,31 +746,71 @@ def _validate_manifest(directory: Path, site_dir: Path | None) -> dict[str, Any]
     return manifest
 
 
-def _recompute(directory: Path, manifest: dict[str, Any]) -> None:
-    """以公开实际 seed/规模重算，比较语义摘要与全部有限查询证据。"""
+def _recompute(
+    directory: Path, manifest: dict[str, Any], input_arguments: list[str],
+) -> None:
+    """从显式三个原文件完整重算，比较参数、依赖、统计和有限查询。"""
+    if not input_arguments:
+        raise ValueError("Recompute mode requires --data-dir or three explicit CSV paths")
     config = manifest["data_config"]
+    sys.path.insert(0, str(GENERATOR.parent))
+    try:
+        from home_credit_data import HomeCreditConfig, prepare_home_credit_data
+
+        values = dict(zip(input_arguments[::2], input_arguments[1::2]))
+        inputs = prepare_home_credit_data(
+            values.get("--data-dir", "examples/home-credit-2018/data/raw_data"),
+            train_csv=values.get("--train-csv"), test_csv=values.get("--test-csv"),
+            columns_description_csv=values.get("--columns-description-csv"),
+            config=HomeCreditConfig(seed=config["seed"], target_group_rows=config["target_group_rows"]),
+            require_full_dataset=config["preparation"]["full_dataset"],
+        )
+    finally:
+        sys.path.pop(0)
+    _assert_equal(config["preparation"], inputs.summary, "recompute.preparation")
     with tempfile.TemporaryDirectory(prefix="mars-case-check-", dir=ROOT) as temporary:
         fresh = Path(temporary)
-        execution: subprocess.CompletedProcess[str] = subprocess.run(
+        execution: subprocess.CompletedProcess[bytes] = subprocess.run(
             [
                 sys.executable, str(GENERATOR), "--case", "all", "--phase", "generate",
-                "--rows", str(config["rows"]), "--seed", str(config["seed"]),
-                "--output-dir", str(fresh),
+                "--seed", str(config["seed"]), "--output-dir", str(fresh), *input_arguments,
+                "--target-group-rows", str(config["target_group_rows"]),
+                *([] if config["preparation"]["full_dataset"] else ["--fixture"]),
             ],
-            check=False, capture_output=True, text=True,
+            check=False, capture_output=True,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
+        # Windows 文本 reader thread 不传播解码异常；在主线程严格解码保留失败证据。
+        stdout = execution.stdout.decode("utf-8", errors="strict")
+        stderr = execution.stderr.decode("utf-8", errors="strict")
         if execution.returncode:
-            raise ValueError(f"Public case generation failed (exit {execution.returncode}):\n{execution.stdout}\n{execution.stderr}")
-        names = ["summary.json", "agent-context.json", "binning-native-evidence.json", "rule-generation.json"]
+            raise ValueError(f"Public case generation failed (exit {execution.returncode}):\n{stdout}\n{stderr}")
+        names = ["summary.json", "agent-context.json", "binning-native-evidence.json", "rule-generation.json",
+                 "preparation-summary.json", "feature-metadata.json", "selection.json"]
         names.extend(f"{prefix}-{number}.json" for prefix in ("case", "query") for number in range(1, 8))
         for name in names:
             _assert_equal(_semantic(_read_json(directory / name)), _semantic(_read_json(fresh / name)), name)
-        _validate_rule_memberships(fresh, config)
+        _validate_rule_memberships(fresh, config, inputs.df)
+        for path in directory.glob("*.marsreport"):
+            from mars.reporting import load_report
+
+            published = load_report(path)
+            generated = load_report(fresh / path.name)
+            _assert_equal(_semantic(published.describe()), _semantic(generated.describe()), path.name + ".catalog")
+            for table in published.describe()["tables"]:
+                _assert_equal(
+                    _table_rows(published.get_table(table)), _table_rows(generated.get_table(table)),
+                    path.name + "." + table,
+                )
+        _assert_equal(
+            _semantic(_read_json(directory / "generation-environment.json")),
+            _semantic(_read_json(fresh / "generation-environment.json")), "generation-environment",
+        )
         _assert_equal(
             (directory / "previews.txt").read_text(encoding="utf-8"),
             (fresh / "previews.txt").read_text(encoding="utf-8"), "previews.txt",
         )
-    print(f"Published semantic evidence matches current API: rows={config['rows']}, seed={config['seed']}")
+    print(f"Full CSV recomputation matches published statistics: rows={config['rows']}, seed={config['seed']}")
 
 
 def main() -> None:
@@ -412,16 +818,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assets-dir", type=Path, default=ASSETS)
     parser.add_argument("--site-dir", type=Path, default=None)
-    parser.add_argument("--skip-recompute", action="store_true", help="仅检查文件和已有证据；公开 CI 不使用此选项")
+    parser.add_argument("--mode", choices=["public", "recompute"], default="public")
+    parser.add_argument("--data-dir", type=Path)
+    parser.add_argument("--train-csv", type=Path)
+    parser.add_argument("--test-csv", type=Path)
+    parser.add_argument("--columns-description-csv", type=Path)
     args = parser.parse_args()
     try:
         manifest = _validate_manifest(args.assets_dir, args.site_dir)
-        for name in ("previews.txt", "binning-native-main-score.png", "binning-native-main-score.svg"):
+        for name in ("previews.txt", "binning-native-home-credit.png", "binning-native-home-credit.svg"):
             _safe_path(args.assets_dir, name)
         snapshots = _validate_evidence(args.assets_dir)
-        if not args.skip_recompute:
-            _recompute(args.assets_dir, manifest)
-        print(f"Case assets passed: {len(manifest['artifacts'])} files, {len(snapshots)} snapshots, seven cases")
+        input_arguments = [
+            argument for name in ("data_dir", "train_csv", "test_csv", "columns_description_csv")
+            if getattr(args, name) is not None
+            for argument in ("--" + name.replace("_", "-"), str(getattr(args, name)))
+        ]
+        if args.mode == "recompute":
+            _recompute(args.assets_dir, manifest, input_arguments)
+        elif input_arguments:
+            raise ValueError("CSV arguments require --mode recompute; public mode never reads raw files")
+        print(f"Case assets passed ({args.mode}): {len(manifest['artifacts'])} files, {len(snapshots)} snapshots, seven cases")
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         parser.exit(1, f"Case asset check failed: {error}\n")
 

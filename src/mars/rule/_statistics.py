@@ -45,7 +45,8 @@ def add_statistical_metrics(
             }
         )
     hit_indices: List[int] = [
-        index for index, row in enumerate(records) if row["group"] == "hit"
+        index for index, row in enumerate(records)
+        if row["group"] == "hit" and row["sample_count"] > 0
     ]
     if not hit_indices:
         return pl.DataFrame(records)

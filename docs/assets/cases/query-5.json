@@ -1,12 +1,12 @@
 {
   "case": 5,
+  "report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
-  "question": "从候选规则走到可以审查的证据",
+  "question": "从 Train 发现、Val 选择，走到固定规则的独立复核",
   "query": {
-    "question": "生产规格实际保留多少候选？",
+    "question": "种子候选最终保留多少",
     "reference": {
-      "report_id": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
+      "report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
       "table": "summary",
       "query": {
         "offset": 0,
@@ -20,13 +20,13 @@
     "rows": [
       {
         "status": "success",
-        "candidate_count": 5,
-        "selected_count": 2,
+        "candidate_count": 4,
+        "selected_count": 1,
         "validation_status": "independent",
         "profile": "production",
-        "qualification": "temporally_validated"
+        "qualification": "validated"
       }
     ]
   },
-  "unavailable": "报告不代表生产策略批准；没有规则 observation 客群评估或高级分析，不能推断其结果。"
+  "unavailable": "Val 被用于选择；3oot 仅为模拟时间外样本。报告不授予生产策略部署许可。"
 }

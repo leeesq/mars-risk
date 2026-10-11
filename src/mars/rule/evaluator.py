@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Sequence
 import polars as pl
 
 from mars.compute import FrameLike, to_polars_frame
+from mars.compute.binning import normalize_binary_target_column
 from mars.rule._dsl import expression_to_polars, parse_expression
 from mars.rule._statistics import add_empty_statistical_metrics, add_statistical_metrics
 from mars.rule.contracts import (
@@ -41,7 +42,8 @@ class MarsRuleEvaluator:
     """在样本、金额和客户维度评估规则。
 
     评估器接受 Pandas 或 Polars 输入，输出固定 Polars 长表。每个目标只使用该目标非空且
-    可转换为二分类数值的样本，未定义比率保留为 null。
+    合法二分类数值的样本，未定义比率保留为 null。分布人数保留全部样本，
+    全未观测切片仍输出 ``status="unobserved"``，不生成监督指标。
 
     Examples
     --------
@@ -454,19 +456,9 @@ def _row_passes(row: Mapping[str, Any], conditions: Sequence[MarsRuleMetricCondi
 
 
 def _validated_target_frame(frame: pl.DataFrame, target: str) -> pl.DataFrame:
-    """排除空标签、转换为浮点并校验二分类取值。"""
-    target_alias: str = "__mars_rule_target"
-    converted: pl.DataFrame = (
-        frame
-        .with_columns(pl.col(target).cast(pl.Float64, strict=False).alias(target_alias))
-        .filter(pl.col(target_alias).is_not_null() & pl.col(target_alias).is_not_nan())
-    )
-    values: List[float] = sorted(float(value) for value in converted[target_alias].unique())
-    if not values:
-        raise ValueError(f"目标列 {target!r} 没有可评估的非空标签。")
-    if any(value not in {0.0, 1.0} for value in values):
-        raise ValueError(f"目标列 {target!r} 必须是 0/1 二分类，实际取值：{values}。")
-    return converted
+    """复用二分类校验并保留全部分布样本；监督聚合单独排除空标签。"""
+    normalized: pl.DataFrame = normalize_binary_target_column(frame, target)
+    return normalized.with_columns(pl.col(target).cast(pl.Float64).alias("__mars_rule_target"))
 
 
 def _evaluate_partition(
@@ -574,13 +566,14 @@ def _evaluate_slices(
         return []
     target_alias: str = "__mars_rule_target"
     expressions: List[pl.Expr] = [
-        pl.len().alias("base__sample_count"),
+        pl.len().alias("base__total_count"),
+        pl.col(target_alias).count().alias("base__sample_count"),
         pl.col(target_alias).sum().alias("base__event_count"),
     ]
     if amount_col is not None:
         expressions.extend(
             [
-                pl.col(amount_col).sum().alias("base__amount_total"),
+                pl.col(amount_col).filter(pl.col(target_alias).is_not_null()).sum().alias("base__amount_total"),
                 pl.col(amount_col)
                 .filter(pl.col(target_alias) == 1)
                 .sum()
@@ -590,7 +583,7 @@ def _evaluate_slices(
     if customer_col is not None:
         expressions.extend(
             [
-                pl.col(customer_col).n_unique().alias("base__customer_count"),
+                pl.col(customer_col).filter(pl.col(target_alias).is_not_null()).n_unique().alias("base__customer_count"),
                 pl.col(customer_col)
                 .filter(pl.col(target_alias) == 1)
                 .n_unique()
@@ -704,6 +697,7 @@ def _base_from_grouped_row(
         else None
     )
     return {
+        "total_count": int(row["base__total_count"] or 0),
         "sample_count": sample_count,
         "event_count": event_count,
         "event_rate": _safe_div(event_count, sample_count),
@@ -725,14 +719,16 @@ def _group_aggregate_expressions(
     """构造单个命中分组的批量聚合表达式。"""
     target_alias: str = "__mars_rule_target"
     safe_mask: pl.Expr = mask.fill_null(False)
+    observed_mask: pl.Expr = safe_mask & pl.col(target_alias).is_not_null()
     expressions: List[pl.Expr] = [
-        safe_mask.cast(pl.Int64).sum().alias(f"{prefix}__sample_count"),
+        safe_mask.cast(pl.Int64).sum().alias(f"{prefix}__total_count"),
+        observed_mask.cast(pl.Int64).sum().alias(f"{prefix}__sample_count"),
         pl.col(target_alias).filter(safe_mask).sum().alias(f"{prefix}__event_count"),
     ]
     if amount_col is not None:
         expressions.extend(
             [
-                pl.col(amount_col).filter(safe_mask).sum().alias(f"{prefix}__amount_total"),
+                pl.col(amount_col).filter(observed_mask).sum().alias(f"{prefix}__amount_total"),
                 pl.col(amount_col)
                 .filter(safe_mask & (pl.col(target_alias) == 1))
                 .sum()
@@ -743,7 +739,7 @@ def _group_aggregate_expressions(
         expressions.extend(
             [
                 pl.col(customer_col)
-                .filter(safe_mask)
+                .filter(observed_mask)
                 .n_unique()
                 .alias(f"{prefix}__customer_count"),
                 pl.col(customer_col)
@@ -762,23 +758,25 @@ def _base_totals(
 ) -> Dict[str, Any]:
     """计算分母口径。"""
     target_alias: str = "__mars_rule_target"
-    sample_count: int = frame.height
+    observed: pl.DataFrame = frame.filter(pl.col(target_alias).is_not_null())
+    sample_count: int = observed.height
     event_count: int = int(frame[target_alias].sum() or 0)
     amount_total: float | None = None
     event_amount: float | None = None
     if amount_col is not None:
-        amount_total = float(frame[amount_col].sum() or 0.0)
+        amount_total = float(observed[amount_col].sum() or 0.0)
         event_amount = float(
             frame.filter(pl.col(target_alias) == 1)[amount_col].sum() or 0.0
         )
     customer_count: int | None = None
     event_customer_count: int | None = None
     if customer_col is not None:
-        customer_count = int(frame[customer_col].n_unique())
+        customer_count = int(observed[customer_col].n_unique())
         event_customer_count = int(
             frame.filter(pl.col(target_alias) == 1)[customer_col].n_unique()
         )
     return {
+        "total_count": frame.height,
         "sample_count": sample_count,
         "event_count": event_count,
         "event_rate": _safe_div(event_count, sample_count),
@@ -827,6 +825,7 @@ def _metric_row_from_aggregates(
         else None
     )
     return _build_metric_row(
+        total_count=int(aggregates[f"{prefix}__total_count"] or 0),
         sample_count=sample_count,
         event_count=event_count,
         amount_total=amount_total,
@@ -863,6 +862,7 @@ def _metric_row_from_complement(
             aggregates[f"{hit_prefix}__event_amount"] or 0.0
         )
     return _build_metric_row(
+        total_count=int(base["total_count"]) - int(aggregates[f"{hit_prefix}__total_count"] or 0),
         sample_count=int(base["sample_count"])
         - int(aggregates[f"{hit_prefix}__sample_count"] or 0),
         event_count=int(base["event_count"])
@@ -889,6 +889,7 @@ def _metric_row_from_base(
 ) -> Dict[str, Any]:
     """把分区分母复制为规则 total 行。"""
     return _build_metric_row(
+        total_count=int(base["total_count"]),
         sample_count=int(base["sample_count"]),
         event_count=int(base["event_count"]),
         amount_total=base["amount_total"],
@@ -906,6 +907,7 @@ def _metric_row_from_base(
 
 def _build_metric_row(
     *,
+    total_count: int,
     sample_count: int,
     event_count: int,
     amount_total: float | None,
@@ -932,8 +934,13 @@ def _build_metric_row(
         "target": target,
         "slice": slice_value,
         "group": group,
+        "total_count": total_count,
+        "observed_count": sample_count,
+        "unobserved_count": total_count - sample_count,
+        "distribution_coverage": _safe_div(total_count, base["total_count"]),
+        "status": "ok" if sample_count else ("unobserved" if total_count else "empty"),
         "sample_count": sample_count,
-        "event_count": event_count,
+        "event_count": event_count if sample_count or not total_count else None,
         "coverage": _safe_div(sample_count, base["sample_count"]),
         "event_rate": event_rate,
         "lift": _safe_div(event_rate, base["event_rate"]),
@@ -951,6 +958,10 @@ def _build_metric_row(
             base["customer_event_rate"],
         ),
     }
+    if total_count and not sample_count:
+        # 无标签范围仍保留分布人数，标签相关计数与金额不能伪装成已观测零值。
+        for name in ("amount_total", "event_amount", "customer_count", "event_customer_count"):
+            row[name] = None
     return row
 
 

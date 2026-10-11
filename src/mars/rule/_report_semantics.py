@@ -26,6 +26,10 @@ _GRAINS = {
     "benchmark": "one supplied benchmark record; no rule qualification or rule evidence",
 }
 _FIELDS = {
+    "total_count": ("count", "当前范围全部样本人数，包括当前 target 未观测的样本"),
+    "observed_count": ("count", "当前 target 已观测人数，与 sample_count 相同"),
+    "unobserved_count": ("count", "total_count 减 observed_count；不把未观测当好样本"),
+    "distribution_coverage": ("ratio", "当前范围 total_count / 同 dataset、target、slice 的总体人数"),
     "sample_count": ("count", "当前 target 已表现样本数；group/slice/dataset 定义统计范围"),
     "candidate_count": (
         "count",
@@ -85,7 +89,7 @@ _FIELDS = {
     "group": ("dimension", "hit / miss / total；此列不是原始客群，客群见 slice"),
     "status": (
         "state",
-        "summary success/no_rules；候选 selected/rejected/candidate/deferred；结合 reason 和 rejection_stage",
+        "summary success/no_rules；候选 selected/rejected/candidate/deferred；评估 ok/unobserved/empty；结合 reason 和 rejection_stage",
     ),
     "qualification": ("state", "计算时 RuleSet 资格；快照恢复不会重建部署资格"),
     "validation_status": ("state", "independent 或 in_sample；验证样本独立性由调用方保证"),

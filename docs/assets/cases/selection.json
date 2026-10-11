@@ -1,169 +1,1924 @@
 [
   {
-    "feature": "main_score",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_DAY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Dropped",
     "stage": "Corr_Filter",
-    "reason": "Correlated with 'score_inverse'",
-    "value": 0.9982520332325072,
+    "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
+    "value": 0.8823213171880566,
     "description": ""
   },
   {
-    "feature": "constant",
-    "data_source": "application",
+    "feature": "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
+    "value": 0.8823213171880566,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_MON",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
+    "value": 0.8823213171880566,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_QRT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
+    "value": 0.8823213171880566,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
+    "value": 0.8823213171880566,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8996703591987445,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.898623651600919,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8668261346602236,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8670772483855902,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8639356117853597,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMP_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'ORGANIZATION_TYPE'",
+    "value": 0.8918696913005881,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.9974113326395556,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.99772194202038,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMIN_MEDI'",
+    "value": 0.99542102278168,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMIN_MEDI'",
+    "value": 0.9963738199389397,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'REG_CITY_NOT_WORK_CITY'",
+    "value": 0.8256627212152168,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8903995782307512,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8902689780398235,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8883308083486459,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
+    "value": 0.8348519297868345,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
+    "value": 0.8362414060327832,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'REGION_RATING_CLIENT_W_CITY'",
+    "value": 0.9552335183895004,
+    "description": ""
+  },
+  {
+    "feature": "TOTALAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8964505934136027,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8456077943952434,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.8452747151623707,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Corr_Filter",
+    "reason": "Correlated with 'FLOORSMAX_MEDI'",
+    "value": 0.843009917350579,
+    "description": ""
+  },
+  {
+    "feature": "DEF_60_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.912788916025147,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_CONT_MOBILE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Dropped",
     "stage": "Quality",
     "reason": "Single Value (Mode)",
+    "value": 0.9981984826395015,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_10",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.999972141484116,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_11",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9960951646902597,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_12",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9999907138280386,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_13",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9963783929350803,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_14",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.997177003723755,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_15",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9987510098712008,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_16",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9899523619378383,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_17",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9997539164430247,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_18",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9917724516422595,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_19",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9994242573383973,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9999489260542127,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_20",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9995356914019334,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_21",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9996471254654694,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_4",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9999071382803867,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_5",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9850817647441196,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_6",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9116467168739031,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_7",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9998374919906767,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_8",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9186531336187284,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_9",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9960162322285884,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMAIL",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9431361259947811,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_MOBIL",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "Single Value (Mode)",
+    "value": 0.9999953569140193,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_REGION_NOT_WORK_REGION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9592615636056349,
+    "description": ""
+  },
+  {
+    "feature": "NAME_CONTRACT_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "Single Value (Mode)",
+    "value": 0.9047099464187878,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_LIVE_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9218661491173493,
+    "description": ""
+  },
+  {
+    "feature": "REG_REGION_NOT_LIVE_REGION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9847335332955696,
+    "description": ""
+  },
+  {
+    "feature": "REG_REGION_NOT_WORK_REGION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Quality",
+    "reason": "High Zero Rate",
+    "value": 0.9491164207378793,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.20)",
+    "value": 0.2,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-0.20)",
+    "value": -0.2,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "FONDKAPREMONT_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-0.80)",
+    "value": -0.8,
+    "description": ""
+  },
+  {
+    "feature": "HOUSETYPE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-0.50)",
+    "value": -0.5,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.00)",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.00)",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-0.80)",
+    "value": -0.8,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "NAME_EDUCATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-1.00)",
+    "value": -1.0,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-1.00)",
+    "value": -1.0,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-1.00)",
+    "value": -1.0,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=-1.00)",
+    "value": -1.0,
+    "description": ""
+  },
+  {
+    "feature": "WALLSMATERIAL_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.40)",
+    "value": 0.4,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "RiskCorr",
+    "reason": "Logic Broken (RC=0.20)",
+    "value": 0.2,
+    "description": ""
+  },
+  {
+    "feature": "AMT_INCOME_TOTAL",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.007471644785255194,
+    "description": ""
+  },
+  {
+    "feature": "CNT_CHILDREN",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.004707792308181524,
+    "description": ""
+  },
+  {
+    "feature": "CNT_FAM_MEMBERS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.0045502097345888615,
+    "description": ""
+  },
+  {
+    "feature": "DEF_30_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.0012004441814497113,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_OWN_CAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.006267633754760027,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_OWN_REALTY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.0003826371976174414,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.007410500198602676,
+    "description": ""
+  },
+  {
+    "feature": "HOUR_APPR_PROCESS_START",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.00599904777482152,
+    "description": ""
+  },
+  {
+    "feature": "NAME_TYPE_SUITE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.001916013890877366,
+    "description": ""
+  },
+  {
+    "feature": "OBS_30_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.002920217579230666,
+    "description": ""
+  },
+  {
+    "feature": "OBS_60_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.0029090801253914833,
+    "description": ""
+  },
+  {
+    "feature": "WEEKDAY_APPR_PROCESS_START",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Dropped",
+    "stage": "Rough_Scan",
+    "reason": "Low IV & Low Lift",
+    "value": 0.0012203715741634369,
+    "description": ""
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.01729429140686989,
+    "description": ""
+  },
+  {
+    "feature": "AMT_GOODS_PRICE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.04478947073221207,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.016647526994347572,
+    "description": ""
+  },
+  {
+    "feature": "CODE_GENDER",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.037792060524225235,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.07587558031082153,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.07100476324558258,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_ID_PUBLISH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.03501340001821518,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_LAST_PHONE_CHANGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.03963213041424751,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_REGISTRATION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.02346036583185196,
+    "description": ""
+  },
+  {
+    "feature": "EMERGENCYSTATE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.02512894943356514,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.13384604454040527,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.2712540626525879,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.2891859710216522,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.027728751301765442,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_WORK_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.010907761752605438,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.03738895058631897,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.01754988729953766,
+    "description": ""
+  },
+  {
+    "feature": "NAME_FAMILY_STATUS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.02185872569680214,
+    "description": ""
+  },
+  {
+    "feature": "NAME_HOUSING_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.015250161290168762,
+    "description": ""
+  },
+  {
+    "feature": "NAME_INCOME_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.05987070873379707,
+    "description": ""
+  },
+  {
+    "feature": "OCCUPATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.05121532082557678,
+    "description": ""
+  },
+  {
+    "feature": "ORGANIZATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.043781179934740067,
+    "description": ""
+  },
+  {
+    "feature": "OWN_CAR_AGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.021829718723893166,
+    "description": ""
+  },
+  {
+    "feature": "REGION_POPULATION_RELATIVE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.015592386946082115,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT_W_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.053906671702861786,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Corr_Filter",
+    "reason": "Independent",
+    "value": 0.033562302589416504,
+    "description": ""
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 3.250160186466333e-05,
+    "description": ""
+  },
+  {
+    "feature": "AMT_GOODS_PRICE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0008914725082879084,
+    "description": ""
+  },
+  {
+    "feature": "AMT_INCOME_TOTAL",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_DAY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_MON",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_QRT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.13610277935126802,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5073964359672012,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5073964359672012,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5073964359672012,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5851681261433599,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5851681261433599,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5851681261433599,
+    "description": ""
+  },
+  {
+    "feature": "CNT_CHILDREN",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "CNT_FAM_MEMBERS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 9.28617196133238e-06,
+    "description": ""
+  },
+  {
+    "feature": "CODE_GENDER",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6986544336828029,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6986544336828029,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6986544336828029,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_ID_PUBLISH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_LAST_PHONE_CHANGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 4.64308598066619e-06,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_REGISTRATION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "DEF_30_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0032223016705823357,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5330541290963626,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5330541290963626,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5330541290963626,
+    "description": ""
+  },
+  {
+    "feature": "EMERGENCYSTATE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.47389657061669466,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5035519607752096,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5035519607752096,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5035519607752096,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5634199114099195,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0020708163473771206,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.19945768755745819,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMP_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_OWN_CAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_OWN_REALTY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_WORK_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.49763202614986024,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.49763202614986024,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.49763202614986024,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.678303787829543,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.678303787829543,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.678303787829543,
+    "description": ""
+  },
+  {
+    "feature": "FONDKAPREMONT_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6841912208530277,
+    "description": ""
+  },
+  {
+    "feature": "HOUR_APPR_PROCESS_START",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "HOUSETYPE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5017968742745178,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.593790336809457,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.593790336809457,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.593790336809457,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6836247643633865,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6836247643633865,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6836247643633865,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5018850929081504,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5018850929081504,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5018850929081504,
+    "description": ""
+  },
+  {
+    "feature": "NAME_EDUCATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "NAME_FAMILY_STATUS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "NAME_HOUSING_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "NAME_INCOME_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "NAME_TYPE_SUITE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0042252082424062325,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6944617270422614,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6944617270422614,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6944617270422614,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5519886337255193,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5519886337255193,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5519886337255193,
+    "description": ""
+  },
+  {
+    "feature": "OBS_30_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0032223016705823357,
+    "description": ""
+  },
+  {
+    "feature": "OBS_60_CNT_SOCIAL_CIRCLE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0032223016705823357,
+    "description": ""
+  },
+  {
+    "feature": "OCCUPATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.31369153193978844,
+    "description": ""
+  },
+  {
+    "feature": "ORGANIZATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "OWN_CAR_AGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.658983907063991,
+    "description": ""
+  },
+  {
+    "feature": "REGION_POPULATION_RELATIVE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT_W_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "TOTALAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.48268593237809576,
+    "description": ""
+  },
+  {
+    "feature": "WALLSMATERIAL_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.5085200627745224,
+    "description": ""
+  },
+  {
+    "feature": "WEEKDAY_APPR_PROCESS_START",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.48796512113811324,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.48796512113811324,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.48796512113811324,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6648991986033598,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6648991986033598,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Quality",
+    "reason": "Pass",
+    "value": 0.6648991986033598,
+    "description": ""
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "AMT_GOODS_PRICE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_DAY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
     "value": 1.0,
     "description": ""
   },
   {
-    "feature": "sparse",
-    "data_source": "application",
-    "status": "Dropped",
-    "stage": "Quality",
-    "reason": "High Missing",
-    "value": 0.98,
-    "description": ""
-  },
-  {
-    "feature": "income",
-    "data_source": "application",
-    "status": "Dropped",
-    "stage": "Rough_Scan",
-    "reason": "Low IV & Low Lift",
-    "value": 0.00911143608391285,
-    "description": ""
-  },
-  {
-    "feature": "income_copy",
-    "data_source": "application",
-    "status": "Dropped",
-    "stage": "Rough_Scan",
-    "reason": "Low IV & Low Lift",
-    "value": 0.007448240648955107,
-    "description": ""
-  },
-  {
-    "feature": "aux_drift",
-    "data_source": "challenger",
-    "status": "Dropped",
-    "stage": "Stability",
-    "reason": "High PSI (9.46)",
-    "value": 9.462003964126108,
-    "description": ""
-  },
-  {
-    "feature": "aux_score",
-    "data_source": "challenger",
-    "status": "Selected",
-    "stage": "Corr_Filter",
-    "reason": "Independent",
-    "value": 2.647951126098633,
-    "description": ""
-  },
-  {
-    "feature": "score_inverse",
-    "data_source": "champion",
-    "status": "Selected",
-    "stage": "Corr_Filter",
-    "reason": "Independent",
-    "value": 0.40193307399749756,
-    "description": ""
-  },
-  {
-    "feature": "aux_drift",
-    "data_source": "challenger",
-    "status": "Selected",
-    "stage": "Fine_Scan",
-    "reason": "Pass (IV)",
-    "value": 0.9054592847824097,
-    "description": ""
-  },
-  {
-    "feature": "aux_score",
-    "data_source": "challenger",
-    "status": "Selected",
-    "stage": "Fine_Scan",
-    "reason": "Pass (IV)",
-    "value": 2.647951126098633,
-    "description": ""
-  },
-  {
-    "feature": "main_score",
-    "data_source": "champion",
-    "status": "Selected",
-    "stage": "Fine_Scan",
-    "reason": "Pass (IV)",
-    "value": 0.40134844183921814,
-    "description": ""
-  },
-  {
-    "feature": "score_inverse",
-    "data_source": "champion",
-    "status": "Selected",
-    "stage": "Fine_Scan",
-    "reason": "Pass (IV)",
-    "value": 0.40193307399749756,
-    "description": ""
-  },
-  {
-    "feature": "aux_drift",
-    "data_source": "challenger",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.008666666666666666,
-    "description": ""
-  },
-  {
-    "feature": "aux_score",
-    "data_source": "challenger",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.008666666666666666,
-    "description": ""
-  },
-  {
-    "feature": "income",
-    "data_source": "application",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.005833333333333334,
-    "description": ""
-  },
-  {
-    "feature": "income_copy",
-    "data_source": "application",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.005833333333333334,
-    "description": ""
-  },
-  {
-    "feature": "main_score",
-    "data_source": "champion",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.004833333333333334,
-    "description": ""
-  },
-  {
-    "feature": "score_inverse",
-    "data_source": "champion",
-    "status": "Selected",
-    "stage": "Quality",
-    "reason": "Pass",
-    "value": 0.004833333333333334,
-    "description": ""
-  },
-  {
-    "feature": "aux_score",
-    "data_source": "challenger",
+    "feature": "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "RiskCorr",
     "reason": "Stable Logic",
@@ -171,84 +1926,1857 @@
     "description": ""
   },
   {
-    "feature": "main_score",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_MON",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "RiskCorr",
     "reason": "Stable Logic",
-    "value": 0.9272727272727272,
+    "value": 1.0,
     "description": ""
   },
   {
-    "feature": "score_inverse",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_QRT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "RiskCorr",
     "reason": "Stable Logic",
-    "value": 0.9272727272727272,
+    "value": 1.0,
     "description": ""
   },
   {
-    "feature": "aux_drift",
-    "data_source": "challenger",
+    "feature": "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "CODE_GENDER",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_ID_PUBLISH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_LAST_PHONE_CHANGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_REGISTRATION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "EMERGENCYSTATE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMP_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_WORK_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "NAME_FAMILY_STATUS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "NAME_HOUSING_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "NAME_INCOME_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.5,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.5,
+    "description": ""
+  },
+  {
+    "feature": "OCCUPATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "ORGANIZATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "OWN_CAR_AGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "REGION_POPULATION_RELATIVE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT_W_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 1.0,
+    "description": ""
+  },
+  {
+    "feature": "TOTALAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "RiskCorr",
+    "reason": "Stable Logic",
+    "value": 0.8,
+    "description": ""
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Rough_Scan",
-    "reason": "Pass (IV=0.653)",
-    "value": 0.6534533500671387,
+    "reason": "Pass (IV=0.017)",
+    "value": 0.01729429140686989,
     "description": ""
   },
   {
-    "feature": "aux_score",
-    "data_source": "challenger",
+    "feature": "AMT_GOODS_PRICE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Rough_Scan",
-    "reason": "Pass (IV=2.297)",
-    "value": 2.2970714569091797,
+    "reason": "Pass (IV=0.045)",
+    "value": 0.04478947073221207,
     "description": ""
   },
   {
-    "feature": "main_score",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_DAY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Rough_Scan",
-    "reason": "Pass (IV=0.321)",
-    "value": 0.3210684359073639,
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013245969079434872,
     "description": ""
   },
   {
-    "feature": "score_inverse",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Rough_Scan",
-    "reason": "Pass (IV=0.321)",
-    "value": 0.32091811299324036,
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013245969079434872,
     "description": ""
   },
   {
-    "feature": "aux_score",
-    "data_source": "challenger",
+    "feature": "AMT_REQ_CREDIT_BUREAU_MON",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013245969079434872,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_QRT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013245969079434872,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013245969079434872,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.017)",
+    "value": 0.016647526994347572,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.033)",
+    "value": 0.03262526914477348,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.033)",
+    "value": 0.03256901726126671,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.032)",
+    "value": 0.031575195491313934,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.023)",
+    "value": 0.023193661123514175,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.023)",
+    "value": 0.022827375680208206,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.02151702530682087,
+    "description": ""
+  },
+  {
+    "feature": "CODE_GENDER",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.038)",
+    "value": 0.037792060524225235,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013235819526016712,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.013224567286670208,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.012857338413596153,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.076)",
+    "value": 0.07587558031082153,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.071)",
+    "value": 0.07100476324558258,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_ID_PUBLISH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.035)",
+    "value": 0.03501340001821518,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_LAST_PHONE_CHANGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.040)",
+    "value": 0.03963213041424751,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_REGISTRATION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.023)",
+    "value": 0.02346036583185196,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.032)",
+    "value": 0.031803518533706665,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.032)",
+    "value": 0.031640008091926575,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.031)",
+    "value": 0.030915377661585808,
+    "description": ""
+  },
+  {
+    "feature": "EMERGENCYSTATE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.025)",
+    "value": 0.02512894943356514,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.028091710060834885,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.028494223952293396,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.027)",
+    "value": 0.027358513325452805,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.134)",
+    "value": 0.13384604454040527,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.271)",
+    "value": 0.2712540626525879,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.289)",
+    "value": 0.2891859710216522,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.027728751301765442,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMP_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.033)",
+    "value": 0.03339686244726181,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_WORK_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.011)",
+    "value": 0.010907761752605438,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.037)",
+    "value": 0.03732872009277344,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.037)",
+    "value": 0.03738895058631897,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.037)",
+    "value": 0.037111543118953705,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.017)",
+    "value": 0.01727672852575779,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.018)",
+    "value": 0.01754988729953766,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.018)",
+    "value": 0.017502298578619957,
+    "description": ""
+  },
+  {
+    "feature": "FONDKAPREMONT_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.013)",
+    "value": 0.012743791565299034,
+    "description": ""
+  },
+  {
+    "feature": "HOUSETYPE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.023)",
+    "value": 0.02345801331102848,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.017)",
+    "value": 0.017021633684635162,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.017)",
+    "value": 0.016956353560090065,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.016423489898443222,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.014)",
+    "value": 0.014211753383278847,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.017)",
+    "value": 0.016513219103217125,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.01643294282257557,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.015570498071610928,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.034)",
+    "value": 0.03413695842027664,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.034)",
+    "value": 0.03412691503763199,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.033)",
+    "value": 0.032644741237163544,
+    "description": ""
+  },
+  {
+    "feature": "NAME_EDUCATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.053)",
+    "value": 0.05324426665902138,
+    "description": ""
+  },
+  {
+    "feature": "NAME_FAMILY_STATUS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.02185872569680214,
+    "description": ""
+  },
+  {
+    "feature": "NAME_HOUSING_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.015)",
+    "value": 0.015250161290168762,
+    "description": ""
+  },
+  {
+    "feature": "NAME_INCOME_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.060)",
+    "value": 0.05987070873379707,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.011)",
+    "value": 0.011426776647567749,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.011)",
+    "value": 0.011412210762500763,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.011)",
+    "value": 0.01140669547021389,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.022323545068502426,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.02225109562277794,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.022193782031536102,
+    "description": ""
+  },
+  {
+    "feature": "OCCUPATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.051)",
+    "value": 0.05121532082557678,
+    "description": ""
+  },
+  {
+    "feature": "ORGANIZATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.044)",
+    "value": 0.043781179934740067,
+    "description": ""
+  },
+  {
+    "feature": "OWN_CAR_AGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.022)",
+    "value": 0.021829718723893166,
+    "description": ""
+  },
+  {
+    "feature": "REGION_POPULATION_RELATIVE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.015592386946082115,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.051)",
+    "value": 0.05128088593482971,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT_W_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.054)",
+    "value": 0.053906671702861786,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.034)",
+    "value": 0.033562302589416504,
+    "description": ""
+  },
+  {
+    "feature": "TOTALAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.036)",
+    "value": 0.036134250462055206,
+    "description": ""
+  },
+  {
+    "feature": "WALLSMATERIAL_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.02818029746413231,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.02787458524107933,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.027928121387958527,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.028)",
+    "value": 0.027942582964897156,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.016238197684288025,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.01631171628832817,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Rough_Scan",
+    "reason": "Pass (IV=0.016)",
+    "value": 0.016165662556886673,
+    "description": ""
+  },
+  {
+    "feature": "AMT_ANNUITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Stability",
     "reason": "Stable PSI",
-    "value": 0.0060770665642735314,
+    "value": 0.00031025244579418944,
     "description": ""
   },
   {
-    "feature": "main_score",
-    "data_source": "champion",
+    "feature": "AMT_GOODS_PRICE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Stability",
     "reason": "Stable PSI",
-    "value": 0.008103952631859824,
+    "value": 7.538552142696921e-05,
     "description": ""
   },
   {
-    "feature": "score_inverse",
-    "data_source": "champion",
+    "feature": "AMT_REQ_CREDIT_BUREAU_DAY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
     "status": "Selected",
     "stage": "Stability",
     "reason": "Stable PSI",
-    "value": 0.007753347559946931,
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_MON",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_QRT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0,
+    "description": ""
+  },
+  {
+    "feature": "AMT_REQ_CREDIT_BUREAU_YEAR",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 1.538791646697825e-05,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0009333879096480957,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0011919879859321899,
+    "description": ""
+  },
+  {
+    "feature": "APARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.000574227053841849,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0006765534489019191,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0007033866101434857,
+    "description": ""
+  },
+  {
+    "feature": "BASEMENTAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.000503281230872487,
+    "description": ""
+  },
+  {
+    "feature": "CODE_GENDER",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0001605844978988619,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0007463258092577276,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0009014038044014344,
+    "description": ""
+  },
+  {
+    "feature": "COMMONAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0014870298381303268,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_BIRTH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0001641280229271999,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_EMPLOYED",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 6.677152443927903e-05,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_ID_PUBLISH",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00011696851986246024,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_LAST_PHONE_CHANGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0009107231761117289,
+    "description": ""
+  },
+  {
+    "feature": "DAYS_REGISTRATION",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00014154510986645835,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 3.596986594576226e-05,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 4.334367862829251e-05,
+    "description": ""
+  },
+  {
+    "feature": "ELEVATORS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 6.108583089355177e-05,
+    "description": ""
+  },
+  {
+    "feature": "EMERGENCYSTATE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00012419332944159034,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0007612025844252486,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0006602625619794931,
+    "description": ""
+  },
+  {
+    "feature": "ENTRANCES_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0009341831341698193,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_1",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0012503964058037794,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00012978934757902223,
+    "description": ""
+  },
+  {
+    "feature": "EXT_SOURCE_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0001944035009772392,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_DOCUMENT_3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00016482211906587696,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_EMP_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 4.866533499249491e-05,
+    "description": ""
+  },
+  {
+    "feature": "FLAG_WORK_PHONE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 9.129582738328114e-06,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00020602917738506631,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0002214068975677574,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMAX_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00022036096048636957,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0007870657617513052,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0006424200729928848,
+    "description": ""
+  },
+  {
+    "feature": "FLOORSMIN_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0005232005235710045,
+    "description": ""
+  },
+  {
+    "feature": "FONDKAPREMONT_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0016562104012808462,
+    "description": ""
+  },
+  {
+    "feature": "HOUSETYPE_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00014755944580816113,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0003888734437183948,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0006521980924405621,
+    "description": ""
+  },
+  {
+    "feature": "LANDAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0005314457771415331,
+    "description": ""
+  },
+  {
+    "feature": "LIVE_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 8.74588371780297e-05,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.002402045732271466,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.003132819311463313,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0026748006732612373,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00019991971653145825,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00039520234394447196,
+    "description": ""
+  },
+  {
+    "feature": "LIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0006530470733433047,
+    "description": ""
+  },
+  {
+    "feature": "NAME_EDUCATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00010593261348565492,
+    "description": ""
+  },
+  {
+    "feature": "NAME_FAMILY_STATUS",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0005419035063854691,
+    "description": ""
+  },
+  {
+    "feature": "NAME_HOUSING_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0008651948203555557,
+    "description": ""
+  },
+  {
+    "feature": "NAME_INCOME_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00016784642362357638,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 8.245331220836152e-05,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 8.517544285990529e-05,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAPARTMENTS_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 8.14347572230209e-05,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00017002847640554172,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00010927227899540862,
+    "description": ""
+  },
+  {
+    "feature": "NONLIVINGAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 9.811782662709606e-05,
+    "description": ""
+  },
+  {
+    "feature": "OCCUPATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00038011268723050454,
+    "description": ""
+  },
+  {
+    "feature": "ORGANIZATION_TYPE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00015809451581772621,
+    "description": ""
+  },
+  {
+    "feature": "OWN_CAR_AGE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0002040292909296509,
+    "description": ""
+  },
+  {
+    "feature": "REGION_POPULATION_RELATIVE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00035923679666742677,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00016242309115356666,
+    "description": ""
+  },
+  {
+    "feature": "REGION_RATING_CLIENT_W_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00020134770105958966,
+    "description": ""
+  },
+  {
+    "feature": "REG_CITY_NOT_WORK_CITY",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 1.5147920414123587e-05,
+    "description": ""
+  },
+  {
+    "feature": "TOTALAREA_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0009817819912397413,
+    "description": ""
+  },
+  {
+    "feature": "WALLSMATERIAL_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0011068296145800734,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.000170720276696734,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00018329983153023258,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BEGINEXPLUATATION_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.000353571447321392,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_AVG",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0002181555236966552,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MEDI",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.00021172518739235476,
+    "description": ""
+  },
+  {
+    "feature": "YEARS_BUILD_MODE",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "status": "Selected",
+    "stage": "Stability",
+    "reason": "Stable PSI",
+    "value": 0.0004226970948683725,
     "description": ""
   }
 ]

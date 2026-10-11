@@ -62,6 +62,29 @@ CONTEXT = {
 }
 
 
+def test_excel_preserves_long_report_semantics_without_cell_truncation(tmp_path: Path) -> None:
+    """Excel 将长 JSON 明确分段，拼接后必须保留完整元信息。"""
+    import openpyxl
+
+    from mars.reporting._metadata import export_semantics
+
+    payload = {"detail": "官方字段说明😀" * 6000}
+    frame = export_semantics({"parameters": payload})["ReportSemantics"]
+    path = tmp_path / "long-semantics.xlsx"
+    frame.to_excel(path, index=False)
+    workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        rows = list(workbook.active.values)
+        header = list(rows[0])
+        records = [dict(zip(header, row)) for row in rows[1:]]
+        assert all(len(row["value"].encode("utf-16-le")) // 2 <= 32767 for row in records)
+        assert json.loads("".join(row["value"] for row in records)) == payload
+        assert [row["part"] for row in records] == list(range(1, len(records) + 1))
+        assert all(row["parts"] == len(records) for row in records)
+    finally:
+        workbook.close()
+
+
 def sample() -> pl.DataFrame:
     return pl.DataFrame(
         {
@@ -282,8 +305,11 @@ def test_atomic_write_overwrite_corruption_and_unsupported_versions(
     original = path.read_bytes()
     with pytest.raises(FileExistsError):
         report.save(path)
+    assert path.read_bytes() == original
     report.save(path, overwrite=True)
     assert load_report(path).report_id == report.report_id
+    # ZIP 条目的时间戳可以随成功覆写改变；失败写入必须保护最近一次成功产物。
+    original = path.read_bytes()
     original_get = report.get_table
 
     def failed(name: str, **options: object) -> pl.DataFrame:

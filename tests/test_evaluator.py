@@ -770,6 +770,53 @@ def test_evaluator_label_free_mode_does_not_mutate_target_state(sample_credit_df
     assert report.summary_table.select(pl.col("iv").is_null().all()).item()
 
 
+def test_unobserved_group_total_preserves_null_risk_metrics() -> None:
+    """无标签分组的汇总行保留分布计数，不把空指标聚合成零或一。"""
+    frame = pl.DataFrame({
+        "feature_a": [0.1, 0.2, 0.7, 0.8, 0.3, 0.9],
+        "target": [0, 1, 0, 1, None, None],
+        "group": ["train"] * 4 + ["undue"] * 2,
+        "amount": [100.0] * 6,
+    })
+    report = profile_risk(
+        frame,
+        target="target",
+        features=["feature_a"],
+        group_col="group",
+        amount_col="amount",
+        benchmark_df=frame.filter(pl.col("group") == "train"),
+        binning_type="native",
+        method="quantile",
+        n_bins=2,
+    ).report
+    undue = report.detail_table.filter(pl.col("mars_group") == "undue")
+    total = undue.filter(pl.col("bin_index") == 9999).row(0, named=True)
+    assert total["count"] == 2 and total["observed_count"] == 0
+    for metric in ("bad_rate", "cum_bad_rate", "lift", "ks_bin", "auc_bin", "iv_bin",
+                   "amt_bad_rate", "lift_amt"):
+        assert undue.get_column(metric).null_count() == undue.height, metric
+    assert total["psi_bin"] is not None
+    train_total = report.detail_table.filter(
+        (pl.col("mars_group") == "train") & (pl.col("bin_index") == 9999)
+    ).row(0, named=True)
+    assert train_total["auc_bin"] is not None and train_total["iv_bin"] is not None
+
+
+def test_binning_summary_tied_metrics_use_stable_feature_order() -> None:
+    """相同 IV 和风险相关性按字段名排序，跨进程分页不会交换同分字段。"""
+    frame = pl.DataFrame({
+        "z_feature": [0.1, 0.2, 0.7, 0.8],
+        "a_feature": [0.1, 0.2, 0.7, 0.8],
+        "target": [0, 1, 0, 1],
+    })
+    for features in (["z_feature", "a_feature"], ["a_feature", "z_feature"]):
+        report = profile_risk(
+            frame, target="target", features=features,
+            binning_type="native", method="quantile", n_bins=2,
+        ).report
+        assert report.summary_table.get_column("feature").to_list() == ["a_feature", "z_feature"]
+
+
 def test_evaluator_does_not_reuse_fitted_binner_between_calls(sample_credit_df):
     evaluator = MarsBinEvaluator(binner_params={"method": "quantile", "n_bins": 3})
 

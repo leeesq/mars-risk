@@ -117,6 +117,18 @@ def normalize_business_context(context: dict[str, Any] | None) -> dict[str, Any]
     return result
 
 
+def _excel_json_rows(values: dict[str, Any]) -> pd.DataFrame:
+    """将长 JSON 分成有顺序的片段，避免 Excel 32767 个 UTF-16 单元限制。"""
+    rows: list[dict[str, Any]] = []
+    for key, value in values.items():
+        serialized = encode(value)
+        # 每个 Unicode 字符最多占两个 UTF-16 单元，16000 字符片段安全容纳补充平面字符。
+        chunks = [serialized[offset:offset + 16000] for offset in range(0, len(serialized), 16000)]
+        for index, chunk in enumerate(chunks, start=1):
+            rows.append({"key": key, "value": chunk, "part": index, "parts": len(chunks)})
+    return pd.DataFrame(rows, columns=["key", "value", "part", "parts"])
+
+
 def export_semantics(description: dict[str, Any]) -> dict[str, pd.DataFrame]:
     """所有报告导出复用公共 describe；长定义集中存放，不重复到统计行。"""
     metadata = description.get("feature_metadata", {})
@@ -125,21 +137,11 @@ def export_semantics(description: dict[str, Any]) -> dict[str, pd.DataFrame]:
             [{"feature": feature, **entry} for feature, entry in metadata.items()],
             columns=["feature", "display_name", "description", "data_source", "unit"],
         ),
-        "BusinessContext": pd.DataFrame(
-            [
-                {"key": key, "value": encode(value)}
-                for key, value in description.get("business_context", {}).items()
-            ],
-            columns=["key", "value"],
-        ),
-        "ReportSemantics": pd.DataFrame(
-            [
-                {"key": key, "value": encode(value)}
-                for key, value in description.items()
-                if key not in {"feature_metadata", "business_context"}
-            ],
-            columns=["key", "value"],
-        ),
+        "BusinessContext": _excel_json_rows(description.get("business_context", {})),
+        "ReportSemantics": _excel_json_rows({
+            key: value for key, value in description.items()
+            if key not in {"feature_metadata", "business_context"}
+        }),
     }
 
 

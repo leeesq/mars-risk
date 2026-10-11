@@ -1,139 +1,131 @@
 --8<-- [start:case1]
-| 分区 | 全样本人数 | bad30 已表现人数 | late60 已表现人数 |
+| 分区 | 全部人数 | 已观测 | 坏率 |
 | --- | --- | --- | --- |
-| discovery | 6000 | 5513 | 4778 |
-| validation | 6000 | 5551 | 4814 |
-| observation | 6000 | 5515 | 0 |
+| 0train | 215374 | 215374 | 8.1091% |
+| 1val | 30720 | 30720 | 8.2975% |
+| 2test | 30657 | 30657 | 7.6035% |
+| 3oot | 30760 | 30760 | 8.0624% |
+| 4_oot_undue | 48744 | 0 | — |
 --8<-- [end:case1]
 
 --8<-- [start:card1]
-| 总样本 | 观察期 late60 已表现 | 新类别 |
+| 合并样本 | 无标签样本 | 完整候选字段 |
 | --- | --- | --- |
-| 18000 | 0 | branch |
+| 356255 | 48744 | 119 |
 --8<-- [end:card1]
 
 --8<-- [start:case2]
-bad30；KS 为 0–100 点，IV/PSI 无量纲。分箱只由 discovery 参考拟合。
+TARGET；KS 为 0–100 点，PSI 无量纲。0train 拟合，3oot 的日期为模拟日期。
 
-| 特征 | 发现 IV | 验证 IV | 发现 KS | 验证 KS | 验证 PSI | 观察 PSI |
-| --- | --- | --- | --- | --- | --- | --- |
-| main_score | 0.3177 | 0.2395 | 22.5821 | 20.0041 | 0.0015 | 0.0013 |
-| aux_score | 2.2927 | 2.0976 | 59.6030 | 57.2376 | 0.0001 | 0.0017 |
-| income | 0.0117 | 0.0026 | 2.7676 | 1.8919 | 0.3802 | 1.0859 |
-| channel | 0.0006 | 0.0001 | 1.1917 | 0.4230 | 0.0001 | 1.6354 |
+| 字段 | Train KS | Val KS | Test KS | OOT KS | 无标签 PSI |
+| --- | --- | --- | --- | --- | --- |
+| EXT_SOURCE_2 | 21.1206 | 21.5852 | 21.8119 | 21.9017 | 0.0067 |
+| EXT_SOURCE_3 | 22.0037 | 23.3587 | 21.3300 | 23.0991 | 0.0051 |
+| AMT_INCOME_TOTAL | 3.7852 | 3.9803 | 3.2401 | 3.0711 | 0.0196 |
+| DAYS_BIRTH | 11.3724 | 13.4295 | 12.3029 | 12.7862 | 0.0004 |
 --8<-- [end:case2]
 
 --8<-- [start:card2]
-| 辅助分验证 KS | 参考行数 |
+| 主图字段 | Train 参考人数 |
 | --- | --- |
-| 57.2376 | 6000 |
+| EXT_SOURCE_2 | 215374 |
 --8<-- [end:card2]
 
 --8<-- [start:case3]
-| 特征 | 状态 | 阶段 | 实际原因 |
+| 字段 | 状态 | 阶段 | 原因 |
 | --- | --- | --- | --- |
-| main_score | Dropped | Corr_Filter | Correlated with 'score_inverse' |
-| constant | Dropped | Quality | Single Value (Mode) |
-| sparse | Dropped | Quality | High Missing |
-| income | Dropped | Rough_Scan | Low IV & Low Lift |
-| income_copy | Dropped | Rough_Scan | Low IV & Low Lift |
-| aux_drift | Dropped | Stability | High PSI (9.46) |
-| aux_score | Selected | Corr_Filter | Independent |
-| score_inverse | Selected | Corr_Filter | Independent |
+| AMT_REQ_CREDIT_BUREAU_DAY | Dropped | Corr_Filter | Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR' |
+| AMT_REQ_CREDIT_BUREAU_HOUR | Dropped | Corr_Filter | Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR' |
+| AMT_REQ_CREDIT_BUREAU_MON | Dropped | Corr_Filter | Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR' |
+| AMT_REQ_CREDIT_BUREAU_QRT | Dropped | Corr_Filter | Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR' |
+| AMT_REQ_CREDIT_BUREAU_WEEK | Dropped | Corr_Filter | Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR' |
+| APARTMENTS_MEDI | Dropped | Corr_Filter | Correlated with 'FLOORSMAX_MEDI' |
+| APARTMENTS_MODE | Dropped | Corr_Filter | Correlated with 'FLOORSMAX_MEDI' |
+| ELEVATORS_AVG | Dropped | Corr_Filter | Correlated with 'FLOORSMAX_MEDI' |
+| ELEVATORS_MEDI | Dropped | Corr_Filter | Correlated with 'FLOORSMAX_MEDI' |
+| ELEVATORS_MODE | Dropped | Corr_Filter | Correlated with 'FLOORSMAX_MEDI' |
 
-| 表示 | 方法 | 实际相关样本人数 | 阈值比较 |
-| --- | --- | --- | --- |
-| raw | spearman | 5459 | >= 0.95 |
-| woe | pearson | 5513 | > 0.8 |
-
-| raw 特征对 | 有符号相关 | 绝对相关 |
+| 原始字段对 | Spearman | 绝对相关 |
 | --- | --- | --- |
-| main_score / score_inverse | -1.0000 | 1.0000 |
-| income / income_copy | 1.0000 | 1.0000 |
+| OBS_30_CNT_SOCIAL_CIRCLE / OBS_60_CNT_SOCIAL_CIRCLE | 0.9975 | 0.9975 |
+| REGION_RATING_CLIENT / REGION_RATING_CLIENT_W_CITY | 0.9495 | 0.9495 |
+| AMT_ANNUITY / AMT_GOODS_PRICE | 0.8244 | 0.8244 |
+| EXT_SOURCE_1 / DAYS_BIRTH | -0.5984 | 0.5984 |
 --8<-- [end:case3]
 
 --8<-- [start:card3]
-| Stats 保留 | Linear 保留 |
+| Stats 候选→保留 | Linear 候选→保留 |
 | --- | --- |
-| aux_score, score_inverse | main_score, income |
+| 119 → 26 | 11 → 10 |
 --8<-- [end:card3]
 
 --8<-- [start:case4]
-discovery / 202601 / bad30；X=b1，风险等级 X3。坏率按已表现权重计算。
+0train / TARGET / 来源分 2 固定 b1；坏率按已观测人数计算。
 
-| 辅助箱 / 风险等级 | 全样本人数 | 已表现人数 | 已表现权重和 | 坏率 | Δ 行基线 pp | 整体 Lift |
-| --- | --- | --- | --- | --- | --- | --- |
-| b0 / Y1 | 122 | 112 | 112.7838 | 1.4659% | -17.7361 | 0.0917 |
-| b1 / Y2 | 115 | 103 | 104.0492 | 3.9250% | -15.2770 | 0.2456 |
-| b2 / Y3 | 122 | 110 | 108.9937 | 11.6735% | -7.5284 | 0.7306 |
-| b3 / Y4 | 122 | 117 | 119.3161 | 56.7155% | 37.5136 | 3.5496 |
+| 来源分 3 箱 | 全部人数 | 已观测 | 坏率 | Δ 行基线 pp | Lift |
+| --- | --- | --- | --- | --- | --- |
+| b3 | 10035 | 10035 | 3.6472% | -4.5319 | 0.4498 |
+| b2 | 10546 | 10546 | 5.0730% | -3.1062 | 0.6256 |
+| b1 | 10918 | 10918 | 7.8494% | -0.3298 | 0.9680 |
+| b0 | 11520 | 11520 | 14.3490% | 6.1698 | 1.7695 |
 --8<-- [end:case4]
 
 --8<-- [start:card4]
-| 同一 X3 层最低加权坏率 | 最高加权坏率 |
+| 同一 b1 层最低坏率 | 最高坏率 |
 | --- | --- |
-| 1.4659% | 56.7155% |
+| 3.6472% | 14.3490% |
 --8<-- [end:card4]
 
 --8<-- [start:case5]
-| 规则 | 审计状态 | 拒绝阶段 | 实际原因 |
+| 规则 | 状态 | 阶段 | 原因 |
 | --- | --- | --- | --- |
-| 主分 b1 × 辅助 b3 | selected | — | — |
-| 主分 b2 × 辅助 b3 | selected | — | — |
-| 主分 b1 × 辅助 b0 | rejected | candidate_filter | 未通过训练集候选阈值 |
-| 主分 b3 × 辅助 b3 | rejected | validation_filter | 未通过验证阈值或切片通过率 |
-| 手工覆盖压力候选 | rejected | candidate_filter | 未通过训练集候选阈值 |
+| 来源分2 b0 × 来源分3 b0 | selected | — | — |
+| 来源分2 b1 × 来源分3 b0 | rejected | validation_filter | 未通过验证阈值或切片通过率 |
+| 来源分2 b0 × 来源分3 b1 | rejected | validation_filter | 未通过验证阈值或切片通过率 |
+| 来源分2 b3 × 来源分3 b3 | rejected | candidate_filter | 未通过训练集候选阈值 |
 
-独立 validation / bad30 / hit；sample_count 是已表现人数。
+固定规则独立复核；sample_count 为已观测人数。
 
-| 规则 | 已表现命中人数 | 事件人数 | 覆盖 | 坏率 | Lift | Lift 下界 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 主分 b1 × 辅助 b3 | 316 | 167 | 5.6927% | 52.8481% | 3.3261 | 3.0351 |
-| 主分 b2 × 辅助 b3 | 339 | 137 | 6.1070% | 40.4130% | 2.5435 | 2.2734 |
-| 主分 b3 × 辅助 b3 | 372 | 103 | 6.7015% | 27.6882% | 1.7426 | 1.5132 |
-
-自动组合生成器（独立报告、24 候选预算）：
-
-| 来源 | 候选 | 实际保留 | 独立验证 | 排除非法/缺失分行数 |
-| --- | --- | --- | --- | --- |
-| MarsCombinationRuleGenerator | 24 | 2 | independent | 354 |
+| 分区 | 规则 | 全部命中 | 已观测命中 | 坏率 | Lift |
+| --- | --- | --- | --- | --- | --- |
+| 2test | 来源分2 b0 × 来源分3 b0 | 1829 | 1829 | 21.1591% | 2.7828 |
+| 3oot | 来源分2 b0 × 来源分3 b0 | 1757 | 1757 | 23.7336% | 2.9437 |
 --8<-- [end:case5]
 
 --8<-- [start:card5]
-| 候选数 | 保留数 | 验证范围 |
-| --- | --- | --- |
-| 5 | 2 | independent |
+| 格子候选→保留 | 自动候选→保留 |
+| --- | --- |
+| 4 → 1 | 24 → 1 |
 --8<-- [end:card5]
 
 --8<-- [start:case6]
-| 实际验证 | 结果 |
+| 检查 | 实际结果 |
 | --- | --- |
-| 第一页 / 下一页 | 3 / 3 |
-| next_offset | 3 |
+| 第一页/下一页 | 3/3 |
 | 合法空结果 | 0 |
-| 无效列请求 | ValueError |
-| 最终 Unicode 字符 / 上限 | 8929 / 9000 |
-| 只读聚合 policy 回放与保存结果一致 | True |
+| 无效列 | ValueError |
+| 字符/预算 | 6803/9000 |
+| 固定策略回放一致 | True |
 --8<-- [end:case6]
 
 --8<-- [start:card6]
-| 恢复对象 | 预算字符上限 |
+| 恢复对象 | 字符预算 |
 | --- | --- |
 | ReportSnapshot | 9000 |
 --8<-- [end:card6]
 
 --8<-- [start:case7]
-| 格式 | 共享文件 | 用途与边界 |
+| 格式 | 共享文件 | 用途 |
 | --- | --- | --- |
-| HTML | `score-cross.html` | 当前矩阵、选格和正常箱表达式交互；离线请求由浏览器验收 |
-| Excel | `score-cross.xlsx` | 静态工作表；不提供 HTML 等价交互或计算 |
-| .marsreport | `score-cross.marsreport` | 报告目录、查询、聚合 policy 回放；不是原始数据或分析器 |
-| bounded JSON | `agent-context.json` | 真实目录和预算内 evidence，最终 Unicode 字符计数 |
-| TXT | `external-agent-task.txt` | 外部消费者提示材料；不声称实际 LLM 分析 |
+| HTML | binning.html | 原生分箱图、指标与业务元数据交互 |
+| Excel | binning.xlsx | 同批分箱静态工作表 |
+| .marsreport | binning.marsreport | 目录、查询、保存统计的导出；附加交叉聚合回放另用 score-cross |
+| bounded JSON | agent-context.json | Unicode 字符预算内的目录与证据 |
+| TXT | external-agent-task.txt | 外部消费者提示材料；未执行 LLM |
 --8<-- [end:case7]
 
 --8<-- [start:card7]
-| 实际格式数 | Excel 关键值与快照对齐 |
+| 实际格式数 | Excel 与快照一致 |
 | --- | --- |
 | 5 | True |
 --8<-- [end:card7]

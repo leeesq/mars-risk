@@ -277,11 +277,13 @@ class MarsRuleReport(_ReportQuery):
                     f"<p>候选预览 100 / {table.height} 行；完整证据使用 get_table('candidates')、Excel 或 .marsreport 导出。</p>"
                 )
         document: str = """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>{title}</title>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>body{{font-family:Arial,sans-serif;margin:32px;color:#202124}}
-table{{border-collapse:collapse;width:100%;margin:12px 0 28px}}
+table{{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse;width:100%;margin:12px 0 28px}}
 th,td{{border:1px solid #ddd;padding:6px;text-align:right}}th{{background:#f4f5f7}}
-pre{{background:#f7f7f8;padding:12px;overflow:auto}}</style></head>
+pre{{background:#f7f7f8;padding:12px;overflow:auto}}
+@media(max-width:600px){{body{{margin:16px}}}}</style></head>
 <body>{body}</body></html>""".format(
             title=html.escape(self.caption),
             body="\n".join(sections),

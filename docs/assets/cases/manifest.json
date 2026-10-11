@@ -1,347 +1,1793 @@
 {
-  "schema_version": 1,
-  "source_commit": "aa43995b2d670aeafdfb9536e24be4f171941032",
+  "schema_version": 2,
+  "source_commit": "1b2b250368408933b691e852886eeaa786b5cb32",
   "source_status": "known git checkout",
-  "command": "python task_cases.py --case all --rows 18000 --seed 20261001 --output-dir cases",
+  "command": "python task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir current-cases",
   "data_config": {
-    "rows": 18000,
+    "source": "home-credit-2018",
+    "rows": 356255,
     "seed": 20261001,
-    "reference": "discovery",
+    "target_group_rows": 30000,
+    "reference": "0train",
     "n_score_bins": 4,
     "scope_dimensions": [
-      "dataset",
-      "application_date month",
-      "target"
-    ]
+      "dataset_flag",
+      "APPLY_DATE simulated month",
+      "TARGET"
+    ],
+    "preparation": {
+      "preparation_version": "home-credit-2018-v1",
+      "input_files": [
+        {
+          "role": "train",
+          "name": "application_train.csv",
+          "sha256": "52e96b895b1112e1c853f670e58372719c8441c5ed1c57ac2f7fad559d784f5f",
+          "bytes": 166133370,
+          "rows": 307511,
+          "columns": 122
+        },
+        {
+          "role": "test",
+          "name": "application_test.csv",
+          "sha256": "a36161331d839150a67b6216d4de066f543a3b01a34061507d40e76612e0dec8",
+          "bytes": 26567651,
+          "rows": 48744,
+          "columns": 121
+        },
+        {
+          "role": "description",
+          "name": "HomeCredit_columns_description.csv",
+          "sha256": "eef7665398228a80f7367c9258220c5fbe1038f3f54094244f354d54e2d4fb03",
+          "bytes": 37383,
+          "rows": 219,
+          "columns": 5
+        }
+      ],
+      "description_encoding": "cp1252",
+      "columns_description": {
+        "encoding": "cp1252",
+        "rows": 219,
+        "columns": 5,
+        "column_names": [
+          "",
+          "Table",
+          "Row",
+          "Description",
+          "Special"
+        ],
+        "tables": [
+          "POS_CASH_balance.csv",
+          "application_{train|test}.csv",
+          "bureau.csv",
+          "bureau_balance.csv",
+          "credit_card_balance.csv",
+          "installments_payments.csv",
+          "previous_application.csv"
+        ],
+        "application_rows": 122
+      },
+      "full_dataset": true,
+      "seed": 20261001,
+      "hash_config": {
+        "algorithm": "SHA256",
+        "encoding": "UTF-8",
+        "id_format": "十进制整数，无前导零",
+        "text_format": "{seed}:{SK_ID_CURR}",
+        "integer_conversion": "全部 32 字节 big-endian",
+        "offset_rule": "散列整数 modulo 区间天数（train 181/test 31）",
+        "uses_binary_target_value": false
+      },
+      "partition_config": {
+        "target_group_rows": 30000,
+        "algorithm": "从末日向前选完整自然日人数最接近目标的日期段，依次 3oot/2test/1val",
+        "tie_break": "人数误差相同选择更早起始日；为剩余分区保留非空自然日"
+      },
+      "merged_shape_before_roles": [
+        356255,
+        122
+      ],
+      "final_shape": [
+        356255,
+        124
+      ],
+      "rows": 356255,
+      "partition_stats": [
+        {
+          "dataset_flag": "0train",
+          "total_count": 215374,
+          "date_min": "2026-01-01",
+          "date_max": "2026-05-07",
+          "observed_count": 215374,
+          "null_count": 0,
+          "target_0_count": 197909,
+          "target_1_count": 17465,
+          "observed_bad_rate": 0.081091496652335,
+          "label_coverage": 1.0,
+          "label_status": "observed"
+        },
+        {
+          "dataset_flag": "1val",
+          "total_count": 30720,
+          "date_min": "2026-05-08",
+          "date_max": "2026-05-25",
+          "observed_count": 30720,
+          "null_count": 0,
+          "target_0_count": 28171,
+          "target_1_count": 2549,
+          "observed_bad_rate": 0.08297526041666667,
+          "label_coverage": 1.0,
+          "label_status": "observed"
+        },
+        {
+          "dataset_flag": "2test",
+          "total_count": 30657,
+          "date_min": "2026-05-26",
+          "date_max": "2026-06-12",
+          "observed_count": 30657,
+          "null_count": 0,
+          "target_0_count": 28326,
+          "target_1_count": 2331,
+          "observed_bad_rate": 0.07603483706820628,
+          "label_coverage": 1.0,
+          "label_status": "observed"
+        },
+        {
+          "dataset_flag": "3oot",
+          "total_count": 30760,
+          "date_min": "2026-06-13",
+          "date_max": "2026-06-30",
+          "observed_count": 30760,
+          "null_count": 0,
+          "target_0_count": 28280,
+          "target_1_count": 2480,
+          "observed_bad_rate": 0.08062418725617686,
+          "label_coverage": 1.0,
+          "label_status": "observed"
+        },
+        {
+          "dataset_flag": "4_oot_undue",
+          "total_count": 48744,
+          "date_min": "2026-07-01",
+          "date_max": "2026-07-31",
+          "observed_count": 0,
+          "null_count": 48744,
+          "target_0_count": 0,
+          "target_1_count": 0,
+          "observed_bad_rate": null,
+          "label_coverage": 0.0,
+          "label_status": "unobserved"
+        }
+      ],
+      "fcols": [
+        "NAME_CONTRACT_TYPE",
+        "CODE_GENDER",
+        "FLAG_OWN_CAR",
+        "FLAG_OWN_REALTY",
+        "CNT_CHILDREN",
+        "AMT_INCOME_TOTAL",
+        "AMT_ANNUITY",
+        "AMT_GOODS_PRICE",
+        "NAME_TYPE_SUITE",
+        "NAME_INCOME_TYPE",
+        "NAME_EDUCATION_TYPE",
+        "NAME_FAMILY_STATUS",
+        "NAME_HOUSING_TYPE",
+        "REGION_POPULATION_RELATIVE",
+        "DAYS_BIRTH",
+        "DAYS_EMPLOYED",
+        "DAYS_REGISTRATION",
+        "DAYS_ID_PUBLISH",
+        "OWN_CAR_AGE",
+        "FLAG_MOBIL",
+        "FLAG_EMP_PHONE",
+        "FLAG_WORK_PHONE",
+        "FLAG_CONT_MOBILE",
+        "FLAG_PHONE",
+        "FLAG_EMAIL",
+        "OCCUPATION_TYPE",
+        "CNT_FAM_MEMBERS",
+        "REGION_RATING_CLIENT",
+        "REGION_RATING_CLIENT_W_CITY",
+        "WEEKDAY_APPR_PROCESS_START",
+        "HOUR_APPR_PROCESS_START",
+        "REG_REGION_NOT_LIVE_REGION",
+        "REG_REGION_NOT_WORK_REGION",
+        "LIVE_REGION_NOT_WORK_REGION",
+        "REG_CITY_NOT_LIVE_CITY",
+        "REG_CITY_NOT_WORK_CITY",
+        "LIVE_CITY_NOT_WORK_CITY",
+        "ORGANIZATION_TYPE",
+        "EXT_SOURCE_1",
+        "EXT_SOURCE_2",
+        "EXT_SOURCE_3",
+        "APARTMENTS_AVG",
+        "BASEMENTAREA_AVG",
+        "YEARS_BEGINEXPLUATATION_AVG",
+        "YEARS_BUILD_AVG",
+        "COMMONAREA_AVG",
+        "ELEVATORS_AVG",
+        "ENTRANCES_AVG",
+        "FLOORSMAX_AVG",
+        "FLOORSMIN_AVG",
+        "LANDAREA_AVG",
+        "LIVINGAPARTMENTS_AVG",
+        "LIVINGAREA_AVG",
+        "NONLIVINGAPARTMENTS_AVG",
+        "NONLIVINGAREA_AVG",
+        "APARTMENTS_MODE",
+        "BASEMENTAREA_MODE",
+        "YEARS_BEGINEXPLUATATION_MODE",
+        "YEARS_BUILD_MODE",
+        "COMMONAREA_MODE",
+        "ELEVATORS_MODE",
+        "ENTRANCES_MODE",
+        "FLOORSMAX_MODE",
+        "FLOORSMIN_MODE",
+        "LANDAREA_MODE",
+        "LIVINGAPARTMENTS_MODE",
+        "LIVINGAREA_MODE",
+        "NONLIVINGAPARTMENTS_MODE",
+        "NONLIVINGAREA_MODE",
+        "APARTMENTS_MEDI",
+        "BASEMENTAREA_MEDI",
+        "YEARS_BEGINEXPLUATATION_MEDI",
+        "YEARS_BUILD_MEDI",
+        "COMMONAREA_MEDI",
+        "ELEVATORS_MEDI",
+        "ENTRANCES_MEDI",
+        "FLOORSMAX_MEDI",
+        "FLOORSMIN_MEDI",
+        "LANDAREA_MEDI",
+        "LIVINGAPARTMENTS_MEDI",
+        "LIVINGAREA_MEDI",
+        "NONLIVINGAPARTMENTS_MEDI",
+        "NONLIVINGAREA_MEDI",
+        "FONDKAPREMONT_MODE",
+        "HOUSETYPE_MODE",
+        "TOTALAREA_MODE",
+        "WALLSMATERIAL_MODE",
+        "EMERGENCYSTATE_MODE",
+        "OBS_30_CNT_SOCIAL_CIRCLE",
+        "DEF_30_CNT_SOCIAL_CIRCLE",
+        "OBS_60_CNT_SOCIAL_CIRCLE",
+        "DEF_60_CNT_SOCIAL_CIRCLE",
+        "DAYS_LAST_PHONE_CHANGE",
+        "FLAG_DOCUMENT_2",
+        "FLAG_DOCUMENT_3",
+        "FLAG_DOCUMENT_4",
+        "FLAG_DOCUMENT_5",
+        "FLAG_DOCUMENT_6",
+        "FLAG_DOCUMENT_7",
+        "FLAG_DOCUMENT_8",
+        "FLAG_DOCUMENT_9",
+        "FLAG_DOCUMENT_10",
+        "FLAG_DOCUMENT_11",
+        "FLAG_DOCUMENT_12",
+        "FLAG_DOCUMENT_13",
+        "FLAG_DOCUMENT_14",
+        "FLAG_DOCUMENT_15",
+        "FLAG_DOCUMENT_16",
+        "FLAG_DOCUMENT_17",
+        "FLAG_DOCUMENT_18",
+        "FLAG_DOCUMENT_19",
+        "FLAG_DOCUMENT_20",
+        "FLAG_DOCUMENT_21",
+        "AMT_REQ_CREDIT_BUREAU_HOUR",
+        "AMT_REQ_CREDIT_BUREAU_DAY",
+        "AMT_REQ_CREDIT_BUREAU_WEEK",
+        "AMT_REQ_CREDIT_BUREAU_MON",
+        "AMT_REQ_CREDIT_BUREAU_QRT",
+        "AMT_REQ_CREDIT_BUREAU_YEAR"
+      ],
+      "candidate_feature_count": 119,
+      "display_features": [
+        "EXT_SOURCE_2",
+        "EXT_SOURCE_3",
+        "EXT_SOURCE_1",
+        "AMT_INCOME_TOTAL",
+        "DAYS_BIRTH",
+        "DAYS_EMPLOYED",
+        "AMT_ANNUITY",
+        "AMT_GOODS_PRICE",
+        "NAME_INCOME_TYPE",
+        "NAME_EDUCATION_TYPE",
+        "NAME_CONTRACT_TYPE",
+        "CODE_GENDER",
+        "FLAG_OWN_CAR",
+        "FLAG_OWN_REALTY",
+        "CNT_CHILDREN",
+        "OCCUPATION_TYPE",
+        "REGION_POPULATION_RELATIVE",
+        "DAYS_REGISTRATION",
+        "DAYS_ID_PUBLISH",
+        "CNT_FAM_MEMBERS"
+      ],
+      "metadata": {
+        "missing_definitions": [],
+        "conflicting_definitions": [],
+        "duplicate_application_rows_merged": 0,
+        "application_fields_documented": 122,
+        "field_definitions": {
+          "SK_ID_CURR": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "ID of loan in our sample"
+            ],
+            "official_special": []
+          },
+          "TARGET": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Target variable (1 - client with payment difficulties: he/she had late payment more than X days on at least one of the first Y installments of the loan in our sample, 0 - all other cases)"
+            ],
+            "official_special": []
+          },
+          "NAME_CONTRACT_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Identification if loan is cash or revolving"
+            ],
+            "official_special": []
+          },
+          "CODE_GENDER": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Gender of the client"
+            ],
+            "official_special": []
+          },
+          "FLAG_OWN_CAR": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if the client owns a car"
+            ],
+            "official_special": []
+          },
+          "FLAG_OWN_REALTY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client owns a house or flat"
+            ],
+            "official_special": []
+          },
+          "CNT_CHILDREN": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of children the client has"
+            ],
+            "official_special": []
+          },
+          "AMT_INCOME_TOTAL": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Income of the client"
+            ],
+            "official_special": []
+          },
+          "AMT_CREDIT": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Credit amount of the loan"
+            ],
+            "official_special": []
+          },
+          "AMT_ANNUITY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Loan annuity"
+            ],
+            "official_special": []
+          },
+          "AMT_GOODS_PRICE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "For consumer loans it is the price of the goods for which the loan is given"
+            ],
+            "official_special": []
+          },
+          "NAME_TYPE_SUITE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Who was accompanying client when he was applying for the loan"
+            ],
+            "official_special": []
+          },
+          "NAME_INCOME_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Clients income type (businessman, working, maternity leave,…)"
+            ],
+            "official_special": []
+          },
+          "NAME_EDUCATION_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Level of highest education the client achieved"
+            ],
+            "official_special": []
+          },
+          "NAME_FAMILY_STATUS": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Family status of the client"
+            ],
+            "official_special": []
+          },
+          "NAME_HOUSING_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "What is the housing situation of the client (renting, living with parents, ...)"
+            ],
+            "official_special": []
+          },
+          "REGION_POPULATION_RELATIVE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized population of region where client lives (higher number means the client lives in more populated region)"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "DAYS_BIRTH": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Client's age in days at the time of application"
+            ],
+            "official_special": [
+              "time only relative to the application"
+            ]
+          },
+          "DAYS_EMPLOYED": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many days before the application the person started current employment"
+            ],
+            "official_special": [
+              "time only relative to the application"
+            ]
+          },
+          "DAYS_REGISTRATION": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many days before the application did client change his registration"
+            ],
+            "official_special": [
+              "time only relative to the application"
+            ]
+          },
+          "DAYS_ID_PUBLISH": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many days before the application did client change the identity document with which he applied for the loan"
+            ],
+            "official_special": [
+              "time only relative to the application"
+            ]
+          },
+          "OWN_CAR_AGE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Age of client's car"
+            ],
+            "official_special": []
+          },
+          "FLAG_MOBIL": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide mobile phone (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "FLAG_EMP_PHONE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide work phone (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "FLAG_WORK_PHONE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide home phone (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "FLAG_CONT_MOBILE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Was mobile phone reachable (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "FLAG_PHONE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide home phone (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "FLAG_EMAIL": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide email (1=YES, 0=NO)"
+            ],
+            "official_special": []
+          },
+          "OCCUPATION_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "What kind of occupation does the client have"
+            ],
+            "official_special": []
+          },
+          "CNT_FAM_MEMBERS": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many family members does client have"
+            ],
+            "official_special": []
+          },
+          "REGION_RATING_CLIENT": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Our rating of the region where client lives (1,2,3)"
+            ],
+            "official_special": []
+          },
+          "REGION_RATING_CLIENT_W_CITY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Our rating of the region where client lives with taking city into account (1,2,3)"
+            ],
+            "official_special": []
+          },
+          "WEEKDAY_APPR_PROCESS_START": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "On which day of the week did the client apply for the loan"
+            ],
+            "official_special": []
+          },
+          "HOUR_APPR_PROCESS_START": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Approximately at what hour did the client apply for the loan"
+            ],
+            "official_special": [
+              "rounded"
+            ]
+          },
+          "REG_REGION_NOT_LIVE_REGION": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's permanent address does not match contact address (1=different, 0=same, at region level)"
+            ],
+            "official_special": []
+          },
+          "REG_REGION_NOT_WORK_REGION": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's permanent address does not match work address (1=different, 0=same, at region level)"
+            ],
+            "official_special": []
+          },
+          "LIVE_REGION_NOT_WORK_REGION": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's contact address does not match work address (1=different, 0=same, at region level)"
+            ],
+            "official_special": []
+          },
+          "REG_CITY_NOT_LIVE_CITY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's permanent address does not match contact address (1=different, 0=same, at city level)"
+            ],
+            "official_special": []
+          },
+          "REG_CITY_NOT_WORK_CITY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's permanent address does not match work address (1=different, 0=same, at city level)"
+            ],
+            "official_special": []
+          },
+          "LIVE_CITY_NOT_WORK_CITY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Flag if client's contact address does not match work address (1=different, 0=same, at city level)"
+            ],
+            "official_special": []
+          },
+          "ORGANIZATION_TYPE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Type of organization where client works"
+            ],
+            "official_special": []
+          },
+          "EXT_SOURCE_1": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized score from external data source"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "EXT_SOURCE_2": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized score from external data source"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "EXT_SOURCE_3": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized score from external data source"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "APARTMENTS_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "BASEMENTAREA_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BEGINEXPLUATATION_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BUILD_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "COMMONAREA_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ELEVATORS_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ENTRANCES_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMAX_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMIN_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LANDAREA_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAPARTMENTS_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAREA_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAPARTMENTS_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAREA_AVG": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "APARTMENTS_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "BASEMENTAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BEGINEXPLUATATION_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BUILD_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "COMMONAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ELEVATORS_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ENTRANCES_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMAX_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMIN_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LANDAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAPARTMENTS_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAPARTMENTS_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "APARTMENTS_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "BASEMENTAREA_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BEGINEXPLUATATION_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "YEARS_BUILD_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "COMMONAREA_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ELEVATORS_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "ENTRANCES_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMAX_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FLOORSMIN_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LANDAREA_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAPARTMENTS_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "LIVINGAREA_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAPARTMENTS_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "NONLIVINGAREA_MEDI": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "FONDKAPREMONT_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "HOUSETYPE_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "TOTALAREA_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "WALLSMATERIAL_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "EMERGENCYSTATE_MODE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+            ],
+            "official_special": [
+              "normalized"
+            ]
+          },
+          "OBS_30_CNT_SOCIAL_CIRCLE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many observation of client's social surroundings with observable 30 DPD (days past due) default"
+            ],
+            "official_special": []
+          },
+          "DEF_30_CNT_SOCIAL_CIRCLE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many observation of client's social surroundings defaulted on 30 DPD (days past due)"
+            ],
+            "official_special": []
+          },
+          "OBS_60_CNT_SOCIAL_CIRCLE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many observation of client's social surroundings with observable 60 DPD (days past due) default"
+            ],
+            "official_special": []
+          },
+          "DEF_60_CNT_SOCIAL_CIRCLE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many observation of client's social surroundings defaulted on 60 (days past due) DPD"
+            ],
+            "official_special": []
+          },
+          "DAYS_LAST_PHONE_CHANGE": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "How many days before application did client change phone"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_2": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 2"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_3": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 3"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_4": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 4"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_5": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 5"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_6": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 6"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_7": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 7"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_8": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 8"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_9": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 9"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_10": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 10"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_11": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 11"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_12": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 12"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_13": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 13"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_14": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 14"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_15": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 15"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_16": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 16"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_17": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 17"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_18": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 18"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_19": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 19"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_20": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 20"
+            ],
+            "official_special": []
+          },
+          "FLAG_DOCUMENT_21": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Did client provide document 21"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_HOUR": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client one hour before application"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_DAY": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client one day before application (excluding one hour before application)"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_WEEK": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client one week before application (excluding one day before application)"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_MON": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client one month before application (excluding one week before application)"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_QRT": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client 3 month before application (excluding one month before application)"
+            ],
+            "official_special": []
+          },
+          "AMT_REQ_CREDIT_BUREAU_YEAR": {
+            "definition_status": "documented",
+            "official_definitions": [
+              "Number of enquiries to Credit Bureau about the client one day year (excluding last 3 months before application)"
+            ],
+            "official_special": []
+          }
+        }
+      },
+      "special_values": {
+        "DAYS_EMPLOYED": {
+          "value": 365243,
+          "count": 64648,
+          "handling": "保留原值；该异常正值作为本字段的特殊值配置，不应用于其他字段。",
+          "meaning": "官方字段说明未解释此值，不推断实际就业时长。"
+        }
+      },
+      "invariants": {
+        "source_ids_unique": true,
+        "source_ids_disjoint": true,
+        "all_rows_preserved": true,
+        "test_target_all_null": true,
+        "whole_natural_days": true,
+        "raw_files_unchanged": true
+      }
+    }
   },
   "dependencies": {
     "numpy": "2.4.6",
-    "pandas": "3.0.6",
-    "polars": "1.44.2",
-    "scikit-learn": "1.9.1",
-    "pyarrow": "25.0.1",
+    "pandas": "3.0.3",
+    "polars": "1.42.0",
+    "scikit-learn": "1.9.0",
+    "pyarrow": "24.0.0",
     "openpyxl": "3.1.5",
-    "xlsxwriter": "3.2.9"
+    "xlsxwriter": "3.2.9",
+    "matplotlib": "3.11.0"
   },
-  "python": "3.12.14",
+  "python": "3.12.13",
   "generation_environment": {
-    "python": "3.12.14",
+    "python": "3.12.13",
     "imported_mars_version": "0.0.28",
     "installed_distribution_version": "0.0.28",
-    "import_source": "installed MARS package; source fingerprints are recorded separately",
+    "import_source": "current MARS package; code fingerprints recorded",
     "dependencies": {
       "numpy": "2.4.6",
-      "pandas": "3.0.6",
-      "polars": "1.44.2",
-      "scikit-learn": "1.9.1",
-      "pyarrow": "25.0.1",
+      "pandas": "3.0.3",
+      "polars": "1.42.0",
+      "scikit-learn": "1.9.0",
+      "pyarrow": "24.0.0",
       "openpyxl": "3.1.5",
-      "xlsxwriter": "3.2.9"
+      "xlsxwriter": "3.2.9",
+      "matplotlib": "3.11.0"
     }
   },
   "code_fingerprints": {
-    "docs/snippets/task_cases.py": "509f86f7a1284dc8bd5d21075a4b736c00153a7047f7bef64181a11c24bd4cab",
-    "docs/snippets/external_agent_rule_case.py": "16e428b65ebbe3fa8b6a65670bbcfc16dba606a797670a21cb7bcb6874d94510",
+    "docs/snippets/task_cases.py": "06d6e1d38e84abb5f48558b93c67ecb9de26046a46da2dc1c6b674ef649450be",
+    "docs/snippets/external_agent_rule_case.py": "db610fafdd79e759b19e3babb6465903916f61b22f5bbe9d0a52562d2b6294f9",
+    "docs/snippets/home_credit_data.py": "386b8074d6ead289fe85e6f43696d813da1f3eec0f5ea547c2ec019402bccb6d",
     "src/mars/analysis/score_cross.py": "d5eecb5f1253e5aa152483e959f1cc6689067276e93ea1b3676f156dc6060de7",
     "src/mars/analysis/score_cross_view.py": "1a15e7b754bc593f8ec769dac3cbce863c4ef9e79abe37d3f8c4647544885c96",
     "src/mars/analysis/profiler.py": "34fef57bc76ade1c812ed15ee5440b63ebde44f0b31e418def78eb5b80899459",
     "src/mars/analysis/evaluator.py": "5c0e29e6bb196387e8ccc68f19abedab0be4898c00ec1cc6434766790a08f740",
     "src/mars/analysis/_risk_profile.py": "46d3e96d2b7e1320f6ec2f69af60ea55ad450cb8b3c79d7e7246b2aa784a2f97",
     "src/mars/feature/selection/stats.py": "543fce55d5de219b951056e01a38cf93702e9797ecbf232fd8f02011ae678228",
+    "src/mars/analysis/_evaluation/report_parts.py": "bcc16eca1d9c47b035d3711bacf420144ed18b05fba6b382bda0ff1f1210bb3f",
+    "src/mars/analysis/_evaluation/metrics.py": "ec4d6bf482e12d8b696ca68614b2ab28cf0fb6cc39273c77f058cda2fa0b2835",
+    "src/mars/compute/binning.py": "67d8acbf4a2ac229923b7d47bc27d7a031e6a2bc30eafec0931e75f6f489fed9",
+    "src/mars/reporting/_metadata.py": "d061707fc42d93391965199a4a8e826781cfc5b07c6220310943bfcc7e02056e",
     "src/mars/feature/selection/linear.py": "5c0dd0d8a65bc3ed32e54e9217b4601a441c7e30c07d7b873f585ec833a02f77",
     "src/mars/reporting/_query.py": "e2898fd928a04d1c7e389e9b02195630573efff4d6b39f9f8fa4296481535c42",
     "src/mars/reporting/_artifact.py": "5cecdd5c90d8def3b16030cacfb7f21fbdd54e5a5928cce8ddb155f90ff24790",
-    "src/mars/rule/workflow.py": "13d877751efbd9aff4100dc90091bbfa32a8949418bc1000ddeb1b28715e07ed"
+    "src/mars/rule/workflow.py": "13d877751efbd9aff4100dc90091bbfa32a8949418bc1000ddeb1b28715e07ed",
+    "src/mars/rule/evaluator.py": "8e8a3483b0f950b29e912249b308378d1901857cd6df130d81601826325fa6b0",
+    "src/mars/rule/report.py": "42545879f5d078c2fc7e6e6fcc4788751b9f89926acaaf467c161546fa87c2c9",
+    "src/mars/rule/_statistics.py": "3c989e4524f7e1c5b009c0806a178ef10ffc0a962e9666bbf13fcd84971f7934",
+    "src/mars/rule/_report_semantics.py": "db6dd84b2e8255a428244555f85abd83be63d08ff3d3dfc45ab8967380c326a5"
   },
   "reports": {
-    "1": "5919494c-bf16-4986-8949-0ff69b105153",
-    "2": "0e18537f-9a38-48a3-b793-45e93722c827",
-    "3": "a7424f15-a116-4b93-9851-6ccb3491cc0e",
-    "4": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
-    "5": "12260b98-9fab-4dc4-86e7-bd13ef84fa1a",
-    "6": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
-    "7": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c"
+    "1": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
+    "2": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+    "3": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+    "4": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+    "5": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
+    "6": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+    "7": "0bd931e3-17cb-4c37-a534-40ae571a5804"
   },
   "artifacts": [
     {
       "path": "REPRODUCE.txt",
-      "size_bytes": 1233,
-      "sha256": "7140b2e7b452f3bc8821ec6c1d51413fd8bc41c87a9d597eb4fd6a598cc56991"
+      "size_bytes": 984,
+      "sha256": "a568b2cb16110fecb4b41fbbd4911597b54ca1366f1d60c61390d6cf1f2bbaf7"
     },
     {
       "path": "agent-context.json",
-      "size_bytes": 9352,
-      "sha256": "a2a8f1e660c3300cb268db23a9d5490e249c9b107c8e091eba0a552b6c5c9459"
+      "size_bytes": 7695,
+      "sha256": "1fdbcfe52f4d40372b80900f7cda73f2c1deb6add38d94e8626202ddb0398be3"
     },
     {
       "path": "auto-rules.html",
-      "size_bytes": 172906,
-      "sha256": "7e66aec07a3970a3b6449dc325496ff13c35f4b2aea43ca955f6383d168c6505"
+      "size_bytes": 137407,
+      "sha256": "f5f19db0c75128768d6a5cc871fea4ff22db395db2ed81e84869509b9035668c"
     },
     {
       "path": "auto-rules.marsreport",
-      "size_bytes": 86047,
-      "sha256": "50388bdef0bb25500367f201824b512927521be3b44124ca704555e20faf4cb3"
+      "size_bytes": 78853,
+      "sha256": "1aa8027e18f2db70e56799ab8eb75bc73fbbf65637c0416ab99106fadcf644a5"
     },
     {
       "path": "auto-rules.xlsx",
-      "size_bytes": 34915,
-      "sha256": "5ec1f68ec51b8abd9d1dad01bc862f74af259529dedc1b44cb7dc37cc742f242"
+      "size_bytes": 33979,
+      "sha256": "18c77d8701ae2f2c8e881726fcbd41406d2f9d3910d99a185d41075a11336981"
     },
     {
       "path": "binning-native-evidence.json",
-      "size_bytes": 31390,
-      "sha256": "0bbd711c22fd92c82ac9ebe5aa523d7ece125477801a79b959aecff23c767a03"
+      "size_bytes": 37933,
+      "sha256": "fca5c623247d78123ac10f07d46c2bb894783e13191e164598c5faa28114cf5a"
     },
     {
-      "path": "binning-native-main-score.png",
-      "size_bytes": 512946,
-      "sha256": "068bd20e9d418bd18bd5fc066290544dec2f3a57b16c99a10de7aef550bcf01b"
+      "path": "binning-native-home-credit.png",
+      "size_bytes": 576743,
+      "sha256": "77303fff89a7f7ca03c5ebdb76b42cfd0a133682880084ee161937248e961722"
     },
     {
-      "path": "binning-native-main-score.svg",
-      "size_bytes": 182821,
-      "sha256": "71d9d5931462b51f99e2014803544534f1bf671bab3f9b10392f1b043e96ab6b"
+      "path": "binning-native-home-credit.svg",
+      "size_bytes": 234451,
+      "sha256": "2c51bbab437062086a524d12eb9fcc9da538276a21a963f14ba5c3a88d83ced1"
     },
     {
-      "path": "binning-native_001_bad30_main-score.png",
-      "size_bytes": 512946,
-      "sha256": "068bd20e9d418bd18bd5fc066290544dec2f3a57b16c99a10de7aef550bcf01b"
+      "path": "binning-native-time-home-credit.png",
+      "size_bytes": 764173,
+      "sha256": "5a70cc12a344eca43f015e8f0527ac28dfbdfad89fd4aec5e23331fb9a7926ba"
     },
     {
-      "path": "binning-native_001_bad30_main-score.svg",
-      "size_bytes": 182821,
-      "sha256": "71d9d5931462b51f99e2014803544534f1bf671bab3f9b10392f1b043e96ab6b"
+      "path": "binning-native-time-home-credit.svg",
+      "size_bytes": 302193,
+      "sha256": "ced8d28e12b7d0a3d4783289fd551d0b78e3e7eb09dd5a7169154f48a10f58ea"
+    },
+    {
+      "path": "binning-time.html",
+      "size_bytes": 4036336,
+      "sha256": "3c29c14646f66d52e885e56ea119d6885d9210518a798abc991ecfe31ae322f0"
+    },
+    {
+      "path": "binning-time.marsreport",
+      "size_bytes": 308781,
+      "sha256": "de69f421bf6190ba172f839e7f616e294614774eb8c85ff2a3252999467ea6dc"
+    },
+    {
+      "path": "binning-time.xlsx",
+      "size_bytes": 268350,
+      "sha256": "757cd9c07b65f798159121015c26e06eb63cbaee970e17006c9bf173a55f62b0"
     },
     {
       "path": "binning.html",
-      "size_bytes": 2487855,
-      "sha256": "04bcdb88f4ec37702a82201b79418ce5641a2d596305c4b8527c1d9997e67251"
+      "size_bytes": 17122635,
+      "sha256": "b21e2bad4f3dc849ca85f1f6e4de53fcd010d6f17680330e454a4557777cce1c"
     },
     {
       "path": "binning.marsreport",
-      "size_bytes": 91860,
-      "sha256": "c6299c17e3e53a3c5f128b6dbac27a9130c5418e66a6db50eb2343a449649534"
+      "size_bytes": 590900,
+      "sha256": "bcc652cfc712afd5ff424ff534b6135152ce2f635475f7b9c16779791d5a2628"
     },
     {
       "path": "binning.xlsx",
-      "size_bytes": 80331,
-      "sha256": "656a49720dfc3913223d21003dced89f42f24f21491303035fdb2e599d74d2f1"
+      "size_bytes": 1062981,
+      "sha256": "026575808654236adb88b2449d70349577a50539c424b3e5a990ba8e02a52501"
     },
     {
       "path": "case-1.json",
-      "size_bytes": 17585,
-      "sha256": "9a1f5af95178fbc8997689f3fbb075d09aade23be32d0d86ee0b72a122bb303d"
+      "size_bytes": 78029,
+      "sha256": "c1b07b2782c50a4228fe3fe70d4b002dabd6555806cbb9a7b7f8db9d2bbb6ac2"
     },
     {
       "path": "case-2.json",
-      "size_bytes": 73874,
-      "sha256": "b3276d2d4af3e4bcc428bd7ee7c067bfedd4025da1ccc4015b479533ce08ddfc"
+      "size_bytes": 244094,
+      "sha256": "54f04c8e66093844c75ea39abd2883f338a639b41454eee3fd8287bf2d2f36b6"
     },
     {
       "path": "case-3.json",
-      "size_bytes": 31734,
-      "sha256": "0ed6f44a76b5f3f153399caf9a1b414d011e7e1697c02f52282938c25311f4b2"
+      "size_bytes": 168528,
+      "sha256": "52c96f7ac1c6b136d95413b5a315fd88aecce3696a6992f8416fcdfe1746590e"
     },
     {
       "path": "case-4.json",
-      "size_bytes": 80849,
-      "sha256": "c7f5f1fa9d43dfb43cacf75b28c3e26b1f1da84d4a7457fd70056578b534aa4e"
+      "size_bytes": 89589,
+      "sha256": "5818a609d7eb0857f872e8b85b1a6aec34a782355a14f3e5e2abca49c772403a"
     },
     {
       "path": "case-5.json",
-      "size_bytes": 157977,
-      "sha256": "1882ac59615cdecf4e67b14726a64190f964ac53beed8ac0adf3fbe781410194"
+      "size_bytes": 166042,
+      "sha256": "8f2e7d5947fb029913d71b2adee2a89bc0cca5a504b5e0390e43f68dfc973305"
     },
     {
       "path": "case-6.json",
-      "size_bytes": 52567,
-      "sha256": "0cc7ae3f2cecca5c0b123c46a2b316fa3c8b379d098bf218df4ac7924954a216"
+      "size_bytes": 182317,
+      "sha256": "6a48be90b3cc2c27fd8e845d0f05a85871bb7f4864ff291806550910a04afdd8"
     },
     {
       "path": "case-7.json",
-      "size_bytes": 51178,
-      "sha256": "dac28a483623958c4a1176ff0928fb8e086eca8a8fdf2e61c8d337d4eb466a46"
+      "size_bytes": 177787,
+      "sha256": "9141fcdc753cce4deb56fa5d86ca1707e0f188b7fe2f88c191b1473e4b962ad8"
     },
     {
       "path": "case-notes.json",
-      "size_bytes": 559,
-      "sha256": "ff755683e498d40d21911136244bf9e08111899ea5a9f353f9f87bfc93708b3a"
+      "size_bytes": 2330,
+      "sha256": "6622b0ce08c2f8363489f04ce7624ff0db07d5362df7f511191be002e98f0a81"
     },
     {
       "path": "correlation.html",
-      "size_bytes": 2833,
-      "sha256": "79ec94e1b7ca9034118e4078d83fcf3c0257b61e4231babb139b8e2ca2525da8"
+      "size_bytes": 17585,
+      "sha256": "1184ab55ba246a992cc9cc3ba25530e020a85d78b42abda66baeffaa57c4cb25"
     },
     {
       "path": "correlation.xlsx",
-      "size_bytes": 5651,
-      "sha256": "6464d709eb6cc511c820678c253bbe0ad696cda3a1289bf40ea0e613a5ad9ec8"
+      "size_bytes": 7451,
+      "sha256": "14f9b8f958e6d02b345e4586121c3d4492a7fbee5d5bbe0d70a4d8337dcfb657"
+    },
+    {
+      "path": "days-employed-special.html",
+      "size_bytes": 656830,
+      "sha256": "96ea94f8dba4238928bf12be3833e78f7de6b34e54ba039d8b102ecc58d985b4"
+    },
+    {
+      "path": "days-employed-special.marsreport",
+      "size_bytes": 191909,
+      "sha256": "c080d9823e06bfd658bc95027fae227ea7988abe862f0790f7c65d07d44b2727"
+    },
+    {
+      "path": "days-employed-special.xlsx",
+      "size_bytes": 33540,
+      "sha256": "7feb23cbdd43f20525ac2f1b0efc265aa02ad14acfe25aa661b00e7b5da218c8"
+    },
+    {
+      "path": "evidence-review.json",
+      "size_bytes": 16941,
+      "sha256": "3230e23caaecb729247d0955f009e916651c7f8f0e6f82606e5906bcc1ee8215"
     },
     {
       "path": "external-agent-rule-task.txt",
-      "size_bytes": 4092,
-      "sha256": "89009c42d3296cda5bc230958d19fb895741402ea26ba478d978edc413e7a6cd"
+      "size_bytes": 2165,
+      "sha256": "66b38f5d1752b78d1e58f36e680b43d6774f66b73fc2984d307303ada7c3f772"
     },
     {
       "path": "external-agent-task.md",
-      "size_bytes": 4092,
-      "sha256": "89009c42d3296cda5bc230958d19fb895741402ea26ba478d978edc413e7a6cd"
+      "size_bytes": 2165,
+      "sha256": "66b38f5d1752b78d1e58f36e680b43d6774f66b73fc2984d307303ada7c3f772"
     },
     {
       "path": "external-agent-task.txt",
-      "size_bytes": 1235,
-      "sha256": "71aa33fc4698efce17d4cb56f09c2df733dccbd5bfc950afa9919c65ae266eff"
+      "size_bytes": 499,
+      "sha256": "b6334ef49b89baad1fc56e5e6019f513869fdb1836d1de3af2dbe3d0c21b8b1e"
     },
     {
       "path": "external_agent_rule_case.py",
-      "size_bytes": 27104,
-      "sha256": "a4d549e04f1cca6cb452ada1592186be2d0aab6f30607fe3ccb7fe6f3ecb904d"
+      "size_bytes": 17575,
+      "sha256": "98f627be5bbd62afa79cb253e22980cfa7f8011baaaf9d9a5768514629423775"
     },
     {
-      "path": "external_agent_rule_prompt.md",
-      "size_bytes": 4118,
-      "sha256": "51a4ad8f87be0871aca7a3b964591bcc45c112de35f65bc9aaa7e2424a68f43e"
+      "path": "feature-metadata.json",
+      "size_bytes": 44110,
+      "sha256": "bd3308898458e97d0737c2829218ed8a21392c9123ea52bf6c179a2d7662cfb7"
     },
     {
       "path": "generation-environment.json",
-      "size_bytes": 398,
-      "sha256": "4445f5c1dbebc01b987c5ecdbed764f8c861de805549bee5a181dab16d219580"
+      "size_bytes": 423,
+      "sha256": "c392f6b2d8ce1aeecdcc7e413dcc7c1f2305b77d19af97527d5401d264c0f8ad"
+    },
+    {
+      "path": "generation-timings.json",
+      "size_bytes": 366,
+      "sha256": "5c2ef95e3cdad624004f649f3ebbe4dcecd80af23e9fec8cd14705a4e0afb472"
+    },
+    {
+      "path": "home_credit_data.py",
+      "size_bytes": 29688,
+      "sha256": "22e0e7fee2dea0b03d70a9da487e44bfb4b7bfdbbdfe777315282db6a61fb735"
     },
     {
       "path": "policy.marsreport",
-      "size_bytes": 88443,
-      "sha256": "cf0fed59e6584f4f317cda1b6986b9cca4c2d019bf856f85c88b4ad70023051f"
+      "size_bytes": 74456,
+      "sha256": "546111b869ee129173af71b4763651a027c95b4e6603369eb73bec11d6d8c221"
     },
     {
       "path": "policy.xlsx",
-      "size_bytes": 76635,
-      "sha256": "5380b34050753a82569ec2332c432b0732cf288e7464ddfd0435e99c541afe98"
+      "size_bytes": 30894,
+      "sha256": "7b1ee5c37e80b35cd0e924cb0f78db5b4f369b47d136b6775ff5a9330420151f"
+    },
+    {
+      "path": "preparation-summary.json",
+      "size_bytes": 49278,
+      "sha256": "0b50d7806b533f0040430e0b4409bf786b923d79cde4f085fdcfdb83a59f55d9"
     },
     {
       "path": "previews.txt",
-      "size_bytes": 5227,
-      "sha256": "081ba2f3716c651c6f13f3d0305e4908f54a17795382889f283a4457a5a5ecbc"
+      "size_bytes": 5100,
+      "sha256": "50cd49f44e4cd2317398b1c5a9b7971fbf04869c23b920780e9864cc76b272c7"
     },
     {
       "path": "profile.html",
-      "size_bytes": 24043,
-      "sha256": "ceb2039f477c688b3dfe5609abf7bce7eabb7bf61313c7777e390bd0c8453768"
+      "size_bytes": 225225,
+      "sha256": "5a0b5b724e243f3533a3d02920bdd59ffe2f15399761e67dd117592e8e507fc7"
     },
     {
       "path": "profile.marsreport",
-      "size_bytes": 25481,
-      "sha256": "0abfb78dd357e883364f4aed03a66db0df4654b4b3a0acbebb5038285b225395"
+      "size_bytes": 90829,
+      "sha256": "c5cc9897d9feb47f598c920a69582067e8a91c57786c36d1ad3def3a99efebf8"
     },
     {
       "path": "profile.xlsx",
-      "size_bytes": 16400,
-      "sha256": "51ed51ecf08f36da7e8ae38479d5032245d05892d085cc322d4afcbb92bac0af"
+      "size_bytes": 65061,
+      "sha256": "21005a28091c3502389e5a683d2ff9a53c31240055f2c3f85ea01808c67b0625"
     },
     {
       "path": "query-1.json",
-      "size_bytes": 1727,
-      "sha256": "ccdb8ab5567050297e573880e279cd2cf90672b16bf32e040ec24d909c68cbd3"
+      "size_bytes": 1185,
+      "sha256": "7e2f75eb7f59b0ff095a4ad0764dd7a622b0119dfa401acf6699f3f6e4d36364"
     },
     {
       "path": "query-2.json",
-      "size_bytes": 1758,
-      "sha256": "762d6e013926aba85bf789f66bb55c524aa9e7055ac495d0602d0d6259f18a5a"
+      "size_bytes": 1885,
+      "sha256": "a9cecff7d1cb6a33b8eaf4683cf282b8142d32bfbdeaffd1fd6f1e8f4e0bd198"
     },
     {
       "path": "query-3.json",
-      "size_bytes": 2859,
-      "sha256": "3921486e53946f16c06ad9e5e6257e150051c143cfd5eda6a748186b32de94bd"
+      "size_bytes": 6874,
+      "sha256": "39af370d1c687b521cfbd3c6a55226de358d119c6bb7c705d69021e25a6d37b1"
     },
     {
       "path": "query-4.json",
-      "size_bytes": 5750,
-      "sha256": "9004f3adefc9be3d89b08e981c1b0142402ff9bcaf3d6732fcdebf4e15a22c64"
+      "size_bytes": 8115,
+      "sha256": "e8fe8abad1eaaf2b8ec94af5df0a1195a5624abbd18ae2aab55b45fecb8214a4"
     },
     {
       "path": "query-5.json",
-      "size_bytes": 920,
-      "sha256": "48c0530f36f765fd276907adf4b2e2d7970a92be099f5de4d23234b39598bf56"
+      "size_bytes": 939,
+      "sha256": "f3fc81d7ad513a3d220d2ad913a25863381813333ae991eb6c96f5528882fb08"
     },
     {
       "path": "query-6.json",
-      "size_bytes": 1384,
-      "sha256": "f99231d4334f07645dc5d15bc3fab43e3d0c18551d2635261dc14a793696ca93"
+      "size_bytes": 1809,
+      "sha256": "00991047fdc7ed16b7062fcdac28d8f056e327ed39d12b4cbc8bab9897529b14"
     },
     {
       "path": "query-7.json",
-      "size_bytes": 2046,
-      "sha256": "ca37a2f5dddc67eb4e932314c026f4eb24f3c6832c3ced9b325c71fc823c7b9e"
+      "size_bytes": 1770,
+      "sha256": "7a534ae07a0a074a7a68907ad62b38ebc3da11e9cb3e6e82ad15514c3c8ea42b"
+    },
+    {
+      "path": "query-trace.json",
+      "size_bytes": 18637,
+      "sha256": "92a8c81fcf95367d39d4c5ab5e29d8fbb36578eb2f4d00ef66ba0c2ca6c9cb1c"
     },
     {
       "path": "raw-correlation.marsreport",
-      "size_bytes": 25845,
-      "sha256": "7cff3fa4597e4c8bdb61dbb9f2be1698dd63fae82755c4d54c2f7d0f9884875e"
+      "size_bytes": 32213,
+      "sha256": "2af2bbe16afbd516c48b1a7a93eced8a4ad8548e5ca69e240b731cb2e73b5111"
+    },
+    {
+      "path": "review.md",
+      "size_bytes": 354,
+      "sha256": "c7416bbd964d423142d978b13edb67f3719a7f251c3d0bac3bbe071679a0c251"
+    },
+    {
+      "path": "rule-agent-context.json",
+      "size_bytes": 12543,
+      "sha256": "728c40036977f9c5c2c9921afde408e2f9ea739942433ffe797ff910c7140a37"
     },
     {
       "path": "rule-generation.json",
-      "size_bytes": 76060,
-      "sha256": "f80f3c8b1eef5c787ae33baf48aedac21b03867f49e4111fec00e8c5b3280768"
+      "size_bytes": 76843,
+      "sha256": "5998e1fe9d9ac77c96e650462f5d25f662c8253f5e0a1152d3ea118986a3cc01"
+    },
+    {
+      "path": "rules-independent.html",
+      "size_bytes": 47974,
+      "sha256": "facdf055e977d73cbe586208509da90e218dd24645255e7db3cdbad11d3c7f06"
+    },
+    {
+      "path": "rules-independent.marsreport",
+      "size_bytes": 53675,
+      "sha256": "49f73605dee80e3cb685f9988cd33ba25630d4317032fa8adaa496b7430deaf1"
+    },
+    {
+      "path": "rules-independent.xlsx",
+      "size_bytes": 18076,
+      "sha256": "6b4b305272c2086cff52bd96a0c59e38f1157f72041c734978b0d47788688f62"
     },
     {
       "path": "rules.html",
-      "size_bytes": 124073,
-      "sha256": "d47971f16b3fc8213dc17ffe1f1cdba20ac9526459f4822b473ca341bbd6d628"
+      "size_bytes": 72665,
+      "sha256": "b8e184cc3cf0357bf88b7f6b75ac047613d55160762cd3f6ecbe59e2a8f40f98"
     },
     {
       "path": "rules.marsreport",
-      "size_bytes": 93660,
-      "sha256": "3c6bb12f2f0f3199a7dcddb66b178055a723499c70acf02836fab489c30e7ec5"
+      "size_bytes": 76244,
+      "sha256": "aeb9bd8c2b990637bb474cec2ada134751368e75bc52e2dde94cd37ceb564fda"
     },
     {
       "path": "rules.xlsx",
-      "size_bytes": 35168,
-      "sha256": "ce693a142221701e2e8ebca728f3a19c982f6c3b590418288ba848732f0e652b"
+      "size_bytes": 23009,
+      "sha256": "ff3ad49390c322a55c5fa85bf6c478291106085ecec3046029eee4de99be0eca"
     },
     {
       "path": "ruleset.json",
-      "size_bytes": 1452,
-      "sha256": "ad51e6ad5625bb32b5db7c011d7b1010d2d6c413c9032af25acf362ac833008a"
+      "size_bytes": 1032,
+      "sha256": "658389b38bf793dd5fec53e4bb01a89870e6a18bd6c899f7911c3a072426bb7a"
     },
     {
       "path": "score-cross.html",
-      "size_bytes": 1246359,
-      "sha256": "9620360b1748c90ec306f85b6d9ef3b2560ce71ad0cb567eaf88e3ba0aff8ade"
+      "size_bytes": 376434,
+      "sha256": "af243b61f5b751bbb2c60cda40aaf10f5f005f3e432ae01912416dd9c354d387"
     },
     {
       "path": "score-cross.marsreport",
-      "size_bytes": 152604,
-      "sha256": "1dd5af1df6a478a1bc1d61fce5707c49cfe2a731f7ca245c08abf0c5e712ebba"
+      "size_bytes": 100809,
+      "sha256": "d1196917256638106d4e2bcc807784a2ca1b3a4d9df2835072f1ff82a7b6a4af"
     },
     {
       "path": "score-cross.xlsx",
-      "size_bytes": 220553,
-      "sha256": "adc24de625ed5674039d2214367460cadfc1133935d1894ef6f28a15fb2c2735"
+      "size_bytes": 59256,
+      "sha256": "619b1b7ef022d7d91aa4fcdeb5b0cbf73f94e8d6160709e2a1391535d1360921"
     },
     {
       "path": "selection.json",
-      "size_bytes": 5754,
-      "sha256": "9f370bdd265b10dfcb391231646e395a9064a5b02d0ce7d51325bc0229c14561"
+      "size_bytes": 107857,
+      "sha256": "8c413b825a724c793d76405327f2abc50b7896918a73e8fce7fc4e5ff332b245"
     },
     {
       "path": "selection.xlsx",
-      "size_bytes": 7568,
-      "sha256": "1ed55553445fa12bee53736390d1009799a0210323823d216529e3bfce5059bd"
+      "size_bytes": 19451,
+      "sha256": "3c988006acaae49dd45bb8b79541b2b371bee8be2b9658f5cfe29f43a44efb7d"
     },
     {
       "path": "summary.json",
-      "size_bytes": 137674,
-      "sha256": "c2d36439dd1c2734d5a2121ea9056ac46e8638cdc8f70837fc4f3daea265e00d"
+      "size_bytes": 290403,
+      "sha256": "79bcf5f5f712fb34e8d0491e12f01559da83314c8eca8f045028a20af4c4fb05"
     },
     {
       "path": "task_cases.py",
-      "size_bytes": 51618,
-      "sha256": "d45920852e8d93614ece1d41f7f3069c20d2cc5874503b635fc53e5d2aef17e8"
+      "size_bytes": 46811,
+      "sha256": "cb74be2e8d019d8593b4919da3704808d8f9e96d339110eca72875f7bce37270"
     },
     {
       "path": "woe-correlation.marsreport",
-      "size_bytes": 31433,
-      "sha256": "d75bc903ae8603ea2f3085206ebf190f7eaa5cef3095a14c37822217aac46e98"
+      "size_bytes": 100591,
+      "sha256": "833a5b1edc31053dbb729e576a4b85ab9a34a554b5c9451ff681e87c4b70d12a"
     }
+  ],
+  "zip_allowlist": [
+    "REPRODUCE.txt",
+    "agent-context.json",
+    "auto-rules.html",
+    "auto-rules.marsreport",
+    "auto-rules.xlsx",
+    "binning-native-evidence.json",
+    "binning-native-home-credit.png",
+    "binning-native-home-credit.svg",
+    "binning-native-time-home-credit.png",
+    "binning-native-time-home-credit.svg",
+    "binning-time.html",
+    "binning-time.marsreport",
+    "binning-time.xlsx",
+    "binning.html",
+    "binning.marsreport",
+    "binning.xlsx",
+    "case-1.json",
+    "case-2.json",
+    "case-3.json",
+    "case-4.json",
+    "case-5.json",
+    "case-6.json",
+    "case-7.json",
+    "case-notes.json",
+    "correlation.html",
+    "correlation.xlsx",
+    "days-employed-special.html",
+    "days-employed-special.marsreport",
+    "days-employed-special.xlsx",
+    "evidence-review.json",
+    "external-agent-rule-task.txt",
+    "external-agent-task.md",
+    "external-agent-task.txt",
+    "external_agent_rule_case.py",
+    "feature-metadata.json",
+    "generation-environment.json",
+    "generation-timings.json",
+    "home_credit_data.py",
+    "manifest.json",
+    "policy.marsreport",
+    "policy.xlsx",
+    "preparation-summary.json",
+    "previews.txt",
+    "profile.html",
+    "profile.marsreport",
+    "profile.xlsx",
+    "query-1.json",
+    "query-2.json",
+    "query-3.json",
+    "query-4.json",
+    "query-5.json",
+    "query-6.json",
+    "query-7.json",
+    "query-trace.json",
+    "raw-correlation.marsreport",
+    "review.md",
+    "rule-agent-context.json",
+    "rule-generation.json",
+    "rules-independent.html",
+    "rules-independent.marsreport",
+    "rules-independent.xlsx",
+    "rules.html",
+    "rules.marsreport",
+    "rules.xlsx",
+    "ruleset.json",
+    "score-cross.html",
+    "score-cross.marsreport",
+    "score-cross.xlsx",
+    "selection.json",
+    "selection.xlsx",
+    "summary.json",
+    "task_cases.py",
+    "woe-correlation.marsreport"
   ]
 }

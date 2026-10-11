@@ -1,8 +1,12 @@
 ---
-description: 原生分箱展示、报告交互及七个任务案例的当前来源、验证与限制。
+description: PR #5 原生分箱展示的历史验收记录，当前 Home Credit 迁移另见专门记录。
 ---
 
-# 原生分箱展示与案例验收
+# 原生分箱展示与案例验收（历史）
+
+以下保留 PR #5 当时的合成数据、运行命令和环境限制，不代表当前公开案例。
+当前案例已迁移到 Home Credit，见[本次迁移验收](home-credit-migration-validation.md)。
+本页旧统计材料链接指向当时的 Git 版本，避免将历史数字对到当前报告。
 
 本轮从 main `97a1c36` 创建 `codex/native-binning-showcase-fixes` 分支，
 修复双语 README、首页、分箱与交叉 HTML，以及共享案例。
@@ -13,15 +17,15 @@ description: 原生分箱展示、报告交互及七个任务案例的当前来�
 
 [七个任务](../demos/index.md)使用 18,000 行合成申请、seed `20261001`，
 发现、验证、观察各 6,000 行。生成源码来源、实际依赖、快照身份与文件哈希记录在
-[manifest](../assets/cases/manifest.json)和[环境记录](../assets/cases/generation-environment.json)。
+[manifest](https://github.com/leeesq/mars-risk/blob/aa43995b2d670aeafdfb9536e24be4f171941032/docs/assets/cases/manifest.json)和[环境记录](https://github.com/leeesq/mars-risk/blob/aa43995b2d670aeafdfb9536e24be4f171941032/docs/assets/cases/generation-environment.json)。
 报告身份随生成变化，以这批材料为准，不复用旧截图里的身份。
 
-[主分原生图](../assets/cases/binning-native-main-score.svg)直接调用
+[主分原生图](https://github.com/leeesq/mars-risk/blob/aa43995b2d670aeafdfb9536e24be4f171941032/docs/assets/cases/binning-native-main-score.svg)直接调用
 `save_risk_trend_images()` 导出，PNG 为 300 dpi；没有重新绘制曲线或裁剪原布局。
 图中是三个样本分区与 Total，日期取真实范围；不是九个月的风险分组。
 九个模拟日期均为每月 15 日，日缺失表也只展示这些实际日期。
-[图表证据](../assets/cases/binning-native-evidence.json)保留同报告的 summary/detail 查询。
-单独下载的[分箱 HTML](../assets/cases/binning.html)内嵌原生图，无旁路图片依赖。
+[图表证据](https://github.com/leeesq/mars-risk/blob/aa43995b2d670aeafdfb9536e24be4f171941032/docs/assets/cases/binning-native-evidence.json)保留同报告的 summary/detail 查询。
+单独下载的[分箱 HTML](https://github.com/leeesq/mars-risk/blob/aa43995b2d670aeafdfb9536e24be4f171941032/docs/assets/cases/binning.html)内嵌原生图，无旁路图片依赖。
 
 规则格子转 DSL 排除定义中的缺失、特殊值、非法概率和非有限分数；
 逐个 `sample_id` 核对正常箱与规则命中成员相同。
@@ -32,7 +36,9 @@ description: 原生分箱展示、报告交互及七个任务案例的当前来�
 模拟漂移字段明确标记，raw 与 WOE 证据分别解释。
 保存后另起进程消费快照；报告查询不调用 LLM，未宣称已执行自主 Agent 或真实业务收益。
 
-## 复现与检查
+## 当时的复现与检查
+
+以下命令属于当时版本；当前命令见上面的迁移记录。
 
 ```bash
 python docs/snippets/task_cases.py --case all --rows 18000 --seed 20261001 --output-dir docs/assets/cases

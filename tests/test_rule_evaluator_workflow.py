@@ -81,6 +81,43 @@ def test_evaluator_zero_denominators_are_null_and_fail_filter() -> None:
     assert select_rule_ids(evaluation, strict_filter, primary_target="target") == []
 
 
+def test_fixed_rule_mixed_evaluation_preserves_unobserved_distribution() -> None:
+    """固定规则在混合标签评估中保留无标签组，不改变已观测人数合同。"""
+    frame = pl.DataFrame({
+        "x": [0, 1, 2, 3, 4], "target": [0, 1, None, None, None],
+        "partition": ["train", "train", "undue", "undue", "undue"],
+        "amount": [10.0] * 5, "customer": ["a", "b", "c", "d", "e"],
+    })
+    result = MarsRuleEvaluator().evaluate(
+        frame, MarsRuleSet([MarsRule("x >= 1")]), target="target",
+        group_col="partition", amount_col="amount", customer_col="customer",
+        compute_statistics=True,
+    )
+    overall = result.overall_table.filter(pl.col("group") == "hit").row(0, named=True)
+    assert overall["total_count"] == 4
+    assert overall["sample_count"] == overall["observed_count"] == 1
+    assert overall["unobserved_count"] == 3
+    assert overall["event_count"] == 1 and overall["event_rate"] == 1
+    assert overall["amount_total"] == 10 and overall["customer_count"] == 1
+    undue = result.slice_table.filter((pl.col("slice") == "undue") & (pl.col("group") == "hit")).row(0, named=True)
+    assert undue["total_count"] == 3 and undue["sample_count"] == 0
+    assert undue["distribution_coverage"] == 1 and undue["status"] == "unobserved"
+    for name in ("event_count", "event_rate", "lift", "amount_total", "event_amount", "customer_count", "p_value", "q_value"):
+        assert undue[name] is None
+    unlabeled = MarsRuleEvaluator().evaluate(
+        frame.filter(pl.col("partition") == "undue"), MarsRuleSet([MarsRule("x >= 1")]),
+        target="target", compute_statistics=True,
+    )
+    assert set(unlabeled.overall_table["status"]) <= {"unobserved", "empty"}
+
+
+@pytest.mark.parametrize("invalid", [-1, 2, "bad"])
+def test_rule_evaluation_rejects_illegal_target_values(invalid: object) -> None:
+    frame = pl.DataFrame({"x": [1], "target": [invalid]})
+    with pytest.raises(ValueError, match="invalid values"):
+        MarsRuleEvaluator().evaluate(frame, MarsRuleSet([MarsRule("x > 0")]), target="target")
+
+
 def test_mine_rules_uses_validation_and_returns_auditable_result() -> None:
     """seed 候选应依次通过训练、验证、排序并进入可部署 RuleSet。"""
     frame = _signal_frame()

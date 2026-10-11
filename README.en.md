@@ -24,12 +24,12 @@
 <p align="center"><a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">Start analyzing</a> · <a href="https://leeesq.github.io/mars-risk/demos/">Practical cases</a> · <a href="https://leeesq.github.io/mars-risk/user-guide/external-agents/">Build with AI agents</a> · <a href="https://leeesq.github.io/mars-risk/">Documentation · 中文</a></p>
 
 <p align="center">
-<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
-<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.png" alt="MARS native binning trends: fixed bins, distributions, bad rate, amount risk and stability" width="1040">
+<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-home-credit.svg">
+<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-home-credit.png" alt="MARS native binning trends: fixed bins, distributions, bad rate, amount risk and stability" width="1040">
 </a>
 </p>
 
-<p align="center"><sub>Native MARS binning chart, exported from the same analysis as its tables. Click for the full-resolution SVG.</sub><br>
+<p align="center"><sub>Home Credit EXT_SOURCE_2, exported by MARS from fixed Train bins. APPLY_DATE is simulated. Click for the full-resolution SVG.</sub><br>
 <a href="https://leeesq.github.io/mars-risk/demos/binning-stability/">Binning and stability case</a> · <a href="https://leeesq.github.io/mars-risk/assets/cases/binning.html">Open the interactive report</a></p>
 
 ## What MARS brings to your workflow
@@ -44,10 +44,10 @@ The same results are available to **external AI agents** through public report A
 | Binning and risk evaluation | Native trend charts, fixed bins, multi-target IV / KS / PSI, count and amount risk | [Compare discrimination and stability](https://leeesq.github.io/mars-risk/demos/binning-stability/) |
 | Feature selection | Candidate decisions and reasons across screening stages | [Understand retained and removed features](https://leeesq.github.io/mars-risk/demos/selection-correlation/) |
 | Correlation analysis | Signed redundancy and separate raw / WOE evidence | [Inspect related features](https://leeesq.github.io/mars-risk/demos/selection-correlation/#correlation) |
-| Score cross analysis | Risk separation within a main-score tier and combination evidence | [Compare auxiliary scores](https://leeesq.github.io/mars-risk/demos/score-cross/) |
+| Score cross analysis | Risk separation between two external-source scores and combination evidence | [Compare external-source scores](https://leeesq.github.io/mars-risk/demos/score-cross/) |
 | Rule mining · Experimental | Candidate origins, screening, coverage and independent validation | [Review rules with evidence](https://leeesq.github.io/mars-risk/demos/rule-evidence/) |
 
-[All seven cases](https://leeesq.github.io/mars-risk/demos/) use 18,000 synthetic applications with separate discovery, validation and observation partitions. Charts and Agent queries consume the actual reports. The statistics demonstrate the interfaces and do not establish real lending outcomes.
+[All seven cases](https://leeesq.github.io/mars-risk/demos/) share all 356,255 Home Credit application records. Original features and TARGET come from the competition; APPLY_DATE is simulated. Four labeled partitions precede the 48,744 unlabeled competition-test records. [Inputs and five partitions](https://leeesq.github.io/mars-risk/user-guide/home-credit-data/) explain their uses.
 
 ## Build your agents on MARS
 
@@ -64,45 +64,45 @@ These are workflows you can build with MARS; complete agents are composed by the
 
 ## Install
 
-These examples target **MARS 0.0.28**. Once the release is available on PyPI, install:
+**MARS 0.0.28 is published on PyPI**. Install the fixed version:
 
 ```bash
 pip install mars-risk==0.0.28
 ```
 
-If PyPI does not yet provide 0.0.28, or you want to work with the development branch, install from source:
+For the current development branch, install from source:
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文](https://leeesq.github.io/mars-risk/getting-started/installation/).
+The base package supports Python **3.8-3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文](https://leeesq.github.io/mars-risk/getting-started/installation/).
 
 ## Start with one report
 
-Run this self-contained example in an empty working directory:
+From the repository root, download the three official CSV files into the documented data directory, then run the shared example. If copying the code elsewhere, download [home_credit_data.py](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/home_credit_data.py) beside it. [Data preparation](https://leeesq.github.io/mars-risk/user-guide/home-credit-data/) covers Kaggle access and explicit paths:
 
 ```python
-import polars as pl
+from home_credit_data import prepare_home_credit_data
 
 from mars.analysis import profile_risk
 
-df = pl.DataFrame({
-    "date": ["2026-01-01"] * 4 + ["2026-02-01"] * 4,
-    "income": [3200, 3600, 5200, 6100, 3400, 4300, 5800, 6800],
-    "utilization": [0.72, 0.61, 0.29, 0.18, 0.66, 0.48, 0.24, 0.12],
-    "target": [1, 1, 0, 0, 1, 1, 0, 0],
-}).with_columns(pl.col("date").str.to_date())
+inputs = prepare_home_credit_data()
 report = profile_risk(
-    df, target="target", features=["income", "utilization"],
-    time_col="date", method="quantile", n_bins=4,
+    inputs.df, target="TARGET", features=["EXT_SOURCE_2", "EXT_SOURCE_3"],
+    benchmark_df=inputs.benchmark_df, group_col="dataset_flag", time_col="APPLY_DATE",
+    amount_col="AMT_CREDIT", method="quantile", n_bins=4,
+    feature_metadata=inputs.feature_metadata, business_context=inputs.business_context,
 ).report
-print(report.get_table("summary", sort_by="iv", descending=True, limit=2))
+report.save_risk_trend_images(
+    "risk_charts", features="EXT_SOURCE_2", target="TARGET", image_format="png", dpi=300,
+)
 report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
+print(report.query_page("summary", features="EXT_SOURCE_2", limit=1)["data"])
 ```
 
-[Shared runnable source](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [Full quickstart · 中文](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case](https://leeesq.github.io/mars-risk/demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
+[Shared runnable source](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [Full quickstart · 中文](https://leeesq.github.io/mars-risk/getting-started/quickstart/). The helper prepares both application files once. For full trend charts and downloadable results, use the [binning case](https://leeesq.github.io/mars-risk/demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
 
 ## Give the same result to an AI agent
 
@@ -136,7 +136,7 @@ Current development focuses on core analysis performance, memory efficiency, hum
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
 pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir output/task-cases
+python docs/snippets/task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir output/task-cases
 ```
 
 [Case downloads and reproducibility](https://leeesq.github.io/mars-risk/demos/#run) · [Contribution guide](https://github.com/leeesq/mars-risk/blob/main/CONTRIBUTING.md) · [Engineering Skill](https://github.com/leeesq/mars-risk/blob/main/.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE).

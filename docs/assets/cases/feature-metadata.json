@@ -1,0 +1,746 @@
+{
+  "SK_ID_CURR": {
+    "display_name": "申请记录标识",
+    "description": "ID of loan in our sample",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "TARGET": {
+    "display_name": "比赛定义的还款困难事件",
+    "description": "Target variable (1 - client with payment difficulties: he/she had late payment more than X days on at least one of the first Y installments of the loan in our sample, 0 - all other cases)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "NAME_CONTRACT_TYPE": {
+    "display_name": "贷款合同类型",
+    "description": "Identification if loan is cash or revolving",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "CODE_GENDER": {
+    "display_name": "客户性别",
+    "description": "Gender of the client",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_OWN_CAR": {
+    "display_name": "是否拥有汽车",
+    "description": "Flag if the client owns a car",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_OWN_REALTY": {
+    "display_name": "是否拥有住宅",
+    "description": "Flag if client owns a house or flat",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "CNT_CHILDREN": {
+    "display_name": "子女人数",
+    "description": "Number of children the client has",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_INCOME_TOTAL": {
+    "display_name": "客户收入",
+    "description": "Income of the client",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "原始金额单位（币种未公开）"
+  },
+  "AMT_CREDIT": {
+    "display_name": "贷款金额",
+    "description": "Credit amount of the loan",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "原始金额单位（币种未公开）"
+  },
+  "AMT_ANNUITY": {
+    "display_name": "贷款年金",
+    "description": "Loan annuity",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "原始金额单位（币种未公开）"
+  },
+  "AMT_GOODS_PRICE": {
+    "display_name": "贷款对应商品价格",
+    "description": "For consumer loans it is the price of the goods for which the loan is given",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "原始金额单位（币种未公开）"
+  },
+  "NAME_TYPE_SUITE": {
+    "display_name": "申请时陪同人员类型",
+    "description": "Who was accompanying client when he was applying for the loan",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "NAME_INCOME_TYPE": {
+    "display_name": "收入类型",
+    "description": "Clients income type (businessman, working, maternity leave,…)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "NAME_EDUCATION_TYPE": {
+    "display_name": "最高教育程度",
+    "description": "Level of highest education the client achieved",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "NAME_FAMILY_STATUS": {
+    "display_name": "家庭状态",
+    "description": "Family status of the client",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "NAME_HOUSING_TYPE": {
+    "display_name": "居住情况",
+    "description": "What is the housing situation of the client (renting, living with parents, ...)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REGION_POPULATION_RELATIVE": {
+    "display_name": "居住地区归一化人口规模",
+    "description": "Normalized population of region where client lives (higher number means the client lives in more populated region)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "DAYS_BIRTH": {
+    "display_name": "申请时年龄天数（原始值）",
+    "description": "Client's age in days at the time of application",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "天（相对申请日，保留原始符号）"
+  },
+  "DAYS_EMPLOYED": {
+    "display_name": "开始当前工作相对申请的天数",
+    "description": "How many days before the application the person started current employment",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "天（相对申请日，保留原始符号）"
+  },
+  "DAYS_REGISTRATION": {
+    "display_name": "变更登记相对申请的天数",
+    "description": "How many days before the application did client change his registration",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "天（相对申请日，保留原始符号）"
+  },
+  "DAYS_ID_PUBLISH": {
+    "display_name": "变更身份证件相对申请的天数",
+    "description": "How many days before the application did client change the identity document with which he applied for the loan",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "天（相对申请日，保留原始符号）"
+  },
+  "OWN_CAR_AGE": {
+    "display_name": "汽车年龄",
+    "description": "Age of client's car",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_MOBIL": {
+    "display_name": "是否提供手机号码",
+    "description": "Did client provide mobile phone (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_EMP_PHONE": {
+    "display_name": "是否提供工作电话",
+    "description": "Did client provide work phone (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_WORK_PHONE": {
+    "display_name": "是否提供家庭电话（官方字段说明）",
+    "description": "Did client provide home phone (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_CONT_MOBILE": {
+    "display_name": "手机是否可联系",
+    "description": "Was mobile phone reachable (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_PHONE": {
+    "display_name": "是否提供家庭电话",
+    "description": "Did client provide home phone (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_EMAIL": {
+    "display_name": "是否提供电子邮箱",
+    "description": "Did client provide email (1=YES, 0=NO)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "OCCUPATION_TYPE": {
+    "display_name": "职业类型",
+    "description": "What kind of occupation does the client have",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "CNT_FAM_MEMBERS": {
+    "display_name": "家庭成员人数",
+    "description": "How many family members does client have",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "REGION_RATING_CLIENT": {
+    "display_name": "居住地区评级",
+    "description": "Our rating of the region where client lives (1,2,3)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REGION_RATING_CLIENT_W_CITY": {
+    "display_name": "考虑城市的居住地区评级",
+    "description": "Our rating of the region where client lives with taking city into account (1,2,3)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "WEEKDAY_APPR_PROCESS_START": {
+    "display_name": "申请星期",
+    "description": "On which day of the week did the client apply for the loan",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "HOUR_APPR_PROCESS_START": {
+    "display_name": "申请大致小时",
+    "description": "Approximately at what hour did the client apply for the loan",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REG_REGION_NOT_LIVE_REGION": {
+    "display_name": "永久与联系地址地区是否不同",
+    "description": "Flag if client's permanent address does not match contact address (1=different, 0=same, at region level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REG_REGION_NOT_WORK_REGION": {
+    "display_name": "永久与工作地址地区是否不同",
+    "description": "Flag if client's permanent address does not match work address (1=different, 0=same, at region level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "LIVE_REGION_NOT_WORK_REGION": {
+    "display_name": "联系与工作地址地区是否不同",
+    "description": "Flag if client's contact address does not match work address (1=different, 0=same, at region level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REG_CITY_NOT_LIVE_CITY": {
+    "display_name": "永久与联系地址城市是否不同",
+    "description": "Flag if client's permanent address does not match contact address (1=different, 0=same, at city level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "REG_CITY_NOT_WORK_CITY": {
+    "display_name": "永久与工作地址城市是否不同",
+    "description": "Flag if client's permanent address does not match work address (1=different, 0=same, at city level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "LIVE_CITY_NOT_WORK_CITY": {
+    "display_name": "联系与工作地址城市是否不同",
+    "description": "Flag if client's contact address does not match work address (1=different, 0=same, at city level)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "ORGANIZATION_TYPE": {
+    "display_name": "工作单位类型",
+    "description": "Type of organization where client works",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "EXT_SOURCE_1": {
+    "display_name": "外部来源分 1",
+    "description": "Normalized score from external data source",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "EXT_SOURCE_2": {
+    "display_name": "外部来源分 2",
+    "description": "Normalized score from external data source",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "EXT_SOURCE_3": {
+    "display_name": "外部来源分 3",
+    "description": "Normalized score from external data source",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "APARTMENTS_AVG": {
+    "display_name": "建筑公寓信息归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "BASEMENTAREA_AVG": {
+    "display_name": "地下室面积归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BEGINEXPLUATATION_AVG": {
+    "display_name": "建筑开始使用年限归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BUILD_AVG": {
+    "display_name": "建筑建成年限归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "COMMONAREA_AVG": {
+    "display_name": "公共区域面积归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ELEVATORS_AVG": {
+    "display_name": "电梯数量归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ENTRANCES_AVG": {
+    "display_name": "入口数量归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMAX_AVG": {
+    "display_name": "最高楼层归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMIN_AVG": {
+    "display_name": "最低楼层归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LANDAREA_AVG": {
+    "display_name": "土地面积归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAPARTMENTS_AVG": {
+    "display_name": "居住公寓信息归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAREA_AVG": {
+    "display_name": "居住面积归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAPARTMENTS_AVG": {
+    "display_name": "非居住公寓信息归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAREA_AVG": {
+    "display_name": "非居住面积归一化均值",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "APARTMENTS_MODE": {
+    "display_name": "建筑公寓信息归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "BASEMENTAREA_MODE": {
+    "display_name": "地下室面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BEGINEXPLUATATION_MODE": {
+    "display_name": "建筑开始使用年限归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BUILD_MODE": {
+    "display_name": "建筑建成年限归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "COMMONAREA_MODE": {
+    "display_name": "公共区域面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ELEVATORS_MODE": {
+    "display_name": "电梯数量归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ENTRANCES_MODE": {
+    "display_name": "入口数量归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMAX_MODE": {
+    "display_name": "最高楼层归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMIN_MODE": {
+    "display_name": "最低楼层归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LANDAREA_MODE": {
+    "display_name": "土地面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAPARTMENTS_MODE": {
+    "display_name": "居住公寓信息归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAREA_MODE": {
+    "display_name": "居住面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAPARTMENTS_MODE": {
+    "display_name": "非居住公寓信息归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAREA_MODE": {
+    "display_name": "非居住面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "APARTMENTS_MEDI": {
+    "display_name": "建筑公寓信息归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "BASEMENTAREA_MEDI": {
+    "display_name": "地下室面积归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BEGINEXPLUATATION_MEDI": {
+    "display_name": "建筑开始使用年限归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "YEARS_BUILD_MEDI": {
+    "display_name": "建筑建成年限归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "COMMONAREA_MEDI": {
+    "display_name": "公共区域面积归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ELEVATORS_MEDI": {
+    "display_name": "电梯数量归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "ENTRANCES_MEDI": {
+    "display_name": "入口数量归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMAX_MEDI": {
+    "display_name": "最高楼层归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FLOORSMIN_MEDI": {
+    "display_name": "最低楼层归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LANDAREA_MEDI": {
+    "display_name": "土地面积归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAPARTMENTS_MEDI": {
+    "display_name": "居住公寓信息归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "LIVINGAREA_MEDI": {
+    "display_name": "居住面积归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAPARTMENTS_MEDI": {
+    "display_name": "非居住公寓信息归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "NONLIVINGAREA_MEDI": {
+    "display_name": "非居住面积归一化中位数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "FONDKAPREMONT_MODE": {
+    "display_name": "建筑信息 FONDKAPREMONT 众数（细项未公开）",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "HOUSETYPE_MODE": {
+    "display_name": "住房类型众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "TOTALAREA_MODE": {
+    "display_name": "建筑总面积归一化众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "WALLSMATERIAL_MODE": {
+    "display_name": "墙体材料众数",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "EMERGENCYSTATE_MODE": {
+    "display_name": "建筑状态信息众数（细项未公开）",
+    "description": "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "归一化值（无量纲）"
+  },
+  "OBS_30_CNT_SOCIAL_CIRCLE": {
+    "display_name": "社交圈可观察的 30 天逾期记录数",
+    "description": "How many observation of client's social surroundings with observable 30 DPD (days past due) default",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "DEF_30_CNT_SOCIAL_CIRCLE": {
+    "display_name": "社交圈发生 30 天逾期的记录数",
+    "description": "How many observation of client's social surroundings defaulted on 30 DPD (days past due)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "OBS_60_CNT_SOCIAL_CIRCLE": {
+    "display_name": "社交圈可观察的 60 天逾期记录数",
+    "description": "How many observation of client's social surroundings with observable 60 DPD (days past due) default",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "DEF_60_CNT_SOCIAL_CIRCLE": {
+    "display_name": "社交圈发生 60 天逾期的记录数",
+    "description": "How many observation of client's social surroundings defaulted on 60 (days past due) DPD",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "DAYS_LAST_PHONE_CHANGE": {
+    "display_name": "更换电话相对申请的天数",
+    "description": "How many days before application did client change phone",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "天（相对申请日，保留原始符号）"
+  },
+  "FLAG_DOCUMENT_2": {
+    "display_name": "是否提供文件 2",
+    "description": "Did client provide document 2",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_3": {
+    "display_name": "是否提供文件 3",
+    "description": "Did client provide document 3",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_4": {
+    "display_name": "是否提供文件 4",
+    "description": "Did client provide document 4",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_5": {
+    "display_name": "是否提供文件 5",
+    "description": "Did client provide document 5",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_6": {
+    "display_name": "是否提供文件 6",
+    "description": "Did client provide document 6",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_7": {
+    "display_name": "是否提供文件 7",
+    "description": "Did client provide document 7",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_8": {
+    "display_name": "是否提供文件 8",
+    "description": "Did client provide document 8",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_9": {
+    "display_name": "是否提供文件 9",
+    "description": "Did client provide document 9",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_10": {
+    "display_name": "是否提供文件 10",
+    "description": "Did client provide document 10",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_11": {
+    "display_name": "是否提供文件 11",
+    "description": "Did client provide document 11",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_12": {
+    "display_name": "是否提供文件 12",
+    "description": "Did client provide document 12",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_13": {
+    "display_name": "是否提供文件 13",
+    "description": "Did client provide document 13",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_14": {
+    "display_name": "是否提供文件 14",
+    "description": "Did client provide document 14",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_15": {
+    "display_name": "是否提供文件 15",
+    "description": "Did client provide document 15",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_16": {
+    "display_name": "是否提供文件 16",
+    "description": "Did client provide document 16",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_17": {
+    "display_name": "是否提供文件 17",
+    "description": "Did client provide document 17",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_18": {
+    "display_name": "是否提供文件 18",
+    "description": "Did client provide document 18",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_19": {
+    "display_name": "是否提供文件 19",
+    "description": "Did client provide document 19",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_20": {
+    "display_name": "是否提供文件 20",
+    "description": "Did client provide document 20",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "FLAG_DOCUMENT_21": {
+    "display_name": "是否提供文件 21",
+    "description": "Did client provide document 21",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "未公开"
+  },
+  "AMT_REQ_CREDIT_BUREAU_HOUR": {
+    "display_name": "申请前一小时征信查询次数",
+    "description": "Number of enquiries to Credit Bureau about the client one hour before application",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_REQ_CREDIT_BUREAU_DAY": {
+    "display_name": "申请前一天征信查询次数（不含前一小时）",
+    "description": "Number of enquiries to Credit Bureau about the client one day before application (excluding one hour before application)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_REQ_CREDIT_BUREAU_WEEK": {
+    "display_name": "申请前一周征信查询次数（不含前一天）",
+    "description": "Number of enquiries to Credit Bureau about the client one week before application (excluding one day before application)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_REQ_CREDIT_BUREAU_MON": {
+    "display_name": "申请前一个月征信查询次数（不含前一周）",
+    "description": "Number of enquiries to Credit Bureau about the client one month before application (excluding one week before application)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_REQ_CREDIT_BUREAU_QRT": {
+    "display_name": "申请前三个月征信查询次数（不含前一个月）",
+    "description": "Number of enquiries to Credit Bureau about the client 3 month before application (excluding one month before application)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "AMT_REQ_CREDIT_BUREAU_YEAR": {
+    "display_name": "申请前一年征信查询次数（官方说明原文有歧义）",
+    "description": "Number of enquiries to Credit Bureau about the client one day year (excluding last 3 months before application)",
+    "data_source": "Home Credit 2018 application_{train|test}.csv",
+    "unit": "次数或人数（按官方定义）"
+  },
+  "APPLY_DATE": {
+    "display_name": "模拟申请日期",
+    "description": "功能演示日期，按固定 SHA256 配置分配；非真实申请或表现日期。",
+    "data_source": "home-credit-2018-v1",
+    "unit": "日期"
+  },
+  "dataset_flag": {
+    "display_name": "演示分区",
+    "description": "有标签样本按完整模拟自然日切四组；原始 application_test 全部为 4_oot_undue。",
+    "data_source": "home-credit-2018-v1",
+    "unit": "组别"
+  }
+}

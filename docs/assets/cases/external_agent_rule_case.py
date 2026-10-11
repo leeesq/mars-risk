@@ -1,4 +1,4 @@
-"""模拟消费信贷：模型分交叉、候选验证与快照独立消费；无需 LLM/API Key。"""
+"""Home Credit 外部来源分、固定规则与报告快照的独立消费；不调用 LLM。"""
 
 from __future__ import annotations
 
@@ -10,81 +10,73 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import polars as pl
+from home_credit_data import DEFAULT_DATA_DIR, HomeCreditInputs, prepare_home_credit_data
 
 from mars.analysis import cross_scores, get_score_bin_definitions
 from mars.compute import missing_condition_expr
 from mars.reporting import Report, load_report
-from mars.rule import MarsRule, MarsRuleMiningSpec, MarsRuleSet, mine_rules
+from mars.reporting._serialization import json_safe
+from mars.rule import (
+    MarsRule,
+    MarsRuleEvaluator,
+    MarsRuleMiningSpec,
+    MarsRuleReport,
+    MarsRuleSet,
+    mine_rules,
+)
 
-QUESTION = "同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？"
-METADATA = {
-    "main_score": {
-        "display_name": "主模型分",
-        "data_source": "champion",
-        "description": "模拟固定分，高分低风险",
-        "unit": "score_points",
-    },
-    "aux_score": {
-        "display_name": "辅助模型分",
-        "data_source": "challenger",
-        "description": "模拟固定分，高分高风险",
-        "unit": "score_points",
-    },
-}
-DIRECTIONS = {"main_score": "lower_risk", "aux_score": "higher_risk"}
+QUESTION = "同一外部来源分 2 等级内，来源分 3 的风险有何差异？固定组合规则能否通过独立复核？"
+DIRECTIONS = {"EXT_SOURCE_2": "lower_risk", "EXT_SOURCE_3": "lower_risk"}
 
 
-def encode(value: Any) -> str:
-    """案例仅编码有限统计和公开目录；通用非有限编码交给 Report.to_ai_context。"""
-    return json.dumps(value, ensure_ascii=False, allow_nan=False)
+def _write_json(path: Path, value: Any) -> None:
+    """只写有限聚合统计，不写原始记录或成员 ID。"""
+    path.write_text(json.dumps(json_safe(value), ensure_ascii=False, indent=2,
+                               allow_nan=False) + "\n", encoding="utf-8")
 
 
-def table_rows(frame: Any) -> list[dict[str, Any]]:
-    """仅物化已分页的小证据表，兼容公共接口的两种表后端。"""
-    return frame.to_dicts() if isinstance(frame, pl.DataFrame) else frame.to_dict("records")
+def _write_agent_task(output_dir: Path) -> None:
+    """让计算和快照消费共同刷新完整规则审计任务。"""
+    prompt = (
+        "你是具备 Python 工具的外部分析消费者。先 load_report，再 describe，按 query_page 分页取证。\n"
+        "读取 score-cross.marsreport、rules.marsreport、rules-independent.marsreport；不访问原始 CSV。\n"
+        "先核对 describe()['tables'] 中实际表名、字段、粒度和状态，再读取 parameters 中实际配置。\n"
+        "EXT_SOURCE_2/3 是公开外部来源分；Train 决定切点与候选，Val 参与选择。\n"
+        "在 rules.marsreport 查询 candidates 表的 rule_id、status、rejection_stage、reason，"
+        "逐条解释实际保留或拒绝阶段；再查询 rules 表核对最终入选规则及表达式。\n"
+        "本批验证指标保存在 evaluation 表，不存在名为 validation 的独立表。"
+        "用 query_page('evaluation', filters={'dataset': 'validation', 'target': 'TARGET', 'group': 'hit'}, limit=8) "
+        "读取 1val 的 sample_count、event_count、coverage、event_rate、lift、置信区间和 q_value；"
+        "dataset='validation' 表示参与选择的 Val，并非最终独立 Test/OOT。\n"
+        "读取 summary 与 parameters.resolved_spec 的 candidate_filter、validation_filter、max_fdr 等真实门槛，"
+        "结合 candidates 的实际拒绝原因作判断；不得把未执行的门禁写成通过。"
+        "temporal_assessed 为 false，本批没有真实跨期验证。\n"
+        "在 score-cross.marsreport 的 cells 查询 Train 格子人数、风险与切点定义，解释候选的实际来源；"
+        "规则筛选之后查询 rules-independent.marsreport 的 slices 表，"
+        "用 slice='2test'/'3oot'、group='hit' 获取固定规则独立证据。\n"
+        "在同一 slices 表查询 slice='4_oot_undue' 的分布、total_count、observed_count、"
+        "unobserved_count 和 status；监督指标 null 是未观测，不能改写成零坏率。\n"
+        "query_page 若返回 next_offset，将它作为下一页 offset 继续分页；引用每条结论的实际 reference，"
+        "区分 total_count 与 sample_count（已观测人数），报告表缺失或未计算时明确指出。\n"
+        "APPLY_DATE 是模拟日期；不能证明真实跨期泛化。币种、损失、利润、因果效果未提供。\n"
+        "to_ai_context 的 max_chars 是 Unicode 字符预算，不是 token。无需内置 Agent 或 SDK。\n"
+    )
+    for name in ("external-agent-task.md", "external-agent-rule-task.txt"):
+        (output_dir / name).write_text(prompt, encoding="utf-8")
 
 
-def _sample(n: int = 18000, seed: int = 20261001) -> pl.DataFrame:
-    """用固定种子生成独立时间样本；标签缺失不填好样本，模型分无需训练。"""
-    if n < 90 or n % 9:
-        raise ValueError("n 必须不少于 90 且可被 9 整除，以保留九个月和三个独立分区。")
-    rng = np.random.default_rng(seed)
-    main, auxiliary = rng.normal(size=(2, n))
-    probability = 1 / (1 + np.exp(3.2 + main - 2.4 * auxiliary))
-    bad = (rng.random(n) < probability).astype(float)
-    late = (rng.random(n) < 1 / (1 + np.exp(2.8 + 0.8 * main - 1.9 * auxiliary))).astype(float)
-    bad[rng.random(n) < 0.08] = np.nan
-    late[rng.random(n) < 0.20] = np.nan
-    main_score, aux_score = 600 + 80 * main, 500 + 100 * auxiliary
-    main_score[::211] = np.nan
-    aux_score[::157] = -999
-    aux_score[::199] = np.nan
-    return pl.DataFrame(
-        {
-            "sample_id": [f"S{i:05d}" for i in range(n)],
-            "application_date": [f"2026-{i // (n // 9) + 1:02d}-15" for i in range(n)],
-            "segment": rng.choice(["new", "returning"], n),
-            "dataset": [
-                "discovery" if i < n // 3 else "validation" if i < 2 * n // 3 else "observation"
-                for i in range(n)
-            ],
-            "main_score": main_score,
-            "aux_score": aux_score,
-            "bad30": bad,
-            "late60": late,
-            "amount": rng.uniform(2000, 30000, n),
-        }
-    ).with_columns(pl.col("bad30", "late60", "main_score", "aux_score").fill_nan(None))
+def _rows(frame: Any) -> list[dict[str, Any]]:
+    """只物化已受限的报告查询。"""
+    return json_safe(frame.to_dicts() if isinstance(frame, pl.DataFrame)
+                     else frame.to_dict("records"))
 
 
 def _condition(feature: str, definition: dict[str, Any], index: int) -> str:
-    """按真实定义写右闭正常箱；有限 double 域排除 ±inf，不改变核心 DSL。"""
+    """按真实定义写右闭正常箱；排除缺失、特殊值和非有限数。"""
     cuts = definition["cutpoints"]
     identifier = '"' + feature.replace('"', '""') + '"'
-    parts = [f"{identifier} IS NOT MISSING",
-             f"{identifier} >= {-sys.float_info.max!r}",
+    parts = [f"{identifier} IS NOT MISSING", f"{identifier} >= {-sys.float_info.max!r}",
              f"{identifier} <= {sys.float_info.max!r}"]
     excluded = [*definition.get("special_values", []), *definition.get("missing_values", [])]
     for value in excluded:
@@ -102,14 +94,14 @@ def _condition(feature: str, definition: dict[str, Any], index: int) -> str:
 def _check_cell_members(
     data: pl.DataFrame, rule: MarsRule, definitions: dict[str, Any], cell: dict[str, Any],
 ) -> dict[str, Any]:
-    """逐行核对 DSL 与两轴正常箱成员；人数相同不能替代成员集合相同。"""
+    """在内存核对正常箱的精确成员，仅公开汇总，不保存 SK_ID_CURR。"""
     expected = pl.lit(True)
     for axis in ("x", "y"):
         definition = definitions[axis]
         feature = definition["score"]
         values = pl.col(feature)
         normal = values.is_finite() & ~missing_condition_expr(
-            feature, dtype=data.schema[feature], missing_values=definition.get("missing_values")
+            feature, dtype=data.schema[feature], missing_values=definition.get("missing_values"),
         )
         if definition["special_values"]:
             normal &= ~values.is_in(definition["special_values"])
@@ -122,547 +114,220 @@ def _check_cell_members(
         if index < len(cuts):
             normal &= values <= cuts[index]
         expected &= normal
-    actual = MarsRuleSet(rules=[rule]).transform(data)
-    expected_ids = set(data.filter(expected)["sample_id"])
-    actual_ids = set(actual.filter(pl.col(f"rule__{rule.rule_id}") == 1)["sample_id"])
+    actual = MarsRuleSet([rule]).transform(data)
+    expected_ids = set(data.filter(expected)["SK_ID_CURR"])
+    actual_ids = set(actual.filter(pl.col(f"rule__{rule.rule_id}") == 1)["SK_ID_CURR"])
     if expected_ids != actual_ids:
         raise AssertionError(f"正常交叉箱与规则 {rule.rule_id} 成员不同。")
-    members = data.filter(expected)
     return {
-        "verified": True, "scope": "all supplied rows; exact sample_id membership",
+        "verified": True, "scope": "all supplied rows; exact SK_ID_CURR membership; IDs not saved",
         "member_count": len(expected_ids),
-        "members_by_dataset": members.group_by("dataset").agg(
-            pl.len().alias("sample_count"), pl.col("bad30").count().alias("observed_sample_count")
-        ).sort("dataset").to_dicts(),
+        "members_by_dataset": data.filter(expected).group_by("dataset_flag").agg(
+            pl.len().alias("total_count"), pl.col("TARGET").count().alias("observed_count"),
+        ).sort("dataset_flag").to_dicts(),
     }
 
 
-def _page(report: Report, table: str, query: dict[str, Any], question: str) -> dict[str, Any]:
-    """仅对按需分页后的小统计表编码，引用可在同一快照重放。"""
+def _page(report: Report, table: str, question: str, **query: Any) -> dict[str, Any]:
+    """保存真实分页内容和可重放引用。"""
     page = report.query_page(table, **query)
-    return {
-        "question": question,
-        "reference": page["reference"],
-        "total_rows": page["total_rows"],
-        "next_offset": page["next_offset"],
-        "omitted_rows": page["omitted_rows"],
-        "rows": table_rows(page["data"]),
-    }
+    return {"question": question, "reference": page["reference"],
+            "total_rows": page["total_rows"], "returned_rows": page["returned_rows"],
+            "omitted_rows": page["omitted_rows"], "next_offset": page["next_offset"],
+            "rows": _rows(page["data"])}
 
 
 def produce(
-    output_dir: Path,
-    *,
-    data: pl.DataFrame | None = None,
+    output_dir: Path, *, inputs: HomeCreditInputs | None = None,
     cross_report: Report | None = None,
-    business_context: dict[str, Any] | None = None,
 ) -> None:
-    """生成发现和独立验证报告，或复用同批已有交叉报告。
+    """在 Train 发现、Val 筛选规则，再用固定 RuleSet 独立评估全部分区。
 
     Parameters
     ----------
     output_dir : Path
-        产物目录，不保存原始宽表；缺失目录会自动创建。
-    data : pl.DataFrame | None
-        共享合成宽表。为 None 时使用默认 18,000 行、固定 seed 的样本。
+        产物目录，自动创建；只保存聚合报告和规则定义。
+    inputs : HomeCreditInputs | None
+        同批共享准备结果；None 时按公共默认数据目录全量读取三文件。
     cross_report : Report | None
-        同一 data 的已计算交叉报告，包含固定发现分箱与 discovery 分区。
-        为 None 时在本函数内计算；传入时复用其真实定义和格子证据。
-    business_context : dict[str, Any] | None
-        调用方的真实同批来源与 seed。自带默认样本使用默认上下文；外部数据不假定 seed。
+        同批 Train 固定切点的五分区报告；None 时使用真实公开入口计算。
 
     Returns
     -------
     None
-        写入报告快照、适用导出、说明及提示材料。
+        写入规则、独立评估报告、可重放证据和外部消费说明。
 
     Examples
     --------
     >>> produce(Path("output/agent-rule-case"))  # doctest: +SKIP
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    default_data = data is None
-    data = _sample() if data is None else data
-    train = data.filter(pl.col("dataset") == "discovery")
-    validation = data.filter(pl.col("dataset") == "validation")
-    assert not set(train["sample_id"]).intersection(validation["sample_id"])
+    prepared = prepare_home_credit_data() if inputs is None else inputs
+    data = prepared.df
+    train = prepared.benchmark_df
+    validation = data.filter(pl.col("dataset_flag") == "1val")
     context: dict[str, Any] = {
-        "dataset_id": "synthetic-consumer-credit-20261001" if default_data else "supplied-case-data",
-        "sample_unit": "模拟申请，每行独立 sample_id",
-        "simulated": True,
-        "question": QUESTION,
-        "currency": "CNY",
-        "labels": {
-            "bad30": {"definition": "模拟30日违约", "performance_window": "30天"},
-            "late60": {"definition": "模拟60日逾期", "performance_window": "60天"},
-        },
-        "splits": {
-            "discovery": f"2026-01至03，{train.height}独立行；确定分段及候选",
-            "validation": f"2026-04至06，{validation.height}独立行；一次独立门禁检验",
-            "observation": f"2026-07至09，{data.height - train.height - validation.height}独立行；仅交叉观察，不参与选择",
-        },
-        "score_directions": DIRECTIONS,
-        "amount_definition": "模拟申请金额，不代表损失或利润",
-        "independence": "不同 sample_id 和时间，不从验证或观察重新挑选候选；并非真实业务效果",
+        **prepared.business_context, "question": QUESTION, "score_directions": DIRECTIONS,
+        "selection_scope": "0train discovery; 1val selection; 2test/3oot untouched until fixed evaluation",
+        "binning_origin": "0train only; fixed quantile cutpoints",
     }
-    if business_context is not None:
-        context.update(business_context)
     if cross_report is None:
-        discovery = cross_scores(
-            train,
-            score_x="main_score",
-            score_y="aux_score",
-            targets=["bad30", "late60"],
-            score_directions=DIRECTIONS,
-            n_bins=4,
-            special_values={"aux_score": [-999]},
-            feature_metadata=METADATA,
-            business_context=context,
+        initial = cross_scores(train, score_x="EXT_SOURCE_2", score_y="EXT_SOURCE_3",
+                               targets=["TARGET"], score_directions=DIRECTIONS, n_bins=4,
+                               feature_metadata=prepared.feature_metadata, business_context=context)
+        cross_report = cross_scores(
+            data, score_x="EXT_SOURCE_2", score_y="EXT_SOURCE_3", targets=["TARGET"],
+            score_directions=DIRECTIONS, bin_definitions=get_score_bin_definitions(initial),
+            group_col="dataset_flag", amount_col="AMT_CREDIT",
+            feature_metadata=prepared.feature_metadata, business_context=context,
         )
-        definitions = get_score_bin_definitions(discovery)
-    else:
-        definitions = get_score_bin_definitions(cross_report)
-    # 同一份开发分段复用于全部时期；group 标识数据集，未聚合客群维度。
-    cross = cross_report if cross_report is not None else cross_scores(
-        data,
-        score_x="main_score",
-        score_y="aux_score",
-        targets=["bad30", "late60"],
-        score_directions=DIRECTIONS,
-        bin_definitions=definitions,
-        group_col="dataset",
-        amount_col="amount",
-        feature_metadata=METADATA,
-        business_context={**context, "binning_origin": "only discovery Jan-Mar"},
+    cross_report.save(output_dir / "score-cross.marsreport", overwrite=True)
+    definitions = get_score_bin_definitions(cross_report)
+    train_scope: dict[str, Any] = {"group": "0train", "target": "TARGET"}
+    cells = cross_report.get_table(
+        "cells", filters={**train_scope, "x_bin": {"op": "in", "value": ["b0", "b1", "b2", "b3"]},
+                          "y_bin": {"op": "in", "value": ["b0", "b1", "b2", "b3"]}},
+        sort_by="lift_vs_overall", descending=True,
     )
-    definitions = get_score_bin_definitions(cross)
-    discovery_period = cross.get_table(
-        "cells", filters={"group": "discovery"}, columns=["period"], limit=1
-    )["period"][0]
-    cross.save(output_dir / "score-cross.marsreport", overwrite=True)
-    cells = cross.get_table(
-        "cells",
-        filters={
-            "group": "discovery",
-            "period": discovery_period,
-            "target": "bad30",
-            "x_bin": {"op": "in", "value": ["b1", "b2"]},
-            "y_bin": {"op": "in", "value": ["b0", "b1", "b2", "b3"]},
-        },
-        sort_by="delta_vs_row",
-        descending=True,
-    )
-    # 两个高差异格子、一个反证及开发 Lift 介于候选/验证门槛的格子；选择仅用开发证据。
-    picks = [*cells.head(2).to_dicts(), cells.tail(1).row(0, named=True)]
-    moderate = cross.get_table(
-        "cells",
-        filters={
-            "group": "discovery",
-            "period": discovery_period,
-            "target": "bad30",
-            "x_bin": {"op": "in", "value": ["b0", "b1", "b2", "b3"]},
-            "y_bin": {"op": "in", "value": ["b0", "b1", "b2", "b3"]},
-            "lift_vs_overall": {"op": "ge", "value": 1.2},
-        },
-        sort_by="lift_vs_overall",
-        limit=1,
-    )
-    if moderate.height:
-        picks.append(moderate.row(0, named=True))
+    # 候选只取 Train 真实格子；低 Lift 格子作为反证，不人为造空覆盖规则。
+    picks = [*cells.head(3).to_dicts(), cells.tail(1).row(0, named=True)]
     seeds: list[MarsRule] = []
     origins: dict[str, Any] = {}
     for cell in picks:
-        expression = f"({_condition('main_score', definitions['x'], int(cell['x_bin'][1:]))}) AND ({_condition('aux_score', definitions['y'], int(cell['y_bin'][1:]))})"
-        rule = MarsRule(expression, source="cross_discovery")
+        expression = (
+            f"({_condition('EXT_SOURCE_2', definitions['x'], int(cell['x_bin'][1:]))}) AND "
+            f"({_condition('EXT_SOURCE_3', definitions['y'], int(cell['y_bin'][1:]))})"
+        )
+        rule = MarsRule(expression, source="cross_train")
+        if rule.rule_id in origins:
+            continue
         seeds.append(rule)
         origins[rule.rule_id] = {
-            "kind": "development_cell",
-            "region": {"x_bin": cell["x_bin"], "y_bin": cell["y_bin"]},
+            "kind": "development_cell", "region": {"x_bin": cell["x_bin"], "y_bin": cell["y_bin"]},
             "member_check": _check_cell_members(data, rule, definitions, cell),
-            "reference": cross.query_page(
-                "cells",
-                filters={
-                    "group": "discovery",
-                    "period": cell["period"],
-                    "target": "bad30",
-                    "x_bin": cell["x_bin"],
-                    "y_bin": cell["y_bin"],
-                },
-                limit=1,
+            "reference": cross_report.query_page(
+                "cells", filters={**train_scope, "period": cell["period"],
+                                  "x_bin": cell["x_bin"], "y_bin": cell["y_bin"]}, limit=1,
             )["reference"],
         }
-    rare = MarsRule("main_score > 900 AND aux_score > 900", source="manual_stress_check")
-    seeds.append(rare)
-    origins[rare.rule_id] = {
-        "kind": "sample_insufficiency_check",
-        "cross_reference": None,
-        "limitation": "手工覆盖压力候选，无交叉格子对应，不制造证据链",
-    }
     result = mine_rules(
-        train,
-        target="bad30",
-        validation_df=validation,
-        aux_targets=["late60"],
-        features=list(METADATA),
-        time_col="application_date",
-        time_grain="month",
-        amount_col="amount",
-        customer_col="sample_id",
-        seed_rules=seeds,
-        generators=[],
+        train, target="TARGET", validation_df=validation, features=list(DIRECTIONS),
+        seed_rules=seeds, generators=[], amount_col="AMT_CREDIT",
         spec=MarsRuleMiningSpec.production(),
     )
-    report = result.to_report(
-        feature_metadata=METADATA,
-        business_context={
-            **context,
-            "candidate_origins": origins,
-            "slice_scope": "只计算 validation 时间切片；没有客群或规则 observation 评估",
-            "analysis_scope": "高级分析未执行；不得根据空白推断没有交互或稳定性问题",
-        },
-    )
+    report = result.to_report(feature_metadata=prepared.feature_metadata, business_context={
+        **context, "candidate_origins": origins,
+        "validation_role": "1val participates in selection; API dataset='validation' is not final independent test",
+        "analysis_scope": "production selection; no bootstrap/interactions computed",
+    })
     report.save(output_dir / "rules.marsreport", overwrite=True)
-    if result.rule_set.rules and result.rule_set.qualification in {
-        "validated",
-        "temporally_validated",
-    }:
-        result.rule_set.save_json(output_dir / "ruleset.json")
     report.write_html(output_dir / "rules.html")
     report.write_excel(output_dir / "rules.xlsx")
-    (output_dir / "case-notes.json").write_text(
-        encode(
-            {
-                "question": QUESTION,
-                "simulated": True,
-                "splits": context["splits"],
-                "independent_rows": True,
-                "raw_data_saved": False,
-                "snapshots": ["score-cross.marsreport", "rules.marsreport"],
-                "agent_execution": "deterministic acceptance; not autonomous model analysis",
-            }
-        ),
-        encoding="utf-8",
+    result.rule_set.save_json(output_dir / "ruleset.json")
+    # 独立复核不调用 mine_rules、不重选；固定 RuleSet 对五分区一次混合评估。
+    independent = MarsRuleEvaluator().evaluate(
+        data, result.rule_set, target="TARGET", dataset="fixed_all_partitions",
+        group_col="dataset_flag", amount_col="AMT_CREDIT", compute_statistics=True,
     )
-    prompt = Path(__file__).with_name("external_agent_rule_prompt.md").read_text(encoding="utf-8")
-    (output_dir / "external-agent-task.md").write_text(
-        prompt.replace("{{OUTPUT_DIR}}", "."), encoding="utf-8"
+    fixed_report = MarsRuleReport(
+        summary_table=pl.DataFrame({"selected_count": [len(result.rule_set.rules)],
+                                    "status": ["evaluated" if result.rule_set.rules else "no_rules"]}),
+        detail_tables={"rules": report.get_table("rules"), "evaluation": independent.overall_table,
+                       "slices": independent.slice_table},
+        metadata={**dict(independent.metadata), "features": list(DIRECTIONS),
+                  "selection_report_id": report.report_id, "fixed_rule_set": True},
+        feature_metadata=prepared.feature_metadata, business_context={
+            **context, "evaluation_roles": "2test/3oot independent; 4_oot_undue distribution only",
+        }, caption="Home Credit 固定规则的独立复核",
     )
-    (output_dir / "external-agent-rule-task.txt").write_text(
-        prompt.replace("{{OUTPUT_DIR}}", "."), encoding="utf-8"
-    )
+    fixed_report.save(output_dir / "rules-independent.marsreport", overwrite=True)
+    fixed_report.write_html(output_dir / "rules-independent.html")
+    fixed_report.write_excel(output_dir / "rules-independent.xlsx")
+    _write_json(output_dir / "case-notes.json", {
+        "question": QUESTION, "real_features": True, "simulated_dates": True,
+        "independent_rows": True, "raw_data_saved": False,
+        "partition_stats": prepared.summary["partition_stats"],
+        "selection_report_id": report.report_id, "independent_report_id": fixed_report.report_id,
+        "agent_execution": "deterministic acceptance; no LLM",
+    })
+    _write_agent_task(output_dir)
 
 
 def consume(output_dir: Path) -> dict[str, Any]:
-    """新进程只加载两份快照与公开说明，按问题查询并形成可审阅的确定性验收输出。"""
-    cross, rules = (
-        load_report(output_dir / "score-cross.marsreport"),
-        load_report(output_dir / "rules.marsreport"),
-    )
-    descriptions = {r.report_id: r.describe() for r in (cross, rules)}
-    cross_description = descriptions[cross.report_id]
-    weighted = cross_description["parameters"].get("weights_col") is not None
-    denominator = "observed_weight_sum" if weighted else "observed_sample_count"
-    numerator = "bad_weight_sum" if weighted else "bad_sample_count"
-    cell_columns = [
-        "group", "period", "target", "x_bin", "y_bin", "sample_count",
-        "observed_sample_count", "bad_sample_count",
+    """只消费既有快照，在新进程复核引用，不调用原始数据或分析函数。
+
+    Parameters
+    ----------
+    output_dir : Path
+        含交叉、规则与独立评估快照的目录。
+
+    Returns
+    -------
+    dict[str, Any]
+        有限查询证据与可回答边界，另写 JSON。
+
+    Examples
+    --------
+    >>> consume(Path("output/agent-rule-case"))  # doctest: +SKIP
+    """
+    cross = load_report(output_dir / "score-cross.marsreport")
+    rules = load_report(output_dir / "rules.marsreport")
+    fixed = load_report(output_dir / "rules-independent.marsreport")
+    _write_agent_task(output_dir)
+    trace = [
+        _page(cross, "cells", "Train 同一来源分 2 箱内的来源分 3 风险与人数",
+              filters={"group": "0train", "target": "TARGET", "x_bin": "b1"},
+              sort_by="y_risk_rank", limit=8),
+        _page(rules, "candidates", "实际选择/拒绝阶段与原因", limit=8),
+        _page(fixed, "slices", "固定规则的独立 test/oot 复核",
+              filters={"slice": {"op": "in", "value": ["2test", "3oot"]}, "group": "hit"}, limit=8),
+        _page(fixed, "slices", "无标签组保留全部分布并显示未观测状态",
+              filters={"slice": "4_oot_undue", "group": "hit"}, limit=8),
     ]
-    if weighted:
-        weight_columns = ["observed_weight_sum", "bad_weight_sum"]
-        available = cross_description["tables"]["cells"]["fields"]
-        missing = [column for column in weight_columns if column not in available]
-        if missing:
-            raise ValueError(f"加权报告缺少实际分母／事件权重证据：{missing}。")
-        cell_columns.extend(weight_columns)
-    cell_columns.extend(["bad_rate", "row_bad_rate", "delta_vs_row", "status"])
-    discovery_period = cross.get_table(
-        "overall", filters={"group": "discovery", "target": "bad30"}, columns=["period"], limit=1,
-    )["period"][0]
-    trace: list[dict[str, Any]] = []
-    trace.append(
-        _page(
-            cross,
-            "cells",
-            {
-                "filters": {"group": "discovery", "period": discovery_period, "target": "bad30", "x_bin": "b1"},
-                "columns": cell_columns,
-                "sort_by": "y_bin",
-                "limit": 10,
-            },
-            "主模型固定 b1 等级内辅助分风险和表现分母有何差异？",
-        )
-    )
-    trace.append(
-        _page(
-            rules,
-            "candidates",
-            {
-                "features": "main_score",
-                "sources": "challenger",
-                "columns": [
-                    "rule_id",
-                    "sources",
-                    "status",
-                    "rejection_stage",
-                    "reason",
-                    "candidate_filter_passed",
-                    "validation_filter_passed",
-                    "q_value",
-                    "lift_ci_lower",
-                ],
-                "limit": 2,
-            },
-            "哪些候选入选或淘汰，实际门禁是什么？",
-        )
-    )
-    while trace[-1]["next_offset"] is not None:
-        trace.append(
-            _page(
-                rules,
-                "candidates",
-                {**trace[-1]["reference"]["query"], "offset": trace[-1]["next_offset"]},
-                "继续候选审计下一页，包括覆盖不足或反证候选",
-            )
-        )
-    selected = rules.get_table("rules", columns=["rule_id"], limit=1)
-    if selected.height:
-        rule_id = selected["rule_id"][0]
-    else:
-        candidate = rules.get_table("candidates", columns=["rule_id"], limit=1)
-        rule_id = candidate["rule_id"][0] if candidate.height else None
-    if rule_id is not None:
-        trace.append(
-            _page(
-                rules,
-                "evaluation",
-                {
-                    "filters": {
-                        "rule_id": rule_id,
-                        "dataset": "validation",
-                        "target": "bad30",
-                        "group": "hit",
-                    },
-                    "columns": [
-                        "dataset",
-                        "target",
-                        "slice",
-                        "rule_id",
-                        "group",
-                        "sample_count",
-                        "event_count",
-                        "coverage",
-                        "event_rate",
-                        "lift",
-                        "lift_ci_lower",
-                        "q_value",
-                    ],
-                    "limit": 2,
-                },
-                "所选规则在独立验证主目标中表现怎样？",
-            )
-        )
-        trace.append(
-            _page(
-                rules,
-                "slices",
-                {
-                    "filters": {
-                        "rule_id": rule_id,
-                        "dataset": "validation",
-                        "target": "late60",
-                        "group": "hit",
-                        "slice": "2026-04",
-                    },
-                    "columns": [
-                        "dataset",
-                        "target",
-                        "slice",
-                        "rule_id",
-                        "sample_count",
-                        "event_count",
-                        "event_rate",
-                        "lift",
-                    ],
-                    "limit": 2,
-                },
-                "该规则在验证期4月辅助目标表现怎样？",
-            )
-        )
-    trace.append(
-        _page(
-            cross,
-            "cells",
-            {
-                "filters": {
-                    "group": "observation",
-                    "target": "bad30",
-                    "x_bin": "b1",
-                    "y_bin": "b3",
-                },
-                "columns": [
-                    "group",
-                    "period",
-                    "target",
-                    "x_bin",
-                    "y_bin",
-                    "sample_count",
-                    "observed_sample_count",
-                    "bad_rate",
-                    "row_bad_rate",
-                    "delta_vs_row",
-                ],
-                "limit": 1,
-            },
-            "后续观察同格子是否有一致的风险差异？不以此重新选择规则",
-        )
-    )
-    # 每个真实查询都可重放；缺失维度根据目录明确回答，禁止重算或编造客群值。
+    reports = {r.report_id: r for r in (cross, rules, fixed)}
     for entry in trace:
-        reference = entry["reference"]
-        report = cross if reference["report_id"] == cross.report_id else rules
-        assert (
-            table_rows(report.get_table(reference["table"], **reference["query"])) == entry["rows"]
-        )
-    unavailable = {
-        "question": "该规则在 returning 客群及 observation 期的客户风险表现、交互和 bootstrap 怎样？",
-        "answer": "当前报告无法回答",
-        "reason": "规则只评估 discovery/train、validation 整体及时间切片；未计算客群、observation 规则评估和高级分析",
-        "required": "追加指定独立样本的规则客群/observation 评估及显式高级分析，另存新报告，不在查询时重算",
-        "reference": {
-            "report_id": rules.report_id,
-            "operation": "describe",
-            "fields": ["parameters", "business_context.slice_scope"],
-        },
-    }
-    context = rules.to_ai_context(
-        queries={
-            "summary": {"limit": 1},
-            "evaluation": {
-                "features": "aux_score",
-                "sources": "champion",
-                "filters": {"dataset": "validation", "target": "bad30", "group": "hit"},
-                "columns": ["rule_id", "dataset", "target", "sample_count", "event_rate", "lift"],
-                "limit": 3,
-            },
-        },
-        max_chars=12000,
-    )
+        ref = entry["reference"]
+        assert _rows(reports[ref["report_id"]].get_table(ref["table"], **ref["query"])) == entry["rows"]
+    context = rules.to_ai_context(queries={"summary": {"limit": 1}, "candidates": {"limit": 3}}, max_chars=12000)
     assert len(context) <= 12000
-    json.loads(context)
-    (output_dir / "agent-context.json").write_text(context, encoding="utf-8")
-    (output_dir / "query-trace.json").write_text(
-        encode(
-            {
-                "consumer": "deterministic scripted questions; no LLM",
-                "catalogs": descriptions,
-                "queries": trace,
-                "unavailable": unavailable,
-            }
-        ),
-        encoding="utf-8",
-    )
-    normal_rows = [
-        r for r in trace[0]["rows"] if r["y_bin"].startswith("b") and r["bad_rate"] is not None
-    ]
-    findings: list[dict[str, Any]] = []
-    if normal_rows:
-        lower = min(normal_rows, key=lambda r: r["bad_rate"])
-        upper = max(normal_rows, key=lambda r: r["bad_rate"])
-        findings.append(
-            {
-                "claim": "同一发现期主模型 b1 内存在辅助等级风险差异；只是关联证据",
-                "low_y_bin": lower["y_bin"],
-                "low_event_rate": lower["bad_rate"],
-                "low_observed_count": lower["observed_sample_count"],
-                "high_y_bin": upper["y_bin"],
-                "high_event_rate": upper["bad_rate"],
-                "high_observed_count": upper["observed_sample_count"],
-                "bad_rate_numerator": numerator,
-                "bad_rate_denominator": denominator,
-                "reference": trace[0]["reference"],
-            }
-        )
-    findings.append(
-        {
-            "claim": "生产门禁的实际候选及入选数；无入选也是合法结果，不强制部署",
-            "rows": rules.get_table("summary").to_dicts(),
-            "reference": rules.query_page("summary", limit=1)["reference"],
-        }
-    )
-    review = {
-        "kind": "deterministic_evidence_review",
-        "question": QUESTION,
-        "simulated": True,
-        "risk_measure": {
-            "weighted": weighted, "numerator": numerator, "denominator": denominator,
-            "formula": f"{numerator} / {denominator}",
-        },
-        "findings": findings,
-        "discovery": trace[0],
-        "selection": [item for item in trace if item["reference"]["table"] == "candidates"],
-        "independent_validation": [
-            item for item in trace if item["reference"]["table"] in {"evaluation", "slices"}
-        ],
-        "observation": trace[-1],
-        "missing_information": unavailable,
-        "limitations": [
-            "模拟统计不代表真实效果；相关差异不是因果增量",
-            "候选仅依据发现集选择；RuleSet JSON 和报告分别保存；不部署",
-            "这是确定性公共接口验收输出，不声称模型自主完成分析",
-        ],
+    (output_dir / "rule-agent-context.json").write_text(context + "\n", encoding="utf-8")
+    unavailable = {"question": "规则的真实线上收益与真实时间外泛化如何？", "answer": "当前报告无法回答",
+                   "reason": "没有真实申请日期、损失利润、线上或因果验证。"}
+    review: dict[str, Any] = {
+        "kind": "deterministic_evidence_review", "question": QUESTION,
+        "real_features": True, "simulated_dates": True,
+        "selection": trace[1], "independent_validation": trace[2], "unobserved": trace[3],
+        "findings": trace[0]["rows"], "missing_information": unavailable,
     }
-    (output_dir / "evidence-review.json").write_text(encode(review), encoding="utf-8")
-    lines = [
-        "# 确定性证据复核（模拟数据，无 LLM）",
-        QUESTION,
-        f"发现证据见 query-trace.json 的第一条 cells 引用；本报告为{'加权' if weighted else '未加权'}统计，"
-        f"风险比率 = {numerator} / {denominator}；全样本人数与已表现人数分别保留。",
-        "候选审计：",
-    ]
-    lines.extend(encode(finding) for finding in findings)
-    for entry in review["selection"]:
-        lines.extend(
-            f"- {row['rule_id']}: {row['status']}；阶段={row['rejection_stage']}；原因={row['reason']}；引用={encode(entry['reference'])}"
-            for row in entry["rows"]
-        )
-    for entry in review["independent_validation"]:
-        lines.extend(
-            f"- 独立验证证据 {encode(row)}；引用={encode(entry['reference'])}"
-            for row in entry["rows"]
-        )
-    lines.extend(
-        [
-            unavailable["answer"] + "：" + unavailable["reason"],
-            "后续观察只用于交叉证据复核；未重新筛选候选。模拟发现与验证不得外推真实业务或自动部署。",
-        ]
+    _write_json(output_dir / "query-trace.json", {"consumer": "deterministic public queries; no LLM",
+                                                "queries": trace, "unavailable": unavailable})
+    _write_json(output_dir / "evidence-review.json", review)
+    (output_dir / "review.md").write_text(
+        "# Home Credit 确定性证据复核\n\n" + QUESTION + "\n\n"
+        "实际分页内容与引用见 query-trace.json；Val 参与筛选，独立证据来自固定规则的 test/oot。\n\n"
+        "July 无标签分布保留；模拟日期不能证明真实跨期表现。\n", encoding="utf-8",
     )
-    (output_dir / "review.md").write_text("\n\n".join(lines) + "\n", encoding="utf-8")
     return review
 
 
 def main() -> None:
-    """产物写到浅目录；默认完成计算后启动只读快照的新 Python 消费进程。"""
+    """复用共享数据准备；消费参数先于准备路径，保证无需 CSV。"""
     parser = argparse.ArgumentParser(description=QUESTION)
     parser.add_argument("--output-dir", type=Path, default=Path("output/agent-rule-case"))
-    parser.add_argument(
-        "--consume-only", action="store_true", help="只加载既有快照；不生成数据或重新计算"
-    )
+    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--train-csv", type=Path)
+    parser.add_argument("--test-csv", type=Path)
+    parser.add_argument("--columns-description-csv", type=Path)
+    parser.add_argument("--consume-only", action="store_true")
     args = parser.parse_args()
     if args.consume_only:
         consume(args.output_dir)
-    else:
-        produce(args.output_dir)
-        subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                "--consume-only",
-                "--output-dir",
-                str(args.output_dir.resolve()),
-            ],
-            check=True,
-        )
-    print(f"确定性验收产物：{args.output_dir.resolve()}；真实模型行为未由此脚本验证。")
+        return
+    inputs = prepare_home_credit_data(args.data_dir, train_csv=args.train_csv, test_csv=args.test_csv,
+                                     columns_description_csv=args.columns_description_csv)
+    produce(args.output_dir, inputs=inputs)
+    subprocess.run([sys.executable, str(Path(__file__).resolve()), "--consume-only",
+                    "--output-dir", str(args.output_dir.resolve())], check=True)
 
 
 if __name__ == "__main__":

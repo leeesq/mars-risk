@@ -1,15 +1,16 @@
 {
-  "python": "3.12.14",
+  "python": "3.12.13",
   "imported_mars_version": "0.0.28",
   "installed_distribution_version": "0.0.28",
-  "import_source": "installed MARS package; source fingerprints are recorded separately",
+  "import_source": "current MARS package; code fingerprints recorded",
   "dependencies": {
     "numpy": "2.4.6",
-    "pandas": "3.0.6",
-    "polars": "1.44.2",
-    "scikit-learn": "1.9.1",
-    "pyarrow": "25.0.1",
+    "pandas": "3.0.3",
+    "polars": "1.42.0",
+    "scikit-learn": "1.9.0",
+    "pyarrow": "24.0.0",
     "openpyxl": "3.1.5",
-    "xlsxwriter": "3.2.9"
+    "xlsxwriter": "3.2.9",
+    "matplotlib": "3.11.0"
   }
 }

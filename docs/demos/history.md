@@ -9,18 +9,17 @@ description: LightGBM 历史案例的维护边界、独立数据及可选依赖�
 Experimental 表示成熟度，暂停表示投入，两者不能互相代替。
 
 该 Notebook 使用 seed `1206`、240 行独立合成数据完成时间切分、轻量调参、打分与监控。
-它不属于七个核心实战案例的共享 18,000 行数据，也不作为正在扩展的训练路线。
+七个核心实战案例当前使用 Home Credit 的 356,255 条记录；这个历史 Notebook 保留独立数据与原 URL。
 
 ## 在 0.0.28 环境中运行
 
-使用 Python 3.10+。0.0.28 发布后安装可选依赖，再取得并打开上面的 Notebook：
+使用 Python 3.10+。0.0.28 已发布，安装可选依赖后取得并打开上面的 Notebook：
 
 ```bash
 python -m pip install "mars-risk[ml,tuning,notebook]==0.0.28"
 ```
 
-若 PyPI 尚未提供该版本，先按[安装指南](../getting-started/installation.md)克隆 main，
-在仓库根目录使用源码安装并打开 Notebook：
+需要开发版时，按[安装指南](../getting-started/installation.md)克隆 main，在仓库根目录使用源码安装并打开 Notebook：
 
 ```bash
 python -m pip install -e ".[ml,tuning,notebook]"

@@ -1,0 +1,1278 @@
+{
+  "preparation_version": "home-credit-2018-v1",
+  "input_files": [
+    {
+      "role": "train",
+      "name": "application_train.csv",
+      "sha256": "52e96b895b1112e1c853f670e58372719c8441c5ed1c57ac2f7fad559d784f5f",
+      "bytes": 166133370,
+      "rows": 307511,
+      "columns": 122
+    },
+    {
+      "role": "test",
+      "name": "application_test.csv",
+      "sha256": "a36161331d839150a67b6216d4de066f543a3b01a34061507d40e76612e0dec8",
+      "bytes": 26567651,
+      "rows": 48744,
+      "columns": 121
+    },
+    {
+      "role": "description",
+      "name": "HomeCredit_columns_description.csv",
+      "sha256": "eef7665398228a80f7367c9258220c5fbe1038f3f54094244f354d54e2d4fb03",
+      "bytes": 37383,
+      "rows": 219,
+      "columns": 5
+    }
+  ],
+  "description_encoding": "cp1252",
+  "columns_description": {
+    "encoding": "cp1252",
+    "rows": 219,
+    "columns": 5,
+    "column_names": [
+      "",
+      "Table",
+      "Row",
+      "Description",
+      "Special"
+    ],
+    "tables": [
+      "POS_CASH_balance.csv",
+      "application_{train|test}.csv",
+      "bureau.csv",
+      "bureau_balance.csv",
+      "credit_card_balance.csv",
+      "installments_payments.csv",
+      "previous_application.csv"
+    ],
+    "application_rows": 122
+  },
+  "full_dataset": true,
+  "seed": 20261001,
+  "hash_config": {
+    "algorithm": "SHA256",
+    "encoding": "UTF-8",
+    "id_format": "十进制整数，无前导零",
+    "text_format": "{seed}:{SK_ID_CURR}",
+    "integer_conversion": "全部 32 字节 big-endian",
+    "offset_rule": "散列整数 modulo 区间天数（train 181/test 31）",
+    "uses_binary_target_value": false
+  },
+  "partition_config": {
+    "target_group_rows": 30000,
+    "algorithm": "从末日向前选完整自然日人数最接近目标的日期段，依次 3oot/2test/1val",
+    "tie_break": "人数误差相同选择更早起始日；为剩余分区保留非空自然日"
+  },
+  "merged_shape_before_roles": [
+    356255,
+    122
+  ],
+  "final_shape": [
+    356255,
+    124
+  ],
+  "rows": 356255,
+  "partition_stats": [
+    {
+      "dataset_flag": "0train",
+      "total_count": 215374,
+      "date_min": "2026-01-01",
+      "date_max": "2026-05-07",
+      "observed_count": 215374,
+      "null_count": 0,
+      "target_0_count": 197909,
+      "target_1_count": 17465,
+      "observed_bad_rate": 0.081091496652335,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "1val",
+      "total_count": 30720,
+      "date_min": "2026-05-08",
+      "date_max": "2026-05-25",
+      "observed_count": 30720,
+      "null_count": 0,
+      "target_0_count": 28171,
+      "target_1_count": 2549,
+      "observed_bad_rate": 0.08297526041666667,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "2test",
+      "total_count": 30657,
+      "date_min": "2026-05-26",
+      "date_max": "2026-06-12",
+      "observed_count": 30657,
+      "null_count": 0,
+      "target_0_count": 28326,
+      "target_1_count": 2331,
+      "observed_bad_rate": 0.07603483706820628,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "3oot",
+      "total_count": 30760,
+      "date_min": "2026-06-13",
+      "date_max": "2026-06-30",
+      "observed_count": 30760,
+      "null_count": 0,
+      "target_0_count": 28280,
+      "target_1_count": 2480,
+      "observed_bad_rate": 0.08062418725617686,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "4_oot_undue",
+      "total_count": 48744,
+      "date_min": "2026-07-01",
+      "date_max": "2026-07-31",
+      "observed_count": 0,
+      "null_count": 48744,
+      "target_0_count": 0,
+      "target_1_count": 0,
+      "observed_bad_rate": null,
+      "label_coverage": 0.0,
+      "label_status": "unobserved"
+    }
+  ],
+  "fcols": [
+    "NAME_CONTRACT_TYPE",
+    "CODE_GENDER",
+    "FLAG_OWN_CAR",
+    "FLAG_OWN_REALTY",
+    "CNT_CHILDREN",
+    "AMT_INCOME_TOTAL",
+    "AMT_ANNUITY",
+    "AMT_GOODS_PRICE",
+    "NAME_TYPE_SUITE",
+    "NAME_INCOME_TYPE",
+    "NAME_EDUCATION_TYPE",
+    "NAME_FAMILY_STATUS",
+    "NAME_HOUSING_TYPE",
+    "REGION_POPULATION_RELATIVE",
+    "DAYS_BIRTH",
+    "DAYS_EMPLOYED",
+    "DAYS_REGISTRATION",
+    "DAYS_ID_PUBLISH",
+    "OWN_CAR_AGE",
+    "FLAG_MOBIL",
+    "FLAG_EMP_PHONE",
+    "FLAG_WORK_PHONE",
+    "FLAG_CONT_MOBILE",
+    "FLAG_PHONE",
+    "FLAG_EMAIL",
+    "OCCUPATION_TYPE",
+    "CNT_FAM_MEMBERS",
+    "REGION_RATING_CLIENT",
+    "REGION_RATING_CLIENT_W_CITY",
+    "WEEKDAY_APPR_PROCESS_START",
+    "HOUR_APPR_PROCESS_START",
+    "REG_REGION_NOT_LIVE_REGION",
+    "REG_REGION_NOT_WORK_REGION",
+    "LIVE_REGION_NOT_WORK_REGION",
+    "REG_CITY_NOT_LIVE_CITY",
+    "REG_CITY_NOT_WORK_CITY",
+    "LIVE_CITY_NOT_WORK_CITY",
+    "ORGANIZATION_TYPE",
+    "EXT_SOURCE_1",
+    "EXT_SOURCE_2",
+    "EXT_SOURCE_3",
+    "APARTMENTS_AVG",
+    "BASEMENTAREA_AVG",
+    "YEARS_BEGINEXPLUATATION_AVG",
+    "YEARS_BUILD_AVG",
+    "COMMONAREA_AVG",
+    "ELEVATORS_AVG",
+    "ENTRANCES_AVG",
+    "FLOORSMAX_AVG",
+    "FLOORSMIN_AVG",
+    "LANDAREA_AVG",
+    "LIVINGAPARTMENTS_AVG",
+    "LIVINGAREA_AVG",
+    "NONLIVINGAPARTMENTS_AVG",
+    "NONLIVINGAREA_AVG",
+    "APARTMENTS_MODE",
+    "BASEMENTAREA_MODE",
+    "YEARS_BEGINEXPLUATATION_MODE",
+    "YEARS_BUILD_MODE",
+    "COMMONAREA_MODE",
+    "ELEVATORS_MODE",
+    "ENTRANCES_MODE",
+    "FLOORSMAX_MODE",
+    "FLOORSMIN_MODE",
+    "LANDAREA_MODE",
+    "LIVINGAPARTMENTS_MODE",
+    "LIVINGAREA_MODE",
+    "NONLIVINGAPARTMENTS_MODE",
+    "NONLIVINGAREA_MODE",
+    "APARTMENTS_MEDI",
+    "BASEMENTAREA_MEDI",
+    "YEARS_BEGINEXPLUATATION_MEDI",
+    "YEARS_BUILD_MEDI",
+    "COMMONAREA_MEDI",
+    "ELEVATORS_MEDI",
+    "ENTRANCES_MEDI",
+    "FLOORSMAX_MEDI",
+    "FLOORSMIN_MEDI",
+    "LANDAREA_MEDI",
+    "LIVINGAPARTMENTS_MEDI",
+    "LIVINGAREA_MEDI",
+    "NONLIVINGAPARTMENTS_MEDI",
+    "NONLIVINGAREA_MEDI",
+    "FONDKAPREMONT_MODE",
+    "HOUSETYPE_MODE",
+    "TOTALAREA_MODE",
+    "WALLSMATERIAL_MODE",
+    "EMERGENCYSTATE_MODE",
+    "OBS_30_CNT_SOCIAL_CIRCLE",
+    "DEF_30_CNT_SOCIAL_CIRCLE",
+    "OBS_60_CNT_SOCIAL_CIRCLE",
+    "DEF_60_CNT_SOCIAL_CIRCLE",
+    "DAYS_LAST_PHONE_CHANGE",
+    "FLAG_DOCUMENT_2",
+    "FLAG_DOCUMENT_3",
+    "FLAG_DOCUMENT_4",
+    "FLAG_DOCUMENT_5",
+    "FLAG_DOCUMENT_6",
+    "FLAG_DOCUMENT_7",
+    "FLAG_DOCUMENT_8",
+    "FLAG_DOCUMENT_9",
+    "FLAG_DOCUMENT_10",
+    "FLAG_DOCUMENT_11",
+    "FLAG_DOCUMENT_12",
+    "FLAG_DOCUMENT_13",
+    "FLAG_DOCUMENT_14",
+    "FLAG_DOCUMENT_15",
+    "FLAG_DOCUMENT_16",
+    "FLAG_DOCUMENT_17",
+    "FLAG_DOCUMENT_18",
+    "FLAG_DOCUMENT_19",
+    "FLAG_DOCUMENT_20",
+    "FLAG_DOCUMENT_21",
+    "AMT_REQ_CREDIT_BUREAU_HOUR",
+    "AMT_REQ_CREDIT_BUREAU_DAY",
+    "AMT_REQ_CREDIT_BUREAU_WEEK",
+    "AMT_REQ_CREDIT_BUREAU_MON",
+    "AMT_REQ_CREDIT_BUREAU_QRT",
+    "AMT_REQ_CREDIT_BUREAU_YEAR"
+  ],
+  "candidate_feature_count": 119,
+  "display_features": [
+    "EXT_SOURCE_2",
+    "EXT_SOURCE_3",
+    "EXT_SOURCE_1",
+    "AMT_INCOME_TOTAL",
+    "DAYS_BIRTH",
+    "DAYS_EMPLOYED",
+    "AMT_ANNUITY",
+    "AMT_GOODS_PRICE",
+    "NAME_INCOME_TYPE",
+    "NAME_EDUCATION_TYPE",
+    "NAME_CONTRACT_TYPE",
+    "CODE_GENDER",
+    "FLAG_OWN_CAR",
+    "FLAG_OWN_REALTY",
+    "CNT_CHILDREN",
+    "OCCUPATION_TYPE",
+    "REGION_POPULATION_RELATIVE",
+    "DAYS_REGISTRATION",
+    "DAYS_ID_PUBLISH",
+    "CNT_FAM_MEMBERS"
+  ],
+  "metadata": {
+    "missing_definitions": [],
+    "conflicting_definitions": [],
+    "duplicate_application_rows_merged": 0,
+    "application_fields_documented": 122,
+    "field_definitions": {
+      "SK_ID_CURR": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "ID of loan in our sample"
+        ],
+        "official_special": []
+      },
+      "TARGET": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Target variable (1 - client with payment difficulties: he/she had late payment more than X days on at least one of the first Y installments of the loan in our sample, 0 - all other cases)"
+        ],
+        "official_special": []
+      },
+      "NAME_CONTRACT_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Identification if loan is cash or revolving"
+        ],
+        "official_special": []
+      },
+      "CODE_GENDER": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Gender of the client"
+        ],
+        "official_special": []
+      },
+      "FLAG_OWN_CAR": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if the client owns a car"
+        ],
+        "official_special": []
+      },
+      "FLAG_OWN_REALTY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client owns a house or flat"
+        ],
+        "official_special": []
+      },
+      "CNT_CHILDREN": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of children the client has"
+        ],
+        "official_special": []
+      },
+      "AMT_INCOME_TOTAL": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Income of the client"
+        ],
+        "official_special": []
+      },
+      "AMT_CREDIT": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Credit amount of the loan"
+        ],
+        "official_special": []
+      },
+      "AMT_ANNUITY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Loan annuity"
+        ],
+        "official_special": []
+      },
+      "AMT_GOODS_PRICE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "For consumer loans it is the price of the goods for which the loan is given"
+        ],
+        "official_special": []
+      },
+      "NAME_TYPE_SUITE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Who was accompanying client when he was applying for the loan"
+        ],
+        "official_special": []
+      },
+      "NAME_INCOME_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Clients income type (businessman, working, maternity leave,…)"
+        ],
+        "official_special": []
+      },
+      "NAME_EDUCATION_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Level of highest education the client achieved"
+        ],
+        "official_special": []
+      },
+      "NAME_FAMILY_STATUS": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Family status of the client"
+        ],
+        "official_special": []
+      },
+      "NAME_HOUSING_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "What is the housing situation of the client (renting, living with parents, ...)"
+        ],
+        "official_special": []
+      },
+      "REGION_POPULATION_RELATIVE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized population of region where client lives (higher number means the client lives in more populated region)"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "DAYS_BIRTH": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Client's age in days at the time of application"
+        ],
+        "official_special": [
+          "time only relative to the application"
+        ]
+      },
+      "DAYS_EMPLOYED": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many days before the application the person started current employment"
+        ],
+        "official_special": [
+          "time only relative to the application"
+        ]
+      },
+      "DAYS_REGISTRATION": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many days before the application did client change his registration"
+        ],
+        "official_special": [
+          "time only relative to the application"
+        ]
+      },
+      "DAYS_ID_PUBLISH": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many days before the application did client change the identity document with which he applied for the loan"
+        ],
+        "official_special": [
+          "time only relative to the application"
+        ]
+      },
+      "OWN_CAR_AGE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Age of client's car"
+        ],
+        "official_special": []
+      },
+      "FLAG_MOBIL": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide mobile phone (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "FLAG_EMP_PHONE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide work phone (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "FLAG_WORK_PHONE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide home phone (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "FLAG_CONT_MOBILE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Was mobile phone reachable (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "FLAG_PHONE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide home phone (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "FLAG_EMAIL": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide email (1=YES, 0=NO)"
+        ],
+        "official_special": []
+      },
+      "OCCUPATION_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "What kind of occupation does the client have"
+        ],
+        "official_special": []
+      },
+      "CNT_FAM_MEMBERS": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many family members does client have"
+        ],
+        "official_special": []
+      },
+      "REGION_RATING_CLIENT": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Our rating of the region where client lives (1,2,3)"
+        ],
+        "official_special": []
+      },
+      "REGION_RATING_CLIENT_W_CITY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Our rating of the region where client lives with taking city into account (1,2,3)"
+        ],
+        "official_special": []
+      },
+      "WEEKDAY_APPR_PROCESS_START": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "On which day of the week did the client apply for the loan"
+        ],
+        "official_special": []
+      },
+      "HOUR_APPR_PROCESS_START": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Approximately at what hour did the client apply for the loan"
+        ],
+        "official_special": [
+          "rounded"
+        ]
+      },
+      "REG_REGION_NOT_LIVE_REGION": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's permanent address does not match contact address (1=different, 0=same, at region level)"
+        ],
+        "official_special": []
+      },
+      "REG_REGION_NOT_WORK_REGION": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's permanent address does not match work address (1=different, 0=same, at region level)"
+        ],
+        "official_special": []
+      },
+      "LIVE_REGION_NOT_WORK_REGION": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's contact address does not match work address (1=different, 0=same, at region level)"
+        ],
+        "official_special": []
+      },
+      "REG_CITY_NOT_LIVE_CITY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's permanent address does not match contact address (1=different, 0=same, at city level)"
+        ],
+        "official_special": []
+      },
+      "REG_CITY_NOT_WORK_CITY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's permanent address does not match work address (1=different, 0=same, at city level)"
+        ],
+        "official_special": []
+      },
+      "LIVE_CITY_NOT_WORK_CITY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Flag if client's contact address does not match work address (1=different, 0=same, at city level)"
+        ],
+        "official_special": []
+      },
+      "ORGANIZATION_TYPE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Type of organization where client works"
+        ],
+        "official_special": []
+      },
+      "EXT_SOURCE_1": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized score from external data source"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "EXT_SOURCE_2": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized score from external data source"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "EXT_SOURCE_3": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized score from external data source"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "APARTMENTS_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "BASEMENTAREA_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BEGINEXPLUATATION_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BUILD_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "COMMONAREA_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ELEVATORS_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ENTRANCES_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMAX_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMIN_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LANDAREA_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAPARTMENTS_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAREA_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAPARTMENTS_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAREA_AVG": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "APARTMENTS_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "BASEMENTAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BEGINEXPLUATATION_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BUILD_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "COMMONAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ELEVATORS_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ENTRANCES_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMAX_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMIN_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LANDAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAPARTMENTS_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAPARTMENTS_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "APARTMENTS_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "BASEMENTAREA_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BEGINEXPLUATATION_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "YEARS_BUILD_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "COMMONAREA_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ELEVATORS_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "ENTRANCES_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMAX_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FLOORSMIN_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LANDAREA_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAPARTMENTS_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "LIVINGAREA_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAPARTMENTS_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "NONLIVINGAREA_MEDI": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "FONDKAPREMONT_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "HOUSETYPE_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "TOTALAREA_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "WALLSMATERIAL_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "EMERGENCYSTATE_MODE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Normalized information about building where the client lives, What is average (_AVG suffix), modus (_MODE suffix), median (_MEDI suffix) apartment size, common area, living area, age of building, number of elevators, number of entrances, state of the building, number of floor"
+        ],
+        "official_special": [
+          "normalized"
+        ]
+      },
+      "OBS_30_CNT_SOCIAL_CIRCLE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many observation of client's social surroundings with observable 30 DPD (days past due) default"
+        ],
+        "official_special": []
+      },
+      "DEF_30_CNT_SOCIAL_CIRCLE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many observation of client's social surroundings defaulted on 30 DPD (days past due)"
+        ],
+        "official_special": []
+      },
+      "OBS_60_CNT_SOCIAL_CIRCLE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many observation of client's social surroundings with observable 60 DPD (days past due) default"
+        ],
+        "official_special": []
+      },
+      "DEF_60_CNT_SOCIAL_CIRCLE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many observation of client's social surroundings defaulted on 60 (days past due) DPD"
+        ],
+        "official_special": []
+      },
+      "DAYS_LAST_PHONE_CHANGE": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "How many days before application did client change phone"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_2": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 2"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_3": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 3"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_4": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 4"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_5": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 5"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_6": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 6"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_7": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 7"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_8": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 8"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_9": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 9"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_10": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 10"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_11": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 11"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_12": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 12"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_13": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 13"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_14": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 14"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_15": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 15"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_16": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 16"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_17": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 17"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_18": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 18"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_19": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 19"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_20": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 20"
+        ],
+        "official_special": []
+      },
+      "FLAG_DOCUMENT_21": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Did client provide document 21"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_HOUR": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client one hour before application"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_DAY": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client one day before application (excluding one hour before application)"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_WEEK": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client one week before application (excluding one day before application)"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_MON": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client one month before application (excluding one week before application)"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_QRT": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client 3 month before application (excluding one month before application)"
+        ],
+        "official_special": []
+      },
+      "AMT_REQ_CREDIT_BUREAU_YEAR": {
+        "definition_status": "documented",
+        "official_definitions": [
+          "Number of enquiries to Credit Bureau about the client one day year (excluding last 3 months before application)"
+        ],
+        "official_special": []
+      }
+    }
+  },
+  "special_values": {
+    "DAYS_EMPLOYED": {
+      "value": 365243,
+      "count": 64648,
+      "handling": "保留原值；该异常正值作为本字段的特殊值配置，不应用于其他字段。",
+      "meaning": "官方字段说明未解释此值，不推断实际就业时长。"
+    }
+  },
+  "invariants": {
+    "source_ids_unique": true,
+    "source_ids_disjoint": true,
+    "all_rows_preserved": true,
+    "test_target_all_null": true,
+    "whole_natural_days": true,
+    "raw_files_unchanged": true
+  }
+}

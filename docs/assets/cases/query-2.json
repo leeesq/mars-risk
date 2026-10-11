@@ -1,62 +1,58 @@
 {
   "case": 2,
+  "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "0e18537f-9a38-48a3-b793-45e93722c827",
-  "question": "哪些特征有区分度，而且足够稳定？",
+  "question": "固定分箱怎样比较五分区与无标签分布？",
   "query": {
-    "question": "主目标开发表现与独立验证 KS 如何比较？",
+    "question": "外部来源分 2 与 3 的已观测区分度",
     "reference": {
-      "report_id": "0e18537f-9a38-48a3-b793-45e93722c827",
-      "table": "trend.ks",
+      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "table": "summary",
       "query": {
         "offset": 0,
-        "limit": 4,
+        "limit": 2,
         "features": [
-          "main_score",
-          "aux_score",
-          "income",
-          "channel"
+          "EXT_SOURCE_2",
+          "EXT_SOURCE_3"
         ]
       }
     },
-    "total_rows": 4,
-    "returned_rows": 4,
+    "total_rows": 2,
+    "returned_rows": 2,
     "omitted_rows": 0,
     "next_offset": null,
     "rows": [
       {
-        "feature": "aux_score",
-        "dtype": "Float64",
-        "discovery": 59.60304924248412,
-        "observation": 57.49640894703947,
-        "validation": 57.23761969722085,
-        "Total": 58.025041057382445
+        "feature": "EXT_SOURCE_3",
+        "data_source": "Home Credit 2018 application_{train|test}.csv",
+        "iv": 0.2917010188102722,
+        "ks": 22.186461924601865,
+        "auc": 0.6482176971618914,
+        "psi_max": 0.00506146451724824,
+        "rc_min": 1.0,
+        "lift_min": 0.439180232030532,
+        "lift_max": 1.8693434599007182,
+        "missing": 0.19545830935706138,
+        "missing_min": 0.17782701460692235,
+        "missing_max": 0.19945768755745727,
+        "mono": -1.0
       },
       {
-        "feature": "channel",
-        "dtype": "Float64",
-        "discovery": 1.1916513738190804,
-        "observation": 1.8924953509008247,
-        "validation": 0.42304123250325176,
-        "Total": 0.7973843788338209
-      },
-      {
-        "feature": "income",
-        "dtype": "Float64",
-        "discovery": 2.7675569717462767,
-        "observation": 0.7012699493024854,
-        "validation": 1.8919362872146794,
-        "Total": 0.7490206915989894
-      },
-      {
-        "feature": "main_score",
-        "dtype": "Float64",
-        "discovery": 22.582061783354646,
-        "observation": 22.578061145549615,
-        "validation": 20.004102818689862,
-        "Total": 21.72757947347752
+        "feature": "EXT_SOURCE_2",
+        "data_source": "Home Credit 2018 application_{train|test}.csv",
+        "iv": 0.2703412175178528,
+        "ks": 21.25443262874279,
+        "auc": 0.6414238444445256,
+        "psi_max": 0.006740861911165587,
+        "rc_min": 1.0,
+        "lift_min": 0.4715535313877019,
+        "lift_max": 1.7708857175047088,
+        "missing": 0.0018750614026469777,
+        "missing_min": 0.00016412276382733948,
+        "missing_max": 0.0028283485045512732,
+        "mono": -1.0
       }
     ]
   },
-  "unavailable": "分箱 IV/KS/PSI 不等于最终业务价值或因果增量；观察期 late60 未表现。"
+  "unavailable": "模拟日期不能证明真实跨期泛化；无标签组只有分布/PSI，没有可观测坏率或 KS。"
 }

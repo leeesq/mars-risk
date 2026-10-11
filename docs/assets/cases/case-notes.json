@@ -1,1 +1,77 @@
-{"question": "同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？", "simulated": true, "splits": {"discovery": "1–3月；参考分箱与候选发现", "validation": "4–6月；独立验证，不重新拟合分箱或选择候选", "observation": "7–9月；bad30 有模拟标签，late60 全未表现"}, "independent_rows": true, "raw_data_saved": false, "snapshots": ["score-cross.marsreport", "rules.marsreport"], "agent_execution": "deterministic acceptance; not autonomous model analysis"}
+{
+  "question": "同一外部来源分 2 等级内，来源分 3 的风险有何差异？固定组合规则能否通过独立复核？",
+  "real_features": true,
+  "simulated_dates": true,
+  "independent_rows": true,
+  "raw_data_saved": false,
+  "partition_stats": [
+    {
+      "dataset_flag": "0train",
+      "total_count": 215374,
+      "date_min": "2026-01-01",
+      "date_max": "2026-05-07",
+      "observed_count": 215374,
+      "null_count": 0,
+      "target_0_count": 197909,
+      "target_1_count": 17465,
+      "observed_bad_rate": 0.081091496652335,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "1val",
+      "total_count": 30720,
+      "date_min": "2026-05-08",
+      "date_max": "2026-05-25",
+      "observed_count": 30720,
+      "null_count": 0,
+      "target_0_count": 28171,
+      "target_1_count": 2549,
+      "observed_bad_rate": 0.08297526041666667,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "2test",
+      "total_count": 30657,
+      "date_min": "2026-05-26",
+      "date_max": "2026-06-12",
+      "observed_count": 30657,
+      "null_count": 0,
+      "target_0_count": 28326,
+      "target_1_count": 2331,
+      "observed_bad_rate": 0.07603483706820628,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "3oot",
+      "total_count": 30760,
+      "date_min": "2026-06-13",
+      "date_max": "2026-06-30",
+      "observed_count": 30760,
+      "null_count": 0,
+      "target_0_count": 28280,
+      "target_1_count": 2480,
+      "observed_bad_rate": 0.08062418725617686,
+      "label_coverage": 1.0,
+      "label_status": "observed"
+    },
+    {
+      "dataset_flag": "4_oot_undue",
+      "total_count": 48744,
+      "date_min": "2026-07-01",
+      "date_max": "2026-07-31",
+      "observed_count": 0,
+      "null_count": 48744,
+      "target_0_count": 0,
+      "target_1_count": 0,
+      "observed_bad_rate": null,
+      "label_coverage": 0.0,
+      "label_status": "unobserved"
+    }
+  ],
+  "selection_report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
+  "independent_report_id": "e22c5e61-6570-45f5-9b50-d188fbc5c81c",
+  "agent_execution": "deterministic acceptance; no LLM"
+}

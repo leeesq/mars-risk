@@ -1,57 +1,66 @@
 {
   "case": 6,
+  "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
-  "question": "分析完成后，如何保存并继续查询？",
+  "question": "保存分箱报告之后，如何在新进程继续查询？",
   "query": {
-    "question": "发现目录后的第一页",
+    "question": "验证组固定箱实际第一页",
     "reference": {
-      "report_id": "cba02fb3-e2e3-44ae-8c72-32ab920fd80c",
-      "table": "cells",
+      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "table": "detail",
       "query": {
         "offset": 0,
         "limit": 3,
+        "features": "EXT_SOURCE_2",
         "filters": {
-          "group": "discovery",
-          "period": "202601",
-          "target": "bad30"
+          "mars_group": "1val",
+          "y": "TARGET"
         },
         "columns": [
-          "x_bin",
-          "y_bin",
-          "sample_count",
-          "bad_rate",
-          "status"
-        ]
+          "feature",
+          "mars_group",
+          "bin_index",
+          "bin_label",
+          "count",
+          "observed_count",
+          "bad_rate"
+        ],
+        "sort_by": "bin_index"
       }
     },
-    "total_rows": 42,
+    "total_rows": 6,
     "returned_rows": 3,
-    "omitted_rows": 39,
+    "omitted_rows": 3,
     "next_offset": 3,
     "rows": [
       {
-        "x_bin": "b3",
-        "y_bin": "b0",
-        "sample_count": 113,
-        "bad_rate": 0.011289449198860652,
-        "status": "valid"
+        "feature": "EXT_SOURCE_2",
+        "mars_group": "1val",
+        "bin_index": -1,
+        "bin_label": "Missing",
+        "count": 66.0,
+        "observed_count": 66.0,
+        "bad_rate": 0.09090909090909091
       },
       {
-        "x_bin": "b3",
-        "y_bin": "b1",
-        "sample_count": 131,
-        "bad_rate": 0.0,
-        "status": "valid"
+        "feature": "EXT_SOURCE_2",
+        "mars_group": "1val",
+        "bin_index": 0,
+        "bin_label": "00_[-inf, 0.3922)",
+        "count": 7568.0,
+        "observed_count": 7568.0,
+        "bad_rate": 0.14442389006342496
       },
       {
-        "x_bin": "b3",
-        "y_bin": "b2",
-        "sample_count": 137,
-        "bad_rate": 0.043472026341170394,
-        "status": "valid"
+        "feature": "EXT_SOURCE_2",
+        "mars_group": "1val",
+        "bin_index": 1,
+        "bin_label": "01_[0.3922, 0.566)",
+        "count": 7641.0,
+        "observed_count": 7641.0,
+        "bad_rate": 0.08807747677005627
       }
     ]
   },
-  "unavailable": "ReportSnapshot 不恢复原分析器、原始宽表、任意新分段或 RuleSet 部署资格。"
+  "unavailable": "快照保存聚合结果与能力边界，不恢复原始宽表或任意分析器。"
 }

@@ -44,6 +44,40 @@ BASIC_SNIPPETS = [
     "portable_reports.py",
 ]
 
+
+def _readme_fixture_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """为共享 README 注入明确临时 CSV，保留真实准备与运行行为测试。"""
+    import polars as pl
+
+    monkeypatch.syspath_prepend(str(SNIPPETS_ROOT))
+    helper = importlib.import_module("home_credit_data")
+    inputs_path = tmp_path / "fixture-home-credit"
+    inputs_path.mkdir()
+    for labeled, filename, count, start in (
+        (True, "application_train.csv", 600, 1),
+        (False, "application_test.csv", 90, 10001),
+    ):
+        values: dict[str, Any] = {
+            "SK_ID_CURR": range(start, start + count),
+            "AMT_CREDIT": [1000.0 + index for index in range(count)],
+            "EXT_SOURCE_2": [(index % 30) / 30 for index in range(count)],
+            "EXT_SOURCE_3": [(index % 17) / 17 for index in range(count)],
+        }
+        if labeled:
+            values["TARGET"] = [int(index % 7 == 0) for index in range(count)]
+        pl.DataFrame(values).write_csv(inputs_path / filename)
+    pl.DataFrame({
+        "Table": ["application_{train|test}.csv"] * 3,
+        "Row": ["AMT_CREDIT", "EXT_SOURCE_2", "EXT_SOURCE_3"],
+        "Description": ["Credit amount of the loan", "Normalized score from external data source",
+                        "Normalized score from external data source"],
+        "Special": ["", "", ""],
+    }).write_csv(inputs_path / "HomeCredit_columns_description.csv")
+    prepared = helper.prepare_home_credit_data(
+        inputs_path, config=helper.HomeCreditConfig(target_group_rows=50), require_full_dataset=False,
+    )
+    monkeypatch.setattr(helper, "prepare_home_credit_data", lambda: prepared)
+
 REFERENCE_MODULES = {
     "mars.analysis": DOCS_ROOT / "reference" / "analysis.md",
     "mars.feature": DOCS_ROOT / "reference" / "feature.md",
@@ -83,6 +117,8 @@ def test_basic_documentation_snippet_executes(
 ) -> None:
     """基础文档示例应从独立工作目录执行成功。"""
     monkeypatch.chdir(tmp_path)
+    if snippet_name == "readme_quickstart.py":
+        _readme_fixture_inputs(tmp_path, monkeypatch)
     namespace = runpy.run_path(str(SNIPPETS_ROOT / snippet_name))
     assert namespace
 
@@ -254,7 +290,7 @@ def test_documented_version_matches_package_metadata() -> None:
         assert version_match.start() < source_match.start(), path
         installation_intro = text[:source_match.start()]
         assert project_version in installation_intro and "PyPI" in installation_intro, path
-        assert re.search(r"尚未|not yet", installation_intro, re.I), path
+        assert re.search(r"已发布|published", installation_intro, re.I), path
 
 
 def test_python_version_dependency_markers_cover_supported_range() -> None:
@@ -378,12 +414,12 @@ def test_readme_hero_uses_same_native_binning_chart_in_both_languages() -> None:
     """两语门面使用可追溯原生分箱图，并提供高清文件；不再复合交叉截图。"""
     for name in ("README.md", "README.en.md"):
         text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
-        png = f"{DOCS_SITE}assets/cases/binning-native-main-score.png"
-        svg = f"{DOCS_SITE}assets/cases/binning-native-main-score.svg"
+        png = f"{DOCS_SITE}assets/cases/binning-native-home-credit.png"
+        svg = f"{DOCS_SITE}assets/cases/binning-native-home-credit.svg"
         assert png in text
         assert f'href="{svg}"' in text or f"]({svg})" in text
-        assert (DOCS_ROOT / "assets/cases/binning-native-main-score.png").is_file()
-        assert (DOCS_ROOT / "assets/cases/binning-native-main-score.svg").is_file()
+        assert (DOCS_ROOT / "assets/cases/binning-native-home-credit.png").is_file()
+        assert (DOCS_ROOT / "assets/cases/binning-native-home-credit.svg").is_file()
         assert text.index(png) < text.index("```python")
         assert "readme-preview" not in text
         assert "binning-risk.png" not in text
@@ -447,6 +483,7 @@ def test_readme_snapshot_queries_and_static_excel_match_current_report(
     from mars.reporting import ReportSnapshot
 
     monkeypatch.chdir(tmp_path)
+    _readme_fixture_inputs(tmp_path, monkeypatch)
     generated: dict[str, Any] = runpy.run_path(str(SNIPPETS_ROOT / "readme_quickstart.py"))
     source_report = generated["report"]
     readme = (PROJECT_ROOT / readme_name).read_text(encoding="utf-8")

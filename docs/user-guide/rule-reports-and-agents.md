@@ -1,5 +1,5 @@
 ---
-description: 规则发现与独立验证接入公共报告、关联检索、快照和外部编程 Agent 的完整模拟案例。
+description: 规则发现与独立验证接入公共报告、关联检索、快照和外部编程 Agent 的Home Credit 全量案例。
 ---
 
 # 规则报告与外部 Agent
@@ -9,7 +9,7 @@ description: 规则发现与独立验证接入公共报告、关联检索、快�
 
 `MarsRuleMiningResult.to_report()` 返回满足 `mars.reporting.Report` 契约的
 `MarsRuleReport`。Rule 仍为 **Experimental**；本文对应 MARS **0.0.28**。
-发布后按[安装指南](../getting-started/installation.md)固定该版本；若 PyPI 尚未提供，使用 main 源码。
+已发布版本可按[安装指南](../getting-started/installation.md)固定安装；当前开发案例使用本地源码。
 公共报告接入没有改变规则生成器、DSL、RuleSet JSON 和部署门禁。
 
 ## 公共报告与关联
@@ -101,7 +101,7 @@ feature_relation 是目录中的可选声明；旧快照缺少该字段时沿用
 报告加载不会重建有部署资格的 RuleSet，也不能对新样本 transform。
 RuleSet JSON 仍是独立定义与部署产物，SQL 导出仍检查验证摘要、资格和 missing_policy。
 
-## 完整模拟案例：发现、验证与跨进程追问
+## Home Credit 全量案例：发现、验证与跨进程追问
 
 业务问题是：**同一主模型分等级内，辅助分能否进一步区分风险？哪些组合规则值得进入独立验证？**
 
@@ -113,41 +113,17 @@ python docs/snippets/external_agent_rule_case.py --output-dir output/agent-rule-
 python docs/snippets/external_agent_rule_case.py --consume-only --output-dir output/agent-rule-case
 ```
 
-固定种子模拟 18,000 条消费信贷申请，包含 ID、申请日期、客群、主/辅助固定分、
-bad30/late60 未表现标签、缺失和 -999 特殊分、金额。主分高分低风险，辅助分高分高风险。
-发现/验证/观察是 2026 年 1–3 / 4–6 / 7–9 月各 6,000 个独立 ID；不共享样本行。
-只在发现集拟合四段分位点，在全部时期复用 bin_definitions；
-只依开发格子选两个高差异候选、一个反证及一个开发 Lift 介于候选/验证门槛的格子，
-另加明确没有格子来源的极低覆盖压力候选。
-独立验证使用原 production 门槛，不为演示降低门禁。观察集只保留交叉证据，不重新挑选候选。
+当前旗舰案例使用与七案例相同的 Home Credit 准备函数、五分区和原始字段。0train 学习固定 EXT_SOURCE_2/3 分段及候选；1val 参与验证筛选；2test 与 3oot 复核固定规则。APPLY_DATE 为模拟日期，配置不授予真实时间验证资格。
 
-候选的 business_context.candidate_origins 绑定具体发现期 cells 引用；
-手工覆盖压力候选明确标为缺少交叉对应。规则评估保留主/辅助目标与验证时间切片；
-未计算客群或 observation 规则评估、高级分析，不把这些缺口藏起来。
+MarsRuleReport 保存候选审计和已计算统计，RuleSet 才能命中新样本。evaluation.sample_count 沿用已观测人数，total_count/observed_count 区分总人数与标签覆盖；4_oot_undue 保留命中分布但不提供监督表现。
 
-脚本完成计算后启动一个新 Python 进程，只加载两份报告。按脚本化问题依次读目录，
-查询固定主等级内的风险差异与表现分母，分页追问候选淘汰、验证主目标、4月辅助目标，
-复核观察格子，对客群/高级分析缺口写“当前报告无法回答”。每条数字附可重放
-report_id/table/query 和 dataset/target/slice/period；预算上下文上限 12000 字符。
+```bash
+python docs/snippets/external_agent_rule_case.py --data-dir examples/home-credit-2018/data/raw_data --output-dir output/agent-rule-case
+```
 
-| 浅目录产物 | 用途 |
-| --- | --- |
-| score-cross.marsreport、rules.marsreport | 完整交叉与规则证据，消费不依赖原样本 |
-| ruleset.json | 仅真实有合格规则时另存；不执行 SQL、不部署 |
-| rules.html、rules.xlsx | 人工规则报告；候选 HTML 预览限额明确 |
-| case-notes.json、external-agent-task.md | 公开范围与可复制给外部 Agent 的任务 |
-| query-trace.json、agent-context.json | 确定性实际查询、目录、分页引用与预算 JSON |
-| evidence-review.json、review.md | 程序化证据复核；不是模型自主分析 |
+[输入方案与分区](home-credit-data.md) · [本批候选与实际验证](../demos/rule-evidence.md) · [共享源码](../snippets/external_agent_rule_case.py) · [生成预算](../assets/cases/rule-generation.json)
 
-一次本地确定性运行中，五个候选有两个入选、两个在 candidate_filter 淘汰，
-一个通过开发门禁但在 validation_filter 淘汰；不能把开发淘汰称为独立验证失败。
-其中规则 `mr_4bb77355c89cdcc7c9b6` 在 validation/bad30/__overall__/hit 的
-已表现命中人数 315、事件数 166、事件率约 52.70%、Lift 约 3.317；
-validation/late60/2026-04/hit 的已表现命中 94、事件 45。
-这些是模拟数据的接口验收结果，非真实业务效果或性能 benchmark；
-每次新建报告的 report_id 不同，具体引用以本次生成的 trace 为准，测试不锁死自然语言结论。
-
-脚本完整逻辑见[共享案例源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/external_agent_rule_case.py)。
+当前数字使用同批保存报告和有限 query/reference，不沿用旧合成案例的候选数或效果。确定性查询脚本在新进程加载快照，调用目录、分页和预算接口；原 CSV 只在显式重新计算时读取。
 
 ## 交给外部编程 Agent 的任务 { #agent_1 }
 
@@ -157,15 +133,7 @@ validation/late60/2026-04/hit 的已表现命中 94、事件 45。
 不要求 mars.agent、原宽表、模型训练、provider SDK 或密钥。
 
 ````text
---8<-- "docs/snippets/external_agent_rule_prompt.md"
+--8<-- "docs/assets/cases/external-agent-rule-task.txt"
 ````
 
-本轮在独立编程 Agent（子 Agent 的 Python 工具环境）中实际执行了一次快照消费，
-实际查询重放一致且上下文在 12000 字符内，输入两份快照 SHA-256 未改变；
-最终运行的准确查询数与预算长度记录在 external-agent-trace.json。
-它分别解释主/辅助目标门禁，并拒答未计算客群、observation 规则评估与高级分析。
-这是一次真实模型工具消费验证；没有调用第三方 provider SDK，不能作为跨 provider 行为保证。
-
-外部 Agent 实际运行后应生成 external-agent-trace.json 和 external-agent-review.md，
-与确定性输出分别标注。CI 仅验证确定性公共消费链路，不调用真实模型或网络。
-没有运行环境时，只能声称公共链路已验证，不能把确定性脚本成功说成自主模型行为成功。
+当前批次验证的是确定性公共 API 消费。若另行让模型调用工具，应分别保存真实查询轨迹与审阅结果；脚本成功不能宣称模型自主分析已完成。CI 不调用模型或网络。

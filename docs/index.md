@@ -41,10 +41,10 @@ hide:
 </div>
 
 <figure class="mars-home-preview mars-native-preview">
-<a href="assets/cases/binning-native-main-score.svg" aria-label="查看原生分箱趋势图高清 SVG">
-<img src="assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、多分区稳定性" width="1600">
+<a href="assets/cases/binning-native-home-credit.svg" aria-label="查看原生分箱趋势图高清 SVG">
+<img src="assets/cases/binning-native-home-credit.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、多分区稳定性" width="1600">
 </a>
-<figcaption>直接导出自 MARS 分箱报告，保留原生布局与完整统计细节。点击查看高清图。<br>
+<figcaption>Home Credit 外部来源分 EXT_SOURCE_2，直接导出自 MARS 分箱报告，APPLY_DATE 为模拟日期。点击查看高清图。<br>
 <a href="demos/binning-stability/">分箱与稳定性实战 →</a> · <a href="assets/cases/binning.html">打开交互式报告 →</a></figcaption>
 </figure>
 
@@ -69,7 +69,7 @@ MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表。数据质量
 
 <a class="mars-task-card" href="demos/selection-correlation/#correlation"><em>CORRELATION</em><strong>哪些特征提供了重复信息？</strong><span>分别审查 raw / WOE 的带符号相关性证据。</span><span class="mars-card-link">相关性分析 →</span></a>
 
-<a class="mars-task-card" href="demos/score-cross/"><em>SCORE CROSS</em><strong>辅助分还能进一步区分风险吗？</strong><span>在主模型同等级内比较风险梯度、格子证据和组合效果。</span><span class="mars-card-link">模型分交叉 →</span></a>
+<a class="mars-task-card" href="demos/score-cross/"><em>SCORE CROSS</em><strong>两项外部来源分如何共同区分风险？</strong><span>在固定外部来源分等级内比较风险梯度、格子证据和组合条件。</span><span class="mars-card-link">模型分交叉 →</span></a>
 
 <a class="mars-task-card" href="demos/rule-evidence/"><em>RULE MINING · EXPERIMENTAL</em><strong>规则能走到独立验证吗？</strong><span>从候选发现到筛选、覆盖和独立验证，查看完整证据。</span><span class="mars-card-link">规则挖掘 →</span></a>
 </div>
@@ -77,7 +77,7 @@ MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表。数据质量
 [七个实战案例与完整下载](demos/index.md) · [保存后继续查询](demos/saved-reports.md) ·
 [交付给人和 Agent](demos/report-delivery.md)
 
-案例采用 18,000 行合成申请，人工图表与 Agent 查询读取同一批报告；展示结果不代表真实业务收益。
+当前案例使用 Home Credit 两张 application 表共 356,255 条申请；原始特征与标签来自比赛，APPLY_DATE 为模拟日期。五分区与无标签含义见[输入方案](user-guide/home-credit-data.md)。图表和查询读取同一批保存报告。
 
 ## 基于 MARS，构建你的 Agent
 
@@ -142,14 +142,13 @@ JSON 摘要可以粘贴到对话框；max_chars 是字符预算，不是 token �
 
 </div>
 
-本站介绍 **MARS 0.0.28**。0.0.28 发布后使用以下命令；
-若 PyPI 尚未提供该版本，先使用下方源码安装。
+**MARS 0.0.28 已发布到 PyPI**，使用以下命令安装固定版本。
 
 ```bash
 pip install mars-risk==0.0.28
 ```
 
-发布前体验或 main 开发使用源码：
+main 开发使用源码：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"

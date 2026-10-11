@@ -94,6 +94,7 @@ nav:
       - 规则挖掘（Experimental）: user-guide/rule-mining.md
       - 规则报告与外部 Agent: user-guide/rule-reports-and-agents.md
       - 数据角色与运行边界: concepts/data-and-runs.md
+      - Home Credit 输入与五分区: user-guide/home-credit-data.md
   - 报告与 AI:
       - 报告查询与导出: user-guide/reports-and-exports.md
       - 外部 Agent、保存恢复与业务元数据: user-guide/external-agents.md
@@ -119,7 +120,7 @@ nav:
       - 1 · 这份数据能直接用吗: demos/data-quality.md
       - 2 · 区分度与稳定性: demos/binning-stability.md
       - 3 · 特征保留与相关冗余: demos/selection-correlation.md
-      - 4 · 同等级内的辅助分: demos/score-cross.md
+      - 4 · 外部来源分交叉: demos/score-cross.md
       - 5 · 候选规则与审查证据: demos/rule-evidence.md
       - 6 · 保存后继续查询: demos/saved-reports.md
       - 7 · 同次分析的多种交付: demos/report-delivery.md
@@ -132,6 +133,7 @@ nav:
       - Release Notes: project/release-notes.md
       - 计算、报告与展示验收: project/validation-20261002.md
       - 七实战案例与双语 README 验收: project/task-cases-validation.md
+      - Home Credit 当前案例迁移验收: project/home-credit-migration-validation.md
       - 规则模块来源: project/rule-origin.md
       - Deimos 迁移矩阵: project/deimos-rule-migration.md
       - 性能基准: performance/benchmark.md

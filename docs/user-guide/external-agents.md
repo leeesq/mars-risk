@@ -199,13 +199,14 @@ NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不�
 
 ## 完整示例 { #完整示例 }
 
-[规则报告与外部 Agent 完整案例](rule-reports-and-agents.md)演示模型分交叉 → 开发候选 →
-独立 production 验证 → 两类快照 → 新进程分页追问与证据复核，
+[规则报告与外部 Agent 完整案例](rule-reports-and-agents.md)演示 Home Credit 外部来源分交叉 → 开发候选 →
+验证筛选与固定规则独立评估 → 两类快照 → 新进程分页追问与证据复核，
 提供无 API Key 的确定性验收及可直接交给外部编程 Agent 的任务 Prompt。
 
 - [报告查询源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/report_queries.py)：筛选、投影与上下文。
 - [跨进程报告源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/portable_reports.py)：业务字典、重名搜索、新进程恢复与人工导出。
-- [相关性与交叉源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/correlation_and_score_cross.py)：合成数据、保存后的专用消费和策略回放。
+- [当前七案例源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/task_cases.py)：Home Credit、分箱快照优先的分页消费、相关性与规则证据。
+- [共享输入](home-credit-data.md)：原始标签、模拟日期、五分区与元数据。
 
 跨进程示例不需要 LLM 或重训练：
 

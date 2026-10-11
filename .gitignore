@@ -25,6 +25,7 @@ site/
 .ruff_cache/
 .mypy_cache/
 .cache/
+.artifacts/
 *.tmp
 *.log
 .pycache-codex/

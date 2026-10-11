@@ -24,12 +24,12 @@
 <p align="center"><a href="https://leeesq.github.io/mars-risk/getting-started/quickstart/">开始分析</a> · <a href="https://leeesq.github.io/mars-risk/demos/">实战案例</a> · <a href="https://leeesq.github.io/mars-risk/user-guide/external-agents/">面向 AI Agent</a> · <a href="https://leeesq.github.io/mars-risk/">完整文档</a></p>
 
 <p align="center">
-<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.svg">
-<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-main-score.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性" width="1040">
+<a href="https://leeesq.github.io/mars-risk/assets/cases/binning-native-home-credit.svg">
+<img src="https://leeesq.github.io/mars-risk/assets/cases/binning-native-home-credit.png" alt="MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性" width="1040">
 </a>
 </p>
 
-<p align="center"><sub>MARS 原生分箱趋势图，直接导出自分析报告；图表与统计表共享同一计算结果。点击查看高清 SVG。</sub><br>
+<p align="center"><sub>Home Credit 外部来源分 EXT_SOURCE_2，按 Train 固定分箱原生导出；APPLY_DATE 为模拟日期。点击查看高清 SVG。</sub><br>
 <a href="https://leeesq.github.io/mars-risk/demos/binning-stability/">分箱与稳定性实战</a> · <a href="https://leeesq.github.io/mars-risk/assets/cases/binning.html">打开交互式报告</a></p>
 
 ## MARS 能帮你做什么
@@ -44,10 +44,10 @@ MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表，将数据画
 | 分箱与风险评估 | 原生趋势图、固定分箱、多目标 IV / KS / PSI、件数与金额风险 | [比较区分度与稳定性](https://leeesq.github.io/mars-risk/demos/binning-stability/) |
 | 特征筛选 | 候选特征、筛选步骤、保留与删除理由 | [理解特征取舍](https://leeesq.github.io/mars-risk/demos/selection-correlation/) |
 | 相关性分析 | 带符号的冗余关系，分别查看 raw / WOE 证据 | [检查特征之间的关系](https://leeesq.github.io/mars-risk/demos/selection-correlation/#correlation) |
-| 模型分交叉 | 同一主等级内的风险分离与组合证据 | [比较辅助模型分](https://leeesq.github.io/mars-risk/demos/score-cross/) |
+| 模型分交叉 | 两项外部来源分之间的风险分离与组合证据 | [比较外部来源分](https://leeesq.github.io/mars-risk/demos/score-cross/) |
 | 规则挖掘 · Experimental | 候选来源、筛选、覆盖与独立验证 | [用证据审查规则](https://leeesq.github.io/mars-risk/demos/rule-evidence/) |
 
-[七个实战案例](https://leeesq.github.io/mars-risk/demos/)共用 18,000 行合成申请，发现、验证、观察分区独立。人工图表和 Agent 查询读取实际报告；合成统计用于展示能力，不代表真实信贷业务效果。
+[七个实战案例](https://leeesq.github.io/mars-risk/demos/)共用 Home Credit 的全部 356,255 条申请。原始特征与 TARGET 来自比赛，APPLY_DATE 为模拟日期；四个有标签分区之后，保留原比赛 test 的 48,744 条无标签记录。[输入与五分区说明](https://leeesq.github.io/mars-risk/user-guide/home-credit-data/)解释样本用途与日期边界。
 
 ## 基于 MARS，构建你的 Agent
 
@@ -64,45 +64,45 @@ MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型�
 
 ## 安装
 
-本页示例对应 **MARS 0.0.28**。0.0.28 发布到 PyPI 后安装：
+**MARS 0.0.28 已发布到 PyPI**，可安装固定版本：
 
 ```bash
 pip install mars-risk==0.0.28
 ```
 
-若 PyPI 尚未提供 0.0.28，或需要开发分支，先从源码安装：
+需要当前开发分支时，从源码安装：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖](https://leeesq.github.io/mars-risk/getting-started/installation/)。
+基础包支持 Python **3.8-3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖](https://leeesq.github.io/mars-risk/getting-started/installation/)。
 
 ## 先得到一份报告
 
-在空工作目录运行这个独立示例：
+在仓库根目录准备三个官方 CSV，再运行共享示例。单独复制代码时，将 [home_credit_data.py](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/home_credit_data.py) 放在脚本旁；下载和路径参数见[数据准备指南](https://leeesq.github.io/mars-risk/user-guide/home-credit-data/)：
 
 ```python
-import polars as pl
+from home_credit_data import prepare_home_credit_data
 
 from mars.analysis import profile_risk
 
-df = pl.DataFrame({
-    "date": ["2026-01-01"] * 4 + ["2026-02-01"] * 4,
-    "income": [3200, 3600, 5200, 6100, 3400, 4300, 5800, 6800],
-    "utilization": [0.72, 0.61, 0.29, 0.18, 0.66, 0.48, 0.24, 0.12],
-    "target": [1, 1, 0, 0, 1, 1, 0, 0],
-}).with_columns(pl.col("date").str.to_date())
+inputs = prepare_home_credit_data()
 report = profile_risk(
-    df, target="target", features=["income", "utilization"],
-    time_col="date", method="quantile", n_bins=4,
+    inputs.df, target="TARGET", features=["EXT_SOURCE_2", "EXT_SOURCE_3"],
+    benchmark_df=inputs.benchmark_df, group_col="dataset_flag", time_col="APPLY_DATE",
+    amount_col="AMT_CREDIT", method="quantile", n_bins=4,
+    feature_metadata=inputs.feature_metadata, business_context=inputs.business_context,
 ).report
-print(report.get_table("summary", sort_by="iv", descending=True, limit=2))
+report.save_risk_trend_images(
+    "risk_charts", features="EXT_SOURCE_2", target="TARGET", image_format="png", dpi=300,
+)
 report.write_html("risk_report.html", chart_embed_mode="inline")
 report.save("risk_report.marsreport")
+print(report.query_page("summary", features="EXT_SOURCE_2", limit=1)["data"])
 ```
 
-[共享可运行源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [完整 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战](https://leeesq.github.io/mars-risk/demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
+[共享可运行源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/readme_quickstart.py) · [完整 Quickstart](https://leeesq.github.io/mars-risk/getting-started/quickstart/)。helper 一次准备两个 application 文件；完整趋势图和可下载结果见[分箱实战](https://leeesq.github.io/mars-risk/demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
 
 ## 将同一份结果交给 AI Agent
 
@@ -136,7 +136,7 @@ context_json = report.to_ai_context(tables=["summary"], max_chars=16000)
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
 pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir output/task-cases
+python docs/snippets/task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir output/task-cases
 ```
 
 [案例下载与复现说明](https://leeesq.github.io/mars-risk/demos/#run) · [贡献指南](https://github.com/leeesq/mars-risk/blob/main/CONTRIBUTING.md) · [工程 Skill](https://github.com/leeesq/mars-risk/blob/main/.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License](https://github.com/leeesq/mars-risk/blob/main/LICENSE)。

@@ -86,10 +86,8 @@ def _cross(browser: Browser, assets: Path, output: Path) -> dict[str, Any]:
     ys = sorted([b for b in bins if b["axis"] == "y" and b["kind"] == "normal"], key=lambda b: b["risk_rank"])
     checked: list[dict[str, Any]] = []
     # 选择实际存在的发现、验证、无标签观察以及真实时间范围，不构造虚假 scope。
-    picks = [next(s for s in scopes if s["group"] == group and s["target"] == "bad30")
-             for group in ("discovery", "validation", "observation")]
-    picks.append(next(s for s in scopes if s["target"] == "late60"))
-    picks.append(next(s for s in scopes if s["target"] == "late60" and s["group"] == "observation"))
+    picks = [next(s for s in scopes if s["group"] == group and s["target"] == "TARGET")
+             for group in ("0train", "1val", "2test", "3oot", "4_oot_undue")]
     for scope in picks:
         _select_scope(page, scope)
         cells = _rows(report, "cells", filters=scope)
@@ -140,12 +138,18 @@ def _preview(browser: Browser, assets: Path, output: Path) -> dict[str, Any]:
     events = _observe(context)
     page = context.new_page()
     rendered: list[dict[str, Any]] = []
-    for key, element in (("chart_png", "img"), ("chart_svg", "svg")):
+    for key in ("chart_png", "chart_svg"):
         path = assets / evidence[key]
         assert path.is_file()
-        page.goto(path.as_uri())
-        chart = page.locator(element).first
+        preview_path = output / f"native-{key}.html"
+        preview_path.write_text(
+            '<html><meta charset="utf-8"><style>body{margin:0}img{display:block;width:100%;height:auto}</style>'
+            f'<img src="{path.as_uri()}" alt="{evidence["feature"]}"></html>', encoding="utf-8",
+        )
+        page.goto(preview_path.as_uri())
+        chart = page.locator("img").first
         expect(chart).to_be_visible()
+        page.wait_for_function("() => document.images[0].complete && document.images[0].naturalWidth>0")
         box = chart.bounding_box()
         assert box is not None and box["width"] > 0 and box["height"] > 0
         page.screenshot(path=str(output / f"native-binning-{key}.png"), full_page=True)
@@ -213,7 +217,7 @@ def _docs(browser: Browser, site: Path, output: Path) -> dict[str, Any]:
             assert body
             download_paths.append({"url": urlparse(href).path, "bytes": len(body), "status": response.status})
         page.goto(base + "demos/binning-stability/", wait_until="networkidle")
-        for filename in ("binning-native-main-score.png", "binning-native-main-score.svg", "binning.html"):
+        for filename in ("binning-native-home-credit.png", "binning-native-home-credit.svg", "binning.html"):
             link = page.locator(f'article a[href$="/{filename}"]').first
             assert link.count(), f"Native binning download is missing from the case page: {filename}"
             href = link.get_attribute("href")

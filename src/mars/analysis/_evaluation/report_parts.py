@@ -190,11 +190,11 @@ def _build_total_detail_rows(
             pl.col("count").sum().alias("count"),
             pl.col("observed_count").sum().alias("observed_count"),
             pl.col("bad").sum().alias("bad"),
-            pl.col("iv_bin").sum().alias("iv_bin"),
+            observed_iv_agg_expr(output_col="iv_bin"),
             pl.col("psi_bin").sum().alias("psi_bin"),
-            pl.col("auc_bin").sum().alias("auc_bin"),
-            pl.col("ks_bin").max().alias("ks_bin"),
-            pl.col("lift").max().alias("lift"),
+            observed_auc_agg_expr(output_col="auc_bin"),
+            observed_ks_agg_expr(output_col="ks_bin"),
+            observed_lift_max_agg_expr(output_col="lift"),
             pl.col("count").sum().alias("total_count"),
         ])
         .with_columns([
@@ -442,7 +442,7 @@ def build_binning_summary_table(
             pl.col("missing_min").fill_null(0.0),
             pl.col("missing_max").fill_null(0.0),
         ])
-        .sort(["iv", "rc_min"], descending=[True, True])
+        .sort(["iv", "rc_min", "feature"], descending=[True, True, False])
         .select([
             "feature",
             "iv",

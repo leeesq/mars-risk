@@ -2,3 +2,5 @@
 docs/assets/cases/** -text
 # 生成器在 Windows 写出的 CRLF 是文件编码的一部分，CR 不属于行尾空格。
 docs/assets/cases/** whitespace=cr-at-eol
+# Matplotlib 原生 SVG 的多行 path 数据带行尾空格，保留导出字节及资源指纹。
+docs/assets/cases/*.svg whitespace=-blank-at-eol,cr-at-eol

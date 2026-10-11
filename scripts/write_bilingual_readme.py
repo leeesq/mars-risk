@@ -77,15 +77,15 @@ def _preview(english: bool) -> str:
         if english else "MARS 原生分箱趋势图：固定分箱、样本分布、件数与金额 bad rate、稳定性"
     )
     caption = (
-        "Native MARS binning chart, exported from the same analysis as its tables. Click for the full-resolution SVG."
-        if english else "MARS 原生分箱趋势图，直接导出自分析报告；图表与统计表共享同一计算结果。点击查看高清 SVG。"
+        "Home Credit EXT_SOURCE_2, exported by MARS from fixed Train bins. APPLY_DATE is simulated. Click for the full-resolution SVG."
+        if english else "Home Credit 外部来源分 EXT_SOURCE_2，按 Train 固定分箱原生导出；APPLY_DATE 为模拟日期。点击查看高清 SVG。"
     )
     case_label = "Binning and stability case" if english else "分箱与稳定性实战"
     html_label = "Open the interactive report" if english else "打开交互式报告"
     return (
         '<p align="center">\n'
-        f'<a href="{SITE}assets/cases/binning-native-main-score.svg">\n'
-        f'<img src="{SITE}assets/cases/binning-native-main-score.png" '
+        f'<a href="{SITE}assets/cases/binning-native-home-credit.svg">\n'
+        f'<img src="{SITE}assets/cases/binning-native-home-credit.png" '
         f'alt="{alt}" width="1040">\n</a>\n</p>\n\n'
         f'<p align="center"><sub>{caption}</sub><br>\n'
         f'<a href="{SITE}demos/binning-stability/">{case_label}</a> · '
@@ -124,10 +124,10 @@ The same results are available to **external AI agents** through public report A
 | Binning and risk evaluation | Native trend charts, fixed bins, multi-target IV / KS / PSI, count and amount risk | [Compare discrimination and stability]({SITE}demos/binning-stability/) |
 | Feature selection | Candidate decisions and reasons across screening stages | [Understand retained and removed features]({SITE}demos/selection-correlation/) |
 | Correlation analysis | Signed redundancy and separate raw / WOE evidence | [Inspect related features]({SITE}demos/selection-correlation/#correlation) |
-| Score cross analysis | Risk separation within a main-score tier and combination evidence | [Compare auxiliary scores]({SITE}demos/score-cross/) |
+| Score cross analysis | Risk separation between two external-source scores and combination evidence | [Compare external-source scores]({SITE}demos/score-cross/) |
 | Rule mining · Experimental | Candidate origins, screening, coverage and independent validation | [Review rules with evidence]({SITE}demos/rule-evidence/) |
 
-[All seven cases]({SITE}demos/) use 18,000 synthetic applications with separate discovery, validation and observation partitions. Charts and Agent queries consume the actual reports. The statistics demonstrate the interfaces and do not establish real lending outcomes.
+[All seven cases]({SITE}demos/) share all 356,255 Home Credit application records. Original features and TARGET come from the competition; APPLY_DATE is simulated. Four labeled partitions precede the 48,744 unlabeled competition-test records. [Inputs and five partitions]({SITE}user-guide/home-credit-data/) explain their uses.
 
 ## Build your agents on MARS
 
@@ -144,29 +144,29 @@ These are workflows you can build with MARS; complete agents are composed by the
 
 ## Install
 
-These examples target **MARS 0.0.28**. Once the release is available on PyPI, install:
+**MARS 0.0.28 is published on PyPI**. Install the fixed version:
 
 {FENCE}bash
 pip install mars-risk==0.0.28
 {FENCE}
 
-If PyPI does not yet provide 0.0.28, or you want to work with the development branch, install from source:
+For the current development branch, install from source:
 
 {FENCE}bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-The base package supports Python **3.8–3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
+The base package supports Python **3.8-3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
 
 ## Start with one report
 
-Run this self-contained example in an empty working directory:
+From the repository root, download the three official CSV files into the documented data directory, then run the shared example. If copying the code elsewhere, download [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) beside it. [Data preparation]({SITE}user-guide/home-credit-data/) covers Kaggle access and explicit paths:
 
 {FENCE}python
 {code}
 {FENCE}
 
-[Shared runnable source]({SOURCE}docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/). The eight-row sample explains the API. For a full trend chart and downloadable results, use the [binning case]({SITE}demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
+[Shared runnable source]({SOURCE}docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/). The helper prepares both application files once. For full trend charts and downloadable results, use the [binning case]({SITE}demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
 
 ## Give the same result to an AI agent
 
@@ -194,7 +194,7 @@ Current development focuses on core analysis performance, memory efficiency, hum
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
 pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir output/task-cases
+python docs/snippets/task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir output/task-cases
 {FENCE}
 
 [Case downloads and reproducibility]({SITE}demos/#run) · [Contribution guide]({SOURCE}CONTRIBUTING.md) · [Engineering Skill]({SOURCE}.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License]({SOURCE}LICENSE).
@@ -217,10 +217,10 @@ MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表，将数据画
 | 分箱与风险评估 | 原生趋势图、固定分箱、多目标 IV / KS / PSI、件数与金额风险 | [比较区分度与稳定性]({SITE}demos/binning-stability/) |
 | 特征筛选 | 候选特征、筛选步骤、保留与删除理由 | [理解特征取舍]({SITE}demos/selection-correlation/) |
 | 相关性分析 | 带符号的冗余关系，分别查看 raw / WOE 证据 | [检查特征之间的关系]({SITE}demos/selection-correlation/#correlation) |
-| 模型分交叉 | 同一主等级内的风险分离与组合证据 | [比较辅助模型分]({SITE}demos/score-cross/) |
+| 模型分交叉 | 两项外部来源分之间的风险分离与组合证据 | [比较外部来源分]({SITE}demos/score-cross/) |
 | 规则挖掘 · Experimental | 候选来源、筛选、覆盖与独立验证 | [用证据审查规则]({SITE}demos/rule-evidence/) |
 
-[七个实战案例]({SITE}demos/)共用 18,000 行合成申请，发现、验证、观察分区独立。人工图表和 Agent 查询读取实际报告；合成统计用于展示能力，不代表真实信贷业务效果。
+[七个实战案例]({SITE}demos/)共用 Home Credit 的全部 356,255 条申请。原始特征与 TARGET 来自比赛，APPLY_DATE 为模拟日期；四个有标签分区之后，保留原比赛 test 的 48,744 条无标签记录。[输入与五分区说明]({SITE}user-guide/home-credit-data/)解释样本用途与日期边界。
 
 ## 基于 MARS，构建你的 Agent
 
@@ -237,29 +237,29 @@ MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型�
 
 ## 安装
 
-本页示例对应 **MARS 0.0.28**。0.0.28 发布到 PyPI 后安装：
+**MARS 0.0.28 已发布到 PyPI**，可安装固定版本：
 
 {FENCE}bash
 pip install mars-risk==0.0.28
 {FENCE}
 
-若 PyPI 尚未提供 0.0.28，或需要开发分支，先从源码安装：
+需要当前开发分支时，从源码安装：
 
 {FENCE}bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-基础包支持 Python **3.8–3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
+基础包支持 Python **3.8-3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
 
 ## 先得到一份报告
 
-在空工作目录运行这个独立示例：
+在仓库根目录准备三个官方 CSV，再运行共享示例。单独复制代码时，将 [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) 放在脚本旁；下载和路径参数见[数据准备指南]({SITE}user-guide/home-credit-data/)：
 
 {FENCE}python
 {code}
 {FENCE}
 
-[共享可运行源码]({SOURCE}docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/)。八行小样本用于说明接口；完整趋势图和可下载结果见[分箱实战]({SITE}demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
+[共享可运行源码]({SOURCE}docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/)。helper 一次准备两个 application 文件；完整趋势图和可下载结果见[分箱实战]({SITE}demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
 
 ## 将同一份结果交给 AI Agent
 
@@ -287,7 +287,7 @@ pip install "git+https://github.com/leeesq/mars-risk.git"
 git clone https://github.com/leeesq/mars-risk.git
 cd mars-risk
 pip install -e ".[docs]"
-python docs/snippets/task_cases.py --case all --output-dir output/task-cases
+python docs/snippets/task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir output/task-cases
 {FENCE}
 
 [案例下载与复现说明]({SITE}demos/#run) · [贡献指南]({SOURCE}CONTRIBUTING.md) · [工程 Skill]({SOURCE}.codex/skills/mars-risk-engineering/SKILL.md) · [MIT License]({SOURCE}LICENSE)。

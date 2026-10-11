@@ -6,8 +6,7 @@ description: MARS 0.0.28 的版本安装、main 开发安装、Python 兼容策�
 
 ## 安装 0.0.28
 
-本站及 README 对应 **MARS 0.0.28**。0.0.28 发布后使用以下命令；
-若 PyPI 尚未提供该版本，先使用下方源码安装。
+**MARS 0.0.28 已发布到 PyPI**。使用以下命令安装固定版本。
 
 ```bash
 pip install mars-risk==0.0.28
@@ -19,7 +18,7 @@ pip install mars-risk==0.0.28
 
 ## 源码安装与 main 开发
 
-发布前体验本文能力，或参与 main 开发时，从当前源码安装：
+参与 main 开发或使用尚未发布的后续修复时，从当前源码安装：
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
@@ -54,8 +53,7 @@ python -m pip install -c constraints/python38.txt -e .
 
 ## 可选依赖
 
-以下版本命令在 **0.0.28 发布后**使用；PyPI 尚未提供该版本时，
-先克隆 main，并在仓库根目录使用右侧的源码命令。可选能力使用 Python 3.10+。
+以下版本命令安装已发布的 **0.0.28**；参与开发时使用右侧的源码命令。可选能力使用 Python 3.10+。
 
 | 场景 | 0.0.28 版本安装 | main 源码安装 |
 | --- | --- | --- |

@@ -1,69 +1,49 @@
 ---
-description: 从安装后的空环境完成一次可运行的风险评估，并读取结构化结果。
+description: 使用 Home Credit 共享输入，完成固定分箱、原生图和保存查询。
 ---
 
 # 10 分钟 Quickstart
 
-本页使用 MARS **0.0.28**，从小型 Polars 数据集完成风险评估并读取返回对象。
-0.0.28 发布后使用以下命令；若 PyPI 尚未提供该版本，先使用下方源码安装。
+MARS 0.0.28 已发布到 PyPI，基础包支持 Python 3.8-3.12。
 
 ```bash
 pip install mars-risk==0.0.28
 ```
 
-发布前体验或 main 开发使用源码：
+当前开发源码可使用以下命令。
 
 ```bash
 pip install "git+https://github.com/leeesq/mars-risk.git"
 ```
 
-Python 兼容策略与可选依赖见[安装指南](installation.md)。
+## 准备输入
 
-## 1. 运行完整示例
+本页复用当前公开案例的真实原始特征与标签，APPLY_DATE 为模拟日期。
+先按[Home Credit 输入指南](../user-guide/home-credit-data.md)取得三个 CSV。
+从仓库根目录运行；单独复制示例时，将[共享 helper](../snippets/home_credit_data.py)放在脚本旁。
+完整五分区、null 标签、中文字典与金额角色由 helper 统一准备。
 
-下面的代码块是受测试的完整示例，可以直接保存并运行。样本包含原始申请日期、已有月份分组、
-两个数值特征、一个类别特征和二分类 target。
-
-```python
---8<-- "docs/snippets/quickstart.py"
-```
-
-## 2. 读取返回对象
-
-`profile_risk()` 返回 `MarsRiskProfile`，而不是直接返回文件路径：
-
-| 字段 | 含义 |
-| --- | --- |
-| `report` | `MarsBinningReport`，包含汇总、明细、趋势和导出方法 |
-| `binner` | 本次拟合的分箱器，可复用相同规则转换其他数据 |
-| `targets` | 本次评估的 target 列表 |
-| `metadata` | 特征、分组、日期和分箱配置等运行元数据 |
-
-`group_col="month"` 决定报告按哪个分组展开；`time_col="apply_dt"` 保存真实日期范围并支持按日
-缺失趋势。两者职责不同，详见[数据角色与运行边界](../concepts/data-and-runs.md)。
-
-## 3. 导出报告
-
-在示例末尾的 `report` 对象上继续调用：
+## 分析、导图、保存与查询
 
 ```python
-report.write_html(
-    "risk_report.html",
-    report_name="Current-period risk review",
-    max_plots=20,
-    chart_embed_mode="auto",
-)
+--8<-- "docs/snippets/readme_quickstart.py:quickstart"
 ```
 
-HTML 图表需要评估时已经提供有效 `time_col`。需要控制基准期、复用分箱规则或评估无标签当前期时，
-进入[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
+profile_risk() 返回 MarsRiskProfile，report 为 MarsBinningReport，binner 为本次拟合规则。
+benchmark_df 只来自 0train，用于拟合及 PSI 参考。group_col 比较五分区，time_col 保存模拟日期范围；模拟月视图由完整案例另行生成。
+无标签组参加分布，监督指标只用已观测标签。详细表与状态见[分箱案例](../demos/binning-stability.md)。
 
-## 下一步
+## 在新进程继续查询
 
-- 查询、保存并交给其他 Agent：[外部 Agent 指南](../user-guide/external-agents.md)。
+```python
+from mars.reporting import load_report
 
-- 检查缺失、分布和 PSI：[数据画像](../user-guide/data-profiling.md)。
-- 使用基准期规则评估当前期：[分箱与风险评估](../user-guide/binning-risk-evaluation.md)。
-- 生成、独立验证并部署策略规则：[规则生成与部署](../user-guide/rule-mining.md)。
-- 监控尚未充分表现的数据：[特征与模型监控](../user-guide/monitoring.md)。
-- 查询精确签名、默认值和异常：[API Reference](../reference/index.md)。
+saved = load_report("risk_report.marsreport")
+print(saved.describe())
+page = saved.query_page("summary", features="EXT_SOURCE_2", limit=1)
+print(page["reference"], page["data"])
+saved.write_excel("risk_report.xlsx")
+```
+
+恢复为 ReportSnapshot，查询已有统计无需原 CSV、分析器或内置 Agent。需要新的维度或重新拟合时，再读取原数据计算。
+[七类当前案例](../demos/index.md) · [外部 Agent 指南](../user-guide/external-agents.md) · [安装与依赖](installation.md) · [API](../reference/index.md)

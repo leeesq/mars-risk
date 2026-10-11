@@ -1,69 +1,42 @@
 {
   "case": 1,
+  "report_id": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
   "consumer": "deterministic public API queries; no LLM",
-  "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
-  "question": "这份数据能直接用吗？",
+  "question": "全量数据与无标签组有哪些质量差异？",
   "query": {
-    "question": "首先检查哪些字段的数据质量？",
+    "question": "真实外部来源分覆盖率及字段单位",
     "reference": {
-      "report_id": "5919494c-bf16-4986-8949-0ff69b105153",
+      "report_id": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
       "table": "overview",
       "query": {
         "offset": 0,
-        "limit": 8
+        "limit": 3,
+        "features": [
+          "EXT_SOURCE_2",
+          "EXT_SOURCE_3"
+        ]
       }
     },
-    "total_rows": 6,
-    "returned_rows": 6,
+    "total_rows": 2,
+    "returned_rows": 2,
     "omitted_rows": 0,
     "next_offset": null,
     "rows": [
       {
-        "feature": "aux_probability",
+        "feature": "EXT_SOURCE_2",
         "dtype": "Float64",
-        "missing_rate": 0.005,
+        "missing_rate": 0.0018750614026469803,
         "zeros_rate": 0.0,
-        "mean": 0.5068335591819082
+        "mean": 0.5148899751498333
       },
       {
-        "feature": "aux_score",
+        "feature": "EXT_SOURCE_3",
         "dtype": "Float64",
-        "missing_rate": 0.005,
+        "missing_rate": 0.19545830935706165,
         "zeros_rate": 0.0,
-        "mean": {
-          "$mars": "float",
-          "value": "inf"
-        }
-      },
-      {
-        "feature": "income",
-        "dtype": "Float64",
-        "missing_rate": 0.005833333333333334,
-        "zeros_rate": 0.0,
-        "mean": 6691.763730688807
-      },
-      {
-        "feature": "main_score",
-        "dtype": "Float64",
-        "missing_rate": 0.0047777777777777775,
-        "zeros_rate": 0.0,
-        "mean": 600.170177748387
-      },
-      {
-        "feature": "sparse",
-        "dtype": "Float64",
-        "missing_rate": 0.98,
-        "zeros_rate": 0.0,
-        "mean": 1.0
-      },
-      {
-        "feature": "channel",
-        "dtype": "String",
-        "missing_rate": 0.0,
-        "zeros_rate": 0.0,
-        "mean": null
+        "mean": 0.5093502021860119
       }
     ]
   },
-  "unavailable": "观察期 late60 没有有效标签，画像和 PSI 无法判断这个目标的模型效果下降。"
+  "unavailable": "July 是原始比赛测试来源；模拟日期的差异不能解释成真实时间漂移。"
 }
