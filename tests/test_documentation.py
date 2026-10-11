@@ -324,6 +324,20 @@ def test_python_version_dependency_markers_cover_supported_range() -> None:
             assert str(active[0].specifier) == expected_spec
 
 
+@pytest.mark.parametrize("extra_name", ["docs", "dev"])
+def test_documentation_dependencies_exclude_incompatible_highlighter(extra_name: str) -> None:
+    """两种文档安装入口应排除 mkdocstrings 尚未适配的高亮构造接口。"""
+    with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:
+        extras: dict[str, list[str]] = tomllib.load(file)["project"]["optional-dependencies"]
+    requirements: list[Requirement] = [Requirement(value) for value in extras[extra_name]]
+    highlighter_requirements: list[Requirement] = [
+        requirement for requirement in requirements if requirement.name == "pymdown-extensions"
+    ]
+    assert len(highlighter_requirements) == 1
+    assert "12.1" in highlighter_requirements[0].specifier
+    assert "12.2" not in highlighter_requirements[0].specifier
+
+
 def test_default_dependencies_include_pandas_styler_runtime() -> None:
     """默认安装必须包含基础报告和 selector 所需的 Pandas Styler 运行时。"""
     with (PROJECT_ROOT / "pyproject.toml").open("rb") as file:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import os
@@ -354,6 +355,69 @@ def _pandas_arrow(frame: pd.DataFrame) -> Any:
     return table
 
 
+def _decode_enum_categories(encoded: bytes) -> list[str]:
+    """解析 Polars Enum 元数据的 UTF-8 字节长度前缀，保留类别顺序和空字符串。"""
+    categories: list[str] = []
+    position = 0
+    while position < len(encoded):
+        separator = encoded.find(b";", position)
+        length_bytes = encoded[position:separator]
+        if separator < 0 or not length_bytes.isdigit():
+            raise ValueError("Invalid Polars Enum category metadata.")
+        end = separator + 1 + int(length_bytes)
+        if end > len(encoded):
+            raise ValueError("Truncated Polars Enum category metadata.")
+        categories.append(encoded[separator + 1:end].decode("utf-8"))
+        position = end
+    return categories
+
+
+def _restore_polars_enums(
+    frame: pl.DataFrame, data: BytesIO, declared_schema: dict[str, str],
+) -> pl.DataFrame:
+    """按真实 Parquet Enum 标记恢复旧 Polars 退化类型，随后仍严格核对完整 schema。"""
+    categorical = [
+        column for column, dtype in frame.schema.items() if isinstance(dtype, pl.Categorical)
+    ]
+    if not categorical:
+        return frame
+    data.seek(0)
+    arrow_schema = pq.read_schema(data)
+    casts: list[pl.Expr] = []
+    for column in categorical:
+        metadata = arrow_schema.field(column).metadata or {}
+        if b"_PL_ENUM_VALUES2" in metadata:
+            categories = _decode_enum_categories(metadata[b"_PL_ENUM_VALUES2"])
+        elif metadata.get(b"POLARS.CATEGORICAL_TYPE") == b"ENUM":
+            # 旧 Parquet 非空字典保留未使用类别；零行文件没有 row group 或字典值。
+            if frame.height:
+                data.seek(0)
+                dictionaries = pq.read_table(data, columns=[column]).column(0).chunks
+                categories = dictionaries[0].dictionary.to_pylist()
+                if any(chunk.dictionary.to_pylist() != categories for chunk in dictionaries):
+                    raise ValueError(f"Inconsistent Parquet Enum dictionaries: {column!r}.")
+            else:
+                declared = declared_schema.get(column, "")
+                prefix = "Enum(categories="
+                if not declared.startswith(prefix) or not declared.endswith(")"):
+                    continue
+                # 格式 1 的旧零行文件只在 manifest 保存完整类别；literal_eval 不执行代码。
+                try:
+                    categories = ast.literal_eval(declared[len(prefix):-1])
+                except (SyntaxError, ValueError) as exc:
+                    raise ValueError(f"Invalid saved Enum categories: {column!r}.") from exc
+        else:
+            continue
+        if (
+            not isinstance(categories, list)
+            or any(not isinstance(value, str) for value in categories)
+            or len(categories) != len(set(categories))
+        ):
+            raise ValueError(f"Invalid saved Enum categories: {column!r}.")
+        casts.append(pl.col(column).cast(pl.Enum(categories)))
+    return frame.with_columns(casts) if casts else frame
+
+
 def save_report(report: Report, path: str | Path, *, overwrite: bool = False) -> None:
     """逐表写 ZIP；仅在全部完成后原子安装目标文件。"""
     destination = Path(path)
@@ -474,6 +538,7 @@ def load_report(path: str | Path) -> ReportSnapshot:
                 data = BytesIO(archive.read(entry["path"]))
                 if entry["backend"] == "polars":
                     frame = pl.read_parquet(data)
+                    frame = _restore_polars_enums(frame, data, entry["schema"])
                 elif entry["backend"] == "pandas":
                     frame = pq.read_table(data).to_pandas()
                 else:

@@ -7,6 +7,7 @@ import math
 import sys
 import zipfile
 from datetime import date, datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -614,6 +615,67 @@ def test_nullable_float_and_enum_roundtrip(tmp_path: Path) -> None:
     assert_polars_equal(
         polars_frame, load_report(tmp_path / "enum.marsreport").get_table("overview")
     )
+
+
+@pytest.mark.parametrize("rows", [0, 2])
+@pytest.mark.parametrize("degraded_reader", [False, True])
+def test_enum_artifact_restores_all_categories_after_legacy_reader_degradation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rows: int, degraded_reader: bool,
+) -> None:
+    categories = ["a;b", "中文", "🙂未使用", "", "a'[];b"]
+    frame = pl.DataFrame({
+        "feature": pl.Series(["income"] * rows, dtype=pl.String),
+        "kind": pl.Series(categories[:rows], dtype=pl.Enum(categories)),
+        "value": pl.Series([0.5] * rows, dtype=pl.Float64),
+    })
+    report = MarsProfileReport(frame, {}, {})
+    path = tmp_path / "legacy-enum.marsreport"
+    report.save(path)
+    if degraded_reader:
+        read_parquet = pl.read_parquet
+
+        def legacy_read(*args: Any, **kwargs: Any) -> pl.DataFrame:
+            """在现代版本也复现旧 reader 将 Enum 读取为 Categorical 的真实退化。"""
+            return read_parquet(*args, **kwargs).with_columns(pl.col("kind").cast(pl.Categorical))
+
+        monkeypatch.setattr(pl, "read_parquet", legacy_read)
+    restored = load_report(path)
+    assert_polars_equal(restored.get_table("overview"), frame)
+    assert restored.get_table("overview").schema["kind"].categories.to_list() == categories
+    assert restored.report_id == report.report_id and restored.describe() == report.describe()
+
+
+@pytest.mark.parametrize(
+    "corruption", ["categorical_without_enum_marker", "wrong_schema", "malformed_enum_schema"],
+)
+def test_enum_restore_keeps_parquet_type_and_manifest_schema_validation_strict(
+    tmp_path: Path, corruption: str,
+) -> None:
+    frame = pl.DataFrame({
+        "feature": pl.Series([], dtype=pl.String),
+        "kind": pl.Series([], dtype=pl.Enum(["a", "unused"])),
+    })
+    report = MarsProfileReport(frame, {}, {})
+    path = tmp_path / "original-enum.marsreport"
+    report.save(path)
+    with zipfile.ZipFile(path) as source:
+        manifest = json.loads(source.read("manifest.json"))
+        payloads = {name: source.read(name) for name in source.namelist() if name != "manifest.json"}
+    if corruption == "categorical_without_enum_marker":
+        payload = BytesIO()
+        frame.with_columns(pl.col("kind").cast(pl.Categorical)).write_parquet(payload)
+        payloads[manifest["tables"]["overview"]["path"]] = payload.getvalue()
+    elif corruption == "wrong_schema":
+        manifest["tables"]["overview"]["schema"]["kind"] = "String"
+    else:
+        manifest["tables"]["overview"]["schema"]["kind"] = "Enum(categories=[)"
+    broken = tmp_path / "invalid-enum.marsreport"
+    with zipfile.ZipFile(broken, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for name, content in payloads.items():
+            archive.writestr(name, content)
+    with pytest.raises(ValueError, match="schema, row count or column order|Invalid saved Enum"):
+        load_report(broken)
 
 
 def test_profile_states_are_exceptional_and_survive_export_and_restore(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "source_commit": "1b2b250368408933b691e852886eeaa786b5cb32",
+  "source_commit": "409637e1ef853368ab890c442de41d497322dded",
   "source_status": "known git checkout",
   "command": "python task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir current-cases",
   "data_config": {
@@ -1337,7 +1337,7 @@
     "src/mars/reporting/_metadata.py": "d061707fc42d93391965199a4a8e826781cfc5b07c6220310943bfcc7e02056e",
     "src/mars/feature/selection/linear.py": "5c0dd0d8a65bc3ed32e54e9217b4601a441c7e30c07d7b873f585ec833a02f77",
     "src/mars/reporting/_query.py": "e2898fd928a04d1c7e389e9b02195630573efff4d6b39f9f8fa4296481535c42",
-    "src/mars/reporting/_artifact.py": "5cecdd5c90d8def3b16030cacfb7f21fbdd54e5a5928cce8ddb155f90ff24790",
+    "src/mars/reporting/_artifact.py": "7c3426945aa87f6702607ae99e97be042d33bf1486f09cd9e76203c158f43960",
     "src/mars/rule/workflow.py": "13d877751efbd9aff4100dc90091bbfa32a8949418bc1000ddeb1b28715e07ed",
     "src/mars/rule/evaluator.py": "8e8a3483b0f950b29e912249b308378d1901857cd6df130d81601826325fa6b0",
     "src/mars/rule/report.py": "42545879f5d078c2fc7e6e6fcc4788751b9f89926acaaf467c161546fa87c2c9",

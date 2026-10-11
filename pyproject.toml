@@ -96,9 +96,11 @@ tuning = [
     "optuna-integration>=4.0.0"
 ]
 
+# docs/dev 限制高亮版本：mkdocstrings 1.0.6 未适配 PyMdown 12.2 新增的必填 md。
 docs = [
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
+    "pymdown-extensions<12.2",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
     "mkdocs-jupyter>=0.25.0",
     "nbclient>=0.10.0",
@@ -117,6 +119,7 @@ dev = [
     "pydoclint>=0.8.0",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.25.0",
+    "pymdown-extensions<12.2",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
     "mkdocs-jupyter>=0.25.0",
     "nbclient>=0.10.0",
