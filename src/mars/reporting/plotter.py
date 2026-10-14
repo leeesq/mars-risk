@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import unicodedata
 import uuid
+from collections.abc import Mapping
 from io import BytesIO
 from typing import Literal, Union, cast
 
@@ -14,13 +16,14 @@ from IPython.display import HTML, display
 
 from mars.compute import RiskCorrBaseline
 from mars.core.constants import DIVISION_EPSILON
-from mars.reporting._matplotlib import ensure_matplotlib_environment
+from mars.reporting._matplotlib import _resolve_cjk_font_family, ensure_matplotlib_environment
 from mars.reporting._time_range import TimeRange, normalize_time_range
 
 ensure_matplotlib_environment()
 
 import matplotlib.gridspec as gridspec  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.text import Text  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 
@@ -255,6 +258,8 @@ class MarsPlotter:
         show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
         time_range: tuple[str, str] | None = None,
+        *,
+        include_total: bool = True,
     ) -> str:
         """
         将单个特征的分箱风险趋势图渲染为可嵌入 HTML 片段。
@@ -279,6 +284,8 @@ class MarsPlotter:
 
         time_range : tuple[str, str] | None
             由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计和已解析的 RC 参考。
 
         Returns
         -------
@@ -316,6 +323,7 @@ class MarsPlotter:
             risk_corr_reference_df=risk_corr_reference_df,
             show_risk=show_risk,
             time_range=time_range,
+            include_total=include_total,
         )
         if fig is None:
             return ""
@@ -332,6 +340,10 @@ class MarsPlotter:
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         time_range: tuple[str, str] | None = None,
+        *,
+        include_total: bool = True,
+        display_name: str | None = None,
+        group_time_ranges: Mapping[str | None, TimeRange | None] | None = None,
     ) -> plt.Figure | None:
         """构建风险趋势图对象但不直接展示。"""
         normalized_time_range: TimeRange = normalize_time_range(time_range)
@@ -416,9 +428,12 @@ class MarsPlotter:
         else:
             miss_str = "nan%"
 
-        groups = [group for group in plot_df[group_col].astype(str).unique() if group != "Total"]
-        groups = sorted(groups)
-        all_groups = groups + (["Total"] if has_total_panel else [])
+        groups: list[str | None] = sorted(
+            group for group in plot_df[group_col].dropna().map(str).unique() if group != "Total"
+        )
+        if plot_df[group_col].isna().any():
+            groups.append(None)
+        all_groups = groups + (["Total"] if has_total_panel and include_total else [])
         time_range_label = f"[{normalized_time_range[0]} ~ {normalized_time_range[1]}]"
 
         feature_reference_pd: pd.DataFrame | None = None
@@ -429,10 +444,19 @@ class MarsPlotter:
 
         n_panels = len(all_groups)
         if n_panels == 0:
+            if has_total_panel and not include_total:
+                raise ValueError("`include_total=False` leaves no risk trend panels to plot.")
             return None
 
         total_width = MarsPlotter.UNIT_WIDTH * n_panels
-        total_height = MarsPlotter.UNIT_HEIGHT + 0.7
+        display_lines = (
+            MarsPlotter._wrap_display_name(display_name, width=max(30, n_panels * 35))
+            if display_name else []
+        )
+        original_height = MarsPlotter.UNIT_HEIGHT + 0.7
+        total_height = original_height + 0.32 * len(display_lines)
+        if group_time_ranges:
+            total_height += 0.28
         fig = plt.figure(figsize=(total_width, total_height))
 
         base_h = 2.5
@@ -444,7 +468,9 @@ class MarsPlotter:
             1, n_panels,
             figure=fig,
             wspace=0.09,
-            left=0.05, right=0.95, top=0.75, bottom=0.15
+            left=0.05, right=0.95,
+            top=original_height * 0.75 / total_height,
+            bottom=original_height * 0.15 / total_height,
         )
 
         if has_labeled_target:
@@ -458,17 +484,21 @@ class MarsPlotter:
             summary_str_1 = f"{feature}  (Label-Free Mode),  Total: {int(total_count)},  {time_range_label}"
             summary_str_2 = f"Missing: {miss_str},  PSI Check Only"
 
-        fig.text(
-            0.04, 0.94, summary_str_1 + "\n" + summary_str_2,
+        summary_lines = display_lines + [summary_str_1, summary_str_2]
+        summary_text = fig.text(
+            0.04, 1 - original_height * 0.06 / total_height, "\n".join(summary_lines),
             fontsize=fs_title + 0.85, va="top", ha="left", linespacing=1.6,
             bbox=dict(boxstyle="round,pad=0.4", fc="#f0f0f0", ec="#cccccc", alpha=0.8),
         )
+        summary_text.set_parse_math(False)
 
         global_max_count = 0.0
         global_max_bad = 0.0
         global_max_amt_bad = 0.0
-        for group in all_groups:
-            tmp_df = plot_df[plot_df[group_col] == group]
+        # Total 开关只影响可见面板。共享坐标范围仍使用原有全部组，避免缩放误变。
+        scale_groups = groups + (["Total"] if has_total_panel else [])
+        for group in scale_groups:
+            tmp_df = MarsPlotter._select_group_rows(plot_df, group_col, group)
             if tmp_df.empty:
                 continue
 
@@ -497,7 +527,7 @@ class MarsPlotter:
             for spine in ax.spines.values():
                 spine.set_linewidth(0.2)
 
-            df_g = plot_df[plot_df[group_col] == group].sort_values("bin_index")
+            df_g = MarsPlotter._select_group_rows(plot_df, group_col, group).sort_values("bin_index")
             if df_g.empty:
                 continue
 
@@ -658,12 +688,13 @@ class MarsPlotter:
 
             g_miss_row = df_g[df_g["bin_index"] == -1]
             g_miss_str = f"{g_miss_row['count'].sum() / total_count_g:.0%}" if not g_miss_row.empty and total_count_g > 0 else "0%"
+            group_label = group if group is not None else "Unknown group"
 
             if has_labeled_target and not has_observed_risk:
                 total_bad = df_g["bad"].sum()
                 total_observed = df_g["observed_count"].sum()
                 ax.set_title(
-                    f"{group} ({int(total_bad):,}/{int(total_observed):,}: "
+                    f"{group_label} ({int(total_bad):,}/{int(total_observed):,}: "
                     f"n.a., n: {int(total_count_g):,})",
                     fontsize=fs_title + 0.85,
                     y=1.05,
@@ -677,7 +708,7 @@ class MarsPlotter:
                 total_observed = df_g["observed_count"].sum()
                 avg_bad_rate = total_bad / total_observed
                 ax.set_title(
-                    f"{group} ({int(total_bad):,}/{int(total_observed):,}: "
+                    f"{group_label} ({int(total_bad):,}/{int(total_observed):,}: "
                     f"{avg_bad_rate:.1%}, n: {int(total_count_g):,})",
                     fontsize=fs_title + 0.85,
                     y=1.05,
@@ -724,12 +755,59 @@ class MarsPlotter:
                         text = f"{suffix}: {lft:.2f}, {bd}, {rt:.1%}"
                         ax.text(0.02, 0.987 if suffix == "L" else 0.935, text, transform=ax.transAxes, color=color_blue, fontsize=fs_text + 1.8, ha="left", va="top")
             else:
-                ax.set_title(f"{group}   (Total: {int(total_count_g)})", fontsize=fs_title + 0.85, y=1.05, ha="center")
+                ax.set_title(f"{group_label}   (Total: {int(total_count_g)})", fontsize=fs_title + 0.85, y=1.05, ha="center")
                 psi_color = "red" if psi_val > 0.1 else "black"
                 ax.text(0.48, 1.015, f"PSI: {psi_val:.2f}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
                 ax.text(0.52, 1.015, f"Miss: {g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
 
+            if group_time_ranges and group in group_time_ranges:
+                group_range = group_time_ranges[group]
+                range_label = (
+                    f"[{group_range[0]} ~ {group_range[1]}]"
+                    if group_range is not None else "[Date range: unknown]"
+                )
+                ax.set_title(
+                    range_label + "\n" + ax.get_title(),
+                    fontsize=fs_title + 0.85, y=1.05, ha="center",
+                )
+            ax.title.set_parse_math(False)
+
+        # 复用 Matplotlib 字体发现，仅在当前图的 Text 上添加中文字体回退。
+        cjk_family = _resolve_cjk_font_family()
+        if cjk_family is not None:
+            for artist in fig.findobj(match=Text):
+                artist.set_fontfamily([*artist.get_fontfamily(), cjk_family])
+
         return fig
+
+    @staticmethod
+    def _select_group_rows(
+        frame: pd.DataFrame, group_col: str, group: str | None,
+    ) -> pd.DataFrame:
+        """独立保留未知分组，避免 pandas nullable 字符串变成混合排序键或业务组别名。"""
+        mask = frame[group_col].isna() if group is None else frame[group_col].eq(group)
+        return frame.loc[mask]
+
+    @staticmethod
+    def _wrap_display_name(value: str, *, width: int) -> list[str]:
+        """按中英文实际字符宽度换行中文名，避免长业务文本压住子图。"""
+        lines: list[str] = []
+        line = ""
+        used_width = 0
+        for character in value:
+            char_width = 2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+            if character == "\n" or used_width + char_width > width:
+                if line:
+                    lines.append(line)
+                line = ""
+                used_width = 0
+                if character == "\n":
+                    continue
+            line += character
+            used_width += char_width
+        if line:
+            lines.append(line)
+        return lines
 
     @staticmethod
     def plot_feature_binning_risk_trend(
@@ -741,6 +819,8 @@ class MarsPlotter:
         show_risk: Literal["count", "amt", "both"] = "both",
         dpi: int | None = 150,
         time_range: tuple[str, str] | None = None,
+        *,
+        include_total: bool = True,
     ) -> None:
         """
         绘制特征分箱风险趋势图 (支持有标签/无标签模式自适应)。
@@ -771,6 +851,8 @@ class MarsPlotter:
 
         time_range : tuple[str, str] | None
             由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计和已解析的 RC 参考。
 
         Returns
         -------
@@ -800,6 +882,7 @@ class MarsPlotter:
             risk_corr_reference_df=risk_corr_reference_df,
             show_risk=show_risk,
             time_range=time_range,
+            include_total=include_total,
         )
         if fig is None:
             return
@@ -820,6 +903,8 @@ class MarsPlotter:
         risk_corr_reference_df: pd.DataFrame | pl.DataFrame | None = None,
         risk_corr_baseline: RiskCorrBaseline = "total",
         time_range: tuple[str, str] | None = None,
+        *,
+        include_total: bool = True,
     ) -> None:
         """
         批量绘制多个特征的分箱风险趋势图。
@@ -853,6 +938,8 @@ class MarsPlotter:
             批量绘图阶段默认生效的 RC 基准。
         time_range : tuple[str, str] | None
             由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+        include_total : bool
+            是否显示 Total 面板；不改变特征排序和全局统计。
 
         Returns
         -------
@@ -934,4 +1021,5 @@ class MarsPlotter:
                 show_risk=show_risk,
                 dpi=dpi,
                 time_range=time_range,
+                include_total=include_total,
             )

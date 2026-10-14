@@ -647,6 +647,7 @@ def profile_risk(
         final_report._calculation_status = combined_status.to_pandas() if input_is_pandas else combined_status
         final_targets = [str(t) for t in target_list]
 
+    final_report._normalize_feature_tables()
     if raw_ks_values is not None:
         final_report = _apply_raw_ks(
             final_report,

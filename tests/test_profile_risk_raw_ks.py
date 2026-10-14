@@ -364,9 +364,8 @@ def test_raw_excel_html_and_figure_contain_final_values(tmp_path: Path) -> None:
     workbook = load_workbook(excel, data_only=True)
     try:
         for name, expected in [
-            ("综合指标", report.summary_table),
-            ("分组明细", report.detail_table),
-            ("KS", report.trend_tables["ks"]),
+            ("最终汇总", report.summary_table),
+            ("最终KS趋势", report.trend_tables["ks"]),
         ]:
             sheet = workbook[name]
             rows = list(sheet.values)
@@ -379,6 +378,22 @@ def test_raw_excel_html_and_figure_contain_final_values(tmp_path: Path) -> None:
                 equal_nan=True,
             )
         assert workbook["KS计算诊断"].max_row > 1
+        detail_sheet = workbook["分组明细"]
+        detail_headers = [cell.value for cell in detail_sheet[1]]
+        assert detail_headers[-1] == "ks"
+        assert "ks_bin" in detail_headers
+        assert "display_name" not in detail_headers
+        detail_records = pd.DataFrame(list(detail_sheet.values)[1:], columns=detail_headers)
+        np.testing.assert_allclose(
+            detail_records[["ks", "ks_bin"]].to_numpy(dtype=float),
+            report.detail_table.select("ks", "ks_bin").to_numpy(), equal_nan=True,
+        )
+        ks_pivot = workbook["KS"]._pivots[0]
+        assert ks_pivot.cache.cacheFields[ks_pivot.dataFields[0].fld].name == "ks"
+        assert "最终" in ks_pivot.dataFields[0].name
+        assert ks_pivot.cache.refreshOnLoad
+        assert ks_pivot.cache.recordCount == 0
+        assert ks_pivot.cache.records is None
     finally:
         workbook.close()
     html = tmp_path / "raw.html"

@@ -36,8 +36,11 @@ from mars.reporting._binning_html_helpers import (
     wrap_html_section,
 )
 from mars.reporting._matplotlib import require_pyplot
-from mars.reporting._metadata import export_report_semantics
-from mars.reporting._time_range import TimeRange, resolve_report_time_range
+from mars.reporting._metadata import (
+    FEATURE_IDENTITY_COLUMNS,
+    export_report_semantics,
+    is_metadata_column,
+)
 from mars.reporting.html_assets import build_html_runtime_script, build_html_styles
 from mars.utils.html import format_html_value, is_missing_html_value
 from mars.utils.logger import logger
@@ -483,12 +486,12 @@ class _BinningHtmlRenderer:
         if missing_by_day_pd is not None and not missing_by_day_pd.empty:
             missing_day_df = self._reorder_group_columns(
                 missing_by_day_pd.copy(),
-                ["feature", "dtype"],
+                list(FEATURE_IDENTITY_COLUMNS),
             )
             missing_day_semantics = {
                 col: "risk_high"
                 for col in missing_day_df.columns
-                if col not in {"feature", "dtype"}
+                if not is_metadata_column(col)
             }
             missing_day_percent_cols = [
                 col
@@ -498,7 +501,7 @@ class _BinningHtmlRenderer:
             missing_day_style_rules = {
                 col: self._trend_style_rule("missing")
                 for col in missing_day_df.columns
-                if col not in {"feature", "dtype"}
+                if not is_metadata_column(col)
             }
             missing_day_html = self._build_enhanced_table_html(
                 missing_day_df,
@@ -542,9 +545,9 @@ class _BinningHtmlRenderer:
             if metric not in trend_pd_map:
                 continue
             trend_df = self._sort_metric_display_df(
-                self._reorder_group_columns(trend_pd_map[metric].copy(), ["feature", "dtype"])
+                self._reorder_group_columns(trend_pd_map[metric].copy(), list(FEATURE_IDENTITY_COLUMNS))
             )
-            trend_semantics = {col: self._semantic_for_metric(metric) for col in trend_df.columns if col not in {"feature", "dtype"}}
+            trend_semantics = {col: self._semantic_for_metric(metric) for col in trend_df.columns if not is_metadata_column(col)}
             trend_percent_cols = [
                 col for col in trend_df.columns
                 if self._is_percent_column(col, metric_name=metric)
@@ -552,7 +555,7 @@ class _BinningHtmlRenderer:
             trend_style_rules = {
                 col: self._trend_style_rule(metric)
                 for col in trend_df.columns
-                if col not in {"feature", "dtype"}
+                if not is_metadata_column(col)
             }
             table_html = self._build_enhanced_table_html(
                 trend_df,
@@ -645,6 +648,7 @@ class _BinningHtmlRenderer:
         ascending: bool,
         chart_embed_mode: str,
         chart_asset_dir: Path | None,
+        include_total: bool = True,
     ) -> str | None:
         """
         构建特征分箱风险趋势图 section。
@@ -652,10 +656,18 @@ class _BinningHtmlRenderer:
         方法会复用 ``MarsPlotter`` 的绘图路径，并按目标变量和排序配置生成
         可筛选的图表卡片；无明细数据时返回 ``None``。
         """
-        time_range: TimeRange = resolve_report_time_range(
-            report_meta=self.report_meta,
-            dt_col=self.dt_col,
+        from mars.reporting._binning_plot import _BinningPlotRenderer
+
+        plot_renderer = _BinningPlotRenderer(self._report)
+        # 分组、目标和 RC 参考仅解析一次，内嵌与资产导出消费同一原生图。
+        contexts, show_risk = plot_renderer._resolve_risk_trend_contexts(
+            sort_by=sort_by,
+            ascending=ascending,
+            max_plots=max_plots,
         )
+        contexts_by_target = {
+            str(context.target_key or context.target_name): context for context in contexts
+        }
         if detail_pd.empty:
             return None
 
@@ -726,35 +738,24 @@ class _BinningHtmlRenderer:
         try:
             from mars.reporting.plotter import MarsPlotter
 
-            for index, (y_val, chart_detail_pd, feature, data_source) in enumerate(
+            for index, (y_val, _chart_detail_pd, feature, data_source) in enumerate(
                 chart_candidates,
                 start=1,
             ):
+                context = contexts_by_target.get(y_val)
+                if context is None:
+                    continue
+                figure = plot_renderer._build_context_figure(
+                    context, feature, show_risk=show_risk, include_total=include_total,
+                )
+                if figure is None:
+                    continue
                 if effective_embed_mode == "inline":
-                    block_html = MarsPlotter.render_feature_binning_risk_trend_html(
-                        df_detail=chart_detail_pd,
-                        feature=feature,
-                        group_col=self.detail_group_col or "mars_group",
-                        target_name=y_val,
-                        show_risk="both",
-                        dpi=150,
-                        time_range=time_range,
+                    image_html = MarsPlotter._build_image_html(
+                        MarsPlotter._figure_to_base64(figure, dpi=150, close=True),
                     )
-                    if not block_html:
-                        continue
-                    image_html = block_html
                 else:
                     assert chart_asset_dir is not None
-                    figure = MarsPlotter._build_feature_binning_risk_figure(
-                        df_detail=chart_detail_pd,
-                        feature=feature,
-                        group_col=self.detail_group_col or "mars_group",
-                        target_name=y_val,
-                        show_risk="both",
-                        time_range=time_range,
-                    )
-                    if figure is None:
-                        continue
                     filename = self._build_chart_asset_filename(
                         index=index,
                         target_name=y_val,
@@ -1322,6 +1323,7 @@ class _BinningHtmlRenderer:
         include_trends: bool = True,
         include_detail: bool = True,
         include_charts: bool = True,
+        include_total: bool = True,
     ) -> None:
         """
         导出支持页面切换和大规模图表懒加载的交互式 HTML 报告。
@@ -1349,6 +1351,8 @@ class _BinningHtmlRenderer:
             是否包含分箱明细区域。
         include_charts : bool
             是否包含图表区域。
+        include_total : bool
+            是否在风险图中显示 Total 面板；不改变全局统计或 RC 基准。
 
         Notes
         -----
@@ -1380,6 +1384,7 @@ class _BinningHtmlRenderer:
             include_trends=include_trends,
             include_detail=include_detail,
             include_charts=include_charts,
+            include_total=include_total,
         )
 
     def _write_html_v2(
@@ -1395,6 +1400,7 @@ class _BinningHtmlRenderer:
         include_trends: bool,
         include_detail: bool,
         include_charts: bool,
+        include_total: bool,
     ) -> None:
         """
         写入新版页面化 HTML 评估报告及可选图表资产。
@@ -1530,6 +1536,7 @@ class _BinningHtmlRenderer:
                 ascending=ascending,
                 chart_embed_mode=chart_embed_mode,
                 chart_asset_dir=chart_asset_dir,
+                include_total=include_total,
             )
             if chart_html:
                 html_parts.append(self._mark_page_view(chart_html, "charts"))

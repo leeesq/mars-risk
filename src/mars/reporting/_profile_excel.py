@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import importlib.util
+from functools import partial
+from numbers import Real
 from typing import Any, List, Union
 
+import numpy as np
 import pandas as pd
 
 from mars.compute import to_pandas_frame
-from mars.reporting._metadata import export_report_semantics
+from mars.reporting._metadata import export_report_semantics, is_metadata_column
+from mars.reporting._semantics import _definition
+from mars.utils.html import format_html_value
+
+
+def _format_count(value: Any) -> str:
+    """计数的整数值显示为整数，加权小数与缺失沿用共享格式。"""
+    if isinstance(value, (int, np.integer)):
+        return format_html_value(int(value), compact_float=True)
+    if isinstance(value, Real) and float(value).is_integer():
+        return format_html_value(int(float(value)), compact_float=True)
+    return format_html_value(value, missing_text="—")
 
 
 class _ProfileExcelWriter:
@@ -103,7 +117,8 @@ class _ProfileExcelWriter:
                 #--------------------------------------------------------
                 if not to_pandas_frame(self.overview_table).empty:
                     overview_styler = self.show_overview()
-                    overview_styler.to_excel(writer, sheet_name="Overview", index=False)
+                    self._format_excel_styler(overview_styler, "overview").to_excel(writer, sheet_name="Overview", index=False)
+                    self._apply_number_formats(writer, "Overview", overview_styler.data, "overview")
                     wrote_any = True
 
                 #--------------------------------------------------------
@@ -126,7 +141,9 @@ class _ProfileExcelWriter:
                         prefix = "DQ" if metric in self.dq_tables else "Trend"
                         sheet_name = f"{prefix}_{metric.capitalize()}"[:31]
 
-                        styler.to_excel(writer, sheet_name=sheet_name, index=False)
+                        table_name = f'{"dq" if metric in self.dq_tables else "stats"}.{metric}'
+                        self._format_excel_styler(styler, table_name).to_excel(writer, sheet_name=sheet_name, index=False)
+                        self._apply_number_formats(writer, sheet_name, styler.data, table_name)
                         wrote_any = True
 
                         # 确保条件格式锚定的列与导出的表完全吻合
@@ -144,6 +161,7 @@ class _ProfileExcelWriter:
                         sheet_name=sheet_name,
                         index=False,
                     )
+                    self._apply_number_formats(writer, sheet_name, to_pandas_frame(comparison), f"comparison.{name}")
                     wrote_any = True
 
                 if not wrote_any:
@@ -155,6 +173,44 @@ class _ProfileExcelWriter:
 
         except Exception as exc:
             raise RuntimeError(f"Failed to export profile Excel to '{path}'.") from exc
+
+    def _number_formats(self, frame: pd.DataFrame, table_name: str) -> dict[str, str]:
+        """从实际字段语义取得 Excel 格式，不改变整数或加权小数的值。"""
+        fields: dict[str, Any] = self._report.describe()["tables"][table_name]["fields"]
+        metric = table_name.rsplit(".", 1)[-1]
+        formats: dict[str, str] = {}
+        for column in frame.columns:
+            if is_metadata_column(column) or not pd.api.types.is_numeric_dtype(frame[column]) or pd.api.types.is_bool_dtype(frame[column]):
+                continue
+            unit = fields[column]["unit"]
+            if unit in {"identifier", "type", "category", "dimension", "state", "state_reason", "original_value", "display", "index", "ordinal"}:
+                continue
+            if unit in {"ratio", "ratio_difference"} and metric not in {"auc", "auc_bin"} and column not in {"auc", "auc_bin"}:
+                number_format = "0.00%"
+            elif str(fields[column]["dtype"]).lower().startswith(("int", "uint")) or (
+                unit == "count" and frame[column].dropna().mod(1).eq(0).all()
+            ):
+                number_format = "#,##0"
+            else:
+                number_format = "#,##0.00"
+            formats[column] = number_format
+        return formats
+
+    def _format_excel_styler(
+        self, styler: pd.io.formats.style.Styler, table_name: str,
+    ) -> pd.io.formats.style.Styler:
+        """将数字格式合并进已有色阶样式，避免单元格样式覆盖列格式。"""
+        for column, number_format in self._number_formats(styler.data, table_name).items():
+            styler = styler.set_properties(subset=[column], **{"number-format": number_format})
+        return styler
+
+    def _apply_number_formats(
+        self, writer: Any, sheet_name: str, frame: pd.DataFrame, table_name: str,
+    ) -> None:
+        """设置空单元格及无 Styler 的比较表列格式，保留原统计数值。"""
+        for column, number_format in self._number_formats(frame, table_name).items():
+            index = frame.columns.get_loc(column)
+            writer.sheets[sheet_name].set_column(index, index, None, writer.book.add_format({"num_format": number_format}))
 
     def _apply_excel_formatting(
         self: Any,
@@ -175,15 +231,14 @@ class _ProfileExcelWriter:
         df_pd: pd.DataFrame = to_pandas_frame(raw_df).copy()
 
         # 匹配行排序
-        if sort_by in df_pd.columns or (isinstance(sort_by, list) and all(c in df_pd.columns for c in sort_by)):
+        if (isinstance(sort_by, str) and sort_by in df_pd.columns) or (isinstance(sort_by, list) and all(c in df_pd.columns for c in sort_by)):
             df_pd = df_pd.sort_values(by=sort_by, ascending=sort_ascending)
 
         # 匹配列排序
         df_pd = self._reorder_trend_cols(df_pd, group_ascending=group_ascending)
 
         # 动态识别趋势列范围，避免依赖固定列位置。
-        meta_and_stat = {"feature", "display_name", "dtype", "distribution", "mode_value", "total"}
-        time_cols = [c for c in df_pd.columns if c not in meta_and_stat]
+        time_cols = [c for c in df_pd.columns if not is_metadata_column(c) and c != "total"]
 
         if not time_cols:
             return
@@ -192,21 +247,15 @@ class _ProfileExcelWriter:
 
         # PSI 专用三色阶 (红绿灯)
         if metric == "psi":
-            meta_cols = ["feature", "display_name", "dtype", "distribution", "mode_value"]
-            start_col = 0
-            for i, col in enumerate(df_pd.columns):
-                if col not in meta_cols:
-                    start_col = i
-                    break
-
-            end_col = len(df_pd.columns) - 1
-
-            worksheet.conditional_format(1, start_col, len(df_pd), end_col, {
-                'type': '3_color_scale',
-                'min_type': 'num', 'min_value': 0.05, 'min_color': '#63BE7B', # 绿色
-                'mid_type': 'num', 'mid_value': 0.15, 'mid_color': '#FFEB84', # 黄色
-                'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # 红色
-            })
+            for column_index, column in enumerate(df_pd.columns):
+                if is_metadata_column(column) or not pd.api.types.is_numeric_dtype(df_pd[column]):
+                    continue
+                worksheet.conditional_format(1, column_index, len(df_pd), column_index, {
+                    'type': '3_color_scale',
+                    'min_type': 'num', 'min_value': 0.05, 'min_color': '#63BE7B', # 绿色
+                    'mid_type': 'num', 'mid_value': 0.15, 'mid_color': '#FFEB84', # 黄色
+                    'max_type': 'num', 'max_value': 0.25, 'max_color': '#F8696B'  # 红色
+                })
 
     def _get_styler(
         self: Any,
@@ -226,19 +275,12 @@ class _ProfileExcelWriter:
         df: pd.DataFrame = to_pandas_frame(df_input)
         if sort_by is not None:
             df = df.sort_values(by=sort_by, ascending=sort_ascending) # 使用统一参数进行底层排序
-        # 元数据排除列表
-        exclude_meta: List[str] = [
-            "feature", "display_name", "dtype",
-            "distribution",
-            "mode_value"
-            ]
-
         # 只对真实数值列应用渐变；文本状态、Boolean 和全空列保留原值。
         num_cols: pd.Index = df.select_dtypes(include=['number']).columns
         candidates: List[str] = subset_cols if subset_cols is not None else list(df.columns)
         gradient_cols: List[str] = [
             column for column in candidates
-            if column in num_cols and column not in exclude_meta and df[column].notna().any()
+            if column in num_cols and not is_metadata_column(column) and np.isfinite(df[column].dropna()).any()
         ]
 
         styler = df.style.set_caption(f"<b>{title}</b>").hide(axis="index")
@@ -250,30 +292,29 @@ class _ProfileExcelWriter:
                 subset=gradient_cols,
                 axis=None,
                 vmin=vmin,
-                vmax=vmax
+                vmax=vmax,
+                gmap=df[gradient_cols].where(np.isfinite(df[gradient_cols])),
             )
 
-        # 数值格式化逻辑
-        data_cols: List[str] = [c for c in num_cols if c != "distribution"]
-
-        pct_format: str = "{:.2%}"
-        float_format: str = "{:.2f}"
-
-        if fmt_as_pct:
-            if data_cols:
-                styler = styler.format(pct_format, subset=data_cols)
-        else:
-            pct_cols: List[str] = [
-                c for c in df.columns
-                if ("rate" in c or "ratio" in c) and (c in num_cols)
-            ]
-
-            if pct_cols:
-                styler = styler.format(pct_format, subset=pct_cols)
-
-            float_cols: List[str] = [c for c in data_cols if c not in pct_cols]
-            if float_cols:
-                styler = styler.format(float_format, subset=float_cols)
+        # 复用 HTML 数值格式；文本按 HTML 转义，比例的整数端点仍显示百分比。
+        formatters: dict[str, Any] = {}
+        for column in num_cols:
+            if is_metadata_column(column):
+                continue
+            unit = _definition(column)["unit"]
+            percent = fmt_as_pct or (
+                column not in {"auc", "auc_bin"} and (
+                    unit in {"ratio", "ratio_difference"}
+                    or "rate" in column or "ratio" in column
+                )
+            )
+            if not percent and unit in {"count", "count_or_weight"}:
+                formatters[column] = _format_count
+            elif not percent and pd.api.types.is_integer_dtype(df[column].dtype):
+                formatters[column] = "{:,}"
+            else:
+                formatters[column] = partial(format_html_value, as_percent=percent, missing_text="—")
+        styler = styler.format(formatters, na_rep="—", escape="html")
 
         # 分布迷你图样式
         if "distribution" in df.columns:

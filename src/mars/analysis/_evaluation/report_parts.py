@@ -34,7 +34,6 @@ TREND_METRICS: tuple[str, ...] = (
     "iv",
     "missing",
     "lift",
-    "bad_rate",
     "risk_corr",
 )
 
@@ -543,7 +542,7 @@ def _sort_trend_columns(pivot_df: pl.DataFrame) -> pl.DataFrame:
     sorted_cols: list[str] = sorted([col for col in cols if col != "Total"])
     if "Total" in cols:
         sorted_cols.append("Total")
-    return pivot_df.select(["feature", "dtype", *sorted_cols])
+    return pivot_df.select([c for c in ("feature", "dtype") if c in pivot_df.columns] + sorted_cols)
 
 
 def _aggregate_metric_source(
@@ -656,7 +655,6 @@ def build_binning_trend_tables(
             pivot_src
             .pivot(index="feature", on=group_col, values=metric)
             .sort("feature")
-            .with_columns(pl.lit("Float64").alias("dtype"))
         )
         trend_tables[metric] = _sort_trend_columns(pivot_df)
     return trend_tables

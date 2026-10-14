@@ -298,7 +298,7 @@ def test_profiler_external_benchmark_supports_total_only_psi(tmp_path: Path) -> 
     )
 
     psi_table = report.stats_tables["psi"]
-    assert psi_table.columns == ["feature", "dtype", "total"]
+    assert psi_table.columns == ["feature", "display_name", "dtype", "data_source", "total"]
     assert psi_table["total"][0] == pytest.approx(
         _manual_psi([0.2, 0.8], [0.8, 0.2])
     )

@@ -24,6 +24,7 @@ from mars.compute import (
 )
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
+from mars.reporting._metadata import is_metadata_column
 
 TrendColumnOrder = Literal["asc", "desc"]
 
@@ -721,8 +722,8 @@ class MarsMonitor(MarsBaseEstimator):
         """重排趋势宽表列，保持元数据列在前、取值列按配置排序。"""
         metadata_cols = [
             col
-            for col in ["feature", "bin_index", "bin_label", "bin_type", "dtype"]
-            if col in table.columns
+            for col in table.columns
+            if is_metadata_column(col)
         ]
         metadata_set = set(metadata_cols)
         value_cols = [col for col in table.columns if col not in metadata_set]
@@ -755,8 +756,7 @@ class MarsMonitor(MarsBaseEstimator):
     @staticmethod
     def _trend_value_columns(table: pl.DataFrame) -> list[str]:
         """识别趋势宽表中的时间或分组取值列，不包含 Total。"""
-        metadata_cols = {"feature", "dtype", "bin_index", "bin_label", "bin_type", "Total"}
-        return [col for col in table.columns if col not in metadata_cols]
+        return [col for col in table.columns if not is_metadata_column(col) and col != "Total"]
 
     @staticmethod
     def _natural_sort_key(value: str) -> list[tuple[int, int | str]]:

@@ -20,6 +20,7 @@ from mars.analysis._evaluation.context import (
     _resolve_evaluation_features,
     binning_requires_target,
     build_binner,
+    build_group_date_context,
     count_observed_target_classes,
     normalize_binary_target_column,
     prepare_benchmark_frame,
@@ -48,7 +49,12 @@ from mars.compute import (
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
 from mars.reporting import MarsBinningReport
-from mars.reporting._metadata import FeatureMetadata, normalize_metadata
+from mars.reporting._metadata import (
+    FeatureMetadata,
+    capture_feature_dtypes,
+    normalize_metadata,
+    validate_group_labels,
+)
 from mars.utils.date import MarsDate
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
@@ -329,6 +335,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             # 注入常量标签可以复用同一套聚合链路，后续再擦除标签依赖指标。
             working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
 
+        input_group_col = group_col
         working_df, group_col = prepare_group_context(
             working_df,
             group_col=group_col,
@@ -336,6 +343,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             time_grain=time_grain,
             mars_group_col=self.MARS_GROUP_COL,
         )
+        validate_group_labels(working_df, group_col)
         if amount_col is not None and amount_col not in working_df.columns:
             raise ValueError(f"Amount column '{amount_col}' was not found in dataframe.")
 
@@ -351,6 +359,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
 
         effective_feature_data_source = feature_data_source if feature_data_source is not None else {}
         metadata = normalize_metadata(feature_metadata, target_features, effective_feature_data_source)
+        feature_dtypes = capture_feature_dtypes(working_df, target_features)
         feature_source_map = {f: m.get("data_source") or "UNMAPPED" for f, m in metadata.items()}
 
         if binner is not None and self.binner_params:
@@ -645,6 +654,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "profile_by_input": profile_label,
             "group_col": group_col,
             "group_count": max(int(stats_long[group_col].n_unique()) - 1, 0),
+            "feature_dtypes": feature_dtypes,
             "dt_col": dt_col,
             "start_dt": None,
             "end_dt": None,
@@ -659,7 +669,18 @@ class MarsBinEvaluator(MarsBaseEstimator):
             "feature_start_reference_features": sorted((feature_start_reference or {}).get("feature_start_dates", {}).keys()),
             "feature_start_reference_dates": dict((feature_start_reference or {}).get("feature_start_dates", {})),
         }
-        start_dt, end_dt = resolve_date_bounds(working_df, dt_col)
+        if input_group_col is not None:
+            group_context = build_group_date_context(
+                working_df,
+                input_group_col=input_group_col,
+                internal_group_col=group_col,
+                time_col=dt_col,
+            )
+            report._report_meta["group_context"] = group_context
+            start_dt = group_context["total_range"]["start_dt"]
+            end_dt = group_context["total_range"]["end_dt"]
+        else:
+            start_dt, end_dt = resolve_date_bounds(working_df, dt_col)
         report._report_meta["start_dt"] = start_dt
         report._report_meta["end_dt"] = end_dt
         if has_target and original_target and original_target in working_df.columns:
@@ -809,6 +830,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 },
             )
         )
+        report._normalize_feature_tables()
         run = MarsRiskProfile(
             report=report,
             binner=active_binner,

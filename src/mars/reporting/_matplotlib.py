@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -73,3 +74,18 @@ def require_pyplot(*, feature_name: str) -> Any:
             "It is included in the base mars-risk installation; reinstall mars-risk if missing."
         )
     return pyplot
+
+
+@lru_cache(maxsize=1)
+def _resolve_cjk_font_family() -> str | None:
+    """从本机字体目录选择中文字体，仅供图内文本回退，不修改全局 rcParams。"""
+    from matplotlib import font_manager
+
+    available = {font.name for font in font_manager.fontManager.ttflist}
+    for family in (
+        "Microsoft YaHei", "SimHei", "PingFang SC", "Hiragino Sans GB",
+        "Noto Sans CJK SC", "Noto Sans CJK JP", "WenQuanYi Zen Hei", "Arial Unicode MS",
+    ):
+        if family in available:
+            return family
+    return None

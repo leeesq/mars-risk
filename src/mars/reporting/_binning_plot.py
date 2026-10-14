@@ -87,6 +87,44 @@ class _BinningPlotRenderer:
             dt_col=self.dt_col,
         )
 
+    def _resolve_group_time_ranges(self) -> dict[str | None, TimeRange | None]:
+        """只从显式分组的可靠保存元数据读取日期，不从组名或全局范围推测。"""
+        context = self.report_meta.get("group_context") or {}
+        if context.get("input_group_col") is None:
+            return {}
+        ranges: dict[str | None, TimeRange | None] = {}
+        for group in context.get("groups", []):
+            value = str(group["internal_value"]) if group["internal_value"] is not None else None
+            start, end = group.get("start_dt"), group.get("end_dt")
+            ranges[value] = (str(start), str(end)) if start and end else None
+        total_range = context.get("total_range") or {}
+        start, end = total_range.get("start_dt"), total_range.get("end_dt")
+        ranges["Total"] = (str(start), str(end)) if start and end else None
+        return ranges
+
+    def _build_context_figure(
+        self,
+        context: _RiskTrendPlotContext,
+        feature: str,
+        *,
+        show_risk: Literal["count", "amt", "both"],
+        include_total: bool,
+    ) -> Figure | None:
+        """统一消费已解析的全局与 RC 上下文，最后才控制可见 Total 面板。"""
+        display_name = (self.feature_metadata.get(feature) or {}).get("display_name")
+        return MarsPlotter._build_feature_binning_risk_figure(
+            df_detail=context.detail,
+            feature=feature,
+            group_col=context.group_col,
+            target_name=context.target_name,
+            risk_corr_reference_df=context.risk_corr_reference,
+            show_risk=show_risk,
+            time_range=context.time_range,
+            include_total=include_total,
+            display_name=display_name,
+            group_time_ranges=self._resolve_group_time_ranges(),
+        )
+
     @staticmethod
     def _build_plot_risk_corr_reference(
         detail_pd: pd.DataFrame,
@@ -123,7 +161,7 @@ class _BinningPlotRenderer:
 
         groups = sorted(
             group
-            for group in normal_detail[group_col].astype(str).drop_duplicates().tolist()
+            for group in normal_detail[group_col].dropna().map(str).drop_duplicates().tolist()
             if group != "Total"
         )
         if not groups:
@@ -290,6 +328,7 @@ class _BinningPlotRenderer:
         target: str | List[str] | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -308,14 +347,10 @@ class _BinningPlotRenderer:
         figures: list[Figure] = []
         for context in contexts:
             for feature in context.features:
-                figure = MarsPlotter._build_feature_binning_risk_figure(
-                    df_detail=context.detail,
-                    feature=feature,
-                    group_col=context.group_col,
-                    target_name=context.target_name,
-                    risk_corr_reference_df=context.risk_corr_reference,
+                figure = self._build_context_figure(
+                    context, feature,
                     show_risk=normalized_show_risk,
-                    time_range=context.time_range,
+                    include_total=include_total,
                 )
                 if figure is not None:
                     figure.set_dpi(dpi)
@@ -418,6 +453,7 @@ class _BinningPlotRenderer:
         dpi: int = 150,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -440,14 +476,10 @@ class _BinningPlotRenderer:
         index = 1
         for context in contexts:
             for feature in context.features:
-                figure = MarsPlotter._build_feature_binning_risk_figure(
-                    df_detail=context.detail,
-                    feature=feature,
-                    group_col=context.group_col,
-                    target_name=context.target_name,
-                    risk_corr_reference_df=context.risk_corr_reference,
+                figure = self._build_context_figure(
+                    context, feature,
                     show_risk=normalized_show_risk,
-                    time_range=context.time_range,
+                    include_total=include_total,
                 )
                 if figure is None:
                     continue
@@ -490,6 +522,7 @@ class _BinningPlotRenderer:
         overwrite: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -519,14 +552,10 @@ class _BinningPlotRenderer:
         index = 1
         for context in contexts:
             for feature in context.features:
-                figure = MarsPlotter._build_feature_binning_risk_figure(
-                    df_detail=context.detail,
-                    feature=feature,
-                    group_col=context.group_col,
-                    target_name=context.target_name,
-                    risk_corr_reference_df=context.risk_corr_reference,
+                figure = self._build_context_figure(
+                    context, feature,
                     show_risk=normalized_show_risk,
-                    time_range=context.time_range,
+                    include_total=include_total,
                 )
                 if figure is None:
                     continue
@@ -615,6 +644,7 @@ class _BinningPlotRenderer:
         target: str | List[str] | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -627,6 +657,7 @@ class _BinningPlotRenderer:
             target=target,
             risk_corr_baseline=risk_corr_baseline,
             show_risk=show_risk,
+            include_total=include_total,
             sort_by=sort_by,
             ascending=ascending,
             max_plots=max_plots,

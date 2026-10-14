@@ -214,7 +214,7 @@ def test_legacy_sources_merge_missing_semantics_and_dictionary_clipping() -> Non
     unknown = MarsDataProfiler().generate_profile(sample(), features=["income"], metrics=["mean"])
     assert unknown.get_feature("income")["metadata"] == {}
     assert unknown.describe()["business_context"]["currency"] == "unknown"
-    assert "display_name" not in unknown.overview_table.columns
+    assert unknown.overview_table["display_name"].null_count() == 1
     with pytest.raises(ValueError, match="Unknown feature"):
         unknown.get_feature("月收入")
 
@@ -409,7 +409,7 @@ def test_wide_trend_budget_heterogeneous_queries_and_persistent_evidence(tmp_pat
     payload = json.loads(context)
     assert len(context) <= 16000
     assert payload["evidence"][0]["returned_rows"] == 1
-    assert len(payload["evidence"][0]["rows"][0]) == 366
+    assert len(payload["evidence"][0]["rows"][0]) == 369
     assert "value_definition" in payload["description"]["tables"]["trend.ks"]
     short = json.loads(report.to_ai_context(queries=queries, max_chars=5000))
     assert short["evidence"][0]["rows"] and short["omitted"]
@@ -492,6 +492,10 @@ def test_snapshot_registration_and_agent_share_public_queries(tmp_path: Path) ->
     assert context.success
     assert context.data["description"]["feature_metadata"]["income"]["display_name"] == "月收入"
     assert session.get_report(handle).dataset_id is None
+    # 原生表已保存短身份列，后置篡改业务目录不能静默覆盖矛盾名称。
+    with pytest.raises(ValueError, match="Conflicting display_name"):
+        snapshot_report(restored)
+    restored.feature_metadata["income"]["display_name"] = "月收入"
     assert snapshot_report(restored).report_id == persistent_id
 
 
@@ -605,7 +609,7 @@ def test_nullable_float_and_enum_roundtrip(tmp_path: Path) -> None:
     pandas_report = MarsProfileReport(pandas_frame, {}, {})
     pandas_report.save(tmp_path / "nullable.marsreport")
     assert_frame_equal(
-        pandas_frame, load_report(tmp_path / "nullable.marsreport").get_table("overview")
+        pandas_report.overview_table, load_report(tmp_path / "nullable.marsreport").get_table("overview")
     )
     polars_frame = pl.DataFrame(
         {"feature": ["income"] * 2, "kind": pl.Series(["a", None], dtype=pl.Enum(["a", "b"]))}
@@ -613,7 +617,7 @@ def test_nullable_float_and_enum_roundtrip(tmp_path: Path) -> None:
     report = MarsProfileReport(polars_frame, {}, {})
     report.save(tmp_path / "enum.marsreport")
     assert_polars_equal(
-        polars_frame, load_report(tmp_path / "enum.marsreport").get_table("overview")
+        report.overview_table, load_report(tmp_path / "enum.marsreport").get_table("overview")
     )
 
 
@@ -640,7 +644,8 @@ def test_enum_artifact_restores_all_categories_after_legacy_reader_degradation(
 
         monkeypatch.setattr(pl, "read_parquet", legacy_read)
     restored = load_report(path)
-    assert_polars_equal(restored.get_table("overview"), frame)
+    assert_polars_equal(restored.get_table("overview"), report.overview_table)
+    assert_polars_equal(restored.get_table("overview", columns=frame.columns), frame)
     assert restored.get_table("overview").schema["kind"].categories.to_list() == categories
     assert restored.report_id == report.report_id and restored.describe() == report.describe()
 

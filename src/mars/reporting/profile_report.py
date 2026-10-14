@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from typing import Any, Dict, List, NamedTuple, Union
 
 import pandas as pd
@@ -193,7 +194,7 @@ class MarsProfileReport(_ReportQuery):
                 return "<span style='color:#ccc'>None</span>"
             # 为了防止指标太多撑爆屏幕，限制显示数量 (例如只显示前 20 个，后面加 ...)
             display_keys = keys[:30]
-            pills = "".join([f"<span style='{pill_style}'>'{k}'</span>" for k in display_keys])
+            pills = "".join([f"<span style='{pill_style}'>'{escape(k)}'</span>" for k in display_keys])
             if len(keys) > 30:
                 pills += f"<span style='color:#999; font-size:0.8em'> (+{len(keys)-30} more)</span>"
             return pills
@@ -217,9 +218,10 @@ class MarsProfileReport(_ReportQuery):
 
                 <div style="margin-bottom: 15px;">
                     <div style="font-size: 0.8em; text-transform: uppercase; color: #95a5a6; font-weight: bold; margin-bottom: 5px;">Quick Actions</div>
-                    <div style="display: flex; gap: 20px; font-size: 0.95em;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 0.95em;">
                         <div>👉 <span style="{code_style}">.show_overview()</span> &nbsp;<span style="color:#555">View Full Report</span></div>
                         <div>💾 <span style="{code_style}">.write_excel()</span> &nbsp;<span style="color:#555">Export XLSX</span></div>
+                        <div>🌐 <span style="{code_style}">profile_report.write_html("profile_report.html")</span> &nbsp;<span style="color:#555">Export HTML</span></div>
                         <div>📥 <span style="{code_style}">.get_profile_data()</span> &nbsp;<span style="color:#555">Get Raw Data</span></div>
                     </div>
                 </div>
@@ -391,14 +393,11 @@ class MarsProfileReport(_ReportQuery):
         >>> hasattr(report.show_overview(features="age"), "to_html")
         True
         """
-        requested_sort = ["dtype"] + (
-            ["missing_rate"]
-            if sort_by is None
-            else ([sort_by] if isinstance(sort_by, str) else sort_by)
-        )
-        available_sort = list(dict.fromkeys(column for column in requested_sort if column in self.overview_table.columns))
+        effective_sort = sort_by
+        if sort_by is None:
+            effective_sort = [c for c in ("dtype", "missing_rate") if c in self.overview_table.columns] or None
         df = to_pandas_frame(self.get_table(
-            "overview", features=features, columns=columns, sort_by=available_sort or None,
+            "overview", features=features, columns=columns, sort_by=effective_sort,
             descending=not sort_ascending, limit=limit, sources=sources,
         ))
         df = self._display_frame(df)
@@ -502,7 +501,8 @@ class MarsProfileReport(_ReportQuery):
             sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
         ))
         df = self._display_frame(df)
-        df = self._reorder_trend_cols(df, group_ascending=group_ascending)
+        if columns is None:
+            df = self._reorder_trend_cols(df, group_ascending=group_ascending)
 
         return self._get_styler(
             df,
@@ -516,7 +516,7 @@ class MarsProfileReport(_ReportQuery):
     def _reorder_trend_cols(self, df: pd.DataFrame, group_ascending: bool) -> pd.DataFrame:
         """重新排列趋势表的列顺序。"""
         # 定义元数据列和末尾全量统计列
-        meta_cols = ["feature", "display_name", "dtype", "distribution", "mode_value"]
+        meta_cols = ["target", "y", "feature", "display_name", "dtype", "data_source", "distribution", "mode_value"]
         stat_cols = ["total"]
 
         # 识别中间的分组列（如时间列）

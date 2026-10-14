@@ -62,7 +62,9 @@ def test_comparison_notebook_renders_native_text_and_numbers(
     assert "current_only" in html and "benchmark_only" in html
     assert_frame_equal(before, to_pandas_frame(report.get_table(f"comparison.{metric}")))
     displayed = styled.data.set_index("feature").loc[before["feature"], before.columns[1:]]
-    assert_frame_equal(displayed.reset_index(), before, check_dtype=True)
+    expected_display = before.copy()
+    expected_display["display_name"] = expected_display["display_name"].fillna(expected_display["feature"])
+    assert_frame_equal(displayed.reset_index(), expected_display, check_dtype=True)
     if explicit:
         assert styled.data["feature"].tolist() == sorted(before["feature"].tolist())
     elif metric == "schema":
@@ -81,7 +83,12 @@ def test_comparison_notebook_renders_native_text_and_numbers(
     excel = tmp_path / "comparison.xlsx"
     report.write_excel(str(excel))
     actual = pd.read_excel(excel, sheet_name=f"Compare_{metric.capitalize()}")
-    assert_frame_equal(actual, before, check_dtype=False)
+    assert_frame_equal(actual.isna(), before.isna())
+    # Excel 空单元格恢复为 NaN；按同一缺失值边界核对全部原统计与字典文本。
+    assert_frame_equal(
+        actual.astype(object).where(actual.notna(), None),
+        before.astype(object).where(before.notna(), None), check_dtype=False,
+    )
 
 
 @pytest.mark.parametrize("backend", ["pandas", "polars"])
@@ -119,7 +126,7 @@ def test_shared_styler_keeps_nullable_numeric_boolean_and_all_empty_columns() ->
         subset_cols=list(frame.columns),
     )
     html = styled.to_html()
-    assert "25.00%" in html and "1.00" in html
+    assert "25.00%" in html and ">1<" in html
     assert "Int64" in html and "not_computed" in html and "no_target" in html
     assert "True" in html and "background-color:" in html
     assert_frame_equal(styled.data, frame)
@@ -154,3 +161,49 @@ def test_existing_profile_trends_keep_default_total_order_and_percentage_format(
     assert styled.data["feature"].tolist() == ["debt", "income"]
     assert "40.00%" in styled.to_html() and "10.00%" in styled.to_html()
     assert "background-color:" in report.show_overview().to_html()
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_profile_excel_uses_semantic_display_formats_without_changing_values(
+    backend: str, tmp_path: Path,
+) -> None:
+    """Excel 比例、PSI、KS、AUC、整数与加权小数按真实语义显示。"""
+    from openpyxl import load_workbook
+
+    overview = pd.DataFrame({
+        "feature": ["first", "second"], "missing_rate": [0, 1],
+        "count": [1234, 5], "weight_sum": [1.25, 2.5], "auc": [0.75, 0.8],
+        "ks": [25.0, 40.0], "mode_value": ["10", "2"],
+    })
+    trend = pd.DataFrame({"feature": ["first", "second"], "period": [0.125, 0.0], "total": [0.25, 1.0]})
+    report = MarsProfileReport(
+        pl.from_pandas(overview) if backend == "polars" else overview,
+        dq_tables={"missing": pl.from_pandas(trend) if backend == "polars" else trend},
+        stats_tables={"psi": pl.from_pandas(trend) if backend == "polars" else trend},
+        feature_metadata={"first": {"display_name": "<申请收入>", "data_source": "申请 & 外部"}},
+    )
+    path = tmp_path / "formats.xlsx"
+    report.write_excel(str(path))
+    workbook = load_workbook(path)
+    sheet = workbook["Overview"]
+    headers = {cell.value: cell.column for cell in sheet[1]}
+    rows = {sheet.cell(row, headers["feature"]).value: row for row in range(2, sheet.max_row + 1)}
+    expected = {
+        "missing_rate": (0, "0.00%"), "count": (1234, "#,##0"),
+        "weight_sum": (1.25, "#,##0.00"), "auc": (0.75, "#,##0.00"),
+        "ks": (25, "#,##0.00"),
+    }
+    for column, (value, number_format) in expected.items():
+        cell = sheet.cell(rows["first"], headers[column])
+        assert cell.value == value and cell.number_format == number_format, column
+    assert sheet.cell(rows["first"], headers["mode_value"]).number_format == "General"
+    for sheet_name, number_format in (("DQ_Missing", "0.00%"), ("Trend_Psi", "#,##0.00")):
+        trend_sheet = workbook[sheet_name]
+        trend_headers = {cell.value: cell.column for cell in trend_sheet[1]}
+        assert trend_sheet.cell(2, trend_headers["period"]).number_format == number_format
+        assert trend_sheet.cell(2, trend_headers["display_name"]).number_format == "General"
+        assert trend_sheet.cell(2, trend_headers["data_source"]).number_format == "General"
+    notebook_html = report.show_overview().to_html()
+    assert "&lt;申请收入&gt;" in notebook_html and "申请 &amp; 外部" in notebook_html
+    assert "<申请收入>" not in notebook_html
+    workbook.close()

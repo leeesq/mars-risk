@@ -63,6 +63,22 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 没有 SQL 或表达式执行入口。排序在列投影之前，排序配合 `limit` 就是 Top-K。
 `sources` 使用统一 `feature_metadata` 中的来源，旧来源参数通过薄适配合并；未知来源会报错。
 
+画像与分箱真正以 `feature` 为维度的原生表（包括直接访问的属性）默认采用
+`feature → display_name → dtype → data_source → 其他维度与指标`。已有 `target`/`y`
+前缀保留。`dtype` 来自当前输入的原始 schema，参考类型另见 `benchmark_dtype`；
+用户的 `feature_metadata` 仍只接受 `display_name`、`description`、`data_source`、`unit`。
+缺少可读名时原表为 null，展示可回退英文；未知来源为 UNMAPPED。非空矛盾明确失败。
+长描述和单位保存在集中字典，不重复到每个箱。关系表保留 feature_a/feature_b 等原角色。
+
+`columns=None` 返回默认 schema；显式 `columns=[...]` 仅返回所列字段并保持指定顺序，
+`show_*` 与快照 `show_table()` 也遵守这个规则。可以按未输出的列筛选/排序，错误字段会报错。
+例如 `profile.show_overview(sort_by="missing_rate", columns=["feature", "display_name", "missing_rate"])`
+按真实缺失率全局排序，不会被 dtype 前置排序掩盖。组值不能与身份等保留列同名。
+
+新报告的分箱趋势目录没有 `trend.bad_rate`；读取 `detail.bad_rate` 或同组 `bin_type="汇总组"`
+的总体箱统计。历史快照保存过的趋势表仍保留。读取旧文件先严格校验磁盘版本、schema 和完整性，
+再在内存补齐身份列；没有可靠原始类型时 dtype 保留 null，不采用旧趋势的聚合 Float64。
+
 画像/分箱 AI JSON 默认只含 overview/summary 前 10 行；规则报告默认 summary 一行和最多三条
 最终验证证据，不默认输出 expression。预算为 16000 个 Unicode 字符，不是 token 数。
 可以按表、特征和列缩小范围。省略的参数和行有明确引用及原因；预算连说明都容不下时抛
@@ -102,6 +118,35 @@ DQ、Stats 和 Comparisons 页面；它不生成图表。所有 Stable 报告导
 资源缺失、请求内容未生成或写入失败都会抛异常，不再只记日志后返回成功。
 全局搜索与每张表的局部搜索按交集生效；清空其中一个仍保留另一个条件。
 局部搜索只影响所属表，排序和页面切换保留条件。当前是页面导航，没有行级分页。
+
+DQ/Stats 页面内部只展示当前指标，指标页签支持键盘方向键和 Home/End，并在外层切换后保留选择。
+率显示两位百分比，浮点统计显示两位小数，整数计数保留整数，小数权重不截断；
+PSI/IV/Lift/WOE 保持各自数值，AUC 使用自身数值格式，KS 为 0–100 点。
+缺失显示 `—`，原始数值仍可从 tooltip 或 `get_table()` 查看。排序使用未舍入原值，
+全局和局部搜索可检索英文、中文名及来源；元数据、日期、状态和类别不参与数值色阶。
+
+原生图在原说明框首行显示已登记中文名，保留英文 ID 和原指标。显式 `group_col` 时，
+各面板首行显示本次分组全样本的有效 `time_col` 日期范围，包括未表现标签和缺失特征样本。
+没有合法日期的组显示未知；旧报告缺少逐组范围时省略新增行，不使用全局日期代替。
+
+```python
+report.plot_risk_trends(features="income", show_risk="both", include_total=False)
+report.save_risk_trend_images(
+    "charts", features="income", image_format="png", show_risk="both",
+    include_total=False, dpi=300,
+)
+report.write_html("risk_report.html", max_plots=3, include_total=False)
+```
+
+统一的 keyword-only `include_total=True` 适用于 build/plot/save/HTML 原生图入口。
+它仅控制 Total 面板，全局 IV/KS/AUC、样本数、Missing、RC 参考与底层明细仍来自完整统计。
+关闭后没有任何面板时明确报错。普通业务组名称包含 Total 仍保留。
+
+`ks_method="raw"` 的原生 Excel 与 binned 模式复用同一引擎模板。模板的 `ks`
+保存最终选定 KS，`ks_bin` 保存箱级分箱 KS，二者都是 0–100 点；类别字段按现有合同回退 binned。
+汇总和趋势页使用已计算的最终 KS，来源与 raw 诊断另表保存。无有效 raw 样本保留 null。
+xlwings 可由 Excel 刷新透视和重算；openpyxl 只写结构/数据并标记打开时刷新，不执行公式或透视计算。
+两种输出应使用不同文件名。`snapshot_report(...).write_excel()` 仍是静态导出，没有模板透视交互。
 
 分箱报告的原始 Excel 入口保留透视模板；缓存可能仍是模板占位值，需要在原生 Excel 中
 刷新透视表并保存。`openpyxl.load_workbook(..., data_only=True)` 不会执行这个刷新。

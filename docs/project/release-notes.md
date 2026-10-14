@@ -6,7 +6,17 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
-此处保留下一版本的变更入口；本轮内容已归入 0.0.28。
+- 画像与分箱的原生特征表默认增加 `display_name`、原输入 `dtype`、`data_source`，
+  身份列顺序为 `feature → display_name → dtype → data_source`。显式 `columns` 仍是精确投影。
+  旧 `.marsreport` 先按磁盘 schema 严格校验，再在内存补列；旧分箱趋势的聚合类型不作为原始类型。
+- 画像 HTML 在 DQ/Stats 内增加指标页签，复用原值进行排序与交集搜索；率展示百分比，
+  PSI/IV 保持无量纲数值，KS 保持 0–100 点，格式化不改变底层统计。
+- 新分箱报告移除按特征重复的总体 `trend.bad_rate`。箱坏率、总体箱统计、金额坏率和
+  原生风险曲线继续保留；历史快照已保存的表仍可查询。
+- 原生风险图增加中文名、显式分组的真实样本日期范围，以及统一 `include_total=True`
+  参数。隐藏 Total 面板不会改变全局统计、RC 参考、明细或计算分母。
+- raw KS Excel 与 binned KS 复用同一引擎的报告模板，最终 `ks` 与辅助 `ks_bin`
+  分别保留，提供最终 KS 汇总、趋势、来源和诊断。通用快照 Excel 仍为静态证据导出。
 
 ## 0.0.28
 

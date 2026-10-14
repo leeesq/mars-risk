@@ -16,6 +16,7 @@ from mars.analysis._evaluation.context import (
 from mars.compute import is_numeric_dtype, to_polars_frame
 from mars.compute._raw_ks import _calculate_raw_ks
 from mars.reporting import MarsBinningReport
+from mars.reporting._metadata import is_metadata_column
 
 
 def _prepare_raw_ks(
@@ -155,7 +156,7 @@ def _apply_raw_ks(
         raw_trend = primary_values.with_columns(
             pl.col("group").fill_null("null")
         ).pivot(index="feature", on="group", values="ks")
-        columns = [col for col in trend.columns if col not in {"feature", "dtype"}]
+        columns = [col for col in trend.columns if not is_metadata_column(col)]
         raw_trend = raw_trend.with_columns(
             [
                 pl.lit(None, dtype=pl.Float64).alias(col)

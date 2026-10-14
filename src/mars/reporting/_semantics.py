@@ -57,6 +57,7 @@ _DEFINITIONS: dict[str, tuple[str, str]] = {
     "unseen": ("ratio", "当前有效类别中不在基准有效类别的样本比例"),
     "unseen_rate": ("ratio", "当前有效类别中不在基准有效类别的样本比例"),
     "feature": ("identifier", "原输入特征名称"),
+    "display_name": ("category", "调用方校验后的特征可读名称；缺失可在展示时回退原始 ID"),
     "dtype": ("type", "原输入字段的数据类型"),
     "data_source": ("category", "调用方登记的特征来源；未映射字段可能标为 UNMAPPED"),
     "source": ("category", "已保存的参考来源，例如 total、first_group 或 benchmark_df"),

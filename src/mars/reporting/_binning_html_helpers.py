@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from mars.reporting._metadata import is_metadata_column
 from mars.utils.html import is_missing_html_value
 
 
@@ -49,8 +50,8 @@ def is_percent_column(col_name: Any, *, metric_name: str | None = None) -> bool:
     """判断 HTML 表格列是否应该按百分比格式展示。"""
     col_lower = str(col_name).strip().lower()
     metric_lower = str(metric_name or "").strip().lower()
-    non_percent_labels = {"feature", "dtype", "data_source", "target", "y", "bin"}
-    if col_lower in non_percent_labels:
+    non_percent_labels = {"bin"}
+    if is_metadata_column(col_lower) or col_lower in non_percent_labels:
         return False
     if metric_lower in {"missing", "bad_rate"} and col_lower not in non_percent_labels:
         return True
@@ -100,7 +101,7 @@ def format_sort_value(value: Any, sort_type: str) -> str:
         return ""
     if sort_type == "number":
         try:
-            return f"{float(value):.12g}"
+            return repr(float(value))
         except (TypeError, ValueError):
             return ""
     return str(value)

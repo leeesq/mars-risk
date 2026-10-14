@@ -11,7 +11,129 @@ import polars as pl
 from ._serialization import encode, json_safe
 
 FeatureMetadata = Union[Dict[str, Dict[str, Any]], pd.DataFrame, pl.DataFrame]
+FeatureFrame = Union[pd.DataFrame, pl.DataFrame]
 _FIELDS = {"display_name", "description", "data_source", "unit"}
+FEATURE_IDENTITY_COLUMNS = ("feature", "display_name", "dtype", "data_source")
+_METADATA_COLUMNS = frozenset({
+    *FEATURE_IDENTITY_COLUMNS, "target", "y", "status", "reason", "metric", "group",
+    "current_dtype", "benchmark_dtype", "distribution", "mode_value", "is_categorical",
+    "bin_index", "bin_index_max", "bin_label", "bin_type", "source", "trend",
+    "feature_a", "feature_b", "peer_feature", "trigger_feature",
+})
+
+
+def is_metadata_column(column: str) -> bool:
+    """识别宽表的身份与描述字段，避免把业务字典误当作时间段或指标。"""
+    return column in _METADATA_COLUMNS
+
+
+def capture_feature_dtypes(frame: pl.DataFrame, features: list[str]) -> dict[str, str]:
+    """从变换前输入捕获原始逻辑类型，沿用项目的 Polars 类型名称。"""
+    return {
+        feature: str(frame.schema[feature])
+        for feature in features if feature in frame.schema
+    }
+
+
+def feature_type_catalog(
+    tables: dict[str, FeatureFrame], report_type: str, types: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """只复用可靠的原字段类型；旧分箱趋势的聚合 Float64 不构成原始 schema。"""
+    catalog = dict(types or {})
+    reliable = {"overview", "comparison.schema"} if report_type == "MarsProfileReport" else {"summary"}
+    for name in reliable:
+        frame = tables.get(name)
+        if frame is None or "feature" not in frame.columns:
+            continue
+        column = "current_dtype" if name == "comparison.schema" else "dtype"
+        if column not in frame.columns:
+            continue
+        rows = frame.select("feature", column).to_dicts() if isinstance(frame, pl.DataFrame) else frame[["feature", column]].to_dict("records")
+        for row in rows:
+            feature, dtype = row["feature"], row[column]
+            if isinstance(feature, str) and isinstance(dtype, str):
+                if catalog.get(feature) not in (None, dtype):
+                    raise ValueError(f"Conflicting original dtype for feature {feature!r}.")
+                catalog[feature] = dtype
+    return catalog
+
+
+def normalize_feature_frame(
+    frame: FeatureFrame, metadata: dict[str, dict[str, Any]], types: dict[str, str],
+    *, discard_aggregate_dtype: bool = False,
+) -> FeatureFrame:
+    """幂等补全短身份列，保留索引、指标类型、行粒度与顺序；非空矛盾明确拒绝。"""
+    if "feature" not in frame.columns:
+        return frame.clone() if isinstance(frame, pl.DataFrame) else frame.copy()
+    identities = frame["feature"].to_list() if isinstance(frame, pl.DataFrame) else frame["feature"].tolist()
+    values = {
+        "display_name": [metadata.get(f, {}).get("display_name") for f in identities],
+        "dtype": [types.get(f) for f in identities],
+        "data_source": [metadata.get(f, {}).get("data_source") or "UNMAPPED" for f in identities],
+    }
+    result = frame.clone() if isinstance(frame, pl.DataFrame) else frame.copy()
+    for column, expected in values.items():
+        if column in frame.columns:
+            existing = frame[column].to_list() if isinstance(frame, pl.DataFrame) else frame[column].tolist()
+            for index, (actual, canonical) in enumerate(zip(existing, expected)):
+                absent = actual is None or actual is pd.NA or isinstance(actual, float) and pd.isna(actual)
+                if column == "dtype" and discard_aggregate_dtype and actual == "Float64":
+                    continue
+                if absent or column == "data_source" and actual == "UNMAPPED":
+                    continue
+                if canonical is not None and actual != canonical:
+                    raise ValueError(f"Conflicting {column} for feature {identities[index]!r}.")
+                if canonical is None:
+                    expected[index] = actual
+        unique: dict[str, str] = {}
+        for feature, value in zip(identities, expected):
+            if value is not None:
+                if unique.get(feature) not in (None, value):
+                    raise ValueError(f"Conflicting {column} for feature {feature!r}.")
+                unique[feature] = value
+        if isinstance(result, pl.DataFrame):
+            result = result.with_columns(pl.Series(column, expected, dtype=pl.String))
+        else:
+            result[column] = expected if len(expected) else pd.Series([], index=result.index, dtype="object")
+    prefix = [c for c in ("target", "y") if c in result.columns and list(frame.columns).index(c) < list(frame.columns).index("feature")]
+    ordering = [*prefix, *FEATURE_IDENTITY_COLUMNS, *[c for c in result.columns if c not in {*prefix, *FEATURE_IDENTITY_COLUMNS}]]
+    return result.select(ordering) if isinstance(result, pl.DataFrame) else result.loc[:, ordering]
+
+
+def resolve_feature_identity_metadata(
+    tables: dict[str, FeatureFrame], metadata: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """将已有短身份列合入唯一目录；已登记非空值最可信，矛盾记录不能被展示覆盖。"""
+    result = deepcopy(metadata)
+    for frame in tables.values():
+        fields = [c for c in ("display_name", "data_source") if c in frame.columns]
+        if "feature" not in frame.columns or not fields:
+            continue
+        columns = ["feature", *fields]
+        rows = frame.select(columns).unique().to_dicts() if isinstance(frame, pl.DataFrame) else frame[columns].drop_duplicates().to_dict("records")
+        for row in rows:
+            feature = row["feature"]
+            if not isinstance(feature, str):
+                continue
+            for field in fields:
+                value = row[field]
+                if not isinstance(value, str) or field == "data_source" and value == "UNMAPPED":
+                    continue
+                entry = result.setdefault(feature, {})
+                if entry.get(field) not in (None, value):
+                    raise ValueError(f"Conflicting {field} for feature {feature!r}.")
+                entry[field] = value
+    return result
+
+
+def validate_group_labels(frame: pl.DataFrame, group_col: str | None) -> None:
+    """拒绝与宽表身份列冲突的组值，避免 pivot 或补列覆盖业务维度。"""
+    if group_col is None:
+        return
+    labels = frame[group_col].cast(pl.String).drop_nulls().unique().to_list()
+    collisions = [value for value in labels if is_metadata_column(value)]
+    if collisions:
+        raise ValueError(f"Group values conflict with reserved report columns: {collisions}.")
 
 
 def normalize_metadata(
@@ -132,10 +254,11 @@ def _excel_json_rows(values: dict[str, Any]) -> pd.DataFrame:
 def export_semantics(description: dict[str, Any]) -> dict[str, pd.DataFrame]:
     """所有报告导出复用公共 describe；长定义集中存放，不重复到统计行。"""
     metadata = description.get("feature_metadata", {})
+    types = description.get("parameters", {}).get("feature_dtypes", {})
     return {
         "FeatureMetadata": pd.DataFrame(
-            [{"feature": feature, **entry} for feature, entry in metadata.items()],
-            columns=["feature", "display_name", "description", "data_source", "unit"],
+            [{"feature": feature, **entry, "dtype": types.get(feature)} for feature, entry in metadata.items()],
+            columns=["feature", "display_name", "dtype", "data_source", "description", "unit"],
         ),
         "BusinessContext": _excel_json_rows(description.get("business_context", {})),
         "ReportSemantics": _excel_json_rows({

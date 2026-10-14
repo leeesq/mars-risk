@@ -281,7 +281,9 @@ def test_context_keeps_last_evidence_with_scope_or_rejects_budget() -> None:
             assert "max_chars" in str(exc)
         else:
             payload = json.loads(context)
-            assert payload["evidence"][0]["rows"] == [{"feature": "x", "mean": 1.5}]
+            assert payload["evidence"][0]["rows"] == [{
+                "feature": "x", "display_name": None, "dtype": None, "data_source": "bank", "mean": 1.5,
+            }]
             assert payload["description"]["parameters"]["weights_col"] == "weight"
             assert (
                 payload["description"]["business_context"]["labels"]["bad"]["definition"] == "逾期"

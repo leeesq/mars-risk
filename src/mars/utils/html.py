@@ -81,6 +81,12 @@ def format_html_value(
         return missing_text
     if isinstance(value, (pd.Timestamp, np.datetime64)):
         return str(pd.to_datetime(value).strftime("%Y-%m-%d"))
+    # 整数形式的比例仍须先按比例展示，0/1 不能退化为普通数值。
+    if as_percent and isinstance(value, (np.integer, int, np.floating, float)) and not isinstance(value, (np.bool_, bool)):
+        num = float(value)
+        if not np.isfinite(num):
+            return missing_text
+        return f"{num * 100:.{precision}f}%" if not compact_float else f"{num:.{precision}%}"
     if isinstance(value, (np.integer, int)) and not isinstance(value, bool):
         if compact_float:
             return f"{int(value):,}"
@@ -89,8 +95,6 @@ def format_html_value(
         num = float(value)
         if not np.isfinite(num):
             return missing_text
-        if as_percent:
-            return f"{num * 100:.{precision}f}%" if not compact_float else f"{num:.{precision}%}"
         if compact_float and abs(num) >= 1000:
             return f"{num:,.2f}"
         return f"{num:.{precision if not compact_float else 4}f}"

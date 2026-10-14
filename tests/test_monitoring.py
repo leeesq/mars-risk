@@ -25,7 +25,7 @@ def _daily_datetimes(start: str, periods: int) -> list[datetime]:
 
 
 def _trend_value_columns(table: pl.DataFrame | pd.DataFrame) -> list[str]:
-    metadata_cols = {"feature", "dtype", "bin_index", "bin_label", "bin_type", "Total"}
+    metadata_cols = {"feature", "display_name", "dtype", "data_source", "bin_index", "bin_label", "bin_type", "Total"}
     return [col for col in table.columns if col not in metadata_cols]
 
 

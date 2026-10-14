@@ -28,7 +28,7 @@ from mars.analysis._profiling.sparkline import compute_sparklines
 from mars.analysis._profiling.types import ProfileBinMethod, ProfileComputeOptions
 from mars.core.base import MarsBaseEstimator
 from mars.reporting import MarsProfileReport
-from mars.reporting._metadata import FeatureMetadata
+from mars.reporting._metadata import FeatureMetadata, capture_feature_dtypes, validate_group_labels
 from mars.utils.decorators import time_it
 
 
@@ -330,6 +330,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             time_col=time_col,
             time_grain=time_grain,
         )
+        validate_group_labels(context.working_df, context.group_col)
         options = ProfileComputeOptions(
             missing_values=self.missing_values,
             special_values=self.special_values,
@@ -453,6 +454,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             "row_count": prepared_df.height,
             "column_count": prepared_df.width,
             "features": list(prepared_features),
+            "feature_dtypes": capture_feature_dtypes(prepared_df, prepared_features),
             "metrics": [
                 *selection.dq_metrics,
                 *selection.stat_metrics,
@@ -498,5 +500,6 @@ class MarsDataProfiler(MarsBaseEstimator):
         )
         if status.height:
             report._calculation_status = self._format_output(status)
+        report._normalize_feature_tables()
         report.source = {"kind": "analysis", "producer": "mars", "input_provenance": "caller_provided_dataframe"}
         return report

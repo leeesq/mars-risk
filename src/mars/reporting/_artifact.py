@@ -215,6 +215,8 @@ class ReportSnapshot(_ReportQuery):
         self.feature_data_source = {
             f: m.get("data_source") or "UNMAPPED" for f, m in self.feature_metadata.items()
         }
+        # load_report 已按磁盘 manifest 严格校验，之后仅在独立内存容器中补齐身份列。
+        self._normalize_feature_tables()
 
     def _query_tables(self) -> dict[str, ReportFrame]:
         """恢复全部原生统计表，不访问分析器。"""

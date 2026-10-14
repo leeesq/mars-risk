@@ -20,6 +20,7 @@ result = MarsBinEvaluator(binner_params={"n_bins": 3}).evaluate(
     group_col="month",
     batch_size=1,
     feature_data_source={"application": ["income"]},
+    feature_metadata={"income": {"display_name": "月收入"}},
 )
 report = result.report
 description = report.describe()
@@ -34,6 +35,9 @@ for evidence in json.loads(context_json)["evidence"]:
     assert replayed.to_dicts() == evidence["rows"]
 feature_data = report.get_feature("income")
 summary_view = report.show_summary(sources="application", columns=["feature", "iv", "ks"], limit=10)
+assert summary_view.data.columns.tolist() == ["feature", "iv", "ks"]
+native_summary = report.get_table("summary")
+assert native_summary.columns[:4] == ["feature", "display_name", "dtype", "data_source"]
 
 profile = profile_stats(data, features=["income"], metrics=["missing", "mean"], group_col="month")
 overview = profile.get_table("overview", columns=["feature", "missing_rate", "mean"], limit=10)

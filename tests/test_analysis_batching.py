@@ -131,7 +131,7 @@ def test_profiler_joint_aggregation_matches_original_per_metric() -> None:
     for metric in metrics:
         prefix = "dq" if metric in {"missing", "zeros", "unique", "mode"} else "stats"
         expected = generate_pivot_report(context, options, metric)
-        assert_frame_equal(report.get_table(f"{prefix}.{metric}"), expected, **_FRAME_TOLERANCES)
+        assert_frame_equal(report.get_table(f"{prefix}.{metric}", columns=expected.columns), expected, **_FRAME_TOLERANCES)
 
 
 @pytest.mark.parametrize("grouped", [False, True])

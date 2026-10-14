@@ -176,13 +176,13 @@ class MarsNativeBinner(MarsBinnerBase):
                 continue
 
             # 分流：类别 vs 数值
-            if c in cat_set or X[c].dtype in [pl.Utf8, pl.Categorical, pl.Boolean]:
+            if c in cat_set or X[c].dtype in [pl.Utf8, pl.Categorical, pl.Boolean] or isinstance(X[c].dtype, pl.Enum):
                 cat_cols.append(c)
             elif self._is_numeric(X[c]):
                 num_cols.append(c)
 
         for c in null_cols:
-            if c in cat_set or X.schema[c] in {pl.Boolean, pl.Utf8, pl.Categorical}:
+            if c in cat_set or X.schema[c] in {pl.Boolean, pl.Utf8, pl.Categorical} or isinstance(X.schema[c], pl.Enum):
                 self.cat_cuts_[c] = []
             else:
                 self.bin_cuts_[c] = []

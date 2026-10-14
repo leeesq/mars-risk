@@ -13,7 +13,15 @@ import pandas as pd
 import polars as pl
 
 from mars._compat import polars_is_in
-from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
+from mars.reporting._metadata import (
+    FeatureMetadata,
+    feature_type_catalog,
+    is_metadata_column,
+    normalize_business_context,
+    normalize_feature_frame,
+    normalize_metadata,
+    resolve_feature_identity_metadata,
+)
 from mars.reporting._semantics import _definition
 from mars.reporting._serialization import JSON_RULES, decode_json_value, table_rows
 from mars.reporting._serialization import encode as _encode
@@ -177,7 +185,7 @@ class _ReportQuery:
         legacy: dict[str, str] | None = None,
     ) -> None:
         """集中保存业务定义；稳定英文标识不进入统计计算。"""
-        features: list[str] = []
+        features: list[str] = list(self._query_metadata().get("feature_dtypes", {}))
         inferred: dict[str, str] = dict(legacy or {})
         for table in self._query_tables().values():
             if "feature" not in table.columns:
@@ -216,10 +224,55 @@ class _ReportQuery:
             key: "user_provided" if key in (business_context or {}) else "unknown"
             for key in self.business_context
         }
-        self.report_id = str(uuid4())
+        self.report_id = getattr(self, "report_id", str(uuid4()))
         self.format_version = 1
         self.source: dict[str, Any] = {"kind": "provided_statistics", "producer": "unknown"}
         self.report_type = type(self).__name__
+        self._normalize_feature_tables()
+
+    def _normalize_feature_tables(self) -> None:
+        """在最终组装边界一次补列；重组、状态挂接与历史恢复复用相同规范。"""
+        report_type = self.report_type
+        if report_type not in {"MarsProfileReport", "MarsBinningReport"}:
+            return
+        tables = self._query_tables()
+        parameters = self._query_metadata()
+        saved_types = parameters.get("feature_dtypes")
+        types = feature_type_catalog(tables, report_type, saved_types)
+        metadata = resolve_feature_identity_metadata(tables, self.feature_metadata)
+        parameters["feature_dtypes"] = types
+        normalized = {
+            name: normalize_feature_frame(
+                frame, metadata, types,
+                discard_aggregate_dtype=report_type == "MarsBinningReport" and name.startswith("trend.") and saved_types is None,
+            )
+            for name, frame in tables.items()
+        }
+        self.feature_metadata = metadata
+        self.feature_data_source = {f: m.get("data_source") or "UNMAPPED" for f, m in metadata.items()}
+        if hasattr(self, "_tables"):
+            self._tables = normalized
+            description: dict[str, Any] = getattr(self, "_description", {})
+            for name, frame in normalized.items():
+                fields = description["tables"][name]["fields"]
+                schema = frame.schema if isinstance(frame, pl.DataFrame) else frame.dtypes.to_dict()
+                description["tables"][name]["fields"] = {
+                    column: {**fields.get(column, _definition(column)), "dtype": str(dtype)}
+                    for column, dtype in schema.items()
+                }
+        elif report_type == "MarsProfileReport":
+            self.overview_table = normalized["overview"]
+            self.dq_tables = {name[3:]: frame for name, frame in normalized.items() if name.startswith("dq.")}
+            self.stats_tables = {name[6:]: frame for name, frame in normalized.items() if name.startswith("stats.")}
+            self.comparison_tables = {name[11:]: frame for name, frame in normalized.items() if name.startswith("comparison.")}
+        else:
+            self._summary = normalized["summary"]
+            self._detail = normalized["detail"]
+            self._trend_dict = {name[6:]: frame for name, frame in normalized.items() if name.startswith("trend.")}
+            self._missing_by_day = normalized.get("missing_by_day")
+            self._risk_corr_reference = normalized.get("risk_corr_reference")
+        if "calculation_status" in normalized:
+            self._calculation_status = normalized["calculation_status"]
 
     def search_features(
         self,
@@ -288,17 +341,15 @@ class _ReportQuery:
         save_report(self, path, overwrite=overwrite)
 
     def _display_frame(self, frame: ReportFrame) -> pd.DataFrame:
-        """仅对已缩小的展示表附加可读名称，不污染原始统计行。"""
+        """对已有显示名做英文回退；精确投影绝不追加身份字段。"""
         from mars.compute import to_pandas_frame
 
         result = to_pandas_frame(frame).copy()
         for role in ("feature", "feature_a", "feature_b", "peer_feature", "trigger_feature"):
             if role in result.columns:
                 display = "display_name" if role == "feature" else f"{role}_display_name"
-                if display not in result.columns:
-                    result[display] = result[role].map(
-                        lambda f: self.feature_metadata.get(f, {}).get("display_name") or f
-                    )
+                if display in result.columns:
+                    result[display] = result[display].where(result[display].notna(), result[role])
         return result
 
     def _role_table(
@@ -425,7 +476,7 @@ class _ReportQuery:
                         "dtype": str(dtype),
                         **_definition(
                             metric
-                            if metric and c not in {"feature", "dtype", "data_source", "status", "reason", "current_dtype", "benchmark_dtype"}
+                            if metric and not is_metadata_column(str(c))
                             else str(c),
                             report_type=self.report_type,
                             table=name,
@@ -460,19 +511,19 @@ class _ReportQuery:
                 tables[name]["target"] = targets[0] if targets else "unknown"
             if name == "missing_by_day":
                 for column, field in tables[name]["fields"].items():
-                    if column not in {"feature", "dtype"}:
+                    if not is_metadata_column(column):
                         field["meaning"] = (
                             "自然日原始缺失值数/当日样本数，含 Null、NaN 和配置缺失值；不使用样本权重，total 为全量比例"
                         )
             if self._query_metadata().get("ks_method") == "raw":
                 for column, field in tables[name]["fields"].items():
-                    if column == "ks" or name == "trend.ks" and column not in {"feature", "dtype"}:
+                    if column == "ks" or name == "trend.ks" and not is_metadata_column(column):
                         field["meaning"] = (
                             "原始数值排序的经验 KS×100；类别回退分箱 KS，逐特征来源与失败见 ks_source_by_feature / raw_ks_diagnostics"
                         )
             if name == "trend.lift":
                 for column, field in tables[name]["fields"].items():
-                    if column not in {"feature", "dtype", "data_source"}:
+                    if not is_metadata_column(column):
                         field["meaning"] = "当前分组箱 Lift 的最大值；未表现分组为空"
             if name == "comparison.unseen":
                 for column, field in tables[name]["fields"].items():
@@ -773,7 +824,7 @@ class _ReportQuery:
             entry = table_definitions[name]
             identity_entry: dict[str, Any] = entry
             wide = name.startswith(("trend.", "dq.", "stats.")) or name == "missing_by_day"
-            identifiers = {"feature", "dtype", "data_source", "target"}
+            identifiers = {c for c in frame.columns if is_metadata_column(c)}
             # 日期是维度，指标定义仅保存一次；证据仍使用原表列名以便精确重放。
             if wide:
                 dimension_fields = [c for c in frame.columns if c not in identifiers]
@@ -978,7 +1029,7 @@ class _ReportQuery:
                 [
                     c
                     for c in wide_item["rows"][0]
-                    if c not in {"feature", "dtype", "data_source", "target"}
+                    if not is_metadata_column(c)
                 ]
                 if wide_item
                 else []

@@ -98,55 +98,128 @@ class _BinningExcelWriter:
 
         return detail_df.loc[:, template_headers].copy()
 
-    def _write_raw_ks_excel(self, path: str, *, use_xlwings: bool) -> None:
-        """导出已物化的最终 KS，避免旧模板透视缓存继续展示分箱值。
-
-        raw 模式使用普通工作表，保留完整明细和诊断，不依赖 Excel 刷新缓存。
-        默认分箱模式仍沿用现有模板。两种写入引擎消费同一组结果表。
-        """
-        metric_names = {"missing": "Missing", "psi": "PSI", "iv": "IV", "ks": "KS", "auc": "AUC"}
+    def _additional_excel_tables(self) -> dict[str, pd.DataFrame]:
+        """模板透视之外交付最终物化结果与口径，不依赖历史缓存。"""
         tables = {
-            "综合指标": to_pandas_frame(self.summary_table),
-            "分组明细": to_pandas_frame(self.detail_table),
-            **{
-                metric_names.get(name, name): to_pandas_frame(table)
-                for name, table in self.trend_tables.items()
-            },
-            "KS口径": pd.DataFrame(
+            "最终汇总": to_pandas_frame(self.summary_table),
+        }
+        if "ks" in self.trend_tables:
+            tables["最终KS趋势"] = to_pandas_frame(self.trend_tables["ks"])
+        if self.report_meta.get("ks_method") == "raw":
+            tables["KS口径"] = pd.DataFrame(
                 list(self.report_meta["ks_source_by_feature"].items()),
                 columns=["feature", "ks_method"],
-            ),
-            "KS计算诊断": pd.DataFrame(self.report_meta["raw_ks_diagnostics"]),
-        }
+            )
+            tables["KS计算诊断"] = pd.DataFrame(self.report_meta["raw_ks_diagnostics"])
         tables.update(export_report_semantics(self))
-        if use_xlwings:
-            import xlwings as xw
+        return tables
 
-            app = xw.App(visible=False, add_book=False)
-            workbook = None
-            try:
-                app.display_alerts = False
-                workbook = app.books.add()
-                for name, frame in tables.items():
-                    sheet = workbook.sheets.add(name)
-                    sheet.range("A1").options(index=False).value = frame
-                workbook.save(path)
-            finally:
-                if workbook is not None:
-                    workbook.close()
-                app.quit()
-        else:
-            with pd.ExcelWriter(path, engine="openpyxl") as writer:
-                for name, frame in tables.items():
-                    frame.to_excel(writer, sheet_name=name, index=False, freeze_panes=(1, 0))
-        logger.info("Exported raw KS report: %s", path)
+    @staticmethod
+    def _prepare_openpyxl_pivots(workbook: Any) -> None:
+        """验证最终 KS 的模板来源并清除旧缓存，透视由 Excel 打开后刷新。"""
+        from openpyxl.utils.cell import range_boundaries
+
+        for sheet in workbook:
+            for pivot in sheet._pivots:
+                cache = pivot.cache
+                cache.refreshOnLoad = True
+                cache.enableRefresh = True
+                cache.records = None
+                cache.id = None
+                cache.recordCount = 0
+                cache.saveData = False
+                cache.missingItemsLimit = 0
+                for field in pivot.dataFields:
+                    source = cache.cacheFields[field.fld].name
+                    if source == "ks_bin":
+                        raise ValueError("Excel 模板 KS 透视必须读取最终 ks，不能读取 ks_bin。")
+                    if source == "ks":
+                        field.name = (
+                            "avg(KS最终，0–100点)" if field.subtotal == "average"
+                            else "KS（最终，0–100点）"
+                        )
+                        # 只替换表头文本，不移动模板的布局和样式。
+                        for row in sheet:
+                            for cell in row:
+                                if cell.value in {"KS", "avg(KS) "}:
+                                    cell.value = field.name
+
+                # 旧模板的缓存值不能作为本次结果交付，保留表头、筛选区与样式。
+                first_col, first_row, last_col, last_row = range_boundaries(pivot.location.ref)
+                for row in sheet.iter_rows(
+                    min_row=first_row + pivot.location.firstDataRow,
+                    max_row=last_row, min_col=first_col, max_col=last_col,
+                ):
+                    for cell in row:
+                        cell.value = None
+
+    @staticmethod
+    def _refresh_xlwings_pivots(workbook: Any) -> None:
+        """原生 Excel 刷新扩展后的同一模板，KS 透视直接读取已计算的最终 KS。"""
+        if sys.platform.startswith("darwin"):
+            # xlwings 的 Mac 原生对象使用 AppleScript 字典，不能调用 Windows COM 方法。
+            workbook.api.refresh_all()
+            for cache in workbook.api.pivot_caches.get():
+                cache.missing_items_limit.set(0)
+                cache.refresh()
+            for sheet in workbook.sheets:
+                for pivot in sheet.api.pivot_tables.get():
+                    for field in pivot.data_fields.get():
+                        if field.source_name.get() == "ks":
+                            caption = (
+                                "avg(KS最终，0–100点)" if str(field.name.get()).startswith("avg(")
+                                else "KS（最终，0–100点）"
+                            )
+                            field.name.set(caption)
+                    pivot.refresh_table()
+            workbook.app.calculate()
+            return
+        workbook.api.RefreshAll()
+        workbook.app.api.CalculateUntilAsyncQueriesDone()
+        for sheet in workbook.sheets:
+            pivots = sheet.api.PivotTables()
+            for pivot_index in range(1, pivots.Count + 1):
+                pivot = pivots.Item(pivot_index)
+                # 不保留模板中已不存在的特征/目标/分组筛选项。
+                pivot.PivotCache().MissingItemsLimit = 0
+                pivot.PivotCache().Refresh()
+                fields = pivot.DataFields
+                for field_index in range(1, fields.Count + 1):
+                    field = fields.Item(field_index)
+                    if field.SourceName == "ks":
+                        field.Caption = (
+                            "avg(KS最终，0–100点)" if field.Function == -4106
+                            else "KS（最终，0–100点）"
+                        )
+                pivot.RefreshTable()
+        workbook.app.api.CalculateFullRebuild()
+
+    @staticmethod
+    def _write_xlwings_detail_rows(
+        worksheet: Any, rows: list[list[Any]], *, start_row: int, first_col: int, last_col: int,
+    ) -> None:
+        """按确定区域分块写明细，避免大矩阵经过 xlwings 的隐式 Range.resize。"""
+        from openpyxl.utils import get_column_letter
+
+        first_letter = get_column_letter(first_col)
+        last_letter = get_column_letter(last_col)
+        for offset in range(0, len(rows), 5000):
+            chunk = rows[offset:offset + 5000]
+            first_row = start_row + offset
+            last_row = first_row + len(chunk) - 1
+            region = worksheet.range(f"{first_letter}{first_row}:{last_letter}{last_row}")
+            if sys.platform.startswith("darwin"):
+                region.value = chunk
+            else:
+                region.api.Value = tuple(tuple(row) for row in chunk)
 
     def write_excel(self: Any, path: str = "mars_bin_report.xlsx", engine: str = "openpyxl") -> None:
         """
         导出评估 Excel 报告。
 
-        raw KS 报告导出已计算的汇总、趋势、完整明细及 KS 诊断工作表，
-        不使用只识别分箱 KS 的模板透视缓存。
+        raw 与 binned 使用同一引擎模板。raw 的透视 KS 数据字段读取最终
+        ``ks``，箱级 ``ks_bin`` 保持分箱口径；附加最终汇总、趋势及诊断表。
+        openpyxl 不计算或刷新透视，最终物化结果可直接读取，透视由 Excel 打开后刷新。
 
         Parameters
         ----------
@@ -181,7 +254,8 @@ class _BinningExcelWriter:
         if engine not in valid_engines:
             raise ValueError(f"不支持的 engine: '{engine}'，请从 {valid_engines} 中选择。")
 
-        start_write_row = 4
+        # 从首个数据行写入，不能把模板的示例箱行当成本次评估数据。
+        start_write_row = 2
         sheet_name = "分组明细"
         template_name_xlwings = "mars_bin_report_win_mac.xlsx"
         template_name_openpyxl = "mars_bin_report_linux.xlsx"
@@ -192,8 +266,6 @@ class _BinningExcelWriter:
             try:
                 import xlwings as xw
 
-                probe_app = xw.App(visible=False, add_book=False)
-                probe_app.quit()
                 template_path = self._resolve_excel_template_path(template_name_xlwings)
             except Exception as exc:
                 if engine == "xlwings":
@@ -207,26 +279,35 @@ class _BinningExcelWriter:
         if not use_xlwings:
             template_path = self._resolve_excel_template_path(template_name_openpyxl)
 
-        if self.report_meta.get("ks_method") == "raw":
-            self._write_raw_ks_excel(path, use_xlwings=use_xlwings)
-            return
-
         template_headers, first_col, last_col = self._read_detail_template_schema(
             template_path=template_path,
             sheet_name=sheet_name,
         )
         detail_pd: pd.DataFrame = to_pandas_frame(self.detail_table).copy()
+        # 两个模板都显式保留最终 KS；分箱口径复用现有箱级结果，不重新分箱。
+        if "ks" not in detail_pd.columns:
+            if self.report_meta.get("ks_method") == "raw":
+                raise ValueError("raw KS 报告缺少已计算的 detail.ks，不能用 ks_bin 代替。")
+            keys = ["y", "feature", self.detail_group_col or "mars_group"]
+            detail_pd["ks"] = detail_pd.groupby(keys, dropna=False)["ks_bin"].transform("max")
         export_pd = self._build_excel_detail_export_frame(
             detail_df=detail_pd,
             template_headers=template_headers,
         )
-        rows: List[List[Any]] = export_pd.values.tolist()
+        rows: List[List[Any]] = export_pd.astype(object).where(pd.notna(export_pd), None).values.tolist()
         final_row = start_write_row + len(rows) - 1
         table_last_row = max(final_row, start_write_row - 1)
+        from openpyxl.utils import get_column_letter
+
+        table_ref = (
+            f"{get_column_letter(first_col)}1:"
+            f"{get_column_letter(last_col)}{table_last_row}"
+        )
 
         if use_xlwings:
             app = None
             workbook = None
+            fallback_openpyxl = False
             try:
                 app = xw.App(visible=False, add_book=False)
                 app.display_alerts = False
@@ -234,44 +315,77 @@ class _BinningExcelWriter:
 
                 workbook = app.books.open(str(template_path))
                 worksheet = workbook.sheets[sheet_name]
-
-                if rows:
-                    worksheet.range((start_write_row, first_col)).value = rows
+                self._write_xlwings_detail_rows(
+                    worksheet, [template_headers], start_row=1,
+                    first_col=first_col, last_col=last_col,
+                )
+                self._write_xlwings_detail_rows(
+                    worksheet, rows, start_row=start_write_row,
+                    first_col=first_col, last_col=last_col,
+                )
 
                 table = worksheet.tables[0] if worksheet.tables else None
                 if table is None:
                     raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
                 table.resize(
-                    worksheet.range(
-                        (1, first_col),
-                        (table_last_row, last_col),
-                    )
+                    worksheet.range(table_ref)
                 )
 
                 last_used_row = worksheet.used_range.last_cell.row
                 if last_used_row > table_last_row:
                     worksheet.range(f"{table_last_row + 1}:{last_used_row}").delete()
 
-                for name, frame in export_report_semantics(self).items():
+                for name, frame in self._additional_excel_tables().items():
                     sheet = workbook.sheets.add(name)
-                    sheet.range("A1").options(index=False).value = frame
+                    if frame.shape[1]:
+                        sheet.activate()
+                        last_letter = get_column_letter(frame.shape[1])
+                        extra_rows = [list(frame.columns)] + (
+                            frame.astype(object).where(pd.notna(frame), None).values.tolist()
+                        )
+                        self._write_xlwings_detail_rows(
+                            sheet, extra_rows, start_row=1, first_col=1, last_col=frame.shape[1],
+                        )
+                        region = sheet.range(f"A1:{last_letter}{len(frame) + 1}")
+                        if not frame.empty:
+                            sheet.tables.add(source=region, table_style_name="TableStyleMedium2")
+                        header = sheet.range(f"A1:{last_letter}1")
+                        header.color = "#1F4E78"
+                        header.font.color = "#FFFFFF"
+                        header.font.bold = True
+                        region.columns.autofit()
+                        sheet.range("A2").select()
+                        if sys.platform.startswith("darwin"):
+                            workbook.api.windows[1].freeze_panes.set(True)
+                        else:
+                            app.api.ActiveWindow.FreezePanes = True
+                self._refresh_xlwings_pivots(workbook)
                 workbook.save(path)
                 logger.info("Exported binning report via xlwings: %s", path)
             except Exception as exc:
-                raise RuntimeError(f"xlwings 导出过程中发生错误: {exc}") from exc
+                if engine == "auto":
+                    logger.warning("xlwings 导出失败，自动降级为 openpyxl: %s", exc)
+                    fallback_openpyxl = True
+                else:
+                    raise RuntimeError(f"xlwings 导出过程中发生错误: {exc}") from exc
             finally:
                 if workbook is not None:
                     workbook.close()
                 if app is not None:
                     app.quit()
+            if fallback_openpyxl:
+                self.write_excel(path, engine="openpyxl")
             return
 
         import openpyxl
-        from openpyxl.utils import get_column_letter
+        from openpyxl.styles import Font, PatternFill
+        from openpyxl.worksheet.table import Table, TableStyleInfo
 
         workbook = openpyxl.load_workbook(template_path)
         try:
             worksheet = workbook[sheet_name]
+            for column_offset, header in enumerate(template_headers):
+                worksheet.cell(row=1, column=first_col + column_offset, value=header)
             for row_offset, row_data in enumerate(rows):
                 current_row = start_write_row + row_offset
                 for col_offset, value in enumerate(row_data):
@@ -285,22 +399,44 @@ class _BinningExcelWriter:
                 raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
 
             table = next(iter(worksheet.tables.values()))
-            table_ref = (
-                f"{get_column_letter(first_col)}1:"
-                f"{get_column_letter(last_col)}{table_last_row}"
-            )
             if not hasattr(table, "ref"):
                 raise ValueError(f"sheet `{sheet_name}` 的 Excel table 缺少 `ref`，无法更新表格范围。")
             table.ref = table_ref
+            table.autoFilter.ref = table_ref
 
             if worksheet.max_row > table_last_row:
                 worksheet.delete_rows(table_last_row + 1, worksheet.max_row - table_last_row)
 
-            for name, frame in export_report_semantics(self).items():
+            self._prepare_openpyxl_pivots(workbook)
+            worksheet.freeze_panes = "A2"
+            for table_index, (name, frame) in enumerate(self._additional_excel_tables().items()):
                 sheet = workbook.create_sheet(name)
                 sheet.append(list(frame.columns))
-                for record in frame.where(pd.notna(frame), None).itertuples(index=False, name=None):
+                for record in frame.astype(object).where(pd.notna(frame), None).itertuples(index=False, name=None):
                     sheet.append(list(record))
+                sheet.freeze_panes = "A2"
+                if frame.shape[1]:
+                    ref = f"A1:{get_column_letter(frame.shape[1])}{max(1, sheet.max_row)}"
+                    sheet.auto_filter.ref = ref
+                    if not frame.empty:
+                        extra_table = Table(displayName=f"mars_final_{table_index}", ref=ref)
+                        extra_table.tableStyleInfo = TableStyleInfo(
+                            name="TableStyleMedium2", showRowStripes=True,
+                        )
+                        sheet.add_table(extra_table)
+                    for cell in sheet[1]:
+                        cell.fill = PatternFill("solid", fgColor="1F4E78")
+                        cell.font = Font(color="FFFFFF", bold=True)
+                    for column_index, column in enumerate(frame.columns, start=1):
+                        sheet.column_dimensions[get_column_letter(column_index)].width = (
+                            28 if column in {"feature", "display_name", "data_source"} else 18
+                        )
+                        if pd.api.types.is_numeric_dtype(frame[column]):
+                            for column_cells in sheet.iter_cols(
+                                min_col=column_index, max_col=column_index, min_row=2,
+                            ):
+                                for cell in column_cells:
+                                    cell.number_format = "0.00"
             workbook.save(path)
             logger.info("Exported binning report via openpyxl: %s", path)
         finally:

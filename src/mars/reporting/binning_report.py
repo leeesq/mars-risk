@@ -293,6 +293,10 @@ class MarsBinningReport(_ReportQuery):
         """
         导出分箱评估 Excel 报告。
 
+        raw 与 binned 复用各引擎的同一模板。raw 透视读取最终 ``ks``，
+        原 ``ks_bin`` 保留箱级分箱 KS（均为 0–100 点）。最终汇总/趋势及
+        口径诊断直接写入当前值；openpyxl 不计算公式或刷新透视缓存。
+
         Parameters
         ----------
         path : str
@@ -344,6 +348,7 @@ class MarsBinningReport(_ReportQuery):
         include_trends: bool = True,
         include_detail: bool = True,
         include_charts: bool = True,
+        include_total: bool = True,
     ) -> None:
         """
         导出支持页面切换和大规模图表懒加载的交互式 HTML 报告。
@@ -371,6 +376,8 @@ class MarsBinningReport(_ReportQuery):
             是否包含明细区域。
         include_charts : bool
             是否包含图表区域。
+        include_total : bool
+            是否在风险图中显示 Total 面板；不改变全局统计或 RC 基准。
 
         Returns
         -------
@@ -400,6 +407,7 @@ class MarsBinningReport(_ReportQuery):
             include_trends=include_trends,
             include_detail=include_detail,
             include_charts=include_charts,
+            include_total=include_total,
         )
 
     def build_risk_trend_figures(
@@ -409,6 +417,7 @@ class MarsBinningReport(_ReportQuery):
         target: str | List[str] | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -427,6 +436,8 @@ class MarsBinningReport(_ReportQuery):
             绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计或 RC 基准。
         sort_by : str
             未显式指定 ``features`` 时的特征排序字段。
         ascending : bool
@@ -459,6 +470,7 @@ class MarsBinningReport(_ReportQuery):
                 target=target,
                 risk_corr_baseline=risk_corr_baseline,
                 show_risk=show_risk,
+                include_total=include_total,
                 sort_by=sort_by,
                 ascending=ascending,
                 max_plots=max_plots,
@@ -479,6 +491,7 @@ class MarsBinningReport(_ReportQuery):
         dpi: int = 150,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -506,6 +519,8 @@ class MarsBinningReport(_ReportQuery):
             绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计或 RC 基准。
         sort_by : str
             未显式指定 ``features`` 时的特征排序字段。
         ascending : bool
@@ -543,6 +558,7 @@ class MarsBinningReport(_ReportQuery):
                 dpi=dpi,
                 risk_corr_baseline=risk_corr_baseline,
                 show_risk=show_risk,
+                include_total=include_total,
                 sort_by=sort_by,
                 ascending=ascending,
                 max_plots=max_plots,
@@ -567,6 +583,7 @@ class MarsBinningReport(_ReportQuery):
         overwrite: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -604,6 +621,8 @@ class MarsBinningReport(_ReportQuery):
             绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计或 RC 基准。
         sort_by : str
             未显式指定 ``features`` 时的特征排序字段。
         ascending : bool
@@ -646,6 +665,7 @@ class MarsBinningReport(_ReportQuery):
                 overwrite=overwrite,
                 risk_corr_baseline=risk_corr_baseline,
                 show_risk=show_risk,
+                include_total=include_total,
                 sort_by=sort_by,
                 ascending=ascending,
                 max_plots=max_plots,
@@ -660,6 +680,7 @@ class MarsBinningReport(_ReportQuery):
         target: str | List[str] | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
+        include_total: bool = True,
         sort_by: str = "iv",
         ascending: bool = False,
         max_plots: int = 20,
@@ -679,6 +700,8 @@ class MarsBinningReport(_ReportQuery):
             绘图阶段使用的 RC 基准；传入 ``None`` 时沿用报告生成时保存的口径。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式，分别表示件数口径、金额口径和双线同屏。
+        include_total : bool
+            是否显示 Total 面板；不改变全局统计或 RC 基准。
         sort_by : str
             未显式指定 ``features`` 时的特征排序字段。
         ascending : bool
@@ -713,6 +736,7 @@ class MarsBinningReport(_ReportQuery):
                 target=target,
                 risk_corr_baseline=risk_corr_baseline,
                 show_risk=show_risk,
+                include_total=include_total,
                 sort_by=sort_by,
                 ascending=ascending,
                 max_plots=max_plots,
@@ -773,11 +797,12 @@ class MarsBinningReport(_ReportQuery):
 
         df = self._display_frame(df)
         # 多目标模式下，将 target 列提前，便于快速按目标查看结果。
-        for t_col in ["target", "target_col", "y"]:
-            if t_col in df.columns:
-                cols = [t_col] + [c for c in df.columns if c != t_col]
-                df = df[cols]
-                break
+        if columns is None:
+            for t_col in ["target", "target_col", "y"]:
+                if t_col in df.columns:
+                    cols = [t_col] + [c for c in df.columns if c != t_col]
+                    df = df[cols]
+                    break
 
         styler = df.style.set_caption("<b>Feature Performance Summary</b>").hide(axis="index")
 
@@ -861,7 +886,7 @@ class MarsBinningReport(_ReportQuery):
             raise ValueError(f"Unknown metric: {metric}. Options: {list(self.trend_tables.keys())}")
 
         ordering = [sort_by] if isinstance(sort_by, str) else sort_by
-        effective_sort = ordering if all(c in self.trend_tables[metric].columns for c in ordering) else None
+        effective_sort = ordering
         df: pd.DataFrame = to_pandas_frame(self.get_table(
             f"trend.{metric}", features=features, columns=columns, sort_by=effective_sort,
             descending=not sort_ascending, limit=limit, sources=sources,
@@ -869,7 +894,7 @@ class MarsBinningReport(_ReportQuery):
 
         df = self._display_frame(df)
         # 识别列类型并重排时间切片列
-        meta_cols = ["feature", "display_name", "dtype"]
+        meta_cols = ["target", "y", "feature", "display_name", "dtype", "data_source"]
         special_cols = ["Total"]
         time_cols = [c for c in df.columns if c not in meta_cols + special_cols]
 
@@ -882,7 +907,8 @@ class MarsBinningReport(_ReportQuery):
             + time_cols_sorted
             + [c for c in special_cols if c in df.columns]
         )
-        df = df[final_cols]
+        if columns is None:
+            df = df[final_cols]
 
         # 基础表格样式初始化
         styler = df.style.set_caption(f"<b>Trend Analysis: {metric.upper()}</b>").hide(axis="index")

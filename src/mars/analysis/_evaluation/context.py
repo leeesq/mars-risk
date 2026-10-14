@@ -125,6 +125,57 @@ def resolve_profile_by(
     return None
 
 
+def build_group_date_context(
+    df: pl.DataFrame,
+    *,
+    input_group_col: str,
+    internal_group_col: str,
+    time_col: str | None,
+) -> dict[str, Any]:
+    """按本次全部样本聚合显式分组日期，不按标签或特征是否缺失筛选。"""
+    # 只投影分组与解析日期；这一轻量目录供全部特征和目标共享。
+    date_expr = (
+        MarsDate.smart_parse_expr(time_col)
+        if time_col is not None
+        else pl.lit(None, dtype=pl.Date)
+    )
+    date_groups: pl.DataFrame = (
+        df.select(
+            pl.col(internal_group_col).alias("internal_value"),
+            date_expr.alias("__mars_group_date"),
+        )
+        .group_by("internal_value", maintain_order=True)
+        .agg(
+            pl.col("__mars_group_date").min().alias("start_dt"),
+            pl.col("__mars_group_date").max().alias("end_dt"),
+        )
+    )
+    groups: list[dict[str, Any]] = []
+    starts: list[str] = []
+    ends: list[str] = []
+    for row in date_groups.iter_rows(named=True):
+        start = row["start_dt"].isoformat() if isinstance(row["start_dt"], date) else None
+        end = row["end_dt"].isoformat() if isinstance(row["end_dt"], date) else None
+        groups.append({
+            "internal_value": row["internal_value"],
+            "display_value": row["internal_value"],
+            "start_dt": start,
+            "end_dt": end,
+        })
+        if start is not None and end is not None:
+            starts.append(start)
+            ends.append(end)
+    return {
+        "input_group_col": input_group_col,
+        "internal_group_col": internal_group_col,
+        "groups": groups,
+        "total_range": {
+            "start_dt": min(starts) if starts else None,
+            "end_dt": max(ends) if ends else None,
+        },
+    }
+
+
 def prepare_group_context(
     df: pl.DataFrame,
     *,
