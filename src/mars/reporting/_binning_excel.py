@@ -10,7 +10,7 @@ from typing import Any, List, Tuple
 import pandas as pd
 
 from mars.compute import to_pandas_frame
-from mars.reporting._metadata import export_report_semantics
+from mars.reporting._metadata import export_report_semantics, is_metadata_column
 from mars.utils.logger import logger
 
 
@@ -98,25 +98,116 @@ class _BinningExcelWriter:
 
         return detail_df.loc[:, template_headers].copy()
 
-    def _additional_excel_tables(self) -> dict[str, pd.DataFrame]:
-        """模板透视之外交付最终物化结果与口径，不依赖历史缓存。"""
-        tables = {
-            "最终汇总": to_pandas_frame(self.summary_table),
-        }
-        if "ks" in self.trend_tables:
-            tables["最终KS趋势"] = to_pandas_frame(self.trend_tables["ks"])
-        if self.report_meta.get("ks_method") == "raw":
-            tables["KS口径"] = pd.DataFrame(
-                list(self.report_meta["ks_source_by_feature"].items()),
-                columns=["feature", "ks_method"],
+    @staticmethod
+    def _lookup_excel_ks(
+        frame: pd.DataFrame,
+        values: pd.DataFrame,
+        *,
+        target_col: str,
+        primary_target: Any,
+        require_total: bool = False,
+    ) -> pd.Series:
+        """按原表特征/目标行匹配分箱 KS，保留行序与空值；汇总必须有 Total 证据。"""
+        if "feature" not in frame.columns:
+            raise ValueError("原生 Excel KS 导出需要表中的 feature 身份列。")
+        frame_target = next((col for col in ("target", "y") if col in frame.columns), None)
+        keys = ["feature"]
+        source: pd.DataFrame = values[["feature", target_col, "ks"]]
+        if frame_target is not None:
+            keys.append(frame_target)
+            source = source.rename(columns={target_col: frame_target})
+        else:
+            source = source.loc[source[target_col] == primary_target]
+        matched: pd.DataFrame = frame[keys].merge(
+            source[keys + ["ks"]], on=keys, how="left", sort=False,
+            validate="many_to_one", indicator=True,
+        )
+        if require_total and (matched["_merge"] != "both").any():
+            raise ValueError("原生 Excel 最终汇总缺少对应 feature/target 的 Total 分箱 KS 明细。")
+        return matched["ks"]
+
+    def _prepare_excel_export(self) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+        """从物化结果构建独立的分箱 KS 导出视图，两条引擎共用且不修改源报告。"""
+        detail: pd.DataFrame = to_pandas_frame(self.detail_table)
+        # 历史模板使用 mars_group；已保存实际分组契约的报告优先使用契约列。
+        group_col = self.detail_group_col or "mars_group"
+        target_col = "y" if "y" in detail.columns else "target"
+        keys = ["feature", target_col, group_col]
+        missing = [col for col in [*keys, "ks_bin"] if col not in detail.columns]
+        if missing:
+            raise ValueError(
+                "原生 Excel 分箱 KS 导出缺少 detail_table 必需字段："
+                + ", ".join(missing)
             )
-            tables["KS计算诊断"] = pd.DataFrame(self.report_meta["raw_ks_diagnostics"])
+
+        # 无条件覆盖导出 ks，避免生成未观测分类组合，并保留 null 组与全空 KS。
+        detail["ks"] = detail.groupby(
+            keys, dropna=False, observed=True, sort=False,
+        )["ks_bin"].transform("max")
+        grouped: pd.DataFrame = detail[keys + ["ks"]].drop_duplicates(subset=keys)
+        targets = self.report_meta.get("targets") or []
+        observed_targets = detail[target_col].drop_duplicates().tolist()
+        if targets:
+            primary_target = targets[0]
+        elif len(observed_targets) == 1:
+            primary_target = observed_targets[0]
+        else:
+            raise ValueError("原生 Excel KS 趋势需要 report_meta.targets 指明首目标。")
+        if primary_target not in observed_targets:
+            raise ValueError("原生 Excel KS 导出首目标在 detail_table 中不存在。")
+
+        summary: pd.DataFrame = to_pandas_frame(self.summary_table)
+        if "ks" not in summary.columns:
+            raise ValueError("原生 Excel 最终汇总缺少 summary_table.ks。")
+        totals = grouped.loc[grouped[group_col] == "Total"]
+        summary["ks"] = self._lookup_excel_ks(
+            summary, totals, target_col=target_col, primary_target=primary_target,
+            require_total=True,
+        ).to_numpy()
+        tables: dict[str, pd.DataFrame] = {"最终汇总": summary}
+        if "ks" in self.trend_tables:
+            trend: pd.DataFrame = to_pandas_frame(self.trend_tables["ks"])
+            groups = grouped[group_col].astype("string").fillna("null")
+            # 只替换现有分组列，首目标契约、身份列、元数据及行列顺序全部沿用源趋势。
+            for column in trend.columns:
+                if is_metadata_column(column):
+                    continue
+                values = grouped.loc[groups == column]
+                trend[column] = self._lookup_excel_ks(
+                    trend, values, target_col=target_col, primary_target=primary_target,
+                ).to_numpy()
+            tables["最终KS趋势"] = trend
+
+        source_method = self.report_meta.get("ks_method", "binned")
+        tables["KS口径"] = pd.DataFrame(
+            [
+                ("source_report_ks_method", source_method),
+                ("exported_ks_method", "binned"),
+                ("exported_ks_source", f"max(detail.ks_bin) over (feature, {target_col}, {group_col})"),
+                ("ks_unit", "0–100 点"),
+                ("pivot_ks", "分箱 KS（0–100点）；综合指标保留模板 average 聚合"),
+                ("source_report_semantics", "ReportSemantics、CalculationStatus 保留源报告身份、参数及计算状态"),
+            ], columns=["key", "value"],
+        )
+        if source_method == "raw":
+            tables["KS口径"] = pd.concat([
+                tables["KS口径"], pd.DataFrame([
+                    ("source_ks_by_feature", str(self.report_meta.get("ks_source_by_feature", {}))),
+                    ("source_raw_diagnostics", "源报告raw KS计算诊断仅解释源 raw KS，不是 Excel 分箱 KS 诊断"),
+                ], columns=["key", "value"]),
+            ], ignore_index=True)
+            tables["源报告raw KS计算诊断"] = pd.DataFrame(
+                self.report_meta.get("raw_ks_diagnostics", []),
+            )
         tables.update(export_report_semantics(self))
-        return tables
+        # 模板字段保持原名与 22 列布局，业务分组列仅在导出副本中映射。
+        detail["mars_group"] = detail[group_col]
+        detail["y"] = detail[target_col]
+        return detail, tables
 
     @staticmethod
     def _prepare_openpyxl_pivots(workbook: Any) -> None:
-        """验证最终 KS 的模板来源并清除旧缓存，透视由 Excel 打开后刷新。"""
+        """验证分箱 KS 导出列并清除旧缓存，透视由 Excel 打开后刷新。"""
         from openpyxl.utils.cell import range_boundaries
 
         for sheet in workbook:
@@ -132,11 +223,11 @@ class _BinningExcelWriter:
                 for field in pivot.dataFields:
                     source = cache.cacheFields[field.fld].name
                     if source == "ks_bin":
-                        raise ValueError("Excel 模板 KS 透视必须读取最终 ks，不能读取 ks_bin。")
+                        raise ValueError("Excel 模板 KS 透视必须读取导出分组分箱 ks，不能直接读取逐箱 ks_bin。")
                     if source == "ks":
                         field.name = (
-                            "avg(KS最终，0–100点)" if field.subtotal == "average"
-                            else "KS（最终，0–100点）"
+                            "avg(分箱 KS，0–100点)" if field.subtotal == "average"
+                            else "分箱 KS（0–100点）"
                         )
                         # 只替换表头文本，不移动模板的布局和样式。
                         for row in sheet:
@@ -155,7 +246,7 @@ class _BinningExcelWriter:
 
     @staticmethod
     def _refresh_xlwings_pivots(workbook: Any) -> None:
-        """原生 Excel 刷新扩展后的同一模板，KS 透视直接读取已计算的最终 KS。"""
+        """原生 Excel 刷新同一模板，KS 透视读取已聚合的导出分箱 KS。"""
         if sys.platform.startswith("darwin"):
             # xlwings 的 Mac 原生对象使用 AppleScript 字典，不能调用 Windows COM 方法。
             workbook.api.refresh_all()
@@ -165,10 +256,12 @@ class _BinningExcelWriter:
             for sheet in workbook.sheets:
                 for pivot in sheet.api.pivot_tables.get():
                     for field in pivot.data_fields.get():
+                        if field.source_name.get() == "ks_bin":
+                            raise ValueError("Excel 模板 KS 透视必须读取导出分组分箱 ks，不能直接读取逐箱 ks_bin。")
                         if field.source_name.get() == "ks":
                             caption = (
-                                "avg(KS最终，0–100点)" if str(field.name.get()).startswith("avg(")
-                                else "KS（最终，0–100点）"
+                                "avg(分箱 KS，0–100点)" if str(field.name.get()).startswith("avg(")
+                                else "分箱 KS（0–100点）"
                             )
                             field.name.set(caption)
                     pivot.refresh_table()
@@ -186,10 +279,12 @@ class _BinningExcelWriter:
                 fields = pivot.DataFields
                 for field_index in range(1, fields.Count + 1):
                     field = fields.Item(field_index)
+                    if field.SourceName == "ks_bin":
+                        raise ValueError("Excel 模板 KS 透视必须读取导出分组分箱 ks，不能直接读取逐箱 ks_bin。")
                     if field.SourceName == "ks":
                         field.Caption = (
-                            "avg(KS最终，0–100点)" if field.Function == -4106
-                            else "KS（最终，0–100点）"
+                            "avg(分箱 KS，0–100点)" if field.Function == -4106
+                            else "分箱 KS（0–100点）"
                         )
                 pivot.RefreshTable()
         workbook.app.api.CalculateFullRebuild()
@@ -217,8 +312,9 @@ class _BinningExcelWriter:
         """
         导出评估 Excel 报告。
 
-        raw 与 binned 使用同一引擎模板。raw 的透视 KS 数据字段读取最终
-        ``ks``，箱级 ``ks_bin`` 保持分箱口径；附加最终汇总、趋势及诊断表。
+        raw 与 binned 使用同一引擎模板，主要 KS 均为分箱 KS（0–100点）。
+        导出副本按特征、目标和实际分组聚合 ``max(detail.ks_bin)``，写入 ``ks``
+        供透视、最终汇总和首目标趋势读取；不重新拟合或修改源报告的 KS 及状态。
         openpyxl 不计算或刷新透视，最终物化结果可直接读取，透视由 Excel 打开后刷新。
 
         Parameters
@@ -234,7 +330,7 @@ class _BinningExcelWriter:
         Raises
         ------
         ValueError
-            当 ``engine`` 不在支持列表中时抛出。
+            当 ``engine`` 不在支持列表中，或缺少分箱 KS 所需字段或 Total 明细时抛出。
         RuntimeError
             当底层 Excel 导出流程失败时抛出。
 
@@ -243,9 +339,9 @@ class _BinningExcelWriter:
         >>> import polars as pl
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> summary = pl.DataFrame({"feature": ["age"], "iv": [0.12], "ks": [18.0]})
-        >>> detail = pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [100]})
-        >>> report = MarsBinningReport(summary, {}, detail)
+        >>> from mars.analysis import profile_risk
+        >>> frame = pl.DataFrame({"age": list(range(12)), "bad": [0, 1] * 6})
+        >>> report = profile_risk(frame, target="bad", features=["age"], n_bins=2).report
         >>> with TemporaryDirectory() as tmp:
         ...     report.write_excel(str(Path(tmp) / "evaluation.xlsx"), engine="openpyxl") is None
         True
@@ -283,13 +379,7 @@ class _BinningExcelWriter:
             template_path=template_path,
             sheet_name=sheet_name,
         )
-        detail_pd: pd.DataFrame = to_pandas_frame(self.detail_table).copy()
-        # 两个模板都显式保留最终 KS；分箱口径复用现有箱级结果，不重新分箱。
-        if "ks" not in detail_pd.columns:
-            if self.report_meta.get("ks_method") == "raw":
-                raise ValueError("raw KS 报告缺少已计算的 detail.ks，不能用 ks_bin 代替。")
-            keys = ["y", "feature", self.detail_group_col or "mars_group"]
-            detail_pd["ks"] = detail_pd.groupby(keys, dropna=False)["ks_bin"].transform("max")
+        detail_pd, additional_tables = self._prepare_excel_export()
         export_pd = self._build_excel_detail_export_frame(
             detail_df=detail_pd,
             template_headers=template_headers,
@@ -335,7 +425,7 @@ class _BinningExcelWriter:
                 if last_used_row > table_last_row:
                     worksheet.range(f"{table_last_row + 1}:{last_used_row}").delete()
 
-                for name, frame in self._additional_excel_tables().items():
+                for name, frame in additional_tables.items():
                     sheet = workbook.sheets.add(name)
                     if frame.shape[1]:
                         sheet.activate()
@@ -389,11 +479,12 @@ class _BinningExcelWriter:
             for row_offset, row_data in enumerate(rows):
                 current_row = start_write_row + row_offset
                 for col_offset, value in enumerate(row_data):
-                    worksheet.cell(
+                    # cell(..., value=None) 不会清除模板示例值，必须显式写入空值。
+                    cell = worksheet.cell(
                         row=current_row,
                         column=first_col + col_offset,
-                        value=value,
                     )
+                    cell.value = value
 
             if not worksheet.tables:
                 raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
@@ -409,7 +500,7 @@ class _BinningExcelWriter:
 
             self._prepare_openpyxl_pivots(workbook)
             worksheet.freeze_panes = "A2"
-            for table_index, (name, frame) in enumerate(self._additional_excel_tables().items()):
+            for table_index, (name, frame) in enumerate(additional_tables.items()):
                 sheet = workbook.create_sheet(name)
                 sheet.append(list(frame.columns))
                 for record in frame.astype(object).where(pd.notna(frame), None).itertuples(index=False, name=None):
@@ -417,13 +508,15 @@ class _BinningExcelWriter:
                 sheet.freeze_panes = "A2"
                 if frame.shape[1]:
                     ref = f"A1:{get_column_letter(frame.shape[1])}{max(1, sheet.max_row)}"
-                    sheet.auto_filter.ref = ref
+                    # 有原生 Table 时由其提供筛选，重复的 worksheet 筛选会使 Excel 拒绝打开。
                     if not frame.empty:
                         extra_table = Table(displayName=f"mars_final_{table_index}", ref=ref)
                         extra_table.tableStyleInfo = TableStyleInfo(
                             name="TableStyleMedium2", showRowStripes=True,
                         )
                         sheet.add_table(extra_table)
+                    else:
+                        sheet.auto_filter.ref = ref
                     for cell in sheet[1]:
                         cell.fill = PatternFill("solid", fgColor="1F4E78")
                         cell.font = Font(color="FFFFFF", bold=True)

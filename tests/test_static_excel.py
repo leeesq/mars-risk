@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import subprocess
 import sys
 import zipfile
+from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 from xml.etree import ElementTree
 
 import pandas as pd
@@ -17,9 +21,11 @@ import pytest
 from openpyxl import load_workbook
 
 import mars
+import mars.analysis.evaluator as evaluator_module
 from mars.analysis import profile_risk
 from mars.feature.binning import MarsNativeBinner
 from mars.reporting import MarsBinningReport, ReportSnapshot, snapshot_report
+from mars.reporting._binning_excel import _BinningExcelWriter
 
 
 def _assert_current_excel(path: Path, report: ReportSnapshot) -> None:
@@ -109,30 +115,85 @@ def test_snapshot_excel_delivers_current_risk_values_after_new_process_load(
 def test_raw_and_binned_reuse_template_without_refit_and_keep_distinct_ks(
     backend: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """同模板两类 KS 不混写，模板表范围无示例行，最终值不依赖透视缓存。"""
+    """同一固定规则的双模式报告保留各自 KS，原生 Excel 一致显示分箱值。"""
     frame = pl.DataFrame({
-        "x": list(range(12)) * 2,
-        "category": ["甲", "乙"] * 12,
-        "bad": [0, 1] * 6 + [None] * 12,
-        "group": ["observed"] * 12 + ["undue"] * 12,
+        "x": list(range(12)) * 4,
+        "category": ["甲", "乙"] * 24,
+        "bad": [0, 1] * 6 + [0, 0, 1, 1] * 3 + [0, 0, 0, 1] * 3 + [None] * 12,
+        "second": [0, 0, 1, 1] * 6 + [0, 1] * 6 + [None] * 12,
+        "group": ["observed"] * 12 + ["validation"] * 12 + [None] * 12 + ["undue"] * 12,
+        "weight": [1.0, 2.0, 1.0, 3.0] * 12,
+        "amount": list(range(1, 49)),
+        "dt": ["2024-01-01"] * 24 + ["2024-02-01"] * 24,
     })
     input_frame = frame.to_pandas() if backend == "pandas" else frame
-    reports = {
-        method: profile_risk(
-            input_frame, target="bad", features=["x", "category"], group_col="group",
-            n_bins=2, ks_method=method, ordered_metric_sort_by="bin_index",
-            feature_metadata={"x": {"display_name": "连续字段", "data_source": "申请"}},
-        ).report
-        for method in ["binned", "raw"]
+    options: dict[str, Any] = {
+        "target": ["bad", "second"], "features": ["x", "category"], "group_col": "group",
+        "n_bins": 2, "method": "quantile", "ordered_metric_sort_by": "bin_index",
+        "weights_col": "weight", "amount_col": "amount",
+        "time_col": "dt",
+        "benchmark_df": input_frame,
+        "feature_metadata": {"x": {"display_name": "连续字段", "data_source": "申请"}},
+        "business_context": {"labels": {"bad": {"definition": "已表现坏样本"}}},
     }
-    binned_ks = reports["binned"].get_table("summary", filters={"feature": "x"})
-    raw_ks = reports["raw"].get_table("summary", filters={"feature": "x"})
-    assert float(to_polars(binned_ks)["ks"][0]) != pytest.approx(float(to_polars(raw_ks)["ks"][0]))
+    binned_run = profile_risk(input_frame, **options, ks_method="binned")
 
     def forbid_refit(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Excel 消费已经计算的报告，不得重新 fit。")
 
+    # profile_risk 无公开 binner 参数；复用其已经拟合的规则并阻断所有再次拟合。
+    monkeypatch.setattr(evaluator_module, "build_binner", lambda **kwargs: binned_run.binner)
     monkeypatch.setattr(MarsNativeBinner, "fit", forbid_refit)
+    raw_run = profile_risk(input_frame, **options, ks_method="raw")
+    assert raw_run.binner is binned_run.binner
+    reports = {"binned": binned_run.report, "raw": raw_run.report}
+    binned_summary = to_polars(reports["binned"].summary_table)
+    raw_summary = to_polars(reports["raw"].summary_table)
+    total_filter = (pl.col("feature") == "x") & (pl.col("target") == "bad")
+    assert raw_summary.filter(total_filter)["ks"][0] != pytest.approx(
+        binned_summary.filter(total_filter)["ks"][0],
+    )
+    # 数值字段 raw、分类字段回退、所有非 KS 指标仍由源报告决定。
+    pd.testing.assert_frame_equal(
+        raw_summary.drop("ks").to_pandas(), binned_summary.drop("ks").to_pandas(),
+    )
+    assert reports["raw"].report_meta["ks_source_by_feature"] == {"x": "raw", "category": "binned"}
+    pd.testing.assert_frame_equal(
+        raw_summary.filter(pl.col("feature") == "category").to_pandas(),
+        binned_summary.filter(pl.col("feature") == "category").to_pandas(),
+    )
+
+    original: dict[str, Any] = {}
+    for method, report in reports.items():
+        original[method] = {
+            "describe": deepcopy(report.describe()),
+            "meta": deepcopy(report.report_meta),
+            "tables": {name: to_polars(report.get_table(name)).clone() for name in report.describe()["tables"]},
+            "objects": (report.summary_table, report.detail_table, report.trend_tables, report.report_meta),
+            "context": report.to_ai_context(tables=["summary"], features="x", limit=2, max_chars=24000),
+        }
+        # 先 HTML 后 Excel 与先 Excel 后查询都保留同一 Python 口径。
+        if method == "raw":
+            report.write_html(str(tmp_path / "before_excel.html"), max_plots=0)
+
+    template = load_workbook(_BinningExcelWriter._resolve_excel_template_path("mars_bin_report_linux.xlsx"))
+    try:
+        template_styles: dict[str, dict[str, Any]] = {
+            name: {coordinate: deepcopy(template[name][coordinate]._style) for coordinate in coordinates}
+            for name, coordinates in {
+                "分组明细": ["A1", "Q1", "V1", "A2", "Q2", "V2"],
+                "KS": ["A4", "B4"], "综合指标": ["A5", "D5", "F5"],
+            }.items()
+        }
+        pivot_locations = {
+            name: [pivot.location.ref for pivot in template[name]._pivots]
+            for name in ["KS", "综合指标"]
+        }
+        native_style = deepcopy(next(iter(template["分组明细"].tables.values())).tableStyleInfo)
+    finally:
+        template.close()
+
+    native_frames: dict[str, dict[str, pd.DataFrame]] = {}
     for method, report in reports.items():
         output = tmp_path / f"{method}.xlsx"
         report.write_excel(str(output), engine="openpyxl")
@@ -146,31 +207,165 @@ def test_raw_and_binned_reuse_template_without_refit_and_keep_distinct_ks(
             assert detail.freeze_panes == "A2"
             headers = list(next(detail.values))
             assert headers[:6] == ["y", "feature", "trend", "mars_group", "bin_index", "bin_label"]
+            assert len(headers) == 22 and headers[16] == "ks_bin" and headers[21] == "ks"
+            native_table = next(iter(detail.tables.values()))
+            assert [column.name for column in native_table.tableColumns] == headers
+            assert native_table.tableStyleInfo == native_style
+            for name, styles in template_styles.items():
+                for coordinate, style in styles.items():
+                    assert workbook[name][coordinate]._style == style
+            for name, locations in pivot_locations.items():
+                assert [pivot.location.ref for pivot in workbook[name]._pivots] == locations
             assert "display_name" not in headers and "dtype" not in headers and "data_source" not in headers
-            actual = pl.DataFrame(list(detail.values)[1:], schema=headers, orient="row")
-            assert actual["ks_bin"].to_list() == pytest.approx(native["ks_bin"].to_list(), nan_ok=True)
+            actual = pd.DataFrame(list(detail.values)[1:], columns=headers)
+            expected_detail = native.to_pandas()
+            expected_detail["ks"] = expected_detail.groupby(
+                ["feature", "y", report.detail_group_col], dropna=False, observed=True,
+            )["ks_bin"].transform("max")
+            pd.testing.assert_frame_equal(
+                actual, expected_detail.loc[:, headers], check_dtype=False, check_exact=False,
+            )
+            assert actual.loc[actual["mars_group"] == "undue", "ks"].isna().all()
             if method == "raw":
-                assert actual["ks"].to_list() == pytest.approx(native["ks"].to_list(), nan_ok=True)
-                assert actual.filter((pl.col("feature") == "x") & (pl.col("mars_group") == "undue"))["ks"].null_count() > 0
-                assert workbook["KS口径"]["B2"].value in {"raw", "binned"}
-                assert "KS计算诊断" in workbook
+                assert any("源报告" in name and "诊断" in name for name in workbook.sheetnames)
             pivot = workbook["KS"]._pivots[0]
             assert pivot.cache.cacheFields[pivot.dataFields[0].fld].name == "ks"
             assert pivot.cache.cacheSource.worksheetSource.name == "detail"
             assert pivot.cache.refreshOnLoad and pivot.cache.recordCount == 0
             assert pivot.cache.records is None
+            assert "分箱" in pivot.dataFields[0].name
+            combined_ks = [
+                field for combined in workbook["综合指标"]._pivots for field in combined.dataFields
+                if combined.cache.cacheFields[field.fld].name == "ks"
+            ]
+            assert combined_ks and all(field.subtotal == "average" for field in combined_ks)
+            assert all("分箱" in field.name and "avg" in field.name for field in combined_ks)
             final = workbook["最终汇总"]
             final_headers = list(next(final.values))
             assert final_headers[:4] == ["feature", "display_name", "dtype", "data_source"]
             x_row = next(row for row in range(2, final.max_row + 1) if final.cell(row, 1).value == "x")
             assert final.cell(x_row, 2).value == "连续字段"
             assert final.cell(x_row, 4).value == "申请"
-            assert final.freeze_panes == "A2" and final.auto_filter.ref is not None
-            assert final.cell(x_row, final_headers.index("ks") + 1).value == pytest.approx(
-                float(to_polars(report.summary_table).filter(pl.col("feature") == "x")["ks"][0]),
+            final_table = next(iter(final.tables.values()))
+            assert final.freeze_panes == "A2" and final_table.autoFilter.ref == final_table.ref
+            # 工作表 AutoFilter 与 ListObject filter 重叠会令真实 Excel 拒绝打开。
+            assert final.auto_filter.ref is None
+            final_frame = pd.DataFrame(list(final.values)[1:], columns=final_headers)
+            pd.testing.assert_frame_equal(
+                final_frame, binned_summary.to_pandas(), check_dtype=False, check_exact=False,
             )
+            trend = workbook["最终KS趋势"]
+            trend_rows = list(trend.values)
+            trend_frame = pd.DataFrame(trend_rows[1:], columns=trend_rows[0])
+            expected_trend = to_polars(report.trend_tables["ks"]).to_pandas()
+            grouped_ks = expected_detail.drop_duplicates(["feature", "y", report.detail_group_col])
+            first_target = grouped_ks.loc[grouped_ks["y"] == "bad"]
+            for group in ["null", "observed", "undue", "validation", "Total"]:
+                matched = first_target.loc[first_target[report.detail_group_col] == group]
+                expected_trend[group] = expected_trend[["feature"]].merge(
+                    matched[["feature", "ks"]], how="left", on="feature", sort=False,
+                )["ks"].to_numpy()
+            pd.testing.assert_frame_equal(trend_frame, expected_trend, check_dtype=False, check_exact=False)
+            assert list(trend_frame.columns) == list(to_polars(report.trend_tables["ks"]).columns)
+            assert "target" not in trend_frame  # 保留既有首目标趋势契约。
+            assert trend_frame["undue"].isna().all()
+            semantics = " ".join(str(value) for row in workbook["KS口径"].values for value in row)
+            assert "source_report_ks_method" in semantics and method in semantics
+            assert "exported_ks_method" in semantics and "binned" in semantics
+            assert "exported_ks_source" in semantics and "ks_bin" in semantics
+            assert "0–100" in semantics or "0-100" in semantics
+            native_frames[method] = {"detail": actual, "summary": final_frame, "trend": trend_frame}
         finally:
             workbook.close()
+        _assert_native_excel_relationships(output, native.height)
+        _assert_report_unchanged(report, original[method])
+
+    for name in ["detail", "summary", "trend"]:
+        pd.testing.assert_frame_equal(native_frames["raw"][name], native_frames["binned"][name])
+    raw_report = reports["raw"]
+    second_output = tmp_path / "raw_second.xlsx"
+    raw_report.write_excel(str(second_output), engine="openpyxl")
+    workbook = load_workbook(second_output, data_only=True)
+    try:
+        for name, sheet_name in [("detail", "分组明细"), ("summary", "最终汇总"), ("trend", "最终KS趋势")]:
+            rows = list(workbook[sheet_name].values)
+            pd.testing.assert_frame_equal(
+                pd.DataFrame(rows[1:], columns=rows[0]), native_frames["raw"][name],
+            )
+    finally:
+        workbook.close()
+    _assert_report_unchanged(raw_report, original["raw"])
+
+    # 原生导出后的通用快照和新进程静态导出继续交付源 raw 结果。
+    snapshot = snapshot_report(raw_report)
+    snapshot_output = tmp_path / "raw_snapshot.xlsx"
+    snapshot.write_excel(str(snapshot_output))
+    _assert_current_excel(snapshot_output, snapshot)
+    archive = tmp_path / "raw.marsreport"
+    raw_report.save(archive)
+    restored_output = tmp_path / "raw_restored.xlsx"
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(Path(mars.__file__).resolve().parents[1])
+    environment["PYTHONIOENCODING"] = "utf-8"
+    script = (
+        "import sys; from mars.reporting import load_report; "
+        "r=load_report(sys.argv[1]); r.write_excel(sys.argv[2]); "
+        "print(r.to_ai_context(tables=['summary'],features='x',limit=2,max_chars=24000))"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(archive), str(restored_output)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, encoding="utf-8", check=True,
+    )
+    assert json.loads(completed.stdout) == json.loads(original["raw"]["context"])
+    _assert_current_excel(restored_output, snapshot)
+    _assert_report_unchanged(raw_report, original["raw"])
+
+
+def _assert_report_unchanged(report: MarsBinningReport, before: dict[str, Any]) -> None:
+    """导出前后公共表、语义、身份和原始对象均保持不变。"""
+    assert report.describe() == before["describe"]
+    assert report.report_meta == before["meta"]
+    for actual, original in zip(
+        (report.summary_table, report.detail_table, report.trend_tables, report.report_meta),
+        before["objects"],
+    ):
+        assert actual is original
+    for name, expected in before["tables"].items():
+        pd.testing.assert_frame_equal(to_polars(report.get_table(name)).to_pandas(), expected.to_pandas())
+    assert report.to_ai_context(
+        tables=["summary"], features="x", limit=2, max_chars=24000,
+    ) == before["context"]
+
+
+def _assert_native_excel_relationships(path: Path, detail_rows: int) -> None:
+    """检查 22 列原生表、透视字段及 ZIP 内关系完整，不冒充 Excel 交互刷新。"""
+    namespace = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        for name in archive.namelist():
+            if name.startswith("xl/pivotCache/pivotCacheDefinition") and name.endswith(".xml"):
+                cache = ElementTree.fromstring(archive.read(name))
+                fields = cache.find("s:cacheFields", namespace)
+                assert fields is not None and len(fields) == 22
+                assert fields[16].attrib["name"] == "ks_bin" and fields[21].attrib["name"] == "ks"
+                source = cache.find("s:cacheSource/s:worksheetSource", namespace)
+                assert source is not None and source.attrib["name"] == "detail"
+                assert cache.attrib["refreshOnLoad"] == "1"
+            elif name.endswith(".rels"):
+                from posixpath import normpath
+
+                parent = Path(name).parent.parent.as_posix()
+                for relation in ElementTree.fromstring(archive.read(name)):
+                    if relation.attrib.get("TargetMode") == "External":
+                        continue
+                    target = relation.attrib["Target"]
+                    resolved = target.lstrip("/") if target.startswith("/") else normpath(f"{parent}/{target}")
+                    assert resolved in archive.namelist(), (name, resolved)
+            elif name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                sheet = ElementTree.fromstring(archive.read(name))
+                if sheet.find("s:tableParts", namespace) is not None:
+                    assert sheet.find("s:autoFilter", namespace) is None, name
+        native_table = ElementTree.fromstring(archive.read("xl/tables/table1.xml"))
+        assert native_table.attrib["ref"] == f"A1:V{detail_rows + 1}"
 
 
 def to_polars(frame: pd.DataFrame | pl.DataFrame) -> pl.DataFrame:
@@ -178,8 +373,8 @@ def to_polars(frame: pd.DataFrame | pl.DataFrame) -> pl.DataFrame:
     return pl.from_pandas(frame) if isinstance(frame, pd.DataFrame) else frame
 
 
-def test_raw_excel_rejects_missing_final_ks_instead_of_filling_binned(tmp_path: Path) -> None:
-    """raw 最终值遗失时明确失败，不把尚存的分箱 KS 当作 raw 结果。"""
+def test_native_excel_builds_binned_ks_without_source_final_ks(tmp_path: Path) -> None:
+    """原生视图只依赖逐箱 KS，源 raw ks 是否物化不影响导出口径。"""
     report = profile_risk(
         pl.DataFrame({"x": list(range(12)), "bad": [0, 1] * 6}),
         target="bad", features=["x"], ks_method="raw", n_bins=2,
@@ -188,5 +383,202 @@ def test_raw_excel_rejects_missing_final_ks_instead_of_filling_binned(tmp_path: 
         report.summary_table, report.trend_tables, report.detail_table.drop("ks"),
         detail_group_col=report.detail_group_col, report_meta=report.report_meta,
     )
-    with pytest.raises(ValueError, match=r"detail\.ks.*ks_bin"):
-        incomplete.write_excel(str(tmp_path / "invalid_raw.xlsx"), engine="openpyxl")
+    output = tmp_path / "without_source_ks.xlsx"
+    incomplete.write_excel(str(output), engine="openpyxl")
+    workbook = load_workbook(output, data_only=True)
+    try:
+        rows = list(workbook["分组明细"].values)
+        actual = pd.DataFrame(rows[1:], columns=rows[0])
+        assert actual["ks"].tolist() == pytest.approx([report.detail_table["ks_bin"].max()] * len(actual))
+    finally:
+        workbook.close()
+
+
+@pytest.mark.parametrize("missing", ["ks_bin", "feature", "y", "mars_group"])
+def test_native_excel_rejects_missing_export_dimension_or_bin_ks(
+    missing: str, tmp_path: Path,
+) -> None:
+    """必要字段缺失时明确报错，不能静默用源 raw KS 混合导出。"""
+    report = profile_risk(
+        pl.DataFrame({"x": list(range(12)), "bad": [0, 1] * 6}),
+        target="bad", features=["x"], ks_method="raw", n_bins=2,
+    ).report
+    report._detail = report.detail_table.drop(missing)
+    with pytest.raises(ValueError, match="y|target" if missing == "y" else missing):
+        report.write_excel(str(tmp_path / f"missing_{missing}.xlsx"), engine="openpyxl")
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_export_view_uses_actual_null_groups_and_preserves_order(backend: str) -> None:
+    """真实分组列的 null 与分类未观测组合不会串值，全部未定义仍为空。"""
+    summary = pd.DataFrame({
+        "feature": ["b", "a", "b", "a"], "target": ["second", "first", "first", "second"],
+        "ks": [91.0, 92.0, 93.0, 94.0], "iv": [0.1, 0.2, 0.3, 0.4],
+    })
+    detail = pd.DataFrame({
+        "feature": ["a", "b", "a", "b", "a", "a", "b", "b", "a", "a"],
+        "y": ["first", "second", "first", "second", "second", "first", "first", "second", "first", "second"],
+        "actual_bucket": [None, "g", "Total", "Total", "Total", None, "Total", "g", "Total", "g"],
+        "mars_group": ["wrong"] * 10,
+        "ks_bin": [11.0, 23.0, 7.0, 13.0, 19.0, 17.0, 29.0, 31.0, 5.0, None],
+        "ks": [99.0] * 10, "count": list(range(10)),
+    })
+    detail["feature"] = pd.Categorical(detail["feature"], categories=["a", "b", "unseen"])
+    detail["y"] = pd.Categorical(detail["y"], categories=["first", "second", "absent"])
+    detail["actual_bucket"] = pd.Categorical(detail["actual_bucket"], categories=["Total", "g", "unseen"])
+    detail.index = [8, 3, 11, 4, 7, 14, 0, 2, 12, 6]
+    trend = pd.DataFrame({
+        "feature": ["b", "a"], "display_name": ["乙", "甲"], "dtype": ["Float64"] * 2,
+        "data_source": ["来源乙", "来源甲"], "g": [88.0, None], "null": [None, 77.0],
+        "Total": [66.0, 55.0],
+    })
+    convert = pl.from_pandas if backend == "polars" else lambda frame: frame
+    report = MarsBinningReport(
+        convert(summary), {"ks": convert(trend)}, convert(detail),
+        group_col="business_group", detail_group_col="actual_bucket",
+        report_meta={"ks_method": "raw", "targets": ["first", "second"],
+                     "ks_source_by_feature": {"a": "raw", "b": "raw"}, "raw_ks_diagnostics": []},
+    )
+    before = deepcopy(report.describe())
+    original_trend = to_polars(report.trend_tables["ks"]).to_pandas()
+    original_detail = to_polars(report.detail_table).clone()
+    exported, additional = _BinningExcelWriter(report)._prepare_excel_export()
+    assert exported["ks"].tolist()[:-1] == [17.0, 31.0, 7.0, 13.0, 19.0, 17.0, 29.0, 31.0, 7.0]
+    assert pd.isna(exported["ks"].iloc[-1])
+    assert exported["count"].tolist() == list(range(10))
+    if backend == "pandas":
+        assert list(exported.index) == list(detail.index)
+    assert exported["ks_bin"].tolist()[:-1] == detail["ks_bin"].tolist()[:-1]
+    assert additional["最终汇总"]["ks"].tolist() == [13.0, 7.0, 29.0, 19.0]
+    assert additional["最终汇总"]["iv"].tolist() == summary["iv"].tolist()
+    exported_trend = additional["最终KS趋势"]
+    pd.testing.assert_frame_equal(
+        exported_trend.loc[:, trend.columns[:4]], original_trend.loc[:, trend.columns[:4]],
+    )
+    assert exported_trend["Total"].tolist() == [29.0, 7.0]
+    assert pd.isna(exported_trend["g"]).all()
+    assert pd.isna(exported_trend["null"].iloc[0]) and exported_trend["null"].iloc[1] == 17.0
+    assert report.describe() == before
+    pd.testing.assert_frame_equal(to_polars(report.detail_table).to_pandas(), original_detail.to_pandas())
+
+
+@pytest.mark.parametrize("method", ["raw", "binned"])
+def test_native_excel_keeps_undefined_total_ks_empty(method: str, tmp_path: Path) -> None:
+    """整份无标签报告的分箱 KS 保持未定义，汇总和趋势不能填 0。"""
+    report = profile_risk(
+        pl.DataFrame({"x": [1, 2, 3, 4], "bad": [None] * 4}),
+        target="bad", features=["x"], ks_method=method, n_bins=2,
+    ).report
+    path = tmp_path / f"undefined_{method}.xlsx"
+    report.write_excel(str(path), engine="openpyxl")
+    workbook = load_workbook(path, data_only=True)
+    try:
+        tables = [("分组明细", ["ks", "ks_bin"]), ("最终汇总", ["ks"])]
+        if "ks" in report.trend_tables:
+            tables.append(("最终KS趋势", ["Total"]))
+        else:
+            assert "最终KS趋势" not in workbook.sheetnames
+        for name, columns in tables:
+            rows = list(workbook[name].values)
+            actual = pd.DataFrame(rows[1:], columns=rows[0])
+            assert actual[columns].isna().all().all()
+    finally:
+        workbook.close()
+
+
+def test_openpyxl_and_xlwings_consume_same_prepared_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模拟原生引擎只验证传入值，共享准备过程同时提供所有 Excel 入口。"""
+    report = profile_risk(
+        pl.DataFrame({"x": list(range(12)), "bad": [0, 1] * 6}),
+        target="bad", features=["x"], ks_method="raw", n_bins=2,
+    ).report
+    prepared: list[tuple[pd.DataFrame, dict[str, pd.DataFrame]]] = []
+    original_prepare = _BinningExcelWriter._prepare_excel_export
+
+    def prepare(writer: _BinningExcelWriter) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+        result = original_prepare(writer)
+        prepared.append(result)
+        return result
+
+    monkeypatch.setattr(_BinningExcelWriter, "_prepare_excel_export", prepare)
+    output = tmp_path / "openpyxl.xlsx"
+    report.write_excel(str(output), engine="openpyxl")
+
+    # 不启动用户 Excel；此模拟只证明 xlwings 获得同一导出数据及刷新调用。
+    workbook, app = MagicMock(), MagicMock()
+    app.books.open.return_value = workbook
+    sheets: dict[str, Any] = {}
+    detail = MagicMock()
+    detail.name = "分组明细"
+    detail.tables = [MagicMock()]
+    detail.used_range.last_cell.row = 1
+    sheets[detail.name] = detail
+
+    def add_sheet(name: str) -> Any:
+        sheet = MagicMock()
+        sheet.name = name
+        sheets[name] = sheet
+        return sheet
+
+    workbook.sheets.__getitem__.side_effect = sheets.__getitem__
+    workbook.sheets.add.side_effect = add_sheet
+    monkeypatch.setitem(sys.modules, "xlwings", SimpleNamespace(App=lambda **kwargs: app))
+    written: dict[str, list[list[Any]]] = {}
+
+    def write_rows(
+        worksheet: Any, rows: list[list[Any]], *, start_row: int, first_col: int, last_col: int,
+    ) -> None:
+        written.setdefault(worksheet.name, []).extend(rows)
+
+    refresh = MagicMock()
+    monkeypatch.setattr(_BinningExcelWriter, "_write_xlwings_detail_rows", staticmethod(write_rows))
+    monkeypatch.setattr(_BinningExcelWriter, "_refresh_xlwings_pivots", staticmethod(refresh))
+    report.write_excel(str(tmp_path / "xlwings.xlsx"), engine="xlwings")
+    assert len(prepared) == 2
+    pd.testing.assert_frame_equal(prepared[0][0], prepared[1][0])
+    for name, expected in prepared[0][1].items():
+        pd.testing.assert_frame_equal(expected, prepared[1][1][name])
+        if expected.shape[1]:
+            records = written[name]
+            actual = pd.DataFrame(records[1:], columns=records[0])
+            pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+    records = written["分组明细"]
+    assert len(records[0]) == 22 and records[0][16] == "ks_bin" and records[0][21] == "ks"
+    actual = pd.DataFrame(records[1:], columns=records[0])
+    pd.testing.assert_frame_equal(actual, prepared[0][0][records[0]], check_dtype=False)
+    refresh.assert_called_once_with(workbook)
+    workbook.save.assert_called_once_with(str(tmp_path / "xlwings.xlsx"))
+    workbook.close.assert_called_once()
+    app.quit.assert_called_once()
+
+
+def test_xlwings_refresh_labels_binned_ks_and_preserves_average(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows 原生刷新绑定导出 ks，综合指标继续使用模板 average 聚合。"""
+    monkeypatch.setattr(sys, "platform", "win32")
+    average = SimpleNamespace(SourceName="ks", Function=-4106, Caption="旧标题")
+    maximum = SimpleNamespace(SourceName="ks", Function=-4136, Caption="旧标题")
+    fields = MagicMock(Count=2)
+    fields.Item.side_effect = lambda index: [average, maximum][index - 1]
+    pivot = MagicMock()
+    pivot.DataFields = fields
+    pivots = MagicMock(Count=1)
+    pivots.Item.return_value = pivot
+    sheet = MagicMock()
+    sheet.api.PivotTables.return_value = pivots
+    workbook = MagicMock()
+    workbook.sheets = [sheet]
+    _BinningExcelWriter._refresh_xlwings_pivots(workbook)
+    assert average.Caption == "avg(分箱 KS，0–100点)"
+    assert maximum.Caption == "分箱 KS（0–100点）"
+    assert average.Function == -4106 and maximum.Function == -4136
+    assert pivot.PivotCache().MissingItemsLimit == 0
+    pivot.PivotCache().Refresh.assert_called_once()
+    pivot.RefreshTable.assert_called_once()
+    workbook.app.api.CalculateFullRebuild.assert_called_once()
+    maximum.SourceName = "ks_bin"
+    with pytest.raises(ValueError, match="ks_bin"):
+        _BinningExcelWriter._refresh_xlwings_pivots(workbook)

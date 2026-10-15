@@ -142,11 +142,19 @@ report.write_html("risk_report.html", max_plots=3, include_total=False)
 它仅控制 Total 面板，全局 IV/KS/AUC、样本数、Missing、RC 参考与底层明细仍来自完整统计。
 关闭后没有任何面板时明确报错。普通业务组名称包含 Total 仍保留。
 
-`ks_method="raw"` 的原生 Excel 与 binned 模式复用同一引擎模板。模板的 `ks`
-保存最终选定 KS，`ks_bin` 保存箱级分箱 KS，二者都是 0–100 点；类别字段按现有合同回退 binned。
-汇总和趋势页使用已计算的最终 KS，来源与 raw 诊断另表保存。无有效 raw 样本保留 null。
+`MarsBinningReport.write_excel()` 无论源报告的 `ks_method` 是 raw 还是 binned，都复用同一
+22 列原生模板，主展示统一为分箱 KS（0–100 点）。导出副本的 `ks` 按特征、目标和实际分组
+取 `max(detail.ks_bin)`，广播到同组全部箱行；`ks_bin` 保留原逐箱值。KS 与综合指标透视
+读取导出的 `ks`，综合指标保留模板的 average 聚合。最终汇总使用对应 Total 的分箱 KS，
+最终 KS 趋势保留首目标、实际分组与身份列。全部逐箱 KS 未定义的组在 Excel 中保持空值。
+
+原生 Excel 只使用已物化的数据构建导出副本，不重新拟合或评估，也不改写源报告。
+口径说明分别记录源报告 `ks_method`、导出 binned 口径、`max(detail.ks_bin)` 来源及单位；
+raw 计算诊断明确属于源报告。Python 公共查询、`describe()`、AI 上下文、保存/加载、HTML
+和绘图继续遵循源报告语义，raw 模式数值特征的最终 `ks` 与类别特征的 binned 回退保持原样。
 xlwings 可由 Excel 刷新透视和重算；openpyxl 只写结构/数据并标记打开时刷新，不执行公式或透视计算。
-两种输出应使用不同文件名。`snapshot_report(...).write_excel()` 仍是静态导出，没有模板透视交互。
+两种输出应使用不同文件名。`snapshot_report(...).write_excel()` 仍忠实静态导出保存的原报告
+数值，没有模板透视交互；源报告为 raw 时，其中的 `ks` 仍按原报告 raw 语义保存。
 
 分箱报告的原始 Excel 入口保留透视模板；缓存可能仍是模板占位值，需要在原生 Excel 中
 刷新透视表并保存。`openpyxl.load_workbook(..., data_only=True)` 不会执行这个刷新。

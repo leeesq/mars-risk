@@ -293,9 +293,13 @@ class MarsBinningReport(_ReportQuery):
         """
         导出分箱评估 Excel 报告。
 
-        raw 与 binned 复用各引擎的同一模板。raw 透视读取最终 ``ks``，
-        原 ``ks_bin`` 保留箱级分箱 KS（均为 0–100 点）。最终汇总/趋势及
-        口径诊断直接写入当前值；openpyxl 不计算公式或刷新透视缓存。
+        raw 与 binned 复用各引擎的同一 22 列模板，主展示统一为分箱 KS（0–100 点）。
+        导出副本的 ``ks`` 按特征、目标和实际分组取 ``max(detail.ks_bin)``，供 KS 与
+        综合指标透视读取；最终汇总使用 Total 的分箱 KS，最终 KS 趋势沿用首目标契约。
+        综合指标保留模板的 average 聚合，全部箱级 KS 未定义的组保持空值。
+        原报告的 ``ks``、逐箱 ``ks_bin``、元数据和计算状态保持原样，不重新拟合或评估。
+        口径说明分别记录源报告的 ``ks_method`` 与导出的 binned 口径；raw 诊断仍属于源报告。
+        openpyxl 不计算公式或刷新透视缓存，透视由原生 Excel 打开后刷新。
 
         Parameters
         ----------
@@ -312,20 +316,21 @@ class MarsBinningReport(_ReportQuery):
         Raises
         ------
         ValueError
-            当 ``engine`` 不受支持，或模板列与 ``detail_table`` 不一致时抛出。
+            当 ``engine`` 不受支持、缺少分箱 KS 的必要字段，或模板列与
+            ``detail_table`` 不一致时抛出。
         RuntimeError
             当底层 Excel 写入流程失败时抛出。
 
         Examples
         --------
         >>> import polars as pl
+        >>> from mars.analysis import profile_risk
         >>> from pathlib import Path
         >>> from tempfile import TemporaryDirectory
-        >>> report = MarsBinningReport(
-        ...     pl.DataFrame({"feature": ["age"], "iv": [0.1]}),
-        ...     {},
-        ...     pl.DataFrame({"feature": ["age"], "bin_index": [0], "count": [10]}),
-        ... )
+        >>> data = pl.DataFrame({"age": [20, 25, 30, 35], "target": [0, 1, 0, 1]})
+        >>> report = profile_risk(
+        ...     data, target="target", features=["age"], method="quantile", n_bins=2,
+        ... ).report
         >>> with TemporaryDirectory() as tmp:
         ...     report.write_excel(str(Path(tmp) / "report.xlsx"), engine="openpyxl") is None
         True

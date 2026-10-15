@@ -173,16 +173,25 @@ raw 模式按原始数值排序，将相同取值合并，计算好坏两类经�
 `features` 缩小范围或显式提高上限。上限必须是正整数；关闭 raw 模式时不执行数量限制。
 该限制不保证运行时间，耗时仍受行数、分组和标签数量影响。
 
-汇总表、趋势表、图表与 KS 排序统一读取最终值。raw 模式在 `detail_table` 增加重复到每个
-分箱行的最终 `ks`；`ks_bin` 仍是分箱中间值，不能用于恢复原始值 KS。
+Python 汇总表、趋势表、图表与 KS 排序统一读取最终值，公共查询、`describe()`、AI 上下文、
+保存/加载与 HTML 也遵循源报告的 `ks_method`。raw 模式在 `detail_table` 增加重复到每个
+分箱行的最终 `ks`；`ks_bin` 仍保存逐箱分箱 KS，不能用于恢复原始值 KS。
 多标签分别计算，`trend_tables` 沿用仅展示主标签的契约。
 `report_meta["ks_source_by_feature"]` 记录各特征使用的方法，
 `report_meta["raw_ks_diagnostics"]` 记录数值特征各标签、各组的有效样本数和空值原因。
 `valid_count` 包含符合样本条件的零权重行；`no_valid_samples` 表示没有有效样本，
 `insufficient_class_weight` 表示至少一类没有正权重。
 
-raw 模式的 Excel 导出使用已计算的汇总、趋势、完整明细和诊断工作表，打开后即可读取结果，
-不依赖模板透视缓存刷新。默认分箱模式仍使用原模板。
+`MarsBinningReport.write_excel()` 的原生 Excel 无论源报告为 raw 还是 binned，都使用同一
+22 列模板并统一展示分箱 KS（0–100 点）。导出明细的 `ks` 按特征、目标和实际分组取
+`max(detail.ks_bin)`，广播到同组全部箱行；逐箱 `ks_bin` 保留原值。KS 页和综合指标页
+读取该导出列，综合指标仍保留模板的 average 聚合方式。最终汇总取对应 Total 的分箱 KS，
+最终 KS 趋势沿用首目标、原分组顺序及身份元数据。全部逐箱 KS 未定义的组保持空值。
+
+导出仅复用已计算结果，不重新拟合或评估，也不改写源报告。Excel 口径说明分别记录源报告
+`ks_method`、导出 binned 口径、`max(detail.ks_bin)` 来源及单位；保留的 raw 诊断明确属于
+源报告。openpyxl 只写结构和数据，透视仍需在原生 Excel 中刷新；xlwings 可调用 Excel 刷新
+和重算。通用 `ReportSnapshot.write_excel()` 静态导出仍写出保存的原报告数值。
 
 ### 本地性能参考
 

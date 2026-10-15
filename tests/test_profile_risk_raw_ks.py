@@ -341,7 +341,7 @@ def test_inferred_feature_limit_excludes_weights_and_amount() -> None:
     assert report.summary_table["feature"].to_list() == ["x"]
 
 
-def test_raw_excel_html_and_figure_contain_final_values(tmp_path: Path) -> None:
+def test_raw_excel_uses_binned_while_html_and_figure_keep_raw_values(tmp_path: Path) -> None:
     from mars.reporting._matplotlib import require_pyplot
 
     df = pl.DataFrame(
@@ -359,25 +359,37 @@ def test_raw_excel_html_and_figure_contain_final_values(tmp_path: Path) -> None:
         ks_method="raw",
         n_bins=2,
     ).report
+    detail = report.detail_table.to_pandas()
+    detail["ks"] = detail.groupby(
+        ["feature", "y", report.detail_group_col], dropna=False, observed=True,
+    )["ks_bin"].transform("max")
+    group_ks = detail.drop_duplicates(["feature", "y", report.detail_group_col])
+    expected_summary = report.summary_table.to_pandas()
+    expected_summary["ks"] = group_ks.loc[group_ks["mars_group"] == "Total", "ks"].to_numpy()
+    expected_trend = report.trend_tables["ks"].to_pandas()
+    for group in ["2024-01", "2024-02", "Total"]:
+        if group in expected_trend:
+            expected_trend[group] = group_ks.loc[group_ks["mars_group"] == group, "ks"].to_numpy()
+    assert expected_summary["ks"].iloc[0] != pytest.approx(report.summary_table["ks"][0])
     excel = tmp_path / "raw.xlsx"
     report.write_excel(str(excel))
     workbook = load_workbook(excel, data_only=True)
     try:
         for name, expected in [
-            ("最终汇总", report.summary_table),
-            ("最终KS趋势", report.trend_tables["ks"]),
+            ("最终汇总", expected_summary),
+            ("最终KS趋势", expected_trend),
         ]:
             sheet = workbook[name]
             rows = list(sheet.values)
-            assert list(rows[0]) == expected.columns
+            assert list(rows[0]) == list(expected.columns)
             actual = pd.DataFrame(rows[1:], columns=rows[0])
             cols = ["ks"] if "ks" in actual else ["Total"]
             np.testing.assert_allclose(
                 actual[cols].to_numpy(dtype=float),
-                expected.select(cols).to_numpy(),
+                expected[cols].to_numpy(),
                 equal_nan=True,
             )
-        assert workbook["KS计算诊断"].max_row > 1
+        assert workbook["源报告raw KS计算诊断"].max_row > 1
         detail_sheet = workbook["分组明细"]
         detail_headers = [cell.value for cell in detail_sheet[1]]
         assert detail_headers[-1] == "ks"
@@ -386,11 +398,11 @@ def test_raw_excel_html_and_figure_contain_final_values(tmp_path: Path) -> None:
         detail_records = pd.DataFrame(list(detail_sheet.values)[1:], columns=detail_headers)
         np.testing.assert_allclose(
             detail_records[["ks", "ks_bin"]].to_numpy(dtype=float),
-            report.detail_table.select("ks", "ks_bin").to_numpy(), equal_nan=True,
+            detail[["ks", "ks_bin"]].to_numpy(), equal_nan=True,
         )
         ks_pivot = workbook["KS"]._pivots[0]
         assert ks_pivot.cache.cacheFields[ks_pivot.dataFields[0].fld].name == "ks"
-        assert "最终" in ks_pivot.dataFields[0].name
+        assert "分箱" in ks_pivot.dataFields[0].name
         assert ks_pivot.cache.refreshOnLoad
         assert ks_pivot.cache.recordCount == 0
         assert ks_pivot.cache.records is None
