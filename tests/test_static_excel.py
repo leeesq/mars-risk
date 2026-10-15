@@ -9,6 +9,7 @@ import subprocess
 import sys
 import zipfile
 from copy import deepcopy
+from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -23,9 +24,125 @@ from openpyxl import load_workbook
 import mars
 import mars.analysis.evaluator as evaluator_module
 from mars.analysis import profile_risk
+from mars.compute import to_pandas_frame
 from mars.feature.binning import MarsNativeBinner
 from mars.reporting import MarsBinningReport, ReportSnapshot, snapshot_report
 from mars.reporting._binning_excel import _BinningExcelWriter
+
+
+@pytest.mark.parametrize("native", [True, False])
+def test_excel_preserves_business_strings_as_literal_cells(tmp_path: Path, native: bool) -> None:
+    """真实工作簿的业务文字不成为公式，也不丢失前导零或日期形文字。"""
+    texts = ["=1+1", "普通中文", '带"引号', "00123", "+1+1", "-1+1", "@SUM(A1)", "2026-01-02", "'literal", "1E10"]
+    frame = pl.DataFrame({**{f"x{i}": list(range(12)) for i in range(len(texts))}, "bad": [0, 1] * 6})
+    report = profile_risk(
+        frame, target="bad", features=[f"x{i}" for i in range(len(texts))], n_bins=2,
+        feature_metadata={f"x{i}": {"display_name": text} for i, text in enumerate(texts)},
+    ).report
+    before = snapshot_report(report)
+    path = tmp_path / "literal.xlsx"
+    if native:
+        report.write_excel(str(path), engine="openpyxl")
+    else:
+        before.write_excel(str(path))
+    for data_only in (False, True):
+        workbook = load_workbook(path, data_only=data_only)
+        try:
+            sheet = workbook["FeatureMetadata"]
+            assert [sheet.cell(i + 2, 2).value for i in range(len(texts))] == texts
+            assert all(sheet.cell(i + 2, 2).data_type == "s" for i in range(len(texts)))
+        finally:
+            workbook.close()
+    for name in before.describe()["tables"]:
+        pd.testing.assert_frame_equal(to_polars(report.get_table(name)).to_pandas(), to_polars(before.get_table(name)).to_pandas())
+    assert report.feature_metadata == before.feature_metadata
+
+
+def test_native_excel_formats_actual_export_units_and_opens_summary(tmp_path: Path) -> None:
+    report = profile_risk(
+        pl.DataFrame({"x": list(range(12)), "bad": [0, 1] * 6}),
+        target="bad", features=["x"], n_bins=2, ks_method="raw",
+    ).report
+    path = tmp_path / "units.xlsx"
+    report.write_excel(str(path), engine="openpyxl")
+    workbook = load_workbook(path)
+    try:
+        assert workbook.active.title == "最终汇总"
+        sheet = workbook["最终汇总"]
+        headers = [cell.value for cell in sheet[1]]
+        expected = {"ks": "#,##0.00", "auc": "#,##0.00", "iv": "#,##0.00", "missing_min": "0.00%", "missing_max": "0.00%"}
+        for name, number_format in expected.items():
+            assert sheet.cell(2, headers.index(name) + 1).number_format == number_format
+        trend = workbook["最终KS趋势"]
+        for column in range(5, trend.max_column + 1):
+            assert trend.cell(2, column).number_format == "#,##0.00"
+        assert sheet.freeze_panes == "A2" and sheet.auto_filter.ref is None
+    finally:
+        workbook.close()
+
+
+def test_xlwings_writes_literal_text_and_dates_without_local_timezone_shift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    worksheet = MagicMock()
+    region = worksheet.range.return_value
+    rows = [["=1+1", pd.Timestamp("2026-10-15 12:30"), date(2026, 10, 15), 1.25, None, "'literal"]]
+    _BinningExcelWriter._write_xlwings_detail_rows(
+        worksheet, rows, start_row=2, first_col=1, last_col=6,
+    )
+    actual = region.api.Value[0]
+    assert actual == (
+        "=1+1", datetime(2026, 10, 15, 12, 30, tzinfo=timezone.utc),
+        datetime(2026, 10, 15, tzinfo=timezone.utc), 1.25, None, "''literal",
+    )
+    assert region.number_format == "@"
+    assert isinstance(rows[0][1], pd.Timestamp) and rows[0][1].tzinfo is None
+
+
+def test_native_excel_formats_counts_weights_amounts_and_preserves_template_formula(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = profile_risk(
+        pl.DataFrame({"=identity": list(range(12)), "bad": [0, 1] * 6, "w": [1.25] * 12}),
+        target="bad", features=["=identity"], n_bins=2, weights_col="w",
+        feature_metadata={"=identity": {"data_source": "=source"}},
+    ).report
+    # 使用真实报告目录给附表增加明确指标，不改变生产导出目录或算法。
+    summary = to_pandas_frame(report.summary_table)
+    summary["count"] = pd.Series([1000.0])
+    summary["bad"] = pd.Series([1.25])
+    summary["tot_amt"] = pd.Series([12345.5])
+    summary["bad_rate"] = pd.Series([1.0])
+    report = MarsBinningReport(
+        summary, report.trend_tables, report.detail_table,
+        group_col=report.group_col, detail_group_col=report.detail_group_col,
+        report_meta=report.report_meta, feature_metadata=report.feature_metadata,
+    )
+    assert report.describe()["tables"]["summary"]["fields"]["bad"]["unit"] == "weight_sum"
+    template = _BinningExcelWriter._resolve_excel_template_path("mars_bin_report_linux.xlsx")
+    workbook = load_workbook(template)
+    workbook.create_sheet("TemplateFormula")["A1"] = "=1+1"
+    custom_template = tmp_path / "template.xlsx"
+    workbook.save(custom_template)
+    workbook.close()
+    monkeypatch.setattr(_BinningExcelWriter, "_resolve_excel_template_path", classmethod(lambda cls, file_name: custom_template))
+    path = tmp_path / "formats.xlsx"
+    report.write_excel(str(path), engine="openpyxl")
+    workbook = load_workbook(path, data_only=False)
+    try:
+        assert workbook["TemplateFormula"]["A1"].data_type == "f"
+        assert workbook["TemplateFormula"]["A1"].value == "=1+1"
+        sheet = workbook["最终汇总"]
+        headers = [cell.value for cell in sheet[1]]
+        expected = {"count": (1000, "#,##0"), "bad": (1.25, "#,##0.00"), "tot_amt": (12345.5, "#,##0.00"), "bad_rate": (1, "0.00%")}
+        for name, (value, number_format) in expected.items():
+            cell = sheet.cell(2, headers.index(name) + 1)
+            assert cell.value == value and cell.number_format == number_format and cell.data_type == "n"
+        assert sheet["A2"].value == "=identity" and sheet["A2"].data_type == "s"
+        assert sheet["D2"].value == "=source" and sheet["D2"].data_type == "s"
+    finally:
+        workbook.close()
 
 
 def _assert_current_excel(path: Path, report: ReportSnapshot) -> None:

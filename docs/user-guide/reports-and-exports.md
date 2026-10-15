@@ -125,6 +125,10 @@ PSI/IV/Lift/WOE 保持各自数值，AUC 使用自身数值格式，KS 为 0–1
 缺失显示 `—`，原始数值仍可从 tooltip 或 `get_table()` 查看。排序使用未舍入原值，
 全局和局部搜索可检索英文、中文名及来源；元数据、日期、状态和类别不参与数值色阶。
 
+Notebook、画像 HTML 与画像 Excel 均按指标语义决定单位。宽趋势的列名是业务分组，
+即使包含 `rate`、`ratio`、`auc` 或 `ks` 也不改变该指标的单位。比例端点 0/1 仍显示为
+0.00%/100.00%，整数计数不带小数，有小数的加权计数保留小数。
+
 原生图在原说明框首行显示已登记中文名，保留英文 ID 和原指标。显式 `group_col` 时，
 各面板首行显示本次分组全样本的有效 `time_col` 日期范围，包括未表现标签和缺失特征样本。
 没有合法日期的组显示未知；旧报告缺少逐组范围时省略新增行，不使用全局日期代替。
@@ -137,6 +141,18 @@ report.save_risk_trend_images(
 )
 report.write_html("risk_report.html", max_plots=3, include_total=False)
 ```
+
+分箱 HTML 的 `include_detail` 控制 **Grouped Pivot 明细区域**，`include_charts` 独立控制
+原生趋势图。`include_detail=False` 会省去 Pivot 页面、导航、控件及其明细数据；图表仍可
+读取原报告明细。两项均为 False 时可以导出纯摘要页面，无需 `time_col`；启用图表时仍需有效
+时间信息。旧 `#pivot` / `#pivot-section` 链接会回退到有效页面。
+这些开关不改变公共表、查询、保存内容或统计结果。
+
+Charts 搜索支持已登记的中文名、英文 ID、目标及来源；重名中文名会命中所有对应特征，
+全局与局部条件按交集生效。英文 feature 继续作为查询、证据和文件名的身份。
+Notebook 与完整 HTML 的 Features 均按唯一英文特征计数；PSI 报警计数为
+**PSI > 0.25 的特征（任一标签触发）**，同一特征多标签触发只计一次。
+未计算值不触发报警，报警数为零不能证明全部特征正常。
 
 统一的 keyword-only `include_total=True` 适用于 build/plot/save/HTML 原生图入口。
 它仅控制 Total 面板，全局 IV/KS/AUC、样本数、Missing、RC 参考与底层明细仍来自完整统计。
@@ -155,6 +171,12 @@ raw 计算诊断明确属于源报告。Python 公共查询、`describe()`、AI 
 xlwings 可由 Excel 刷新透视和重算；openpyxl 只写结构/数据并标记打开时刷新，不执行公式或透视计算。
 两种输出应使用不同文件名。`snapshot_report(...).write_excel()` 仍忠实静态导出保存的原报告
 数值，没有模板透视交互；源报告为 raw 时，其中的 `ks` 仍按原报告 raw 语义保存。
+
+两引擎的原生附表按实际导出字段设置数值格式，比例显示百分比，KS 保持 0–100 点，
+AUC、IV/PSI/Lift/WOE 保持数值；整数计数带千分位，小数权重与金额保留两位小数，金额不猜币种。
+有内容的“最终汇总”作为默认打开页，保留原模板工作表及透视引用。
+原生分箱、画像与静态快照 Excel 均将业务字符串按原文保存，包括 `=1+1`、`00123` 和日期形文字；
+数值与真实日期保持各自类型，模板公式保持原有行为。
 
 分箱报告的原始 Excel 入口保留透视模板；缓存可能仍是模板占位值，需要在原生 Excel 中
 刷新透视表并保存。`openpyxl.load_workbook(..., data_only=True)` 不会执行这个刷新。
@@ -276,6 +298,14 @@ selector 中为“来源 → 特征列表”，在分箱报告构造器中为“
 可在保存恢复后重放。持久 report_id 是分析产物身份；会话登记返回的 report_id 参数实际是
 会话句柄，Agent 工具另外提供 `persistent_report_id/evidence_reference`。外部报告如实记录
 原 source，dataset_id 为 None；登记后修改原报告数据或元信息不影响已登记快照。
+
+`query_page()` 默认 `limit=10`，显式页长只接受正整数或 `None`；0、负数、bool、浮点数
+会抛出 `ValueError`。`None` 返回 offset 之后的全部剩余行，不再提供续页。
+有续页时 `next_offset` 严格前进，结束时为 `None`。
+`get_table(limit=0)`、`get_feature(limit=0)`、`to_ai_context(limit=0)` 及每表 `queries`
+中的零行请求仍有效，用于取得 schema、匹配数及空证据。零行证据的 `query.limit=0`
+保留，可通过 `get_table(evidence["reference"], **evidence["query"])` 精确回放；需要继续取证时，使用省略记录
+`continue_at` 中的正页长查询调用 `query_page()`。
 
 `to_ai_context(queries={table: get_table_options}, max_chars=16000)` 支持不同表使用不同条件；
 旧的 features/columns/filters/limit 等共同参数会适配到相同查询路径。摘要不能替代完整文件。

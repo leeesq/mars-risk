@@ -62,16 +62,32 @@ class _BinningHtmlRenderer:
         """将只读数据访问委托给 report 容器。"""
         return getattr(self._report, name)
 
+    def _feature_summary_counts(
+        self, summary_pd: pd.DataFrame, detail_pd: pd.DataFrame,
+    ) -> tuple[int, int]:
+        """按英文身份统计特征与任一标签 PSI 超限数；空摘要复用可信明细或目录。"""
+        n_features = len(self.feature_metadata)
+        for frame in (summary_pd, detail_pd):
+            if not frame.empty and "feature" in frame.columns:
+                n_features = int(frame["feature"].nunique())
+                break
+
+        high_risk_psi = 0
+        if {"feature", "psi_max"}.issubset(summary_pd.columns):
+            # 未计算与缺失不报警；同一特征跨标签触发时只保留一个英文身份。
+            exceeds: pd.Series = (
+                pd.to_numeric(summary_pd["psi_max"], errors="coerce").gt(0.25).fillna(False)
+            )
+            high_risk_psi = int(summary_pd.loc[exceeds, "feature"].nunique())
+        return n_features, high_risk_psi
+
     def _repr_html_(self: Any) -> str:
         """返回 Jupyter 环境下的评估摘要面板。"""
         # 内部展示逻辑统一转为 Pandas 处理
-        df_summary_pd = to_pandas_frame(self.summary_table)
-        n_feats = len(df_summary_pd)
-
-        # 简单统计报警数 (修正为新的小写列名 psi_max)
-        high_risk_psi = 0
-        if "psi_max" in df_summary_pd.columns:
-            high_risk_psi = sum(df_summary_pd["psi_max"] > 0.25)
+        df_summary_pd: pd.DataFrame = to_pandas_frame(self.summary_table)
+        n_feats, high_risk_psi = self._feature_summary_counts(
+            df_summary_pd, to_pandas_frame(self.detail_table),
+        )
 
         # 样式定义
         pill_style = (
@@ -81,7 +97,10 @@ class _BinningHtmlRenderer:
 
         # 动态生成 Trend 链接
         trend_keys = list(self.trend_tables.keys())
-        trend_pills = "".join([f"<span style='{pill_style}'>'{k}'</span>" for k in trend_keys])
+        trend_pills = "".join(
+            f"<span style='{pill_style}'>'{html.escape(str(k))}'</span>" for k in trend_keys
+        )
+        group_label = html.escape(str(self.group_col)) if self.group_col else "None (Total Only)"
 
         lines = []
         # 查看类操作
@@ -100,8 +119,8 @@ class _BinningHtmlRenderer:
 
             <div style="display: flex; gap: 30px; margin-bottom: 12px; font-size: 0.95em;">
                 <div><strong>🏷️ Features:</strong> {n_feats}</div>
-                <div><strong>🚨 High PSI (>0.25):</strong> <span style="color: {'red' if high_risk_psi > 0 else 'green'}; font-weight:bold;">{high_risk_psi}</span></div>
-                <div><strong>📅 Group By:</strong> {self.group_col if self.group_col else 'None (Total Only)'}</div>
+                <div><strong>🚨 PSI &gt; 0.25 的特征（任一标签触发）:</strong> <span style="color: {'red' if high_risk_psi > 0 else '#536778'}; font-weight:bold;">{high_risk_psi}</span></div>
+                <div><strong>📅 Group By:</strong> {group_label}</div>
             </div>
 
             <div style="font-size:0.9em; line-height:1.8; color:#2c3e50; background: white; padding: 10px; border: 1px solid #e0e0e0; border-radius: 4px;">
@@ -750,6 +769,7 @@ class _BinningHtmlRenderer:
                 )
                 if figure is None:
                     continue
+                display_name = (self.feature_metadata.get(feature) or {}).get("display_name")
                 if effective_embed_mode == "inline":
                     image_html = MarsPlotter._build_image_html(
                         MarsPlotter._figure_to_base64(figure, dpi=150, close=True),
@@ -773,7 +793,7 @@ class _BinningHtmlRenderer:
                     f'<article class="mars-chart-card" data-feature="{self._escape_attr(feature)}" '
                     f'data-target="{self._escape_attr(y_val)}" '
                     f'data-data-source="{self._escape_attr(data_source)}" '
-                    f'data-search-text="{self._escape_attr(self._normalize_search_text(feature, y_val, data_source))}">'
+                    f'data-search-text="{self._escape_attr(self._normalize_search_text(feature, display_name, y_val, data_source))}">'
                     f'<h4>{html.escape(feature)}</h4>{image_html}</article>'
                 )
         except Exception as exc:
@@ -1348,9 +1368,10 @@ class _BinningHtmlRenderer:
         include_trends : bool
             是否包含趋势分析区域。
         include_detail : bool
-            是否包含分箱明细区域。
+            是否生成 Grouped Pivot 分箱明细区域及其导航、控件和数据。
+            不影响原报告明细、公共查询或图表内部读取明细。
         include_charts : bool
-            是否包含图表区域。
+            是否生成原生趋势图区域，与 ``include_detail`` 独立；False 时不解析绘图时间。
         include_total : bool
             是否在风险图中显示 Total 面板；不改变全局统计或 RC 基准。
 
@@ -1417,7 +1438,6 @@ class _BinningHtmlRenderer:
             else None
         )
 
-        _ = include_detail
         feature_sources = dict(self.feature_data_source or {})
         if not feature_sources and not summary_pd.empty and {"feature", "data_source"}.issubset(summary_pd.columns):
             feature_sources = dict(
@@ -1435,11 +1455,7 @@ class _BinningHtmlRenderer:
                 )
             )
 
-        n_features = (
-            summary_pd["feature"].nunique()
-            if not summary_pd.empty and "feature" in summary_pd.columns
-            else detail_pd["feature"].nunique() if "feature" in detail_pd.columns else 0
-        )
+        n_features, high_risk_psi = self._feature_summary_counts(summary_pd, detail_pd)
         group_label = self.group_col if self.group_col else "None (Total Only)"
         all_sources = sorted(
             set(feature_sources.values())
@@ -1458,7 +1474,9 @@ class _BinningHtmlRenderer:
 
         html_parts: List[str] = []
         nav_items: List[Tuple[str, str]] = []
-        overview_html = self._build_dataset_overview_html(self.report_meta)
+        overview_html = self._build_dataset_overview_html(
+            {**self.report_meta, "feature_count": n_features} if self.report_meta else {},
+        )
         if overview_html:
             html_parts.append(
                 self._mark_page_view(
@@ -1503,7 +1521,7 @@ class _BinningHtmlRenderer:
                 html_parts.append(self._mark_page_view(section_html, page_key))
                 nav_items.append((section_id, label))
 
-        if not detail_pd.empty:
+        if include_detail and not detail_pd.empty:
             pivot_body = self._build_grouped_pivot_section_html(
                 detail_pd,
                 group_col=self.detail_group_col or "mars_group",
@@ -1572,6 +1590,7 @@ class _BinningHtmlRenderer:
                     <p>Feature risk and stability analysis with source-aware tables, grouped bin comparisons, and native risk trend charts.</p>
                     <div class="mars-meta">
                         <div class="mars-pill">Features: {n_features}</div>
+                        <div class="mars-pill">PSI &gt; 0.25 的特征（任一标签触发）: {high_risk_psi}</div>
                         <div class="mars-pill">Trend Metrics: {len(trend_pd_map)}</div>
                         <div class="mars-pill">Group By: {html.escape(str(group_label))}</div>
                     </div>

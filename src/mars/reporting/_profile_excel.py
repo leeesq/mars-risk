@@ -95,7 +95,10 @@ class _ProfileExcelWriter:
             )
 
         try:
-            with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
+            with pd.ExcelWriter(
+                path, engine="xlsxwriter",
+                engine_kwargs={"options": {"strings_to_formulas": False, "strings_to_urls": False}},
+            ) as writer:
                 wrote_any = False
                 for sheet_name, frame in export_report_semantics(self).items():
                     frame.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -177,7 +180,7 @@ class _ProfileExcelWriter:
     def _number_formats(self, frame: pd.DataFrame, table_name: str) -> dict[str, str]:
         """从实际字段语义取得 Excel 格式，不改变整数或加权小数的值。"""
         fields: dict[str, Any] = self._report.describe()["tables"][table_name]["fields"]
-        metric = table_name.rsplit(".", 1)[-1]
+        metric = table_name.rsplit(".", 1)[-1] if "." in table_name else None
         formats: dict[str, str] = {}
         for column in frame.columns:
             if is_metadata_column(column) or not pd.api.types.is_numeric_dtype(frame[column]) or pd.api.types.is_bool_dtype(frame[column]):
@@ -185,10 +188,12 @@ class _ProfileExcelWriter:
             unit = fields[column]["unit"]
             if unit in {"identifier", "type", "category", "dimension", "state", "state_reason", "original_value", "display", "index", "ordinal"}:
                 continue
-            if unit in {"ratio", "ratio_difference"} and metric not in {"auc", "auc_bin"} and column not in {"auc", "auc_bin"}:
+            semantic_name = metric or column
+            if unit in {"ratio", "ratio_difference"} and semantic_name not in {"auc", "auc_bin"}:
                 number_format = "0.00%"
             elif str(fields[column]["dtype"]).lower().startswith(("int", "uint")) or (
-                unit == "count" and frame[column].dropna().mod(1).eq(0).all()
+                unit in {"count", "count_or_weight", "weight_sum"}
+                and frame[column].dropna().mod(1).eq(0).all()
             ):
                 number_format = "#,##0"
             else:
@@ -267,7 +272,8 @@ class _ProfileExcelWriter:
         subset_cols: List[str] | None = None,
         fmt_as_pct: bool = False,
         vmin: float | None = None,
-        vmax: float | None = None
+        vmax: float | None = None,
+        table_name: str | None = None,
     ) -> pd.io.formats.style.Styler:
         """生成统一的 Pandas Styler 样式对象。"""
         if df_input is None:
@@ -293,22 +299,29 @@ class _ProfileExcelWriter:
                 axis=None,
                 vmin=vmin,
                 vmax=vmax,
-                gmap=df[gradient_cols].where(np.isfinite(df[gradient_cols])),
+                # Pandas 2.0 的 Styler 不接受含 pd.NA 的扩展类型色阶，转换仅限绘图副本。
+                gmap=df[gradient_cols].where(np.isfinite(df[gradient_cols])).to_numpy(
+                    dtype=float, na_value=np.nan,
+                ),
             )
 
         # 复用 HTML 数值格式；文本按 HTML 转义，比例的整数端点仍显示百分比。
+        fields: dict[str, Any] = (
+            self._report.describe()["tables"][table_name]["fields"] if table_name else {}
+        )
+        metric = table_name.rsplit(".", 1)[-1] if table_name and "." in table_name else None
         formatters: dict[str, Any] = {}
         for column in num_cols:
             if is_metadata_column(column):
                 continue
-            unit = _definition(column)["unit"]
-            percent = fmt_as_pct or (
-                column not in {"auc", "auc_bin"} and (
-                    unit in {"ratio", "ratio_difference"}
-                    or "rate" in column or "ratio" in column
-                )
+            # 宽趋势列是业务分组值；所属表目录已经按真实 metric 登记每列单位。
+            unit = fields.get(column, _definition(column))["unit"]
+            semantic_name = metric or column
+            percent = (fmt_as_pct and table_name is None) or (
+                semantic_name not in {"auc", "auc_bin"}
+                and unit in {"ratio", "ratio_difference"}
             )
-            if not percent and unit in {"count", "count_or_weight"}:
+            if not percent and unit in {"count", "count_or_weight", "weight_sum"}:
                 formatters[column] = _format_count
             elif not percent and pd.api.types.is_integer_dtype(df[column].dtype):
                 formatters[column] = "{:,}"

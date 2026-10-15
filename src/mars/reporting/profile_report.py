@@ -280,6 +280,11 @@ class MarsProfileReport(_ReportQuery):
         None
             方法仅产生文件写入副作用。
 
+        Notes
+        -----
+        数值格式沿用实际指标单位；业务文字、身份、分组名和表头按原文保存，
+        以 ``=`` 开头的字符串不会转换为公式。
+
         Examples
         --------
         >>> import polars as pl
@@ -332,6 +337,7 @@ class MarsProfileReport(_ReportQuery):
         fmt_as_pct: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
+        table_name: str | None = None,
     ) -> pd.io.formats.style.Styler:
         """构建画像报告复用的 Pandas Styler。"""
         return _ProfileExcelWriter(self)._get_styler(
@@ -344,6 +350,7 @@ class MarsProfileReport(_ReportQuery):
             fmt_as_pct=fmt_as_pct,
             vmin=vmin,
             vmax=vmax,
+            table_name=table_name,
         )
 
     def show_overview(self,
@@ -354,7 +361,7 @@ class MarsProfileReport(_ReportQuery):
                       limit: int | None = None,
                       sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
-        展示特征概览宽表。
+        展示特征概览宽表，数值单位按真实指标字段定义格式化。
 
         Parameters
         ----------
@@ -407,7 +414,7 @@ class MarsProfileReport(_ReportQuery):
             cmap="RdYlGn_r",
             # 指定哪些列应用“红绿灯”配色 (高值=红)
             subset_cols=["missing_rate", "zeros_rate", "unique_rate", "mode_rate"],
-            fmt_as_pct=False # 概览表混合了多种类型，不强制全转百分比，由内部逻辑细分
+            table_name="overview",
         )
 
     def show_trend(self,
@@ -420,7 +427,7 @@ class MarsProfileReport(_ReportQuery):
                    limit: int | None = None,
                    sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
-        展示指定指标的分组趋势。
+        展示指定指标的分组趋势，数值单位按所属指标定义格式化。
 
         Parameters
         ----------
@@ -447,6 +454,8 @@ class MarsProfileReport(_ReportQuery):
         -------
         pd.io.formats.style.Styler
             样式化表；文本类型与计算状态保留原值，空查询结果仍可渲染。
+            业务分组名称不影响单位；比例展示百分比，AUC、PSI、IV、Lift、WOE
+            保持数值口径，KS 展示 0–100 点。
 
         Raises
         ------
@@ -475,19 +484,16 @@ class MarsProfileReport(_ReportQuery):
         if source_type == "dq":
             # DQ 默认配置
             cmap = "RdYlGn_r"  # 红色代表高风险 (高缺失)
-            fmt_pct = True     # DQ 指标通常是率 (Rate/Ratio)
             vmin, vmax = 0, 1  # 率通常在 0~1 之间
 
         else: # 统计及比较表沿用各自的原生结果。
             # 统计指标默认配置
             cmap = "Blues"     # 蓝色代表数值高低 (中性)
-            fmt_pct = False    # 统计值通常是绝对值
             vmin, vmax = None, None
 
         # 特殊指标覆盖配置
         if metric == "psi":
             cmap = "RdYlGn_r" # PSI 高了是坏事
-            fmt_pct = False   # PSI 是数值不是百分比
             vmin, vmax = 0.0, 0.5 # 锚定阈值
 
         prefix = {"dq": "dq", "stat": "stats", "comparison": "comparison"}[source_type]
@@ -508,7 +514,7 @@ class MarsProfileReport(_ReportQuery):
             df,
             title=f"Trend Analysis: {metric}",
             cmap=cmap,
-            fmt_as_pct=fmt_pct,
+            table_name=table_name,
             vmin=vmin,
             vmax=vmax,
         )

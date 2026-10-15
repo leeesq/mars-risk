@@ -10,7 +10,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mars.reporting import MarsBinningReport, MarsProfileReport, ReportSnapshot, load_report
+from mars.reporting import MarsBinningReport, MarsProfileReport, Report, ReportSnapshot, load_report
 from mars.reporting._query import ReportFrame
 
 
@@ -173,6 +173,180 @@ def test_query_preserves_type_filters_before_projection_and_does_not_mutate(
     assert records(report.get_table("summary", sources="other", columns=["feature"])) == [
         {"feature": "b"}
     ]
+
+
+def test_query_pages_advance_through_filtered_results_and_finish(
+    report: MarsBinningReport, tmp_path: Path
+) -> None:
+    frame: ReportFrame = pl.DataFrame(
+        {
+            "feature": ["a", "b", "a", "c", "a", "b", "a"],
+            "mean": [1.0, 10.0, 3.0, 9.0, -1.0, 8.0, 2.0],
+        }
+    )
+    if isinstance(report.summary_table, pd.DataFrame):
+        frame = frame.to_pandas()
+    original = MarsProfileReport(
+        frame,
+        {},
+        {},
+        feature_metadata={
+            "a": {"data_source": "base"},
+            "b": {"data_source": "other"},
+            "c": {"data_source": "base"},
+        },
+    )
+    path = tmp_path / "pages.marsreport"
+    original.save(path)
+    for saved in (original, load_report(path)):
+        options = {
+            "features": ["a", "b"],
+            "sources": "base",
+            "filters": {"mean": {"op": "ge", "value": 0}},
+            "sort_by": "mean",
+            "descending": True,
+            "columns": ["mean", "feature"],
+        }
+        offset: int | None = 0
+        rows: list[dict] = []
+        pages: list[dict] = []
+        while offset is not None:
+            page = saved.query_page("overview", **options, offset=offset, limit=1)
+            assert page["total_rows"] == 3
+            assert page["returned_rows"] == 1
+            assert page["reference"]["report_id"] == original.report_id
+            assert list(page["data"].columns) == ["mean", "feature"]
+            assert records(saved.get_table("overview", **page["reference"]["query"])) == records(
+                page["data"]
+            )
+            rows.extend(records(page["data"]))
+            pages.append(page)
+            assert len(pages) <= 3, "pagination must terminate after the finite matching rows"
+            next_offset = page["next_offset"]
+            assert next_offset is None or next_offset > offset
+            offset = next_offset
+        assert rows == [{"mean": value, "feature": "a"} for value in (3.0, 2.0, 1.0)]
+        assert pages[0]["next_offset"] == 1 and pages[0]["omitted_rows"] == 2
+        assert pages[-1]["next_offset"] is None and pages[-1]["truncated"] is False
+        assert pages[-1]["omitted_rows"] == 0
+        default = saved.query_page("overview", **options)
+        assert default["reference"]["query"]["limit"] == 10
+        assert default["returned_rows"] == 3 and default["next_offset"] is None
+        all_remaining = saved.query_page("overview", **options, offset=1, limit=None)
+        assert records(all_remaining["data"]) == rows[1:]
+        assert all_remaining["next_offset"] is None and all_remaining["truncated"] is False
+        for start in (3, 20):
+            ended = saved.query_page("overview", **options, offset=start, limit=1)
+            assert ended["returned_rows"] == 0 and ended["total_rows"] == 3
+            assert ended["next_offset"] is None and ended["truncated"] is False
+        empty = saved.query_page("overview", filters={"feature": "unknown"}, limit=1)
+        assert empty["returned_rows"] == empty["total_rows"] == empty["omitted_rows"] == 0
+        assert empty["next_offset"] is None and empty["truncated"] is False
+
+
+@pytest.mark.parametrize("invalid", [0, -1, True, False, 1.0, 0.5, "1"])
+def test_query_page_rejects_nonpositive_or_noninteger_limits(
+    report: MarsBinningReport, invalid: object, tmp_path: Path
+) -> None:
+    path = tmp_path / "invalid-pages.marsreport"
+    report.save(path)
+    for saved in (report, load_report(path)):
+        with pytest.raises(ValueError, match="query_page limit.*positive integer or None"):
+            saved.query_page("summary", limit=invalid)
+
+
+def _assert_zero_row_context_replays_and_continues(
+    report: Report, context: str, table: str, expected_remaining: int
+) -> None:
+    """零行证据与继续取证分别回放，防止定位重新形成零页长循环。"""
+    payload = json.loads(context)
+    evidence = next(item for item in payload["evidence"] if item["reference"] == table)
+    query = evidence["query"]
+    assert query["limit"] == 0
+    assert evidence["returned_rows"] == 0 and evidence["rows"] == []
+    assert evidence["next_offset"] is None and evidence["truncated"] is True
+    assert evidence["total_rows"] == query["offset"] + expected_remaining
+    assert records(report.get_table(table, **query)) == evidence["rows"]
+    assert list(report.get_table(table, **query).columns) == list(
+        payload["description"]["tables"][table]["fields"]
+    )
+    with pytest.raises(ValueError, match="positive integer"):
+        report.query_page(table, **query)
+    omission = next(item for item in payload["omitted"] if item["reference"] == table)
+    assert omission["rows"] == expected_remaining and omission["reason"] == "row_limit"
+    assert omission["next_offset"] is None
+    continuation = omission["continue_at"]
+    assert continuation == {**query, "limit": 10}
+    page = report.query_page(table, **continuation)
+    assert page["returned_rows"] == expected_remaining
+    assert page["next_offset"] is None
+    assert evidence["report_id"] == omission["report_id"] == report.report_id
+    assert len(context) <= payload["budget"]["max_chars"]
+
+
+def test_zero_row_table_feature_and_ai_queries_keep_evidence_and_positive_continuation(
+    report: MarsBinningReport, tmp_path: Path
+) -> None:
+    path = tmp_path / "zero-row-evidence.marsreport"
+    report.save(path)
+    for saved in (report, load_report(path)):
+        before = {name: saved.get_table(name) for name in saved.describe()["tables"]}
+        selected = saved.get_table("summary", columns=["ks", "feature"], limit=0)
+        assert len(selected) == 0 and list(selected.columns) == ["ks", "feature"]
+        feature = saved.get_feature("a", limit=0)
+        assert feature["evidence_status"] == "available"
+        assert feature["omitted_rows"] == {"summary": 1, "detail": 2, "trend.iv": 1}
+        for name, frame in feature["tables"].items():
+            assert len(frame) == 0
+            assert list(frame.columns) == list(saved.get_table(name).columns)
+            assert type(frame) is type(saved.get_table(name))
+        _assert_zero_row_context_replays_and_continues(
+            saved,
+            saved.to_ai_context(
+                tables=["summary"], columns=["ks", "feature"], limit=0, max_chars=16000
+            ),
+            "summary",
+            3,
+        )
+        options = {
+            "detail": {
+                "features": "a",
+                "sources": "base",
+                "filters": {"count": {"op": "ge", "value": 0}},
+                "sort_by": "count",
+                "descending": True,
+                "columns": ["count", "feature"],
+                "offset": 1,
+                "limit": 0,
+            },
+            "summary": {"columns": ["feature"], "limit": 1},
+        }
+        # 顶层和每表覆盖均保留零行请求；另一表的正页长覆盖仍可返回证据。
+        for top_limit in (0, 2):
+            context = saved.to_ai_context(queries=options, limit=top_limit, max_chars=16000)
+            _assert_zero_row_context_replays_and_continues(saved, context, "detail", 1)
+            summary = json.loads(context)["evidence"][1]
+            assert summary["returned_rows"] == 1 and summary["query"]["limit"] == 1
+        for name, frame in before.items():
+            assert saved.get_table(name).equals(frame)
+
+
+def test_empty_table_has_no_continuation_in_pages_or_zero_row_context(
+    report: MarsBinningReport, tmp_path: Path
+) -> None:
+    empty = MarsProfileReport(report.get_table("summary", limit=0), {}, {})
+    path = tmp_path / "empty-page.marsreport"
+    empty.save(path)
+    for saved in (empty, load_report(path)):
+        for limit in (1, None):
+            page = saved.query_page("overview", limit=limit)
+            assert page["returned_rows"] == page["total_rows"] == page["omitted_rows"] == 0
+            assert page["next_offset"] is None and page["truncated"] is False
+        payload = json.loads(saved.to_ai_context(limit=0))
+        evidence = payload["evidence"][0]
+        assert evidence["query"]["limit"] == 0 and evidence["rows"] == []
+        assert evidence["total_rows"] == 0 and evidence["next_offset"] is None
+        assert evidence["truncated"] is False and payload["omitted"] == []
 
 
 @pytest.mark.parametrize(

@@ -116,6 +116,12 @@ if page["next_offset"] is not None:
 
 每页包含 `total_rows`、`returned_rows`、`omitted_rows`、`next_offset` 与 `reference`。
 引用保留报告身份、表名和查询参数；保存后可在同一快照重放。
+
+`query_page()` 默认页长为 10，只接受正整数或 `None`。0、负数、bool、浮点数会抛
+`ValueError`；`None` 返回 offset 之后全部剩余结果。续页偏移严格前进，结束时为 `None`。
+`get_table()`、`get_feature()`、`to_ai_context()` 及其每表 `queries` 仍接受 `limit=0`。
+此时证据保留零行查询、列 schema、匹配数和省略说明，通过 `get_table()` 回放空证据；
+省略记录的 `continue_at` 另给正页长查询，供 `query_page()` 继续取证。
 先筛选／排序，再列投影和分页，避免先把完整表转换为 Pandas／JSON。
 筛选只支持已有字段及限定操作符，不执行 SQL 或任意表达式。
 仅投影数值时，`to_ai_context()` 的 `evidence.identities` 按相同顺序补充每行未输出的特征身份列；

@@ -378,9 +378,10 @@ class MarsBinningReport(_ReportQuery):
         include_trends : bool
             是否包含趋势分析区域。
         include_detail : bool
-            是否包含明细区域。
+            是否生成 Grouped Pivot 分箱明细区域及其导航、控件和数据。
+            不影响原报告明细、公共查询或图表内部读取明细。
         include_charts : bool
-            是否包含图表区域。
+            是否生成原生趋势图区域，与 ``include_detail`` 独立；False 时不解析绘图时间。
         include_total : bool
             是否在风险图中显示 Total 面板；不改变全局统计或 RC 基准。
 

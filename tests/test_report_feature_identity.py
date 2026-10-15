@@ -149,3 +149,58 @@ def test_legacy_aggregate_dtype_does_not_conflict_with_reliable_summary_type() -
     legacy = ReportSnapshot({"summary": summary, "trend.ks": trend, "detail": pl.DataFrame()}, description)
     assert legacy.get_table("trend.ks")["dtype"].item() == "String"
     assert legacy.get_table("trend.ks")["Total"].item() == 12.5
+
+
+@pytest.mark.parametrize("missing", [pd.NA, None, float("nan")])
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("dtype_storage", ["string", "object"])
+def test_nullable_binning_dtype_normalization_through_report_and_snapshot(
+    missing: object, trusted: bool, dtype_storage: str, tmp_path: Path,
+) -> None:
+    """缺失 dtype 先归一化；仅可靠汇总类型可补齐，保存恢复保持未知与原指标。"""
+    summary = pd.DataFrame({"feature": ["x"], "iv": [0.1]})
+    if trusted:
+        summary["dtype"] = pd.array(["String"], dtype="string")
+    trend = pd.DataFrame({
+        "feature": ["x"], "dtype": pd.array([missing], dtype=dtype_storage),
+        "Total": pd.array([12.5], dtype="Float64"),
+    }, index=pd.Index([8], name="row"))
+    trend_before = trend.copy(deep=True)
+    report = MarsBinningReport(summary, {"ks": trend}, pd.DataFrame())
+    result = report.get_table("trend.ks")
+    expected_dtype = "String" if trusted else None
+    assert result["dtype"].tolist() == [expected_dtype]
+    assert result.index.equals(trend.index)
+    assert result["Total"].dtype == trend["Total"].dtype
+    normalized = normalize_feature_frame(
+        result, {}, {"x": "String"} if trusted else {}, discard_aggregate_dtype=True,
+    )
+    assert_frame_equal(normalized, result)
+    assert_frame_equal(trend, trend_before)
+    path = tmp_path / "nullable-dtype.marsreport"
+    report.save(path)
+    for snapshot in (snapshot_report(report), load_report(path)):
+        assert_frame_equal(snapshot.get_table("trend.ks"), result)
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_missing_binning_dtype_preserves_empty_schema_and_rejects_conflicts(backend: str) -> None:
+    """空表保留指标类型，非空原类型矛盾不能被缺失处理放过。"""
+    pandas_frame = pd.DataFrame({
+        "feature": pd.Series([], dtype="string"), "dtype": pd.Series([], dtype="string"),
+        "Total": pd.Series([], dtype="Float64"),
+    }, index=pd.Index([], name="row", dtype="int64"))
+    frame = pl.from_pandas(pandas_frame) if backend == "polars" else pandas_frame
+    result = normalize_feature_frame(frame, {}, {}, discard_aggregate_dtype=True)
+    if backend == "pandas":
+        assert result.index.equals(frame.index)
+        assert result["Total"].dtype == frame["Total"].dtype
+        assert_frame_equal(normalize_feature_frame(result, {}, {}, discard_aggregate_dtype=True), result)
+    else:
+        assert result.schema["Total"] == frame.schema["Total"]
+        assert result.equals(normalize_feature_frame(result, {}, {}, discard_aggregate_dtype=True))
+    conflicting = pd.DataFrame({"feature": ["x"], "dtype": pd.array(["Int64"], dtype="string")})
+    if backend == "polars":
+        conflicting = pl.from_pandas(conflicting)
+    with pytest.raises(ValueError, match="Conflicting dtype"):
+        normalize_feature_frame(conflicting, {}, {"x": "String"}, discard_aggregate_dtype=True)

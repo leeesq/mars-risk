@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,7 @@ def test_comparison_notebook_renders_native_text_and_numbers(
         assert styled.data.set_index("feature").loc["category", "total"] == pytest.approx(1 / 3)
     if metric == "unseen":
         assert "no_reference_values" in html
-        assert "background-color:" in html and "0.33" in html
+        assert "background-color:" in html and "33.33%" in html
     path = tmp_path / "comparison.html"
     report.write_html(str(path))
     exported = path.read_text(encoding="utf-8")
@@ -116,7 +117,7 @@ def test_shared_styler_keeps_nullable_numeric_boolean_and_all_empty_columns() ->
             "status": ["comparable", "not_computed"],
             "reason": [None, "no_target"],
             "count": pd.Series([1, None], dtype="Int64"),
-            "rate": pd.Series([0.25, None], dtype="Float64"),
+            "bad_rate": pd.Series([0.25, None], dtype="Float64"),
             "all_empty": pd.Series([None, None], dtype="Float64"),
             "comparable": pd.Series([True, None], dtype="boolean"),
         }
@@ -163,6 +164,23 @@ def test_existing_profile_trends_keep_default_total_order_and_percentage_format(
     assert "background-color:" in report.show_overview().to_html()
 
 
+def test_profile_overview_uses_registered_fields_without_substring_guessing() -> None:
+    """概览按真实指标字段保留比例端点，未知业务字段不能按名称片段猜单位。"""
+    frame = pd.DataFrame({
+        "feature": ["income"], "corporate": [100.0], "rate_group": [100.0],
+        "ratio_group": [100.0], "missing_rate": [1], "zeros_rate": [0],
+        "auc": [0.75], "ks": [25.5], "count": [1234.0], "weight_sum": [1.25],
+    })
+    report = MarsProfileReport(frame, {}, {})
+    before = report.get_table("overview")
+    html = report.show_overview().to_html()
+    assert "10000.00%" not in html
+    assert html.count(">100.00<") == 3
+    for text in ("100.00%", "0.00%", "0.75", "25.50", "1,234", "1.25"):
+        assert f">{text}<" in html
+    assert_frame_equal(before, report.get_table("overview"))
+
+
 @pytest.mark.parametrize("backend", ["pandas", "polars"])
 def test_profile_excel_uses_semantic_display_formats_without_changing_values(
     backend: str, tmp_path: Path,
@@ -207,3 +225,49 @@ def test_profile_excel_uses_semantic_display_formats_without_changing_values(
     assert "&lt;申请收入&gt;" in notebook_html and "申请 &amp; 外部" in notebook_html
     assert "<申请收入>" not in notebook_html
     workbook.close()
+
+
+def test_profile_excel_preserves_formula_like_business_strings(tmp_path: Path) -> None:
+    """画像的所有数据区域按原文保存业务字符串，数值和日期保持原类型。"""
+    from openpyxl import load_workbook
+
+    texts = ["=1+1", "普通中文", '带"引号', "00123", "+1+1", "-1+1", "@SUM(A1)", "https://example.com"]
+    overview = pd.DataFrame({"feature": texts, "mean": [1.25] * len(texts), "mode_value": texts})
+    trend = pd.DataFrame({"feature": texts, "=period": [2.5] * len(texts), "total": [1.25] * len(texts)})
+    report = MarsProfileReport(
+        overview, {}, {"mean": trend},
+        comparison_tables={"schema": pd.DataFrame({
+            "feature": texts, "reason": texts, "checked_at": [pd.Timestamp("2026-01-01")] * len(texts),
+        })},
+        feature_metadata={text: {"display_name": text, "data_source": text} for text in texts},
+        report_meta={"=business_note": "=1+1"},
+    )
+    before = {name: report.get_table(name) for name in report.describe()["tables"]}
+    metadata_before = deepcopy(report.feature_metadata)
+    path = tmp_path / "strings.xlsx"
+    report.write_excel(str(path))
+    for data_only in (False, True):
+        workbook = load_workbook(path, data_only=data_only)
+        for sheet_name in ("Overview", "Trend_Mean", "Compare_Schema", "FeatureMetadata"):
+            sheet = workbook[sheet_name]
+            headers = {cell.value: cell.column for cell in sheet[1]}
+            actual = {sheet.cell(row, headers["feature"]).value: row for row in range(2, sheet.max_row + 1)}
+            assert set(actual) == set(texts)
+            for text, row in actual.items():
+                for column in ("feature", "display_name", "data_source"):
+                    if column in headers:
+                        cell = sheet.cell(row, headers[column])
+                        assert cell.value == text and cell.data_type == "s"
+                        assert cell.hyperlink is None
+            if "mean" in headers:
+                assert sheet.cell(2, headers["mean"]).value == 1.25
+                assert sheet.cell(2, headers["mean"]).data_type == "n"
+            if "checked_at" in headers:
+                assert sheet.cell(2, headers["checked_at"]).value == pd.Timestamp("2026-01-01")
+                assert sheet.cell(2, headers["checked_at"]).data_type == "d"
+        assert workbook["Trend_Mean"].cell(1, 5).value == "=period"
+        assert workbook["Trend_Mean"].cell(1, 5).data_type == "s"
+        workbook.close()
+    for name, frame in before.items():
+        assert_frame_equal(frame, report.get_table(name))
+    assert report.feature_metadata == metadata_before

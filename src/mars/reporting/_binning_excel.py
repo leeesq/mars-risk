@@ -10,7 +10,9 @@ from typing import Any, List, Tuple
 import pandas as pd
 
 from mars.compute import to_pandas_frame
+from mars.reporting._excel import _prepare_xlwings_strings, _write_openpyxl_value, _xlwings_value
 from mars.reporting._metadata import export_report_semantics, is_metadata_column
+from mars.reporting._semantics import _definition
 from mars.utils.logger import logger
 
 
@@ -302,11 +304,59 @@ class _BinningExcelWriter:
             chunk = rows[offset:offset + 5000]
             first_row = start_row + offset
             last_row = first_row + len(chunk) - 1
+            _prepare_xlwings_strings(worksheet, chunk, start_row=first_row, first_col=first_col)
             region = worksheet.range(f"{first_letter}{first_row}:{last_letter}{last_row}")
-            if sys.platform.startswith("darwin"):
-                region.value = chunk
+            is_mac = sys.platform.startswith("darwin")
+            native_rows: list[list[Any]] = [
+                [_xlwings_value(value, com_dates=not is_mac) for value in row]
+                for row in chunk
+            ]
+            if is_mac:
+                region.value = native_rows
             else:
-                region.api.Value = tuple(tuple(row) for row in chunk)
+                # COM 的日期需要明确时区标记；只转换写入副本，保持原表和墙钟时间。
+                region.api.Value = tuple(tuple(row) for row in native_rows)
+
+    def _additional_number_formats(self, name: str, frame: pd.DataFrame) -> dict[str, str]:
+        """按实际附表语义选择两引擎共用格式，宽趋势只使用所属指标。"""
+        table_name = {
+            "最终汇总": "summary",
+            "最终KS趋势": "trend.ks",
+            "CalculationStatus": "calculation_status",
+        }.get(name)
+        tables: dict[str, Any] = self._report.describe()["tables"]
+        fields: dict[str, Any] = tables.get(table_name, {}).get("fields", {}) if table_name else {}
+        formats: dict[str, str] = {}
+        for column in frame.columns:
+            if not pd.api.types.is_numeric_dtype(frame[column]) or pd.api.types.is_bool_dtype(frame[column]):
+                continue
+            # 语义导出附表只有 JSON 片段序号是计数，其他数值不按名称片段猜单位。
+            if name in {"BusinessContext", "ReportSemantics"} and column in {"part", "parts"}:
+                unit = "count"
+            else:
+                unit = fields.get(column, {}).get("unit", "unknown")
+            metric = "ks" if table_name == "trend.ks" and not is_metadata_column(column) else column
+            if table_name == "trend.ks" and not is_metadata_column(column):
+                unit = _definition("ks")["unit"]
+            if unit in {"ratio", "ratio_difference"} and metric not in {"auc", "auc_bin"}:
+                number_format = "0.00%"
+            elif unit in {"count", "count_or_weight", "weight", "weight_sum"}:
+                number_format = "#,##0" if frame[column].dropna().mod(1).eq(0).all() else "#,##0.00"
+            elif unit in {"points_0_100", "dimensionless", "correlation", "unknown_business_unit", "ratio"}:
+                number_format = "#,##0.00"
+            else:
+                continue
+            formats[column] = number_format
+        return formats
+
+    @staticmethod
+    def _additional_column_widths(frame: pd.DataFrame) -> dict[str, int]:
+        """按实际内容限制附表列宽，长口径文字不能撑开整个工作表。"""
+        widths: dict[str, int] = {}
+        for column in frame.columns:
+            content_width = max((len(str(value)) for value in frame[column].dropna()), default=0)
+            widths[column] = min(48, max(12, len(str(column)) + 2, content_width + 2))
+        return widths
 
     def write_excel(self: Any, path: str = "mars_bin_report.xlsx", engine: str = "openpyxl") -> None:
         """
@@ -428,6 +478,8 @@ class _BinningExcelWriter:
                 for name, frame in additional_tables.items():
                     sheet = workbook.sheets.add(name)
                     if frame.shape[1]:
+                        widths = self._additional_column_widths(frame)
+                        formats = self._additional_number_formats(name, frame)
                         sheet.activate()
                         last_letter = get_column_letter(frame.shape[1])
                         extra_rows = [list(frame.columns)] + (
@@ -444,12 +496,22 @@ class _BinningExcelWriter:
                         header.font.color = "#FFFFFF"
                         header.font.bold = True
                         region.columns.autofit()
+                        for column_index, column in enumerate(frame.columns, start=1):
+                            letter = get_column_letter(column_index)
+                            sheet.range(f"{letter}:{letter}").column_width = widths[column]
+                        for column, number_format in formats.items():
+                            letter = get_column_letter(frame.columns.get_loc(column) + 1)
+                            if not frame.empty:
+                                sheet.range(f"{letter}2:{letter}{len(frame) + 1}").number_format = number_format
                         sheet.range("A2").select()
                         if sys.platform.startswith("darwin"):
                             workbook.api.windows[1].freeze_panes.set(True)
                         else:
                             app.api.ActiveWindow.FreezePanes = True
                 self._refresh_xlwings_pivots(workbook)
+                if not additional_tables["最终汇总"].empty:
+                    workbook.sheets["最终汇总"].activate()
+                    workbook.sheets["最终汇总"].range("A1").select()
                 workbook.save(path)
                 logger.info("Exported binning report via xlwings: %s", path)
             except Exception as exc:
@@ -475,7 +537,7 @@ class _BinningExcelWriter:
         try:
             worksheet = workbook[sheet_name]
             for column_offset, header in enumerate(template_headers):
-                worksheet.cell(row=1, column=first_col + column_offset, value=header)
+                _write_openpyxl_value(worksheet.cell(row=1, column=first_col + column_offset), header)
             for row_offset, row_data in enumerate(rows):
                 current_row = start_write_row + row_offset
                 for col_offset, value in enumerate(row_data):
@@ -484,7 +546,7 @@ class _BinningExcelWriter:
                         row=current_row,
                         column=first_col + col_offset,
                     )
-                    cell.value = value
+                    _write_openpyxl_value(cell, value)
 
             if not worksheet.tables:
                 raise ValueError(f"sheet `{sheet_name}` 缺少 Excel table，无法按模板导出明细表。")
@@ -505,8 +567,15 @@ class _BinningExcelWriter:
                 sheet.append(list(frame.columns))
                 for record in frame.astype(object).where(pd.notna(frame), None).itertuples(index=False, name=None):
                     sheet.append(list(record))
+                # append 会将等号文字识别为公式，只在本次附表写入区恢复字面类型。
+                for row in sheet:
+                    for cell in row:
+                        if isinstance(cell.value, str):
+                            _write_openpyxl_value(cell, cell.value)
                 sheet.freeze_panes = "A2"
                 if frame.shape[1]:
+                    widths = self._additional_column_widths(frame)
+                    formats = self._additional_number_formats(name, frame)
                     ref = f"A1:{get_column_letter(frame.shape[1])}{max(1, sheet.max_row)}"
                     # 有原生 Table 时由其提供筛选，重复的 worksheet 筛选会使 Excel 拒绝打开。
                     if not frame.empty:
@@ -521,15 +590,18 @@ class _BinningExcelWriter:
                         cell.fill = PatternFill("solid", fgColor="1F4E78")
                         cell.font = Font(color="FFFFFF", bold=True)
                     for column_index, column in enumerate(frame.columns, start=1):
-                        sheet.column_dimensions[get_column_letter(column_index)].width = (
-                            28 if column in {"feature", "display_name", "data_source"} else 18
-                        )
-                        if pd.api.types.is_numeric_dtype(frame[column]):
+                        sheet.column_dimensions[get_column_letter(column_index)].width = widths[column]
+                        number_format = formats.get(column)
+                        if number_format is not None:
                             for column_cells in sheet.iter_cols(
                                 min_col=column_index, max_col=column_index, min_row=2,
                             ):
                                 for cell in column_cells:
-                                    cell.number_format = "0.00"
+                                    cell.number_format = number_format
+            if not additional_tables["最终汇总"].empty:
+                workbook.active = workbook.sheetnames.index("最终汇总")
+                for sheet in workbook:
+                    sheet.sheet_view.tabSelected = sheet.title == "最终汇总"
             workbook.save(path)
             logger.info("Exported binning report via openpyxl: %s", path)
         finally:

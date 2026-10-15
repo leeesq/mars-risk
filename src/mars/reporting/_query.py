@@ -625,7 +625,8 @@ class _ReportQuery:
         offset : int
             非负起始行号。
         limit : int | None
-            非负最大行数；None 不限制。排序配合 limit 实现 Top-K。
+            非负最大行数；0 返回保留列 schema 的空表，None 不限制。
+            排序配合 limit 实现 Top-K；需要续页计数时使用 limit 为正整数或 None 的 query_page。
         sources : str | list[str] | None
             已登记来源；角色表匹配任一端点来源，独立于 features，条件间采用交集。
             来源未知时报错；旧单特征表仍采用同一 feature 的来源条件。
@@ -667,21 +668,31 @@ class _ReportQuery:
             公共表目录中的表名。
         **query : Any
             get_table 的关键字参数；默认 offset=0、limit=10。
+            limit 只接受正整数或 None；None 返回 offset 后全部结果且无续页。
+            零行精确查询使用 get_table(limit=0)。
 
         Returns
         -------
         dict[str, Any]
             原生 data、计数、截断原因、next_offset 和可重放的 reference。
 
-        Notes
-        -----
-        查询无效时传播 get_table 的 ValueError。
+        Raises
+        ------
+        ValueError
+            limit 不是正整数或 None，或其他 get_table 查询参数无效时抛出。
 
         Examples
         --------
         >>> page = report.query_page("summary", limit=5)  # doctest: +SKIP
         """
-        options = {"offset": 0, "limit": 10, **query}
+        limit = query.get("limit", 10)
+        if limit is not None and (type(limit) is not int or limit <= 0):
+            raise ValueError("query_page limit must be a positive integer or None.")
+        return self._query_page(name, **query)
+
+    def _query_page(self, name: str, **query: Any) -> dict[str, Any]:
+        """复用原生查询与匹配计数；内部零行证据不发布停滞的 next_offset。"""
+        options: dict[str, Any] = {"offset": 0, "limit": 10, **query}
         page = self.get_table(name, **options)
         # 计数只筛选原生表；Pandas 未筛选整表时不生成副本。
         matched = query_table(
@@ -699,7 +710,7 @@ class _ReportQuery:
             "truncated": remaining > 0,
             "omitted_rows": remaining,
             "omission_reason": "pagination" if remaining else None,
-            "next_offset": offset + len(page) if remaining else None,
+            "next_offset": offset + len(page) if remaining and len(page) else None,
             "reference": {"report_id": self.report_id, "table": name, "query": deepcopy(options)},
         }
 
@@ -732,6 +743,7 @@ class _ReportQuery:
             get_table 的筛选条件。
         limit : int
             每表非负整数行数上限；AI 上下文不接受无界的 None。
+            0 保留空证据、schema、匹配数和查询引用，继续取证定位另给正页长。
         max_chars : int
             最终 JSON 的 Unicode 字符预算，不等于 token 数。非空查询至少保留一条完整证据；
             必要字段口径和查询范围无法同时容纳时明确拒绝。
@@ -744,13 +756,13 @@ class _ReportQuery:
         offset : int
             每表起始位置。
         queries : dict[str, dict[str, Any]] | None
-            每表的 get_table 参数覆盖共同参数，支持异构表查询。
+            每表的 get_table 参数覆盖共同参数，支持异构表查询及 limit=0。
 
         Returns
         -------
         str
             标准 JSON；定义仅出现一次，相同 null 口径存放在表级 field_defaults，
-            字段定义继承该默认值。evidence.query 表示裁剪后的有效查询，可直接精确回放；
+            字段定义继承该默认值。evidence.query 表示裁剪后的有效查询，可用 get_table 精确回放；
             identities 按行补充投影省略的特征身份。省略记录包含数量、原因及继续查询定位。
 
         Raises
@@ -819,7 +831,7 @@ class _ReportQuery:
                     options[key] = min(options[key], value)
                 elif options.get(key) is None:
                     options[key] = value
-            page = self.query_page(name, **options)
+            page = self._query_page(name, **options)
             frame = page["data"]
             entry = table_definitions[name]
             identity_entry: dict[str, Any] = entry
@@ -928,15 +940,17 @@ class _ReportQuery:
             )
             evidence_features[name] = row_features
             if page["omitted_rows"]:
-                omitted.append(
-                    {
-                        "reference": name,
-                        "report_id": self.report_id,
-                        "rows": page["omitted_rows"],
-                        "reason": "row_limit",
-                        "next_offset": page["next_offset"],
-                    }
-                )
+                omission: dict[str, Any] = {
+                    "reference": name,
+                    "report_id": self.report_id,
+                    "rows": page["omitted_rows"],
+                    "reason": "row_limit",
+                    "next_offset": page["next_offset"],
+                }
+                # 零行证据必须仍由 limit=0 精确回放；继续取证另提供有效正页长。
+                if options["limit"] == 0:
+                    omission["continue_at"] = {**deepcopy(options), "limit": 10}
+                omitted.append(omission)
         # 大型说明块独立裁剪；每次省略完整参数值并保留 describe 定位。
         for key, value in list(description["parameters"].items()):
             if len(_encode(value)) > max_chars // 8:
@@ -1157,7 +1171,8 @@ class _ReportQuery:
         feature : str
             稳定英文特征 ID；已知但无证据时返回 evidence_status=no_evidence。
         limit : int
-            每表最大行数，默认 100；完整表可继续 get_table 分页。
+            每表非负最大行数，默认 100；0 保留空表 schema、匹配状态和省略数。
+            完整表可继续 get_table 分页。
 
         Returns
         -------
@@ -1184,7 +1199,7 @@ class _ReportQuery:
                 or entry.get("feature_scope")
                 or entry.get("feature_relation")
             ):
-                page = self.query_page(name, features=feature, limit=limit)
+                page = self._query_page(name, features=feature, limit=limit)
                 matched = matched or page["total_rows"] > 0
                 results[name] = page["data"]
                 omitted_rows[name] = page["omitted_rows"]

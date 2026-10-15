@@ -64,14 +64,15 @@ def _table_html(
         for column in dataframe.columns
     )
     rows: list[str] = []
-    metric = name.rsplit(".", 1)[-1]
+    metric = name.rsplit(".", 1)[-1] if "." in name else None
     for row in dataframe.itertuples(index=False, name=None):
         cells: list[str] = []
         for column, value in zip(dataframe.columns, row):
             kind, raw = _cell_type(value)
             unit = definitions.get(column, {}).get("unit")
             # AUC 的 ratio 单位沿用其数值格式，不能和质量率混同。
-            percent = unit in {"ratio", "ratio_difference"} and metric not in {"auc", "auc_bin"} and column not in {"auc", "auc_bin"}
+            semantic_name = metric or column
+            percent = unit in {"ratio", "ratio_difference"} and semantic_name not in {"auc", "auc_bin"}
             if column not in numeric:
                 percent = False
             if kind == "missing":
@@ -81,7 +82,7 @@ def _table_html(
             elif kind == "number" and not percent and (
                 isinstance(value, (int, np.integer))
                 or str(definitions.get(column, {}).get("dtype", "")).lower().startswith(("int", "uint"))
-                or unit == "count" and float(value).is_integer()
+                or unit in {"count", "count_or_weight", "weight_sum"} and float(value).is_integer()
             ):
                 text = f"{int(value):,}"
             else:

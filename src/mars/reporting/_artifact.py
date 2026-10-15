@@ -16,6 +16,7 @@ from typing import Any, Dict, NoReturn, Protocol, cast, runtime_checkable
 import pandas as pd
 import polars as pl
 
+from ._excel import _preserve_openpyxl_strings
 from ._metadata import export_semantics
 from ._query import ReportFrame, _ReportQuery
 from ._semantics import _normalize_state_definitions
@@ -117,7 +118,7 @@ class Report(Protocol):
         ...
 
     def get_feature(self, feature: str, *, limit: int = 100) -> dict[str, Any]:
-        """取得单特征元信息和证据表。"""
+        """取得单特征元信息和证据表；limit=0 保留空表结构与省略计数。"""
         ...
 
     def search_features(
@@ -127,7 +128,7 @@ class Report(Protocol):
         ...
 
     def query_page(self, name: str, **query: Any) -> dict[str, Any]:
-        """取得分页计数与持久引用。"""
+        """取得分页计数与持久引用；limit 默认 10，只接受正整数或 None。"""
         ...
 
     def to_ai_context(
@@ -145,7 +146,7 @@ class Report(Protocol):
         offset: int = 0,
         queries: dict[str, dict[str, Any]] | None = None,
     ) -> str:
-        """输出字符预算内的有效 JSON 摘要。"""
+        """输出预算内 JSON；零行查询由 get_table 精确回放，继续取证另给正页长。"""
         ...
 
     def save(self, path: str | Path, *, overwrite: bool = False) -> None:
@@ -307,10 +308,12 @@ class ReportSnapshot(_ReportQuery):
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             for name, frame in export_semantics(self.describe()).items():
                 frame.to_excel(writer, sheet_name=name, index=False)
+                _preserve_openpyxl_strings(writer.sheets[name], frame)
             for index, name in enumerate(self._tables):
-                self.show_table(name).to_excel(
-                    writer, sheet_name=f"{index:03d}_{name}"[:31], index=False
-                )
+                frame = self.show_table(name)
+                sheet_name = f"{index:03d}_{name}"[:31]
+                frame.to_excel(writer, sheet_name=sheet_name, index=False)
+                _preserve_openpyxl_strings(writer.sheets[sheet_name], frame)
 
 
 def snapshot_report(report: object) -> ReportSnapshot:

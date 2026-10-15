@@ -76,6 +76,60 @@ class _ReportTables(HTMLParser):
             self.table = None
 
 
+@pytest.mark.parametrize(
+    ("metric", "value", "expected", "weighted"),
+    [
+        ("mean", 100.0, "100.00", False), ("median", 100.0, "100.00", False),
+        ("missing", 1, "100.00%", False), ("zeros", 0, "0.00%", False),
+        ("psi", 0.25, "0.25", False), ("iv", 0.25, "0.25", False),
+        ("lift", 1.25, "1.25", False), ("woe", 0.25, "0.25", False),
+        ("auc", 0.75, "0.75", False), ("ks", 25.5, "25.50", False),
+        ("count", 1234.0, "1,234", False), ("count", 1.25, "1.25", False),
+        ("count", 1234.0, "1,234", True), ("count", 1.25, "1.25", True),
+    ],
+)
+def test_profile_trend_formats_metric_instead_of_business_group_names(
+    metric: str, value: float, expected: str, weighted: bool, tmp_path: Path,
+) -> None:
+    """任意业务分组名均消费所属指标语义，三个展示入口保留原数值。"""
+    from openpyxl import load_workbook
+
+    groups = ["corporate", "rate_group", "ratio_group", "auc", "ks", "total"]
+    trend = pd.DataFrame({"feature": ["income"], **{group: [value] for group in groups}})
+    quality = metric in {"missing", "zeros"}
+    report = MarsProfileReport(
+        pd.DataFrame(), {metric: trend} if quality else {},
+        {} if quality else {metric: trend},
+        report_meta={"weights_col": "sample_weight"} if weighted else None,
+    )
+    table_name = f'{"dq" if quality else "stats"}.{metric}'
+    before = report.get_table(table_name)
+    projection = ["ratio_group", "feature", "auc", "corporate", "rate_group", "ks", "total"]
+    styled = report.show_trend(metric, columns=projection)
+    assert styled.data.columns.tolist() == projection
+    notebook = _ReportTables()
+    notebook.feed(styled.to_html())
+    assert notebook.tables[0]["rows"][0] == [expected, "income", expected, expected, expected, expected, expected]
+    html_path = tmp_path / "trend.html"
+    report.write_html(str(html_path))
+    html = _ReportTables()
+    html.feed(html_path.read_text(encoding="utf-8"))
+    table = next(table for table in html.tables if table["headers"] == list(before.columns))
+    for group in groups:
+        assert table["rows"][0][table["headers"].index(group)] == expected
+    path = tmp_path / "trend.xlsx"
+    report.write_excel(str(path))
+    workbook = load_workbook(path)
+    sheet = workbook[f'{"DQ" if quality else "Trend"}_{metric.capitalize()}']
+    headers = {cell.value: cell.column for cell in sheet[1]}
+    for group in groups:
+        cell = sheet.cell(2, headers[group])
+        assert cell.value == value
+        assert ("%" in cell.number_format) == quality
+    workbook.close()
+    pd.testing.assert_frame_equal(before, report.get_table(table_name))
+
+
 _DOM_FIXTURE = r"""
 const fs = require('fs'), vm = require('vm');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));

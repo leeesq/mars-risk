@@ -77,9 +77,12 @@ def normalize_feature_frame(
             existing = frame[column].to_list() if isinstance(frame, pl.DataFrame) else frame[column].tolist()
             for index, (actual, canonical) in enumerate(zip(existing, expected)):
                 absent = actual is None or actual is pd.NA or isinstance(actual, float) and pd.isna(actual)
+                # nullable 字符串的 pd.NA 比较结果仍为 pd.NA，必须先结束缺失分支。
+                if absent:
+                    continue
                 if column == "dtype" and discard_aggregate_dtype and actual == "Float64":
                     continue
-                if absent or column == "data_source" and actual == "UNMAPPED":
+                if column == "data_source" and actual == "UNMAPPED":
                     continue
                 if canonical is not None and actual != canonical:
                     raise ValueError(f"Conflicting {column} for feature {identities[index]!r}.")

@@ -6,6 +6,17 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 修复画像 Notebook 宽趋势按业务组名猜测比例的问题，Notebook/HTML/Excel 统一按字段和
+  指标语义格式化；保留比例端点、整数与加权小数。nullable `dtype` 的 `pd.NA`、None、NaN
+  先安全处理，再校验可信类型；未知原始类型不从聚合 Float64 推断，非空矛盾仍拒绝。
+- 分箱 HTML 图表搜索纳入登记的中文名，保持英文身份、来源及搜索交集；`include_detail`
+  真正控制 Grouped Pivot 区域及数据，与 `include_charts` 独立。Notebook 与完整 HTML
+  统一按唯一英文特征计数，PSI > 0.25 的任一标签触发仅计该特征一次。
+- 原生分箱 Excel 两引擎共用附表单位与精度，有内容的“最终汇总”作为默认打开页；
+  原生分箱、画像及静态快照写入的业务字符串均按字面文字保存，保留数值、日期及模板公式。
+- `query_page()` 默认 `limit=10`，显式页长只接受正整数或 None，拒绝 0、负数、bool 和浮点数；
+  续页偏移严格推进。`get_table/get_feature/to_ai_context` 及每表 queries 的零行能力保留，
+  空证据仍以 `limit=0` 经 `get_table` 回放，继续取证另给正页长查询。
 - 画像与分箱的原生特征表默认增加 `display_name`、原输入 `dtype`、`data_source`，
   身份列顺序为 `feature → display_name → dtype → data_source`。显式 `columns` 仍是精确投影。
   旧 `.marsreport` 先按磁盘 schema 严格校验，再在内存补列；旧分箱趋势的聚合类型不作为原始类型。
