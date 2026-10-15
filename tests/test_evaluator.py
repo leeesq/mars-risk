@@ -390,8 +390,17 @@ def test_risk_trend_summary_uses_time_col_when_group_col_is_non_temporal(
         summary_text = "\n".join(text.get_text() for text in figures[0].texts)
         assert "[2024-01-01 ~ 2024-01-24]" in summary_text
         assert "[new ~ vip]" not in summary_text
-        titles = [axis.get_title() for axis in figures[0].axes]
-        assert any(title.startswith("new") for title in titles)
+        titles: dict[str, str] = {
+            title.splitlines()[1]: title.splitlines()[0]
+            for axis in figures[0].axes
+            if (title := axis.get_title())
+        }
+        assert titles == {
+            "new (0/7: 0.0%, n: 7)": "[2024-01-01 ~ 2024-01-22]",
+            "repeat (3/9: 33.3%, n: 9)": "[2024-01-03 ~ 2024-01-24]",
+            "vip (8/8: 100.0%, n: 8)": "[2024-01-05 ~ 2024-01-23]",
+            "Total (11/24: 45.8%, n: 24)": "[2024-01-01 ~ 2024-01-24]",
+        }
     finally:
         for figure in figures:
             plt.close(figure)
@@ -414,8 +423,11 @@ def test_risk_trend_uses_time_grain_when_group_col_is_not_provided(
     figures = run.report.build_risk_trend_figures(features="income")
     try:
         assert len(figures) == 1
-        titles = [axis.get_title() for axis in figures[0].axes]
-        assert any(title.startswith("202401") for title in titles)
+        titles = [axis.get_title() for axis in figures[0].axes if axis.get_title()]
+        assert titles == [
+            "202401 (11/24: 45.8%, n: 24)",
+            "Total (11/24: 45.8%, n: 24)",
+        ]
     finally:
         for figure in figures:
             plt.close(figure)
@@ -451,9 +463,18 @@ def test_risk_trend_titles_use_only_observed_targets(
     figures = run.report.build_risk_trend_figures(features="income")
     try:
         assert len(figures) == 1
-        titles = [axis.get_title() for axis in figures[0].axes if axis.get_title()]
-        assert "2024-02 (2/4: 50.0%, n: 8)" in titles
-        assert "2024-03 (0/0: n.a., n: 8)" in titles
+        titles: dict[str, str] = {
+            title.splitlines()[1]: title.splitlines()[0]
+            for axis in figures[0].axes
+            if (title := axis.get_title())
+        }
+        # 日期覆盖该组全部适用样本，未表现样本仍贡献日期范围和 n。
+        assert titles == {
+            "2024-01 (3/8: 37.5%, n: 8)": "[2024-01-01 ~ 2024-01-08]",
+            "2024-02 (2/4: 50.0%, n: 8)": "[2024-01-09 ~ 2024-01-16]",
+            "2024-03 (0/0: n.a., n: 8)": "[2024-01-17 ~ 2024-01-24]",
+            "Total (5/12: 41.7%, n: 24)": "[2024-01-01 ~ 2024-01-24]",
+        }
     finally:
         for figure in figures:
             plt.close(figure)
@@ -687,7 +708,12 @@ def test_profile_risk_returns_report_and_evaluator_for_pandas_input(sample_credi
     assert set(report.summary_table["feature"]) == {"income", "utilization"}
 
 
-def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_credit_df, sample_credit_pd):
+def test_profile_risk_summary_is_consistent_between_polars_and_pandas(
+    sample_credit_df: pl.DataFrame,
+    sample_credit_pd: pd.DataFrame,
+) -> None:
+    source_pl: pl.DataFrame = sample_credit_df.clone()
+    source_pd: pd.DataFrame = sample_credit_pd.copy(deep=True)
     report_pl, _ = _profile_risk_report(
         sample_credit_df,
         target="target",
@@ -707,10 +733,42 @@ def test_profile_risk_summary_is_consistent_between_polars_and_pandas(sample_cre
         n_bins=3,
     )
 
-    summary_pl = report_pl.summary_table.to_pandas().sort_values("feature").reset_index(drop=True)
-    summary_pd = report_pd.summary_table.sort_values("feature").reset_index(drop=True)
+    summary_pl: pd.DataFrame = (
+        report_pl.summary_table.to_pandas().sort_values("feature").reset_index(drop=True)
+    )
+    summary_pd: pd.DataFrame = (
+        report_pd.summary_table.sort_values("feature").reset_index(drop=True)
+    )
+    assert summary_pl.columns.tolist() == summary_pd.columns.tolist()
+    assert summary_pl.columns[:4].tolist() == ["feature", "display_name", "dtype", "data_source"]
+    assert summary_pl["feature"].tolist() == summary_pd["feature"].tolist() == [
+        "income", "utilization",
+    ]
 
-    pd.testing.assert_frame_equal(summary_pl, summary_pd, check_dtype=False, check_like=False)
+    # dtype 保存各自输入的逻辑 schema；Pandas 含缺失整数列原本就是浮点列。
+    for summary, schema in (
+        (summary_pl, sample_credit_df.schema),
+        (summary_pd, pl.from_pandas(sample_credit_pd).schema),
+    ):
+        assert summary.set_index("feature")["dtype"].to_dict() == {
+            feature: str(schema[feature]) for feature in ["income", "utilization"]
+        }
+    assert summary_pl["dtype"].tolist() == ["Int64", "Float64"]
+    assert summary_pd["dtype"].tolist() == ["Float64", "Float64"]
+
+    # 仅身份文本允许 object/StringDtype 存储差异，数值与索引仍使用严格比较。
+    identity_columns = ["feature", "display_name", "data_source"]
+    pd.testing.assert_frame_equal(
+        summary_pl[identity_columns].astype("string"),
+        summary_pd[identity_columns].astype("string"),
+    )
+    metric_columns = [column for column in summary_pl if column not in [*identity_columns, "dtype"]]
+    pd.testing.assert_frame_equal(summary_pl[metric_columns], summary_pd[metric_columns])
+    projection = ["ks", "feature", "dtype"]
+    for report in (report_pl, report_pd):
+        assert list(report.get_table("summary", columns=projection).columns) == projection
+    assert sample_credit_df.equals(source_pl)
+    pd.testing.assert_frame_equal(sample_credit_pd, source_pd)
 
 
 def test_profile_risk_multi_target_keeps_pandas_return_type(sample_credit_pd):

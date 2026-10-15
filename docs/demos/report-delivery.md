@@ -16,6 +16,9 @@ description: Home Credit 2018 全量公开案例，保存统计与有限查询�
 
 HTML 供人工探索，Excel 交付当前静态公共表，.marsreport 保留目录、参数与查询身份，有限 JSON 提供有范围的证据。
 同批工作簿关键值逐项对快照核验。Excel 不执行 HTML 交互，也不依赖旧透视缓存。
+默认特征查询的身份列依次为 `feature → display_name → dtype → data_source`，显式 `columns`
+按请求精确投影。案例 JSON、报告目录和 AI 上下文均由同批真实查询生成；manifest 中的
+`source_commit` 记录生成时的已知 Git 基线，代码指纹记录实际用于生成的工作树实现。
 cases.zip 只包含明确允许的统计产物与源码，个人写作 Skill、原始 CSV、清洗宽表、样本 ID 明细均不进入公共材料。
 无原数据可加载现成快照并重放查询；完整复算须自行取得三个官方文件并传路径。
 

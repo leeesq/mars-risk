@@ -1,11 +1,11 @@
 {
-  "preparation_seconds": 3.000849299947731,
+  "preparation_seconds": 25.004517100001976,
   "rows": 356255,
   "full_dataset": true,
   "measurement": "wall time; no peak memory measurement",
-  "score_cross_seconds": 0.9641917999833822,
-  "profile_seconds": 3.2611871999688447,
-  "binning_seconds": 31.098719000001438,
-  "selection_seconds": 4.864935599965975,
-  "rules_seconds": 0.7784164999611676
+  "score_cross_seconds": 6.92809799999668,
+  "profile_seconds": 23.41160359999776,
+  "binning_seconds": 154.8415851000027,
+  "selection_seconds": 8.082453000002715,
+  "rules_seconds": 1.00765870000032
 }

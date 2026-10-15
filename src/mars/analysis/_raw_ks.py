@@ -16,7 +16,7 @@ from mars.analysis._evaluation.context import (
 from mars.compute import is_numeric_dtype, to_polars_frame
 from mars.compute._raw_ks import _calculate_raw_ks
 from mars.reporting import MarsBinningReport
-from mars.reporting._metadata import is_metadata_column
+from mars.reporting._metadata import _null_group_label, is_metadata_column
 
 
 def _prepare_raw_ks(
@@ -151,10 +151,10 @@ def _apply_raw_ks(
     primary_values = values.filter(pl.col("y") == primary_target)
     if "ks" in trends and not primary_values.is_empty():
         trend = to_polars_frame(trends["ks"])
-        # Polars 会为 null pivot 键创建 ``null`` 列，却不会把对应值写入该列；报告层
-        # 已用字符串 ``null`` 表示缺失分组，因此先统一列名语义再 pivot。
+        # 只映射宽表展示列名，真实空组键留在原明细中，并与业务文字 null 区分。
+        null_label = _null_group_label(detail[group_col].unique().to_list())
         raw_trend = primary_values.with_columns(
-            pl.col("group").fill_null("null")
+            pl.col("group").fill_null(null_label)
         ).pivot(index="feature", on="group", values="ks")
         columns = [col for col in trend.columns if not is_metadata_column(col)]
         raw_trend = raw_trend.with_columns(

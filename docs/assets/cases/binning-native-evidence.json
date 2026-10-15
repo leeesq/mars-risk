@@ -1,6 +1,6 @@
 {
-  "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
-  "time_report_id": "dd7b9383-5102-455c-bb07-91cb88eeba8c",
+  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+  "time_report_id": "8b0d3d92-5d51-4afe-b8ae-69e7245f85c9",
   "feature": "EXT_SOURCE_2",
   "target": "TARGET",
   "chart_png": "binning-native-home-credit.png",
@@ -21,7 +21,7 @@
     {
       "question": "外部来源分 2 与 3 的已观测区分度",
       "reference": {
-        "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
         "table": "summary",
         "query": {
           "offset": 0,
@@ -39,6 +39,8 @@
       "rows": [
         {
           "feature": "EXT_SOURCE_3",
+          "display_name": "外部来源分 3",
+          "dtype": "Float64",
           "data_source": "Home Credit 2018 application_{train|test}.csv",
           "iv": 0.2917010188102722,
           "ks": 22.186461924601865,
@@ -54,6 +56,8 @@
         },
         {
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
           "data_source": "Home Credit 2018 application_{train|test}.csv",
           "iv": 0.2703412175178528,
           "ks": 21.25443262874279,
@@ -72,7 +76,7 @@
     {
       "question": "主图五组固定箱人数和已观测坏率",
       "reference": {
-        "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
         "table": "detail",
         "query": {
           "offset": 0,
@@ -88,6 +92,9 @@
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": 0,
@@ -114,12 +121,14 @@
           "bad_amt": 4003359817.5,
           "avg_amt": 531158.2210786868,
           "amt_bad_rate": 0.14027094149135733,
-          "lift_amt": 1.8591740614806744,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.8591740614806744
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": 1,
@@ -146,12 +155,14 @@
           "bad_amt": 2441217564.0,
           "avg_amt": 576321.3574685476,
           "amt_bad_rate": 0.07883312920190857,
-          "lift_amt": 1.044867222243415,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.044867222243415
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": 2,
@@ -178,12 +189,14 @@
           "bad_amt": 1958861929.5,
           "avg_amt": 611723.2358880348,
           "amt_bad_rate": 0.05959693502072318,
-          "lift_amt": 0.7899075500331241,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.7899075500331241
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": 3,
@@ -210,12 +223,14 @@
           "bad_amt": 1313460616.5,
           "avg_amt": 677727.470660488,
           "amt_bad_rate": 0.03606790167959566,
-          "lift_amt": 0.4780498836166372,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.4780498836166372
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": -1,
@@ -242,12 +257,14 @@
           "bad_amt": 15802330.5,
           "avg_amt": 463918.62107623316,
           "amt_bad_rate": 0.07637381362864182,
-          "lift_amt": 1.0122710503335348,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.0122710503335348
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "0train",
           "bin_index": 9999,
@@ -274,12 +291,14 @@
           "bad_amt": 9732702258.0,
           "avg_amt": 598952.6673971788,
           "amt_bad_rate": 0.07544798757553846,
-          "lift_amt": 0.9999999999999998,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.9999999999999998
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": 0,
@@ -306,12 +325,14 @@
           "bad_amt": 571094914.5,
           "avg_amt": 526635.9864561311,
           "amt_bad_rate": 0.14329024893767528,
-          "lift_amt": 1.8436844425799117,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.8436844425799117
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": 1,
@@ -338,12 +359,14 @@
           "bad_amt": 388244880.0,
           "avg_amt": 574789.1065959953,
           "amt_bad_rate": 0.08839893008825504,
-          "lift_amt": 1.137409791334188,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.137409791334188
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": 2,
@@ -370,12 +393,14 @@
           "bad_amt": 274577211.0,
           "avg_amt": 610510.3382352941,
           "amt_bad_rate": 0.058790889579530416,
-          "lift_amt": 0.7564495789965386,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.7564495789965386
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": 3,
@@ -402,12 +427,14 @@
           "bad_amt": 193723083.0,
           "avg_amt": 681721.808466966,
           "amt_bad_rate": 0.03645508079133011,
-          "lift_amt": 0.46905958923417823,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.46905958923417823
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": -1,
@@ -434,12 +461,14 @@
           "bad_amt": 1832067.0,
           "avg_amt": 465708.6818181818,
           "amt_bad_rate": 0.05960505352985494,
-          "lift_amt": 0.7669252493233842,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.7669252493233842
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "1val",
           "bin_index": 9999,
@@ -466,12 +495,14 @@
           "bad_amt": 1429472155.5,
           "avg_amt": 598720.9331542968,
           "amt_bad_rate": 0.07771950862543793,
-          "lift_amt": 0.9999999999999993,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.9999999999999993
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": 0,
@@ -498,12 +529,14 @@
           "bad_amt": 538724286.0,
           "avg_amt": 531361.3833528722,
           "amt_bad_rate": 0.13206417561861825,
-          "lift_amt": 1.8573351167117773,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.8573351167117773
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": 1,
@@ -530,12 +563,14 @@
           "bad_amt": 350922159.0,
           "avg_amt": 573669.9532048008,
           "amt_bad_rate": 0.07810449166162432,
-          "lift_amt": 1.0984524338756845,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.0984524338756845
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": 2,
@@ -562,12 +597,14 @@
           "bad_amt": 241807477.5,
           "avg_amt": 619856.5152820789,
           "amt_bad_rate": 0.05252488766451818,
-          "lift_amt": 0.738703875624674,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.738703875624674
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": 3,
@@ -594,12 +631,14 @@
           "bad_amt": 172302790.5,
           "avg_amt": 671377.8565926893,
           "amt_bad_rate": 0.03350398983078481,
-          "lift_amt": 0.4711961936019389,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.4711961936019389
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": -1,
@@ -626,12 +665,14 @@
           "bad_amt": 819787.5,
           "avg_amt": 471117.31967213115,
           "amt_bad_rate": 0.028526099090594066,
-          "lift_amt": 0.40118772055766233,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.40118772055766233
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "2test",
           "bin_index": 9999,
@@ -658,12 +699,14 @@
           "bad_amt": 1304576500.5,
           "avg_amt": 598473.800127214,
           "amt_bad_rate": 0.07110411816927488,
-          "lift_amt": 0.9999999999999994,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.9999999999999994
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": 0,
@@ -690,12 +733,14 @@
           "bad_amt": 572690767.5,
           "avg_amt": 528754.0179199792,
           "amt_bad_rate": 0.14115663704548928,
-          "lift_amt": 1.8889194544582082,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.8889194544582082
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": 1,
@@ -722,12 +767,14 @@
           "bad_amt": 344004435.0,
           "avg_amt": 577362.6497559045,
           "amt_bad_rate": 0.07861464346402976,
-          "lift_amt": 1.0519996264621048,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 1.0519996264621048
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": 2,
@@ -754,12 +801,14 @@
           "bad_amt": 261772425.0,
           "avg_amt": 611125.095909732,
           "amt_bad_rate": 0.05492307666771921,
-          "lift_amt": 0.7349655686605898,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.7349655686605898
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": 3,
@@ -786,12 +835,14 @@
           "bad_amt": 199033326.0,
           "avg_amt": 685735.6733796904,
           "amt_bad_rate": 0.038080278249586846,
-          "lift_amt": 0.5095798534336429,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.5095798534336429
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": -1,
@@ -818,12 +869,14 @@
           "bad_amt": 2600082.0,
           "avg_amt": 486563.4827586207,
           "amt_bad_rate": 0.061422611969476855,
-          "lift_amt": 0.8219405698606502,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.8219405698606502
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "3oot",
           "bin_index": 9999,
@@ -850,12 +903,14 @@
           "bad_amt": 1380101035.5,
           "avg_amt": 600394.4749837451,
           "amt_bad_rate": 0.07472877507420062,
-          "lift_amt": 0.9999999999999992,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": 0.9999999999999992
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": 0,
@@ -882,12 +937,14 @@
           "bad_amt": 0.0,
           "avg_amt": 455005.22604552674,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": 1,
@@ -914,12 +971,14 @@
           "bad_amt": 0.0,
           "avg_amt": 494667.78528269316,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": 2,
@@ -946,12 +1005,14 @@
           "bad_amt": 0.0,
           "avg_amt": 532442.746138432,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": 3,
@@ -978,12 +1039,14 @@
           "bad_amt": 0.0,
           "avg_amt": 587763.2472012497,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": -1,
@@ -1010,12 +1073,14 @@
           "bad_amt": 0.0,
           "avg_amt": 529042.5,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         },
         {
           "y": "TARGET",
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "trend": "descending",
           "mars_group": "4_oot_undue",
           "bin_index": 9999,
@@ -1042,15 +1107,14 @@
           "bad_amt": 0.0,
           "avg_amt": 516740.43556129985,
           "amt_bad_rate": null,
-          "lift_amt": null,
-          "data_source": "Home Credit 2018 application_{train|test}.csv"
+          "lift_amt": null
         }
       ]
     },
     {
       "question": "无标签组监督指标真实状态",
       "reference": {
-        "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
         "table": "calculation_status",
         "query": {
           "offset": 0,
@@ -1071,6 +1135,9 @@
       "rows": [
         {
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "target": "TARGET",
           "group": "4_oot_undue",
           "metric": "risk_metrics",
@@ -1079,6 +1146,9 @@
         },
         {
           "feature": "EXT_SOURCE_3",
+          "display_name": "外部来源分 3",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "target": "TARGET",
           "group": "4_oot_undue",
           "metric": "risk_metrics",

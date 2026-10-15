@@ -10,6 +10,7 @@ import sys
 import zipfile
 from copy import deepcopy
 from datetime import date, datetime, timezone
+from numbers import Real
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -28,6 +29,24 @@ from mars.compute import to_pandas_frame
 from mars.feature.binning import MarsNativeBinner
 from mars.reporting import MarsBinningReport, ReportSnapshot, snapshot_report
 from mars.reporting._binning_excel import _BinningExcelWriter
+
+
+def _assert_excel_records(records: list[list[Any]], expected: pd.DataFrame) -> None:
+    """逐单元格核对 Excel 边界，缺失为空、文字保持原文、指标仍为数值。"""
+    assert list(records[0]) == list(expected.columns)
+    assert len(records) == len(expected) + 1
+    for column_index, column in enumerate(expected.columns):
+        for actual_row, expected_value in zip(records[1:], expected[column]):
+            actual = actual_row[column_index]
+            if pd.isna(expected_value):
+                assert actual is None
+            elif isinstance(expected_value, str):
+                assert isinstance(actual, str) and actual == expected_value
+            elif isinstance(expected_value, Real) and not isinstance(expected_value, bool):
+                assert isinstance(actual, Real) and not isinstance(actual, bool)
+                assert actual == pytest.approx(expected_value, rel=1e-12, abs=1e-12)
+            else:
+                assert actual == expected_value
 
 
 @pytest.mark.parametrize("native", [True, False])
@@ -378,11 +397,15 @@ def test_raw_and_binned_reuse_template_without_refit_and_keep_distinct_ks(
             grouped_ks = expected_detail.drop_duplicates(["feature", "y", report.detail_group_col])
             first_target = grouped_ks.loc[grouped_ks["y"] == "bad"]
             for group in ["null", "observed", "undue", "validation", "Total"]:
-                matched = first_target.loc[first_target[report.detail_group_col] == group]
+                group_mask = (
+                    first_target[report.detail_group_col].isna()
+                    if group == "null" else first_target[report.detail_group_col].eq(group)
+                )
+                matched = first_target.loc[group_mask]
                 expected_trend[group] = expected_trend[["feature"]].merge(
                     matched[["feature", "ks"]], how="left", on="feature", sort=False,
                 )["ks"].to_numpy()
-            pd.testing.assert_frame_equal(trend_frame, expected_trend, check_dtype=False, check_exact=False)
+            _assert_excel_records(trend_rows, expected_trend)
             assert list(trend_frame.columns) == list(to_polars(report.trend_tables["ks"]).columns)
             assert "target" not in trend_frame  # 保留既有首目标趋势契约。
             assert trend_frame["undue"].isna().all()
@@ -557,7 +580,7 @@ def test_export_view_uses_actual_null_groups_and_preserves_order(backend: str) -
                      "ks_source_by_feature": {"a": "raw", "b": "raw"}, "raw_ks_diagnostics": []},
     )
     before = deepcopy(report.describe())
-    original_trend = to_polars(report.trend_tables["ks"]).to_pandas()
+    original_trend = to_pandas_frame(report.trend_tables["ks"])
     original_detail = to_polars(report.detail_table).clone()
     exported, additional = _BinningExcelWriter(report)._prepare_excel_export()
     assert exported["ks"].tolist()[:-1] == [17.0, 31.0, 7.0, 13.0, 19.0, 17.0, 29.0, 31.0, 7.0]
@@ -572,6 +595,9 @@ def test_export_view_uses_actual_null_groups_and_preserves_order(backend: str) -
     pd.testing.assert_frame_equal(
         exported_trend.loc[:, trend.columns[:4]], original_trend.loc[:, trend.columns[:4]],
     )
+    # 聚合趋势中的 Float64 不能证明原输入 dtype，可信源仍应保持未知。
+    assert exported_trend["dtype"].isna().all()
+    pd.testing.assert_frame_equal(to_pandas_frame(report.trend_tables["ks"]), original_trend)
     assert exported_trend["Total"].tolist() == [29.0, 7.0]
     assert pd.isna(exported_trend["g"]).all()
     assert pd.isna(exported_trend["null"].iloc[0]) and exported_trend["null"].iloc[1] == 17.0
@@ -607,10 +633,17 @@ def test_openpyxl_and_xlwings_consume_same_prepared_export(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """模拟原生引擎只验证传入值，共享准备过程同时提供所有 Excel 入口。"""
+    features = ["unknown", "literal_none", "literal_nan", "literal_na"]
     report = profile_risk(
-        pl.DataFrame({"x": list(range(12)), "bad": [0, 1] * 6}),
-        target="bad", features=["x"], ks_method="raw", n_bins=2,
+        pl.DataFrame({**{feature: list(range(12)) for feature in features}, "bad": [0, 1] * 6}),
+        target="bad", features=features, ks_method="raw", n_bins=2,
+        feature_metadata={
+            "literal_none": {"display_name": "None"},
+            "literal_nan": {"display_name": "nan"},
+            "literal_na": {"display_name": "<NA>"},
+        },
     ).report
+    source = snapshot_report(report)
     prepared: list[tuple[pd.DataFrame, dict[str, pd.DataFrame]]] = []
     original_prepare = _BinningExcelWriter._prepare_excel_export
 
@@ -659,12 +692,17 @@ def test_openpyxl_and_xlwings_consume_same_prepared_export(
         pd.testing.assert_frame_equal(expected, prepared[1][1][name])
         if expected.shape[1]:
             records = written[name]
-            actual = pd.DataFrame(records[1:], columns=records[0])
-            pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+            _assert_excel_records(records, expected)
     records = written["分组明细"]
     assert len(records[0]) == 22 and records[0][16] == "ks_bin" and records[0][21] == "ks"
-    actual = pd.DataFrame(records[1:], columns=records[0])
-    pd.testing.assert_frame_equal(actual, prepared[0][0][records[0]], check_dtype=False)
+    _assert_excel_records(records, prepared[0][0][records[0]])
+    metadata = prepared[0][1]["FeatureMetadata"].set_index("feature")["display_name"]
+    assert pd.isna(metadata["unknown"])
+    assert metadata.loc[["literal_none", "literal_nan", "literal_na"]].tolist() == ["None", "nan", "<NA>"]
+    for name in source.describe()["tables"]:
+        pd.testing.assert_frame_equal(
+            to_pandas_frame(report.get_table(name)), to_pandas_frame(source.get_table(name)),
+        )
     refresh.assert_called_once_with(workbook)
     workbook.save.assert_called_once_with(str(tmp_path / "xlwings.xlsx"))
     workbook.close.assert_called_once()

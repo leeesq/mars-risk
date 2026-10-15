@@ -1,10 +1,10 @@
 {
   "case": 3,
-  "report_id": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+  "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
   "question": "为什么删除一个真实字段，保留另一个？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+    "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
     "report_type": "correlation",
     "format_version": 1,
     "tables": {
@@ -465,7 +465,7 @@
     {
       "question": "真实数值相关性是否触发淘汰",
       "reference": {
-        "report_id": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+        "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -647,7 +647,7 @@
     {
       "question": "实际最强原始字段关系",
       "reference": {
-        "report_id": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+        "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
         "table": "pairs",
         "query": {
           "offset": 0,
@@ -708,7 +708,7 @@
     {
       "question": "目标感知 WOE 空间的实际决策",
       "reference": {
-        "report_id": "7b919d17-4cea-44ef-a496-0e5a8cb05ebc",
+        "report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -4393,7 +4393,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.00020602917738506631,
+        "value": 0.00020602917738506634,
         "description": ""
       },
       {
@@ -4726,7 +4726,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.000170720276696734,
+        "value": 0.00017072027669673347,
         "description": ""
       },
       {
@@ -4735,7 +4735,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.00018329983153023258,
+        "value": 0.0001832998315302324,
         "description": ""
       },
       {
@@ -4800,7 +4800,7 @@
       "REGION_RATING_CLIENT_W_CITY",
       "OBS_60_CNT_SOCIAL_CIRCLE"
     ],
-    "woe_report_id": "7b919d17-4cea-44ef-a496-0e5a8cb05ebc",
+    "woe_report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
     "raw_pairs": [
       {
         "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",

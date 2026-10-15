@@ -600,16 +600,21 @@ def _finalize(output: Path, repository_root: Path | None = None) -> None:
         result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repository, check=False, capture_output=True, text=True)
         if result.returncode == 0:
             source_commit = result.stdout.strip()
-    modules = ["analysis/score_cross.py", "analysis/score_cross_view.py", "analysis/profiler.py",
+    modules: list[str] = ["analysis/score_cross.py", "analysis/score_cross_view.py", "analysis/profiler.py",
                "analysis/evaluator.py", "analysis/_risk_profile.py", "feature/selection/stats.py",
                "analysis/_evaluation/report_parts.py", "analysis/_evaluation/metrics.py",
                "compute/binning.py", "reporting/_metadata.py",
                "feature/selection/linear.py", "reporting/_query.py", "reporting/_artifact.py",
+               "reporting/_binning_html.py", "reporting/_binning_html_helpers.py",
+               "reporting/_profile_html.py", "reporting/_profile_excel.py", "reporting/_excel.py",
+               "reporting/_binning_plot.py", "reporting/plotter.py", "reporting/_matplotlib.py",
+               "reporting/_time_range.py", "reporting/html_assets.py",
+               "reporting/_serialization.py", "reporting/_semantics.py",
                "rule/workflow.py", "rule/evaluator.py", "rule/report.py", "rule/_statistics.py", "rule/_report_semantics.py"]
     environment = json.loads((output / "generation-environment.json").read_text(encoding="utf-8"))
     artifacts = [{"path": p.name, "size_bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in _allowlist(output) if p.name != "manifest.json"]
     manifest = {"schema_version": 2, "source_commit": source_commit,
-        "source_status": "known git checkout" if source_commit else "unknown commit; installed module fingerprints recorded",
+        "source_status": "known git checkout baseline; code fingerprints describe the generating working tree" if source_commit else "unknown commit; installed module fingerprints recorded",
         "command": "python task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir current-cases",
         "data_config": {"source": "home-credit-2018", "rows": preparation["rows"], "seed": preparation["seed"],
                         "target_group_rows": preparation["partition_config"]["target_group_rows"], "reference": "0train",

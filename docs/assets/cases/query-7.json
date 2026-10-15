@@ -1,12 +1,12 @@
 {
   "case": 7,
-  "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
   "consumer": "deterministic public API queries; no LLM",
   "question": "同一次分箱分析怎样交付给不同使用者？",
   "query": {
     "question": "Excel 首行实际值与快照对齐",
     "reference": {
-      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
       "table": "detail",
       "query": {
         "offset": 0,
@@ -21,6 +21,9 @@
       {
         "y": "TARGET",
         "feature": "AMT_ANNUITY",
+        "display_name": "贷款年金",
+        "dtype": "Float64",
+        "data_source": "Home Credit 2018 application_{train|test}.csv",
         "trend": "peak",
         "mars_group": "0train",
         "bin_index": 0,
@@ -47,8 +50,7 @@
         "bad_amt": 861472975.5,
         "avg_amt": 225690.042054512,
         "amt_bad_rate": 0.07091879695491066,
-        "lift_amt": 0.9399693647747305,
-        "data_source": "Home Credit 2018 application_{train|test}.csv"
+        "lift_amt": 0.9399693647747305
       }
     ]
   },

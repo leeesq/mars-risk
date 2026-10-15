@@ -1,12 +1,12 @@
 {
   "case": 5,
-  "report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
+  "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
   "consumer": "deterministic public API queries; no LLM",
   "question": "从 Train 发现、Val 选择，走到固定规则的独立复核",
   "query": {
     "question": "种子候选最终保留多少",
     "reference": {
-      "report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
+      "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
       "table": "summary",
       "query": {
         "offset": 0,

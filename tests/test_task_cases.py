@@ -53,6 +53,14 @@ def test_seven_cases_execute_and_replay_same_batch_evidence(lightweight_cases: P
     preparation = json.loads((lightweight_cases / "preparation-summary.json").read_text(encoding="utf-8"))
     assert preparation["full_dataset"] is False
     assert preparation["partition_stats"][-1]["observed_count"] == 0
+    manifest = json.loads((lightweight_cases / "manifest.json").read_text(encoding="utf-8"))
+    fingerprint = runpy.run_path(str(CHECKER))["_code_digest"]
+    for name in (
+        "reporting/_binning_html.py", "reporting/_profile_html.py",
+        "reporting/_profile_excel.py", "reporting/_binning_plot.py", "reporting/plotter.py",
+    ):
+        relative = f"src/mars/{name}"
+        assert manifest["code_fingerprints"][relative] == fingerprint(ROOT / relative)
 
 
 @pytest.mark.parametrize("probability", [False, True])
@@ -153,6 +161,60 @@ def test_score_cross_denominators_and_real_correlation(lightweight_cases: Path) 
     assert raw.describe()["parameters"]["representation"] == "raw"
     assert woe.describe()["parameters"]["representation"] == "woe"
     assert raw.get_table("pairs").height > 0
+
+
+def test_denominator_checker_accepts_current_and_legacy_bad_rate_tables(
+    lightweight_cases: Path,
+) -> None:
+    import polars as pl
+
+    checker = runpy.run_path(str(CHECKER))["_validate_saved_denominators"]
+    preparation = json.loads(
+        (lightweight_cases / "preparation-summary.json").read_text(encoding="utf-8")
+    )
+    binning = load_report(lightweight_cases / "binning.marsreport")
+    cross = load_report(lightweight_cases / "score-cross.marsreport")
+    snapshots = {binning.report_id: binning, cross.report_id: cross}
+    assert "trend.bad_rate" not in binning.describe()["tables"]
+    checker(preparation, snapshots)
+
+    # 旧快照的总体坏率表仍须保留无标签状态；不能因表已退出新报告而跳过旧值。
+    legacy: pl.DataFrame = (
+        binning.get_table("detail", filters={"bin_type": "汇总组"})
+        .select("feature", "mars_group", "bad_rate")
+        .pivot(on="mars_group", index="feature", values="bad_rate")
+    )
+    binning._tables["trend.bad_rate"] = legacy
+    binning._description["tables"]["trend.bad_rate"] = binning.describe()["tables"]["trend.ks"]
+    checker(preparation, snapshots)
+    binning._tables["trend.bad_rate"] = legacy.with_columns(pl.lit(0.0).alias("4_oot_undue"))
+    with pytest.raises(ValueError, match="Unobserved group cannot have supervised bad_rate"):
+        checker(preparation, snapshots)
+    binning._tables["trend.bad_rate"] = legacy
+    del binning._tables["trend.ks"]
+    with pytest.raises(ValueError, match="Unknown table 'trend.ks'"):
+        checker(preparation, snapshots)
+
+
+def test_excel_evidence_checks_identity_header_and_source_dtype(lightweight_cases: Path) -> None:
+    import openpyxl
+
+    checker = runpy.run_path(str(CHECKER))["_validate_excel_tables"]
+    report = load_report(lightweight_cases / "profile.marsreport")
+    workbook = openpyxl.load_workbook(lightweight_cases / "profile.xlsx", data_only=True)
+    try:
+        checker(workbook, report, "profile")
+        sheet = workbook["FeatureMetadata"]
+        feature = sheet.cell(2, 1).value
+        assert sheet.cell(2, 3).value == report.describe()["parameters"]["feature_dtypes"].get(feature)
+        sheet.cell(2, 3).value = "nan"
+        with pytest.raises(ValueError, match=r"FeatureMetadata\..*\.dtype"):
+            checker(workbook, report, "profile")
+        sheet.cell(1, 3).value = "unknown_dtype"
+        with pytest.raises(ValueError, match="feature identity header differs"):
+            checker(workbook, report, "profile")
+    finally:
+        workbook.close()
 
 
 def test_consumer_never_prepares_or_recomputes(lightweight_cases: Path, monkeypatch: pytest.MonkeyPatch) -> None:

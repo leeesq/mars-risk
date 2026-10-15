@@ -1,12 +1,12 @@
 {
   "case": 1,
-  "report_id": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
+  "report_id": "5d00f397-1768-44b0-9306-cd2531e7e9a6",
   "consumer": "deterministic public API queries; no LLM",
   "question": "全量数据与无标签组有哪些质量差异？",
   "query": {
     "question": "真实外部来源分覆盖率及字段单位",
     "reference": {
-      "report_id": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
+      "report_id": "5d00f397-1768-44b0-9306-cd2531e7e9a6",
       "table": "overview",
       "query": {
         "offset": 0,
@@ -24,14 +24,18 @@
     "rows": [
       {
         "feature": "EXT_SOURCE_2",
+        "display_name": "外部来源分 2",
         "dtype": "Float64",
+        "data_source": "Home Credit 2018 application_{train|test}.csv",
         "missing_rate": 0.0018750614026469803,
         "zeros_rate": 0.0,
         "mean": 0.5148899751498333
       },
       {
         "feature": "EXT_SOURCE_3",
+        "display_name": "外部来源分 3",
         "dtype": "Float64",
+        "data_source": "Home Credit 2018 application_{train|test}.csv",
         "missing_rate": 0.19545830935706165,
         "zeros_rate": 0.0,
         "mean": 0.5093502021860119

@@ -26,6 +26,7 @@ from mars.compute import (
     ordered_count_metric_exprs,
 )
 from mars.feature.binning.base import MarsBinnerBase
+from mars.reporting._metadata import _null_group_label
 
 TREND_METRICS: tuple[str, ...] = (
     "psi",
@@ -634,6 +635,7 @@ def build_binning_trend_tables(
         指标名到趋势透视表的映射。
     """
     trend_tables: dict[str, pl.DataFrame] = {}
+    null_label = _null_group_label(stats_long[group_col].unique().to_list())
     for metric in TREND_METRICS:
         if metric == "risk_corr":
             pivot_src = risk_corr_long
@@ -651,8 +653,9 @@ def build_binning_trend_tables(
                 missing_bin_index=missing_bin_index,
             )
 
+        # Polars 原生 null pivot 既可能丢值，也会与业务字符串 null 撞列名。
         pivot_df: pl.DataFrame = (
-            pivot_src
+            pivot_src.with_columns(pl.col(group_col).fill_null(null_label))
             .pivot(index="feature", on=group_col, values=metric)
             .sort("feature")
         )

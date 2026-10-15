@@ -10,7 +10,7 @@
   },
   "cases": {
     "1": {
-      "report_id": "b8a7b6cf-62f7-491d-b5c8-a61a29cdfa52",
+      "report_id": "5d00f397-1768-44b0-9306-cd2531e7e9a6",
       "input_row_count": 356255,
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
@@ -338,10 +338,12 @@
       }
     },
     "2": {
-      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
       "summary_rows": [
         {
           "feature": "EXT_SOURCE_3",
+          "display_name": "外部来源分 3",
+          "dtype": "Float64",
           "data_source": "Home Credit 2018 application_{train|test}.csv",
           "iv": 0.2917010188102722,
           "ks": 22.186461924601865,
@@ -357,6 +359,8 @@
         },
         {
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
           "data_source": "Home Credit 2018 application_{train|test}.csv",
           "iv": 0.2703412175178528,
           "ks": 21.25443262874279,
@@ -374,6 +378,9 @@
       "status_rows": [
         {
           "feature": "EXT_SOURCE_2",
+          "display_name": "外部来源分 2",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "target": "TARGET",
           "group": "4_oot_undue",
           "metric": "risk_metrics",
@@ -382,6 +389,9 @@
         },
         {
           "feature": "EXT_SOURCE_3",
+          "display_name": "外部来源分 3",
+          "dtype": "Float64",
+          "data_source": "Home Credit 2018 application_{train|test}.csv",
           "target": "TARGET",
           "group": "4_oot_undue",
           "metric": "risk_metrics",
@@ -393,7 +403,9 @@
         "iv": [
           {
             "feature": "AMT_INCOME_TOTAL",
+            "display_name": "客户收入",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.007471645250916481,
             "1val": 0.007472961209714413,
             "2test": 0.005902180913835764,
@@ -403,7 +415,9 @@
           },
           {
             "feature": "DAYS_BIRTH",
-            "dtype": "Float64",
+            "display_name": "申请时年龄天数（原始值）",
+            "dtype": "Int64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.07587558031082153,
             "1val": 0.08800388872623444,
             "2test": 0.09286347776651382,
@@ -413,7 +427,9 @@
           },
           {
             "feature": "EXT_SOURCE_2",
+            "display_name": "外部来源分 2",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.2712540328502655,
             "1val": 0.2594910264015198,
             "2test": 0.27534857392311096,
@@ -423,7 +439,9 @@
           },
           {
             "feature": "EXT_SOURCE_3",
+            "display_name": "外部来源分 3",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.2891859710216522,
             "1val": 0.3213583827018738,
             "2test": 0.2865355610847473,
@@ -435,7 +453,9 @@
         "ks": [
           {
             "feature": "AMT_INCOME_TOTAL",
+            "display_name": "客户收入",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 3.785211866289151,
             "1val": 3.9802930428724292,
             "2test": 3.2401027628358836,
@@ -445,7 +465,9 @@
           },
           {
             "feature": "DAYS_BIRTH",
-            "dtype": "Float64",
+            "display_name": "申请时年龄天数（原始值）",
+            "dtype": "Int64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 11.372368078757688,
             "1val": 13.429536067090142,
             "2test": 12.302929930422584,
@@ -455,7 +477,9 @@
           },
           {
             "feature": "EXT_SOURCE_2",
+            "display_name": "外部来源分 2",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 21.120561709480512,
             "1val": 21.58518706179865,
             "2test": 21.81185937821069,
@@ -465,7 +489,9 @@
           },
           {
             "feature": "EXT_SOURCE_3",
+            "display_name": "外部来源分 3",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 22.00373239082971,
             "1val": 23.358667938689877,
             "2test": 21.330022203048284,
@@ -477,7 +503,9 @@
         "auc": [
           {
             "feature": "AMT_INCOME_TOTAL",
+            "display_name": "客户收入",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.5211769812343464,
             "1val": 0.52357540061357,
             "2test": 0.5201312762320727,
@@ -487,7 +515,9 @@
           },
           {
             "feature": "DAYS_BIRTH",
-            "dtype": "Float64",
+            "display_name": "申请时年龄天数（原始值）",
+            "dtype": "Int64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.5756364247096601,
             "1val": 0.5811044218820121,
             "2test": 0.5818520886126414,
@@ -497,7 +527,9 @@
           },
           {
             "feature": "EXT_SOURCE_2",
+            "display_name": "外部来源分 2",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.6414183123309509,
             "1val": 0.6392142289996248,
             "2test": 0.6430405881862027,
@@ -507,7 +539,9 @@
           },
           {
             "feature": "EXT_SOURCE_3",
+            "display_name": "外部来源分 3",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.6474940775130993,
             "1val": 0.6553253092266993,
             "2test": 0.6458385793857755,
@@ -519,7 +553,9 @@
         "psi": [
           {
             "feature": "AMT_INCOME_TOTAL",
+            "display_name": "客户收入",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.0,
             "1val": 3.325928085086149e-05,
             "2test": 3.5221666578728196e-05,
@@ -529,7 +565,9 @@
           },
           {
             "feature": "DAYS_BIRTH",
-            "dtype": "Float64",
+            "display_name": "申请时年龄天数（原始值）",
+            "dtype": "Int64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.0,
             "1val": 0.00019318049994567635,
             "2test": 5.738890739344055e-05,
@@ -539,7 +577,9 @@
           },
           {
             "feature": "EXT_SOURCE_2",
+            "display_name": "外部来源分 2",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.0,
             "1val": 0.00011481227134160583,
             "2test": 0.00035869382425640894,
@@ -549,7 +589,9 @@
           },
           {
             "feature": "EXT_SOURCE_3",
+            "display_name": "外部来源分 3",
             "dtype": "Float64",
+            "data_source": "Home Credit 2018 application_{train|test}.csv",
             "0train": 0.0,
             "1val": 3.0691627578954246e-05,
             "2test": 4.113556207281732e-05,
@@ -828,7 +870,7 @@
         "CNT_FAM_MEMBERS"
       ],
       "primary_feature": "EXT_SOURCE_2",
-      "time_report_id": "dd7b9383-5102-455c-bb07-91cb88eeba8c",
+      "time_report_id": "8b0d3d92-5d51-4afe-b8ae-69e7245f85c9",
       "units": {
         "ks": "0-100 percentage points",
         "bad_rate": "fraction",
@@ -837,7 +879,7 @@
       }
     },
     "3": {
-      "report_id": "13657ca5-2149-4f5f-91e4-3a9228ecbab1",
+      "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
         "CODE_GENDER",
@@ -4387,7 +4429,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.00020602917738506631,
+          "value": 0.00020602917738506634,
           "description": ""
         },
         {
@@ -4720,7 +4762,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.000170720276696734,
+          "value": 0.00017072027669673347,
           "description": ""
         },
         {
@@ -4729,7 +4771,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.00018329983153023258,
+          "value": 0.0001832998315302324,
           "description": ""
         },
         {
@@ -4794,7 +4836,7 @@
         "REGION_RATING_CLIENT_W_CITY",
         "OBS_60_CNT_SOCIAL_CIRCLE"
       ],
-      "woe_report_id": "7b919d17-4cea-44ef-a496-0e5a8cb05ebc",
+      "woe_report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
       "raw_pairs": [
         {
           "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",
@@ -5032,7 +5074,7 @@
       "selection_scope": "0train only; 1val/2test/3oot not used for selection"
     },
     "4": {
-      "report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+      "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
       "scope": {
         "group": "0train",
         "target": "TARGET"
@@ -5279,10 +5321,10 @@
           }
         }
       },
-      "policy_report_id": "df93be11-5f66-43c2-98e7-7ad50298aacd"
+      "policy_report_id": "b6617a0c-3926-44f1-b63b-c9902615ec25"
     },
     "5": {
-      "report_id": "cccd15c5-8fbd-41aa-a82b-f9656e078448",
+      "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
       "summary_rows": [
         {
           "status": "success",
@@ -5599,8 +5641,8 @@
           "q_value": null
         }
       ],
-      "cross_report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
-      "independent_report_id": "e22c5e61-6570-45f5-9b50-d188fbc5c81c",
+      "cross_report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+      "independent_report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
       "candidate_origins": {
         "mr_d07e3095ba389c1a01c8": {
           "kind": "development_cell",
@@ -5641,7 +5683,7 @@
             ]
           },
           "reference": {
-            "report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5695,7 +5737,7 @@
             ]
           },
           "reference": {
-            "report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5749,7 +5791,7 @@
             ]
           },
           "reference": {
-            "report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5803,7 +5845,7 @@
             ]
           },
           "reference": {
-            "report_id": "c1b6eb2c-9baf-41f7-8937-c9ac486c856c",
+            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5822,9 +5864,9 @@
       "raw_data_saved": false,
       "rule_status": "Experimental",
       "automatic_generation": {
-        "report_id": "0013ce10-ed61-4760-b773-17739bc746f1",
+        "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
         "description": {
-          "report_id": "0013ce10-ed61-4760-b773-17739bc746f1",
+          "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
           "report_type": "rule",
           "format_version": 1,
           "tables": {
@@ -6552,7 +6594,7 @@
             "generators": [
               "MarsCombinationRuleGenerator"
             ],
-            "elapsed_seconds": 0.05705639999359846,
+            "elapsed_seconds": 0.08245650000026217,
             "resolved_spec": {
               "profile": "production",
               "direction": "high_risk",
@@ -6800,7 +6842,7 @@
           {
             "question": "实际生成及保留多少自动候选",
             "reference": {
-              "report_id": "0013ce10-ed61-4760-b773-17739bc746f1",
+              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
               "table": "summary",
               "query": {
                 "offset": 0,
@@ -6825,7 +6867,7 @@
           {
             "question": "生成来源与拒绝原因",
             "reference": {
-              "report_id": "0013ce10-ed61-4760-b773-17739bc746f1",
+              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
               "table": "candidates",
               "query": {
                 "offset": 0,
@@ -7442,7 +7484,7 @@
           {
             "question": "Val 参与筛选的证据",
             "reference": {
-              "report_id": "0013ce10-ed61-4760-b773-17739bc746f1",
+              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
               "table": "evaluation",
               "query": {
                 "offset": 0,
@@ -7727,14 +7769,14 @@
           }
         ]
       },
-      "auto_report_id": "0013ce10-ed61-4760-b773-17739bc746f1"
+      "auto_report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69"
     },
     "6": {
-      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
       "snapshot_type": "ReportSnapshot",
       "identity_preserved": true,
       "separate_process": true,
-      "context_chars": 6803,
+      "context_chars": 7547,
       "max_chars": 9000,
       "budget_omissions": [
         {
@@ -7751,11 +7793,16 @@
           "reference": "describe.parameters.feature_data_source",
           "count": 1,
           "reason": "description_budget"
+        },
+        {
+          "reference": "describe.parameters.feature_dtypes",
+          "count": 1,
+          "reason": "description_budget"
         }
       ],
       "invalid_request": {
         "exception": "ValueError",
-        "message": "Unknown columns: ['not_a_column']. Available: ['y', 'feature', 'trend', 'mars_group', 'bin_index', 'bin_label', 'count', 'observed_count', 'bad', 'good', 'pct', 'bad_rate', 'lift', 'cum_count', 'cum_observed_count', 'cum_bad', 'cum_bad_rate', 'psi_bin', 'ks_bin', 'auc_bin', 'iv_bin', 'total_count', 'bin_type', 'tot_amt', 'good_amt', 'bad_amt', 'avg_amt', 'amt_bad_rate', 'lift_amt', 'data_source']"
+        "message": "Unknown columns: ['not_a_column']. Available: ['y', 'feature', 'display_name', 'dtype', 'data_source', 'trend', 'mars_group', 'bin_index', 'bin_label', 'count', 'observed_count', 'bad', 'good', 'pct', 'bad_rate', 'lift', 'cum_count', 'cum_observed_count', 'cum_bad', 'cum_bad_rate', 'psi_bin', 'ks_bin', 'auc_bin', 'iv_bin', 'total_count', 'bin_type', 'tot_amt', 'good_amt', 'bad_amt', 'avg_amt', 'amt_bad_rate', 'lift_amt']"
       },
       "policy_replay_matches": true,
       "table_names": [
@@ -7767,7 +7814,6 @@
         "trend.iv",
         "trend.missing",
         "trend.lift",
-        "trend.bad_rate",
         "trend.risk_corr",
         "calculation_status",
         "missing_by_day",
@@ -7775,7 +7821,7 @@
       ]
     },
     "7": {
-      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
       "formats": [
         {
           "format": "HTML",
@@ -7815,11 +7861,10 @@
         "005_trend.iv",
         "006_trend.missing",
         "007_trend.lift",
-        "008_trend.bad_rate",
-        "009_trend.risk_corr",
-        "010_calculation_status",
-        "011_missing_by_day",
-        "012_risk_corr_reference"
+        "008_trend.risk_corr",
+        "009_calculation_status",
+        "010_missing_by_day",
+        "011_risk_corr_reference"
       ],
       "excel_key_values_match": true,
       "shared_cases": [

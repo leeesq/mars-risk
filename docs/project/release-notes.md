@@ -6,6 +6,11 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- Notebook 分箱摘要在原后端按少量身份和 PSI 列统计，可信 summary 足够时不读取完整 detail；
+  仅在身份不足时回退明细的 feature 列计数，仍与完整 HTML 使用同一口径。
+- 修复 Pandas 3 下 Grouped Pivot 空组排序与取值异常，保留真实空组及其数值。
+  宽趋势在真实空组与文字 `null` 同时存在时使用不冲突的空组展示列，raw KS 与原生 Excel
+  沿用同一映射，明细组键保持原值。公开案例按正式流程同步报告身份列、查询证据与下载产物。
 - 修复画像 Notebook 宽趋势按业务组名猜测比例的问题，Notebook/HTML/Excel 统一按字段和
   指标语义格式化；保留比例端点、整数与加权小数。nullable `dtype` 的 `pd.NA`、None、NaN
   先安全处理，再校验可信类型；未知原始类型不从聚合 Float64 推断，非空矛盾仍拒绝。

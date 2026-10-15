@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from mars._compat import remove_suffix
 from mars.compute import to_pandas_frame
@@ -38,6 +39,7 @@ from mars.reporting._binning_html_helpers import (
 from mars.reporting._matplotlib import require_pyplot
 from mars.reporting._metadata import (
     FEATURE_IDENTITY_COLUMNS,
+    _null_group_label,
     export_report_semantics,
     is_metadata_column,
 )
@@ -62,32 +64,56 @@ class _BinningHtmlRenderer:
         """将只读数据访问委托给 report 容器。"""
         return getattr(self._report, name)
 
-    def _feature_summary_counts(
-        self, summary_pd: pd.DataFrame, detail_pd: pd.DataFrame,
-    ) -> tuple[int, int]:
-        """按英文身份统计特征与任一标签 PSI 超限数；空摘要复用可信明细或目录。"""
-        n_features = len(self.feature_metadata)
-        for frame in (summary_pd, detail_pd):
-            if not frame.empty and "feature" in frame.columns:
-                n_features = int(frame["feature"].nunique())
-                break
-
+    def _feature_summary_counts(self) -> tuple[int, int]:
+        """在原后端按英文身份计数；摘要无身份时才投影明细或复用可信目录。"""
+        summary: pl.DataFrame | pd.DataFrame = self.summary_table
+        n_features = 0
         high_risk_psi = 0
-        if {"feature", "psi_max"}.issubset(summary_pd.columns):
-            # 未计算与缺失不报警；同一特征跨标签触发时只保留一个英文身份。
-            exceeds: pd.Series = (
-                pd.to_numeric(summary_pd["psi_max"], errors="coerce").gt(0.25).fillna(False)
-            )
-            high_risk_psi = int(summary_pd.loc[exceeds, "feature"].nunique())
+        if "feature" in summary.columns:
+            if isinstance(summary, pl.DataFrame):
+                expressions: list[pl.Expr] = [
+                    pl.col("feature").drop_nulls().n_unique().alias("feature_count"),
+                ]
+                if "psi_max" in summary.columns:
+                    # Polars 中 NaN 大于有限数，必须显式排除；同一英文身份只报警一次。
+                    psi: pl.Expr = pl.col("psi_max").cast(pl.Float64, strict=False)
+                    expressions.append(
+                        pl.col("feature")
+                        .filter(psi.gt(0.25) & psi.is_not_nan())
+                        .drop_nulls()
+                        .n_unique()
+                        .alias("high_risk_psi")
+                    )
+                counts: dict[str, Any] = summary.select(expressions).row(0, named=True)
+                n_features = int(counts["feature_count"])
+                high_risk_psi = int(counts.get("high_risk_psi", 0))
+            else:
+                features: pd.Series = summary["feature"]
+                n_features = int(features.nunique())
+                if "psi_max" in summary.columns:
+                    exceeds: pd.Series = (
+                        pd.to_numeric(summary["psi_max"], errors="coerce")
+                        .gt(0.25)
+                        .fillna(False)
+                    )
+                    high_risk_psi = int(features[exceeds].nunique())
+        if n_features:
+            return n_features, high_risk_psi
+
+        # 只有摘要无法提供身份时才访问明细；原后端只聚合 feature，最多读取一个标量。
+        detail: pl.DataFrame | pd.DataFrame = self.detail_table
+        if "feature" in detail.columns:
+            if isinstance(detail, pl.DataFrame):
+                n_features = int(detail.select(pl.col("feature").drop_nulls().n_unique()).item())
+            else:
+                n_features = int(detail["feature"].nunique())
+        if not n_features:
+            n_features = len(self.feature_metadata)
         return n_features, high_risk_psi
 
     def _repr_html_(self: Any) -> str:
         """返回 Jupyter 环境下的评估摘要面板。"""
-        # 内部展示逻辑统一转为 Pandas 处理
-        df_summary_pd: pd.DataFrame = to_pandas_frame(self.summary_table)
-        n_feats, high_risk_psi = self._feature_summary_counts(
-            df_summary_pd, to_pandas_frame(self.detail_table),
-        )
+        n_feats, high_risk_psi = self._feature_summary_counts()
 
         # 样式定义
         pill_style = (
@@ -1104,11 +1130,30 @@ class _BinningHtmlRenderer:
         work_df = detail_pd.copy()
         if "bin_label" in work_df.columns:
             work_df = work_df[work_df["bin_label"].astype(str) != "Total"]
-        work_df = work_df[work_df[group_col].astype(str) != "Total"]
+        work_df = work_df[~work_df[group_col].eq("Total").fillna(False)]
         if "bin_type" in work_df.columns:
             work_df = work_df[work_df["bin_type"].astype(str).isin(["首尾组", "正常组", "空值组"])]
         if work_df.empty:
             return '<div class="mars-empty">No grouped pivot data available.</div>'
+
+        # 组身份不依赖文字化结果：真实缺失与业务字符串独立，Total 使用专用身份。
+        group_ids, group_values = pd.factorize(
+            work_df[group_col], sort=False, use_na_sentinel=False,
+        )
+        work_df["_pivot_group_id"] = group_ids
+        null_label = _null_group_label(group_values.tolist())
+        group_labels: dict[int, str] = {
+            index: null_label if pd.isna(value) else str(value)
+            for index, value in enumerate(group_values)
+        }
+        group_labels[-1] = "Total"
+        group_order: list[int] = sorted(
+            range(len(group_values)),
+            key=lambda index: (
+                bool(pd.isna(group_values[index])),
+                str(group_values[index]),
+            ),
+        )
 
         missing_idx = -1
         try:
@@ -1124,8 +1169,8 @@ class _BinningHtmlRenderer:
             missing_mask = missing_mask | work_df["bin_label"].astype(str).str.lower().eq("missing")
 
         max_bin_index = (
-            work_df.loc[~missing_mask, ["feature", group_col, "bin_index_num"]]
-            .groupby(["feature", group_col], dropna=False)["bin_index_num"]
+            work_df.loc[~missing_mask, ["feature", "_pivot_group_id", "bin_index_num"]]
+            .groupby(["feature", "_pivot_group_id"], dropna=False)["bin_index_num"]
             .transform("max")
         )
         work_df["pivot_bin_type"] = np.where(
@@ -1188,7 +1233,7 @@ class _BinningHtmlRenderer:
 
             grouped = (
                 view_df.groupby(
-                    ["feature", "bin_label", "bin_index", "pivot_bin_type", group_col],
+                    ["feature", "bin_label", "bin_index", "pivot_bin_type", "_pivot_group_id"],
                     dropna=False,
                 )
                 .agg(
@@ -1200,7 +1245,7 @@ class _BinningHtmlRenderer:
                 .reset_index()
             )
             group_denominator = grouped.groupby(
-                ["feature", group_col],
+                ["feature", "_pivot_group_id"],
                 dropna=False,
             )["total_count"].transform("sum")
             grouped["pct"] = grouped["total_count"] / group_denominator.replace(0, np.nan)
@@ -1221,7 +1266,7 @@ class _BinningHtmlRenderer:
             totals["pct"] = totals["total_count"] / feature_denominator.replace(0, np.nan)
             totals["pct"] = totals["pct"].fillna(0.0)
             totals["risk"] = totals["bad_count"] / (totals["total_count"] + DIVISION_EPSILON)
-            totals[group_col] = "Total"
+            totals["_pivot_group_id"] = -1
             feature_rank = (
                 totals.groupby(["feature"], dropna=False)["iv"]
                 .sum()
@@ -1229,9 +1274,8 @@ class _BinningHtmlRenderer:
                 .sort_values(["iv", "feature"], ascending=[False, True])
             )
             grouped = pd.concat([grouped, totals], ignore_index=True, sort=False)
-            ordered_groups = ["Total"] + sorted(
-                [g for g in grouped[group_col].astype(str).unique().tolist() if g != "Total"]
-            )
+            present_groups = set(grouped["_pivot_group_id"])
+            ordered_groups = [-1] + [key for key in group_order if key in present_groups]
 
             metric_bounds = {}
             for metric_key, _, _, _, _ in metrics:
@@ -1254,13 +1298,13 @@ class _BinningHtmlRenderer:
                 header_top.append(
                     f'<th class="mars-th is-numeric" colspan="{len(ordered_groups)}">{html.escape(metric_label)}</th>'
                 )
-                for group_value in ordered_groups:
-                    header_bottom.append(f'<th class="mars-th is-numeric">{html.escape(str(group_value))}</th>')
+                for group_id in ordered_groups:
+                    header_bottom.append(f'<th class="mars-th is-numeric">{html.escape(group_labels[group_id])}</th>')
 
             row_chunks: List[str] = []
             total_columns = 2 + len(metrics) * len(ordered_groups)
             grouped["bin_index"] = pd.to_numeric(grouped["bin_index"], errors="coerce")
-            grouped = grouped.sort_values(["feature", "bin_index", "bin_label", group_col], na_position="last")
+            grouped = grouped.sort_values(["feature", "bin_index", "bin_label", "_pivot_group_id"], na_position="last")
             feature_order = feature_rank["feature"].astype(str).tolist()
             for feature in feature_order:
                 feature_df = grouped[grouped["feature"].astype(str) == feature].copy()
@@ -1271,7 +1315,7 @@ class _BinningHtmlRenderer:
                     ["bin_label", "bin_index", "pivot_bin_type"],
                     dropna=False,
                 ):
-                    bin_frames.append((bin_index, str(bin_label), str(pivot_bin_type), bin_df.set_index(group_col)))
+                    bin_frames.append((bin_index, str(bin_label), str(pivot_bin_type), bin_df.set_index("_pivot_group_id")))
 
                 bin_frames.sort(key=lambda item: (float(item[0]) if pd.notna(item[0]) else np.inf, item[1]))
                 first_row = True
@@ -1282,13 +1326,13 @@ class _BinningHtmlRenderer:
                     ]
                     for metric_key, _, semantic, is_percent, show_bar in metrics:
                         vmin, vmax = metric_bounds[metric_key]
-                        for group_value in ordered_groups:
-                            value = row_df[metric_key].get(group_value, np.nan)
+                        for group_id in ordered_groups:
+                            value = row_df[metric_key].get(group_id, np.nan)
                             display_val = format_html_value(value, as_percent=is_percent)
                             sort_val = cls._format_sort_value(value, "number")
                             style = cls._cell_style(value, semantic=semantic, vmin=vmin, vmax=vmax, data_bar=show_bar)
                             row_cells.append(
-                                f'<td class="mars-td is-numeric" data-col="{cls._escape_attr(metric_key)}|{cls._escape_attr(group_value)}" '
+                                f'<td class="mars-td is-numeric" data-col="{cls._escape_attr(metric_key)}|{cls._escape_attr(group_labels[group_id])}" data-group-id="{group_id}" '
                                 f'data-sort-value="{cls._escape_attr(sort_val)}" style="{cls._escape_attr(style)}">{html.escape(display_val)}</td>'
                             )
 
@@ -1455,7 +1499,7 @@ class _BinningHtmlRenderer:
                 )
             )
 
-        n_features, high_risk_psi = self._feature_summary_counts(summary_pd, detail_pd)
+        n_features, high_risk_psi = self._feature_summary_counts()
         group_label = self.group_col if self.group_col else "None (Total Only)"
         all_sources = sorted(
             set(feature_sources.values())

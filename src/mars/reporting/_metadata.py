@@ -129,6 +129,17 @@ def resolve_feature_identity_metadata(
     return result
 
 
+def _null_group_label(values: list[Any]) -> str:
+    """为宽趋势选择不与真实业务文字冲突的空组列名，保留既有 null 列约定。"""
+    occupied = {str(value) for value in values if not pd.isna(value)}
+    label = "null"
+    if label in occupied:
+        label = "(空分组)"
+        while label in occupied:
+            label += "#"
+    return label
+
+
 def validate_group_labels(frame: pl.DataFrame, group_col: str | None) -> None:
     """拒绝与宽表身份列冲突的组值，避免 pivot 或补列覆盖业务维度。"""
     if group_col is None:

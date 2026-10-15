@@ -1,12 +1,12 @@
 {
   "case": 2,
-  "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
   "consumer": "deterministic public API queries; no LLM",
   "question": "固定分箱怎样比较五分区与无标签分布？",
   "query": {
     "question": "外部来源分 2 与 3 的已观测区分度",
     "reference": {
-      "report_id": "0bd931e3-17cb-4c37-a534-40ae571a5804",
+      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
       "table": "summary",
       "query": {
         "offset": 0,
@@ -24,6 +24,8 @@
     "rows": [
       {
         "feature": "EXT_SOURCE_3",
+        "display_name": "外部来源分 3",
+        "dtype": "Float64",
         "data_source": "Home Credit 2018 application_{train|test}.csv",
         "iv": 0.2917010188102722,
         "ks": 22.186461924601865,
@@ -39,6 +41,8 @@
       },
       {
         "feature": "EXT_SOURCE_2",
+        "display_name": "外部来源分 2",
+        "dtype": "Float64",
         "data_source": "Home Credit 2018 application_{train|test}.csv",
         "iv": 0.2703412175178528,
         "ks": 21.25443262874279,

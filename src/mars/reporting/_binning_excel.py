@@ -11,7 +11,7 @@ import pandas as pd
 
 from mars.compute import to_pandas_frame
 from mars.reporting._excel import _prepare_xlwings_strings, _write_openpyxl_value, _xlwings_value
-from mars.reporting._metadata import export_report_semantics, is_metadata_column
+from mars.reporting._metadata import _null_group_label, export_report_semantics, is_metadata_column
 from mars.reporting._semantics import _definition
 from mars.utils.logger import logger
 
@@ -169,7 +169,8 @@ class _BinningExcelWriter:
         tables: dict[str, pd.DataFrame] = {"最终汇总": summary}
         if "ks" in self.trend_tables:
             trend: pd.DataFrame = to_pandas_frame(self.trend_tables["ks"])
-            groups = grouped[group_col].astype("string").fillna("null")
+            null_label = _null_group_label(grouped[group_col].drop_duplicates().tolist())
+            groups = grouped[group_col].astype("string").fillna(null_label)
             # 只替换现有分组列，首目标契约、身份列、元数据及行列顺序全部沿用源趋势。
             for column in trend.columns:
                 if is_metadata_column(column):

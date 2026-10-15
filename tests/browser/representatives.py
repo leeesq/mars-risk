@@ -130,8 +130,8 @@ def _check_rows(page: Page, name: str, expected: list[dict[str, Any]]) -> int:
     """核对完整小表的真实表头、行粒度和有限数字。"""
     table = _table(page, name)
     expect(table).to_have_count(1)
-    rows: list[list[str]] = table.locator("tbody tr").evaluate_all(
-        "rows=>rows.map(r=>Array.from(r.cells,c=>c.innerText))"
+    rows: list[list[dict[str, str | None]]] = table.locator("tbody tr").evaluate_all(
+        "rows=>rows.map(r=>Array.from(r.cells,c=>({text:c.innerText,raw:c.getAttribute('data-sort-value')})))"
     )
     assert len(rows) == len(expected), (name, len(rows), len(expected))
     headers = table.locator("thead th").all_text_contents()
@@ -142,14 +142,16 @@ def _check_rows(page: Page, name: str, expected: list[dict[str, Any]]) -> int:
     for actual, saved in zip(rows, expected):
         for value, observed in zip(saved.values(), actual):
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                assert math.isclose(float(observed), value, rel_tol=1e-5, abs_tol=1e-6), (
+                # 语义格式会显示百分比或舍入数字，原始排序值仍须严格对应公共报告。
+                raw = observed["raw"] if observed["raw"] is not None else observed["text"]
+                assert math.isclose(float(str(raw)), value, rel_tol=1e-5, abs_tol=1e-6), (
                     name,
                     value,
                     observed,
                 )
                 checked += 1
             elif isinstance(value, str):
-                assert observed == value, (name, value, observed)
+                assert observed["text"] == value, (name, value, observed)
     return checked
 
 
@@ -179,7 +181,8 @@ def _snapshot_report(
             "correlation": "pairs",
         }[name]
         page.get_by_role(
-            "button", name="Overview" if wanted == "overview" else wanted, exact=True
+            "tab",
+            name="Overview" if wanted == "overview" else wanted, exact=True,
         ).click()
         panel = page.locator("section.panel").filter(
             has=page.get_by_role("heading", name=wanted, exact=True)
@@ -196,8 +199,9 @@ def _snapshot_report(
         local.fill("")
         if name == "profile":
             panel.get_by_role("columnheader", name="mean", exact=True).click()
+            mean_index = panel.locator("thead th").all_text_contents().index("mean")
             values = panel.locator("tbody tr").evaluate_all(
-                "rows=>rows.map(r=>Number(r.cells[3].innerText))"
+                "(rows,index)=>rows.map(r=>Number(r.cells[index].dataset.sortValue))", mean_index,
             )
             assert values == sorted(values)
             page.get_by_role("textbox", name="Search all tables", exact=True).fill("income")

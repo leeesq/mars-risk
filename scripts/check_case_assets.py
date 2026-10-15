@@ -247,7 +247,11 @@ def _validate_saved_denominators(preparation: dict[str, Any], snapshots: dict[st
             states = _table_rows(report.get_table("calculation_status", filters={"group": "4_oot_undue"}))
             if not states or any(row["status"] != "unobserved" for row in states if row["metric"] == "risk_metrics"):
                 raise ValueError("Binning unobserved target requires its real calculation status")
-            for metric in ("iv", "ks", "auc", "bad_rate"):
+            supervised_trends: list[str] = ["iv", "ks", "auc"]
+            # 新报告在 detail 保留总体与逐箱坏率；历史快照若保存旧趋势表仍逐值核查。
+            if "trend.bad_rate" in description["tables"]:
+                supervised_trends.append("bad_rate")
+            for metric in supervised_trends:
                 for row in _table_rows(report.get_table(f"trend.{metric}")):
                     if row["4_oot_undue"] is not None:
                         raise ValueError(f"Unobserved group cannot have supervised {metric}")
@@ -412,8 +416,18 @@ def _validate_excel_tables(workbook: Any, report: Any, label: str) -> None:
         _assert_equal(expected, _excel_json_mapping(workbook[name], f"{label}.{name}"), f"Excel.{label}.{name}")
     metadata_rows = workbook["FeatureMetadata"].iter_rows(values_only=True)
     metadata_header = list(next(metadata_rows))
+    expected_header: list[str] = [
+        "feature", "display_name", "dtype", "data_source", "description", "unit",
+    ]
+    if metadata_header != expected_header:
+        raise ValueError(f"Excel feature identity header differs: {label}")
     metadata = {row[0]: dict(zip(metadata_header[1:], row[1:])) for row in metadata_rows}
-    _assert_equal(description["feature_metadata"], metadata, f"Excel.{label}.FeatureMetadata")
+    source_types: dict[str, str] = description["parameters"].get("feature_dtypes", {})
+    expected_metadata: dict[str, dict[str, Any]] = {
+        feature: {**entry, "dtype": source_types.get(feature)}
+        for feature, entry in description["feature_metadata"].items()
+    }
+    _assert_equal(expected_metadata, metadata, f"Excel.{label}.FeatureMetadata")
     for index, table in enumerate(description["tables"]):
         source = _table_rows(report.get_table(table))
         name = f"{index:03d}_{table}"[:31]
