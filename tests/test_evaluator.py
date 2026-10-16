@@ -391,7 +391,9 @@ def test_risk_trend_summary_uses_time_col_when_group_col_is_non_temporal(
         assert "[2024-01-01 ~ 2024-01-24]" in summary_text
         assert "[new ~ vip]" not in summary_text
         titles: dict[str, str] = {
-            title.splitlines()[1]: title.splitlines()[0]
+            title: "\n".join(
+                text.get_text() for text in axis.texts if text.get_gid() == "mars-group-date"
+            )
             for axis in figures[0].axes
             if (title := axis.get_title())
         }
@@ -464,7 +466,9 @@ def test_risk_trend_titles_use_only_observed_targets(
     try:
         assert len(figures) == 1
         titles: dict[str, str] = {
-            title.splitlines()[1]: title.splitlines()[0]
+            title: "\n".join(
+                text.get_text() for text in axis.texts if text.get_gid() == "mars-group-date"
+            )
             for axis in figures[0].axes
             if (title := axis.get_title())
         }

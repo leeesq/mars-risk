@@ -214,6 +214,10 @@ fragment = report.render_risk_trends_html(
 
 `fragment.html` 是可嵌入现有模板的 HTML 片段；资产模式同时返回已写入的图片路径。
 
+中文名和分组日期按实际绘制时的 renderer 与 DPI 排布；取得 Figure 后修改 DPI，或在
+PNG、SVG 之间反复导出，也会重新测量新增文字。英文身份、业务标题和统计沿用原有字体与
+字号，`$`、反斜杠等业务文字按字面显示。
+
 ## 4. 构建评分卡
 
 评分卡为 Experimental，暂时停止功能迭代；现有转换与部署能力继续保留。

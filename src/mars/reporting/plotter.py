@@ -7,7 +7,7 @@ import unicodedata
 import uuid
 from collections.abc import Mapping
 from io import BytesIO
-from typing import Literal, Union, cast
+from typing import Literal, Protocol, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -25,10 +25,12 @@ import matplotlib.gridspec as gridspec  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.axes import Axes  # noqa: E402
 from matplotlib.backend_bases import RendererBase  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+from matplotlib.layout_engine import LayoutEngine  # noqa: E402
 from matplotlib.patches import FancyBboxPatch  # noqa: E402
 from matplotlib.text import Text  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
-from matplotlib.transforms import Affine2D, Bbox  # noqa: E402
+from matplotlib.transforms import Bbox  # noqa: E402
 
 
 class _RiskTrendSummaryBox(FancyBboxPatch):
@@ -36,11 +38,10 @@ class _RiskTrendSummaryBox(FancyBboxPatch):
 
     def __init__(self, fig: plt.Figure, summary: Text, name: Text) -> None:
         self._texts = (summary, name)
-        width, height = fig.get_size_inches()
         super().__init__(
             (0, 0), 0, 0, boxstyle="round,pad=0.4",
             mutation_scale=float(summary.get_fontsize()) / 72,
-            transform=Affine2D().scale(1 / width, 1 / height) + fig.transFigure,
+            transform=fig.dpi_scale_trans,
             facecolor="#f0f0f0", edgecolor="#cccccc", alpha=0.8,
             zorder=summary.get_zorder() - 1, gid="mars-summary-box",
         )
@@ -60,6 +61,120 @@ class _RiskTrendSummaryBox(FancyBboxPatch):
         """在 tight 边界收集时也使用当前字形尺寸。"""
         self._update_bounds(renderer)
         return super().get_window_extent(renderer)
+
+
+class _FigureRenderer(Protocol):
+    """补足 Matplotlib 类型声明中缺失的私有 renderer 获取协议。"""
+
+    def _get_renderer(self) -> RendererBase:
+        """获取当前后端的 renderer，不执行完整绘制。"""
+        ...
+
+
+class _RiskTrendFigure(Figure):
+    """仅为趋势图在调用方改变 DPI 时提前更新画布尺寸，避免首帧沿用旧像素高度。"""
+
+    def set_dpi(self, val: float) -> None:
+        """设置 DPI 后按当前后端重测已安装的趋势图页眉。"""
+        super().set_dpi(val)
+        layout = self.get_layout_engine()
+        if isinstance(layout, _RiskTrendHeader):
+            layout.execute(self)
+
+
+class _RiskTrendHeader(LayoutEngine):
+    """从冻结的旧图基准重排新增行；导出预绘使用目标后端，tight 终绘保留该布局。"""
+
+    _adjust_compatible = True
+    _colorbar_gridspec = False
+
+    def __init__(
+        self, fig: Figure, summary: Text, name: Text | None,
+        dated_axes: list[tuple[Axes, Text]],
+    ) -> None:
+        super().__init__()
+        self._size = (float(fig.get_figwidth()), float(fig.get_figheight()))
+        self._axes: list[tuple[Axes, Bbox]] = [
+            (ax, ax.get_position().frozen()) for ax in fig.axes
+        ]
+        self._summary_position = summary.get_position()
+        self._summary = summary
+        self._name = name
+        self._dated_axes = dated_axes
+
+    def execute(self, fig: Figure) -> None:
+        """仅获取 renderer 并测量文字，不在重排内部触发 canvas.draw 或完整 Figure.draw。"""
+        dpi = fig.dpi
+        try:
+            # Figure 的设施支持 SVG 等没有 canvas.get_renderer 的后端；内部只截获 renderer。
+            renderer = cast(_FigureRenderer, fig)._get_renderer()
+            self._layout(fig, renderer)
+        finally:
+            # SVG 获取 renderer 时会暂设 72 DPI，不能污染调用方或其他导出入口。
+            fig.dpi = dpi
+
+    def _layout(self, fig: Figure, renderer: RendererBase) -> None:
+        """所有新增高度和净距均从未扩展基准计算，保留轴的英寸尺寸和原文字属性。"""
+        width, height = self._size
+        summary = self._summary
+        summary_x, summary_y = self._summary_position
+        dpi = fig.dpi
+
+        # 每次恢复同一物理基准，禁止把前次导出的高度和偏移再次叠加。
+        fig.set_size_inches(width, height, forward=False)
+        for ax, bounds in self._axes:
+            ax.set_position(bounds)
+        summary.set_position(self._summary_position)
+        title_top = max(
+            ax.title.get_window_extent(renderer).y1 for ax, _ in self._axes if ax.get_title()
+        )
+        padding = renderer.points_to_pixels(float(summary.get_fontsize()) * 0.4)
+        summary_bottom = summary.get_window_extent(renderer).y0 - padding
+        summary_gap = max(2 / 72, (summary_bottom - title_top) / dpi)
+
+        # 日期沿用组名到指标的可见净距；业务标题、指标和绘图区不移动。
+        header_top = title_top
+        for ax, date in self._dated_axes:
+            title_box = ax.title.get_window_extent(renderer)
+            metric_top = max(
+                text.get_window_extent(renderer).y1
+                for text in ax.texts
+                if text.get_transform() == ax.transAxes and text.get_position()[1] == 1.015
+            )
+            gap = max(0, title_box.y0 - metric_top)
+            date.set_y(float(ax.transAxes.inverted().transform((0, title_box.y1 + gap))[1]))
+            header_top = max(header_top, date.get_window_extent(renderer).y1)
+        date_height = max(0, (header_top + summary_gap * dpi - summary_bottom) / dpi)
+
+        name_height = 0.0
+        if self._name is not None:
+            # probe 与真实说明保持相同字体、行距及字面量解析规则。
+            line = Text(
+                text=summary.get_text().splitlines()[0],
+                fontproperties=summary.get_fontproperties(), linespacing=1.6,
+                parse_math=False,
+            )
+            line.set_figure(fig)
+            line_gap = (
+                summary.get_window_extent(renderer).height
+                - 2 * line.get_window_extent(renderer).height
+            )
+            name_height = (self._name.get_window_extent(renderer).height + line_gap) / dpi
+
+        new_height = height + date_height + name_height
+        fig.set_size_inches(width, new_height, forward=False)
+        for ax, bounds in self._axes:
+            ax.set_position((
+                bounds.x0, bounds.y0 * height / new_height,
+                bounds.width, bounds.height * height / new_height,
+            ))
+        summary.set_y((summary_y * height + date_height) / new_height)
+        if self._name is not None:
+            self._name.set_position((
+                summary_x, (summary_y * height + date_height + name_height) / new_height,
+            ))
+        else:
+            summary.update_bbox_position_size(renderer)
 
 
 class MarsPlotter:
@@ -489,7 +604,7 @@ class MarsPlotter:
             if display_name else []
         )
         total_height = MarsPlotter.UNIT_HEIGHT + 0.7
-        fig = plt.figure(figsize=(total_width, total_height))
+        fig = plt.figure(figsize=(total_width, total_height), FigureClass=_RiskTrendFigure)
 
         base_h = 2.5
         fs_title = base_h * 1.8 + 2
@@ -817,39 +932,8 @@ class MarsPlotter:
         display_lines: list[str],
         dated_axes: list[tuple[Axes, Text]],
     ) -> None:
-        """按旧文字边界补入中文和日期，只向上扩画布，保留绘图区的英寸坐标。"""
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        dpi = fig.dpi
-        width, height = fig.get_size_inches()
-        axes_bounds = [(ax, ax.get_position().frozen()) for ax in fig.axes]
-        title_top = max(
-            ax.title.get_window_extent(renderer).y1 for ax in fig.axes if ax.get_title()
-        )
-        summary_patch = summary.get_bbox_patch()
-        assert summary_patch is not None
-        summary_gap = max(2 / 72, (summary_patch.get_window_extent(renderer).y0 - title_top) / dpi)
-
-        # 日期与组名的可见净距沿用组名到指标的原净距，原标题和指标坐标不动。
-        header_top = title_top
-        for ax, date in dated_axes:
-            title_box = ax.title.get_window_extent(renderer)
-            metric_top = max(
-                text.get_window_extent(renderer).y1
-                for text in ax.texts
-                if text.get_transform() == ax.transAxes and text.get_position()[1] == 1.015
-            )
-            gap = max(0, title_box.y0 - metric_top)
-            date_y = float(ax.transAxes.inverted().transform((0, title_box.y1 + gap))[1])
-            date.set_y(date_y)
-            header_top = max(header_top, date.get_window_extent(renderer).y1)
-        date_height = max(
-            0, (header_top + summary_gap * dpi - summary_patch.get_window_extent(renderer).y0) / dpi,
-        )
-
-        # 中文独占一个 Text；旧两行继续使用调用方原来的 FontProperties 和行距。
+        """安装仅用于趋势图新增行的布局，在显示及导出预绘时按目标 renderer 重测。"""
         name: Text | None = None
-        name_height = 0.0
         if display_lines:
             name_font = summary.get_fontproperties().copy()
             cjk_family = _resolve_cjk_font_family()
@@ -861,27 +945,12 @@ class MarsPlotter:
                 ha="left", va="top", linespacing=1.6, gid="mars-display-name",
             ))
             name.set_parse_math(False)
-            line = Text(text=summary.get_text().splitlines()[0],
-                        fontproperties=summary.get_fontproperties(), linespacing=1.6)
-            line.set_figure(fig)
-            line_gap = summary.get_window_extent(renderer).height - 2 * line.get_window_extent(renderer).height
-            name_height = (name.get_window_extent(renderer).height + line_gap) / dpi
-
-        # 新画布的底部和所有 axes 的物理尺寸不变；顶部只增加实际文字占用。
-        new_height = height + date_height + name_height
-        summary_x, summary_y = summary.get_position()
-        fig.set_size_inches(width, new_height, forward=True)
-        for ax, bounds in axes_bounds:
-            ax.set_position([
-                bounds.x0, bounds.y0 * height / new_height,
-                bounds.width, bounds.height * height / new_height,
-            ])
-        summary.set_y((summary_y * height + date_height) / new_height)
-        if name is not None:
-            name.set_position((summary_x, (summary_y * height + date_height + name_height) / new_height))
             # 同一个圆角框包围中英文；padding、圆角、底色和边框保持原设计。
             summary.set_bbox(None)
             fig.add_artist(_RiskTrendSummaryBox(fig, summary, name))
+        layout = _RiskTrendHeader(fig, summary, name, dated_axes)
+        fig.set_layout_engine(layout)
+        layout.execute(fig)
 
     @staticmethod
     def _select_group_rows(
