@@ -23,8 +23,43 @@ ensure_matplotlib_environment()
 
 import matplotlib.gridspec as gridspec  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.axes import Axes  # noqa: E402
+from matplotlib.backend_bases import RendererBase  # noqa: E402
+from matplotlib.patches import FancyBboxPatch  # noqa: E402
 from matplotlib.text import Text  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
+from matplotlib.transforms import Affine2D, Bbox  # noqa: E402
+
+
+class _RiskTrendSummaryBox(FancyBboxPatch):
+    """同一背景包围新增中文和原说明，并跟随导出 DPI 与 tight 裁剪重测边界。"""
+
+    def __init__(self, fig: plt.Figure, summary: Text, name: Text) -> None:
+        self._texts = (summary, name)
+        width, height = fig.get_size_inches()
+        super().__init__(
+            (0, 0), 0, 0, boxstyle="round,pad=0.4",
+            mutation_scale=float(summary.get_fontsize()) / 72,
+            transform=Affine2D().scale(1 / width, 1 / height) + fig.transFigure,
+            facecolor="#f0f0f0", edgecolor="#cccccc", alpha=0.8,
+            zorder=summary.get_zorder() - 1, gid="mars-summary-box",
+        )
+
+    def _update_bounds(self, renderer: RendererBase | None) -> None:
+        """使用本次 renderer 的真实字形边界，避免初次 draw 的像素度量污染高清导出。"""
+        content = Bbox.union([text.get_window_extent(renderer) for text in self._texts])
+        bounds = content.transformed(self.get_transform().inverted())
+        self.set_bounds(bounds.x0, bounds.y0, bounds.width, bounds.height)
+
+    def draw(self, renderer: RendererBase) -> None:
+        """在实际绘制时更新共同背景。"""
+        self._update_bounds(renderer)
+        super().draw(renderer)
+
+    def get_window_extent(self, renderer: RendererBase | None = None) -> Bbox:
+        """在 tight 边界收集时也使用当前字形尺寸。"""
+        self._update_bounds(renderer)
+        return super().get_window_extent(renderer)
 
 
 class MarsPlotter:
@@ -453,10 +488,7 @@ class MarsPlotter:
             MarsPlotter._wrap_display_name(display_name, width=max(30, n_panels * 35))
             if display_name else []
         )
-        original_height = MarsPlotter.UNIT_HEIGHT + 0.7
-        total_height = original_height + 0.32 * len(display_lines)
-        if group_time_ranges:
-            total_height += 0.28
+        total_height = MarsPlotter.UNIT_HEIGHT + 0.7
         fig = plt.figure(figsize=(total_width, total_height))
 
         base_h = 2.5
@@ -468,9 +500,7 @@ class MarsPlotter:
             1, n_panels,
             figure=fig,
             wspace=0.09,
-            left=0.05, right=0.95,
-            top=original_height * 0.75 / total_height,
-            bottom=original_height * 0.15 / total_height,
+            left=0.05, right=0.95, top=0.75, bottom=0.15,
         )
 
         if has_labeled_target:
@@ -484,13 +514,13 @@ class MarsPlotter:
             summary_str_1 = f"{feature}  (Label-Free Mode),  Total: {int(total_count)},  {time_range_label}"
             summary_str_2 = f"Missing: {miss_str},  PSI Check Only"
 
-        summary_lines = display_lines + [summary_str_1, summary_str_2]
         summary_text = fig.text(
-            0.04, 1 - original_height * 0.06 / total_height, "\n".join(summary_lines),
+            0.04, 0.94, summary_str_1 + "\n" + summary_str_2,
             fontsize=fs_title + 0.85, va="top", ha="left", linespacing=1.6,
             bbox=dict(boxstyle="round,pad=0.4", fc="#f0f0f0", ec="#cccccc", alpha=0.8),
         )
         summary_text.set_parse_math(False)
+        dated_axes: list[tuple[Axes, Text]] = []
 
         global_max_count = 0.0
         global_max_bad = 0.0
@@ -766,19 +796,92 @@ class MarsPlotter:
                     f"[{group_range[0]} ~ {group_range[1]}]"
                     if group_range is not None else "[Date range: unknown]"
                 )
-                ax.set_title(
-                    range_label + "\n" + ax.get_title(),
-                    fontsize=fs_title + 0.85, y=1.05, ha="center",
+                date_text = ax.text(
+                    0.5, 1.1, range_label, transform=ax.transAxes,
+                    fontproperties=ax.title.get_fontproperties(), color=ax.title.get_color(),
+                    ha="center", va="bottom", clip_on=False, gid="mars-group-date",
                 )
+                date_text.set_parse_math(False)
+                dated_axes.append((ax, date_text))
             ax.title.set_parse_math(False)
 
-        # 复用 Matplotlib 字体发现，仅在当前图的 Text 上添加中文字体回退。
-        cjk_family = _resolve_cjk_font_family()
-        if cjk_family is not None:
-            for artist in fig.findobj(match=Text):
-                artist.set_fontfamily([*artist.get_fontfamily(), cjk_family])
+        if display_lines or dated_axes:
+            MarsPlotter._layout_risk_trend_header(fig, summary_text, display_lines, dated_axes)
 
         return fig
+
+    @staticmethod
+    def _layout_risk_trend_header(
+        fig: plt.Figure,
+        summary: Text,
+        display_lines: list[str],
+        dated_axes: list[tuple[Axes, Text]],
+    ) -> None:
+        """按旧文字边界补入中文和日期，只向上扩画布，保留绘图区的英寸坐标。"""
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        dpi = fig.dpi
+        width, height = fig.get_size_inches()
+        axes_bounds = [(ax, ax.get_position().frozen()) for ax in fig.axes]
+        title_top = max(
+            ax.title.get_window_extent(renderer).y1 for ax in fig.axes if ax.get_title()
+        )
+        summary_patch = summary.get_bbox_patch()
+        assert summary_patch is not None
+        summary_gap = max(2 / 72, (summary_patch.get_window_extent(renderer).y0 - title_top) / dpi)
+
+        # 日期与组名的可见净距沿用组名到指标的原净距，原标题和指标坐标不动。
+        header_top = title_top
+        for ax, date in dated_axes:
+            title_box = ax.title.get_window_extent(renderer)
+            metric_top = max(
+                text.get_window_extent(renderer).y1
+                for text in ax.texts
+                if text.get_transform() == ax.transAxes and text.get_position()[1] == 1.015
+            )
+            gap = max(0, title_box.y0 - metric_top)
+            date_y = float(ax.transAxes.inverted().transform((0, title_box.y1 + gap))[1])
+            date.set_y(date_y)
+            header_top = max(header_top, date.get_window_extent(renderer).y1)
+        date_height = max(
+            0, (header_top + summary_gap * dpi - summary_patch.get_window_extent(renderer).y0) / dpi,
+        )
+
+        # 中文独占一个 Text；旧两行继续使用调用方原来的 FontProperties 和行距。
+        name: Text | None = None
+        name_height = 0.0
+        if display_lines:
+            name_font = summary.get_fontproperties().copy()
+            cjk_family = _resolve_cjk_font_family()
+            if cjk_family is not None:
+                name_font.set_family(cjk_family)
+            name = cast(Text, fig.text(
+                *summary.get_position(), "\n".join(display_lines),
+                fontproperties=name_font, color=summary.get_color(),
+                ha="left", va="top", linespacing=1.6, gid="mars-display-name",
+            ))
+            name.set_parse_math(False)
+            line = Text(text=summary.get_text().splitlines()[0],
+                        fontproperties=summary.get_fontproperties(), linespacing=1.6)
+            line.set_figure(fig)
+            line_gap = summary.get_window_extent(renderer).height - 2 * line.get_window_extent(renderer).height
+            name_height = (name.get_window_extent(renderer).height + line_gap) / dpi
+
+        # 新画布的底部和所有 axes 的物理尺寸不变；顶部只增加实际文字占用。
+        new_height = height + date_height + name_height
+        summary_x, summary_y = summary.get_position()
+        fig.set_size_inches(width, new_height, forward=True)
+        for ax, bounds in axes_bounds:
+            ax.set_position([
+                bounds.x0, bounds.y0 * height / new_height,
+                bounds.width, bounds.height * height / new_height,
+            ])
+        summary.set_y((summary_y * height + date_height) / new_height)
+        if name is not None:
+            name.set_position((summary_x, (summary_y * height + date_height + name_height) / new_height))
+            # 同一个圆角框包围中英文；padding、圆角、底色和边框保持原设计。
+            summary.set_bbox(None)
+            fig.add_artist(_RiskTrendSummaryBox(fig, summary, name))
 
     @staticmethod
     def _select_group_rows(

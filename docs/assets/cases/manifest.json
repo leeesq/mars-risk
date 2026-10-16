@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "source_commit": "9c028d21d6a7a8c0336d6c06148f73d1d08c09c3",
+  "source_commit": "845cf87d2cb756eeb9bc9cfd394c80fafb225d7c",
   "source_status": "known git checkout baseline; code fingerprints describe the generating working tree",
   "command": "python task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir current-cases",
   "data_config": {
@@ -1344,7 +1344,7 @@
     "src/mars/reporting/_profile_excel.py": "24d2d6ff1cc90671d1553c58bb0ee5c0281ab14df56263aea22b48abeba6d1fd",
     "src/mars/reporting/_excel.py": "4b60c44ce0eb5a985c6e1f8d18bcae1ae1e4bd64d3763967f7330a4f4ff505f1",
     "src/mars/reporting/_binning_plot.py": "29034e2c28da266ac650dbb6a9de59f8b592927781d4ee05cb496024601a1a54",
-    "src/mars/reporting/plotter.py": "f3beef0e58d1c746b88e66acb9ef67c601a96c2b2d2d8da7fe6c8f544124d5ef",
+    "src/mars/reporting/plotter.py": "481e97834babb54197ac149f84ed635bd87fbede080f2fdec0381dab51d0bb04",
     "src/mars/reporting/_matplotlib.py": "da12b02099452f49e6770a2e86ad867ecf72866064eb48e3c1dc5a28347370a8",
     "src/mars/reporting/_time_range.py": "8680c989fd3e89aa2389e17997c3944e4c7e75777aacddc91e8af986df18034b",
     "src/mars/reporting/html_assets.py": "999abdb23b8cb237d01d1a55bb7f23ac3d74c4c48adafb4124fb3d61aebf859e",
@@ -1398,28 +1398,28 @@
     },
     {
       "path": "binning-native-home-credit.png",
-      "size_bytes": 606197,
-      "sha256": "ccf554db3da20858c31c2ad97524a2ac7f5b36b181131fa4fee483753b6fabb6"
+      "size_bytes": 602749,
+      "sha256": "c6f44dc026eb60f8c38c8bf09ec89909ca15dde7ec6be2d2091459729357e383"
     },
     {
       "path": "binning-native-home-credit.svg",
-      "size_bytes": 251173,
-      "sha256": "32e379b236ce8c8c79956d9febfa4f9117ab681dde7546cf24ae6527a318cd87"
+      "size_bytes": 252444,
+      "sha256": "cde0d0d7a8183a6835eeb21286f7cd7d4cb5c73714c93986d734aa69d769fd75"
     },
     {
       "path": "binning-native-time-home-credit.png",
-      "size_bytes": 777115,
-      "sha256": "2988dc254227e0cf0a6d0e94de2aff9957291c06f82b10c0ac0cbbc1e069fe86"
+      "size_bytes": 773277,
+      "sha256": "b0e8427b4cb47bd98697e78b7375dace3cb850e91724a62ff0ff8cd9e4547ecd"
     },
     {
       "path": "binning-native-time-home-credit.svg",
-      "size_bytes": 306889,
-      "sha256": "a577594976dc4e5e0eaf9fc2428f29a57ce31a773db7bb638ec37869ed6a9a15"
+      "size_bytes": 308211,
+      "sha256": "a0d14770874df45224159bf079c82d0c837fc407e7678a6ff825e201c6660160"
     },
     {
       "path": "binning-time.html",
-      "size_bytes": 4256256,
-      "sha256": "c45fa9000a82c5054567e87ea12eca30d670d0fba2939c00c27507f29eea0a7b"
+      "size_bytes": 4256992,
+      "sha256": "e3d3dec6eb603629efb02e3df917fc024bf326def14247adc3d3bbdb0eadc9b0"
     },
     {
       "path": "binning-time.marsreport",
@@ -1433,8 +1433,8 @@
     },
     {
       "path": "binning.html",
-      "size_bytes": 18478556,
-      "sha256": "8ad77ca00b70e0b01d3fb6dfad3da315b4f499287a0d84efc2d8be44c30ab8b9"
+      "size_bytes": 18437936,
+      "sha256": "ce6ba3e4ff2f4f2f15831911600c0d6825516f5e53a496682611a8469f829a86"
     },
     {
       "path": "binning.marsreport",
@@ -1498,8 +1498,8 @@
     },
     {
       "path": "days-employed-special.html",
-      "size_bytes": 693267,
-      "sha256": "292f1566c768f374577be55db964cf229ec27b5c68f64ac6a8e81bf20e8ed057"
+      "size_bytes": 691011,
+      "sha256": "e87f8313f7f6d1db89b1a7e83e4d4e2061c60e3b848a89b8960a2d3e520d92cf"
     },
     {
       "path": "days-employed-special.marsreport",

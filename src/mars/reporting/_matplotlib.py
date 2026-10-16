@@ -78,7 +78,7 @@ def require_pyplot(*, feature_name: str) -> Any:
 
 @lru_cache(maxsize=1)
 def _resolve_cjk_font_family() -> str | None:
-    """从本机字体目录选择中文字体，仅供图内文本回退，不修改全局 rcParams。"""
+    """从本机字体目录选择字体，仅供新增中文名使用，不修改全局 rcParams。"""
     from matplotlib import font_manager
 
     available = {font.name for font in font_manager.fontManager.ttflist}

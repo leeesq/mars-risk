@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.font_manager import FontProperties, findfont
+from matplotlib.patches import FancyBboxPatch
+from matplotlib.text import Text
 
 from mars.compute import RiskCorrBaseline
 from mars.reporting import MarsBinningReport
@@ -82,6 +88,41 @@ def _build_panel_title_frame(
             "total_count": [total, total],
         }
     )
+
+
+def _group_date_text(axis: Axes) -> Text:
+    """查找独立日期行，避免将日期和旧标题混成多行文本。"""
+    return next(text for text in axis.texts if text.get_gid() == "mars-group-date")
+
+
+def _old_text_styles(figure: Figure) -> list[tuple[Any, ...]]:
+    """同时记录声明属性和实际解析字体，覆盖粗体回退导致的样式变化。"""
+    return [
+        (
+            text.get_text(),
+            tuple(text.get_fontfamily()),
+            findfont(text.get_fontproperties()),
+            text.get_fontsize(),
+            text.get_fontweight(),
+            mpl.colors.to_rgba(text.get_color()),
+            text.get_rotation(),
+            text.get_horizontalalignment(),
+            text.get_verticalalignment(),
+        )
+        for text in figure.findobj(match=Text)
+        if text.get_text()
+        and text.get_gid() not in {"mars-group-date", "mars-display-name"}
+    ]
+
+
+def _axes_geometry_inches(figure: Figure) -> list[tuple[float, ...]]:
+    """以物理尺寸比较每个轴和轴间距，避免画布加高掩盖绘图区压缩。"""
+    width, height = figure.get_size_inches()
+    return [
+        (box.x0 * width, box.y0 * height, box.width * width, box.height * height)
+        for axis in figure.axes
+        for box in [axis.get_position()]
+    ]
 
 
 def test_plot_feature_binning_risk_trend_uses_shared_figure_builder(
@@ -407,6 +448,183 @@ def test_labeled_panel_requires_observed_count() -> None:
         )
 
 
+def test_legacy_figure_without_added_information_keeps_old_geometry_and_bold_font() -> None:
+    detail = _build_panel_title_frame(bad=12, observed=1_000, total=5_000)
+    with mpl.rc_context({"font.family": ["DejaVu Serif"], "font.weight": "normal"}):
+        figure = MarsPlotter._build_feature_binning_risk_figure(
+            detail, "income", time_range=("2026-01-01", "2026-01-31"), show_risk="count",
+        )
+        assert figure is not None
+        try:
+            figure.canvas.draw()
+            assert figure.get_size_inches() == pytest.approx([MarsPlotter.UNIT_WIDTH, 3.45])
+            assert figure.texts[0].get_position() == pytest.approx((0.04, 0.94))
+            assert figure.texts[0].get_fontsize() == pytest.approx(7.35)
+            assert len(figure.texts[0].get_text().splitlines()) == 2
+            assert figure.texts[0].get_bbox_patch() is not None
+            for geometry in _axes_geometry_inches(figure):
+                assert geometry == pytest.approx((
+                    MarsPlotter.UNIT_WIDTH * 0.05,
+                    3.45 * 0.15,
+                    MarsPlotter.UNIT_WIDTH * 0.9,
+                    3.45 * 0.6,
+                ))
+            lift_text = next(text for axis in figure.axes for text in axis.texts
+                             if text.get_text() == "1.0")
+            assert lift_text.get_fontsize() == pytest.approx(7.35)
+            assert lift_text.get_fontweight() == "bold"
+            assert lift_text.get_fontfamily() == ["DejaVu Serif"]
+            assert findfont(lift_text.get_fontproperties()) == findfont(
+                FontProperties(family=["DejaVu Serif"], weight="bold"),
+            )
+            assert findfont(lift_text.get_fontproperties()) != findfont(
+                FontProperties(family=["DejaVu Serif"], weight="normal"),
+            )
+        finally:
+            plt.close(figure)
+
+
+@pytest.mark.parametrize("panels", [1, 2, 4])
+@pytest.mark.parametrize("show_risk", ["count", "amt", "both"])
+def test_added_display_name_and_dates_preserve_old_text_and_plot_geometry(
+    panels: int, show_risk: Literal["count", "amt", "both"],
+) -> None:
+    detail = pd.concat([
+        _build_panel_title_frame(bad=12, observed=1_000, total=5_000, group=f"group_{index}")
+        for index in range(panels)
+    ], ignore_index=True)
+    detail["amt_bad_rate"] = np.tile([0.02, 0.04], panels)
+    detail["lift_amt"] = np.tile([0.7, 1.3], panels)
+    detail["good_amt"] = np.tile([980.0, 960.0], panels)
+    detail["bad_amt"] = np.tile([20.0, 40.0], panels)
+    with mpl.rc_context({"font.family": ["DejaVu Serif"], "font.weight": "normal"}):
+        original_rc = mpl.rcParams.copy()
+        old = MarsPlotter._build_feature_binning_risk_figure(
+            detail, "income", time_range=("2026-01-01", "2026-01-31"), show_risk=show_risk,
+        )
+        added = MarsPlotter._build_feature_binning_risk_figure(
+            detail, "income", time_range=("2026-01-01", "2026-01-31"), show_risk=show_risk,
+            display_name="家庭收入（元）",
+            group_time_ranges={f"group_{index}": ("2026-01-01", "2026-01-31")
+                               for index in range(panels)},
+        )
+        assert old is not None and added is not None
+        try:
+            old.canvas.draw()
+            added.canvas.draw()
+            assert mpl.rcParams == original_rc
+            assert _old_text_styles(added) == _old_text_styles(old)
+            np.testing.assert_allclose(_axes_geometry_inches(added), _axes_geometry_inches(old))
+            for old_axis, added_axis in zip(old.axes, added.axes):
+                assert old_axis.get_ylim() == added_axis.get_ylim()
+                assert old_axis.get_xlim() == added_axis.get_xlim()
+                assert len(old_axis.lines) == len(added_axis.lines)
+                for old_line, added_line in zip(old_axis.lines, added_axis.lines):
+                    np.testing.assert_array_equal(old_line.get_xydata(), added_line.get_xydata())
+                    assert old_line.get_color() == added_line.get_color()
+                    assert old_line.get_linewidth() == added_line.get_linewidth()
+                    assert old_line.get_linestyle() == added_line.get_linestyle()
+                    assert old_line.get_marker() == added_line.get_marker()
+                assert len(old_axis.patches) == len(added_axis.patches)
+                for old_bar, added_bar in zip(old_axis.patches, added_axis.patches):
+                    assert old_bar.get_bbox().bounds == added_bar.get_bbox().bounds
+                    assert old_bar.get_facecolor() == added_bar.get_facecolor()
+                assert len(old_axis.collections) == len(added_axis.collections)
+                for old_points, added_points in zip(old_axis.collections, added_axis.collections):
+                    np.testing.assert_array_equal(
+                        old_points.get_offsets(), added_points.get_offsets(),
+                    )
+                    np.testing.assert_array_equal(old_points.get_sizes(), added_points.get_sizes())
+                    np.testing.assert_array_equal(
+                        old_points.get_facecolors(), added_points.get_facecolors(),
+                    )
+        finally:
+            plt.close(old)
+            plt.close(added)
+
+
+@pytest.mark.parametrize("display_name", [None, "家庭收入（元）", "家庭收入与日常支出" * 12])
+@pytest.mark.parametrize("dpi", [100, 300])
+def test_added_rows_use_visible_gaps_without_wasting_header_space(
+    display_name: str | None, dpi: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    detail = _build_panel_title_frame(bad=12, observed=1_000, total=5_000)
+    figure = MarsPlotter._build_feature_binning_risk_figure(
+        detail, "income", time_range=("2026-01-01", "2026-01-31"), show_risk="count",
+        display_name=display_name, group_time_ranges={"2026-01": ("2026-01-01", "2026-01-31")},
+    )
+    assert figure is not None
+    try:
+        figure.set_dpi(dpi)
+        figure.canvas.draw()
+        renderer = figure.canvas.get_renderer()
+        axis = next(axis for axis in figure.axes if axis.get_title())
+        title_box = axis.title.get_window_extent(renderer)
+        metrics = next(text for text in axis.texts if text.get_text().startswith("IV:"))
+        metrics_box = metrics.get_window_extent(renderer)
+        date_box = _group_date_text(axis).get_window_extent(renderer)
+        points_per_pixel = 72 / dpi
+        old_gap = (title_box.y0 - metrics_box.y1) * points_per_pixel
+        added_gap = (date_box.y0 - title_box.y1) * points_per_pixel
+        assert old_gap > 0
+        assert added_gap == pytest.approx(old_gap, abs=0.8)
+        if display_name:
+            summary_patch = next(patch for patch in figure.artists
+                                 if patch.get_gid() == "mars-summary-box")
+            display_text = next(text for text in figure.texts
+                                if text.get_gid() == "mars-display-name")
+            display_box = display_text.get_window_extent(renderer)
+            english_box = figure.texts[0].get_window_extent(renderer)
+            # 单行 probe 也沿用旧 linespacing，保留新版 Matplotlib 的内置 leading。
+            line_probe = Text(
+                text=figure.texts[0].get_text().splitlines()[0],
+                fontproperties=figure.texts[0].get_fontproperties(),
+                linespacing=1.6,
+            )
+            line_probe.set_figure(figure)
+            line_probe.set_parse_math(False)
+            original_line_gap = (
+                english_box.height - 2 * line_probe.get_window_extent(renderer).height
+            ) * points_per_pixel
+            name_gap = (display_box.y0 - english_box.y1) * points_per_pixel
+            assert name_gap >= -1
+            assert name_gap == pytest.approx(original_line_gap, abs=1)
+        else:
+            summary_patch = figure.texts[0].get_bbox_patch()
+        assert summary_patch is not None
+        summary_box = summary_patch.get_window_extent(renderer)
+        summary_gap = (summary_box.y0 - date_box.y1) * points_per_pixel
+        assert 1 <= summary_gap <= 8
+        assert summary_box.y1 <= figure.bbox.y1
+        output = tmp_path / f"layout-{dpi}.png"
+        export_draws: list[tuple[float, ...]] = []
+        original_draw = FancyBboxPatch.draw
+
+        def check_exported_header(patch: FancyBboxPatch, export_renderer: Any) -> None:
+            """检查 tight 保存期间的真实变换，防止背景框未随裁剪平移。"""
+            original_draw(patch, export_renderer)
+            if patch is not summary_patch:
+                return
+            box = patch.get_window_extent(export_renderer)
+            header_texts = [figure.texts[0]]
+            if display_name:
+                header_texts.append(display_text)
+            for text in header_texts:
+                content = text.get_window_extent(export_renderer)
+                assert box.x0 <= content.x0 <= content.x1 <= box.x1
+                assert box.y0 <= content.y0 <= content.y1 <= box.y1
+            exported_date = _group_date_text(axis).get_window_extent(export_renderer)
+            assert box.y0 > exported_date.y1
+            export_draws.append(figure.bbox.bounds)
+
+        monkeypatch.setattr(FancyBboxPatch, "draw", check_exported_header)
+        figure.savefig(output, dpi=dpi, bbox_inches="tight")
+        assert len(set(export_draws)) >= 2  # 包括裁剪前测量与裁剪后最终绘制。
+        assert output.stat().st_size > 1_000
+    finally:
+        plt.close(figure)
+
+
 @pytest.mark.parametrize("ks_method", ["binned", "raw"])
 def test_group_dates_use_current_all_rows_and_survive_multi_target_raw_and_snapshot(
     ks_method: Literal["binned", "raw"], tmp_path: Path,
@@ -449,11 +667,13 @@ def test_include_total_preserves_global_summary_rc_and_other_panels(
     )[0]
     try:
         summary = with_total.texts[0].get_text()
-        assert summary.startswith("家庭收入（元）\nincome")
+        assert summary.startswith("income")
+        assert [text.get_text() for text in with_total.texts
+                if text.get_gid() == "mars-display-name"] == ["家庭收入（元）"]
         assert without_total.texts[0].get_text() == summary
-        full_axes = {axis.get_title().split("\n")[-1].split(" (")[0]: axis
+        full_axes = {axis.get_title().split(" (")[0]: axis
                      for axis in with_total.axes if axis.get_title()}
-        reduced_axes = {axis.get_title().split("\n")[-1].split(" (")[0]: axis
+        reduced_axes = {axis.get_title().split(" (")[0]: axis
                         for axis in without_total.axes if axis.get_title()}
         assert "Total" in full_axes and "Total" not in reduced_axes
         assert "Total loans" in reduced_axes
@@ -464,9 +684,9 @@ def test_include_total_preserves_global_summary_rc_and_other_panels(
             assert [text.get_text() for text in axis.texts] == [
                 text.get_text() for text in full_axes[key].texts
             ]
-        assert full_axes["Train"].get_title().startswith("[2026-01-01 ~ 2026-01-20]\n")
-        assert full_axes["Undue"].get_title().startswith("[2026-03-01 ~ 2026-03-09]\n")
-        assert full_axes["No dates"].get_title().startswith("[Date range: unknown]\n")
+        assert _group_date_text(full_axes["Train"]).get_text() == "[2026-01-01 ~ 2026-01-20]"
+        assert _group_date_text(full_axes["Undue"]).get_text() == "[2026-03-01 ~ 2026-03-09]"
+        assert _group_date_text(full_axes["No dates"]).get_text() == "[Date range: unknown]"
         assert report.detail_table.equals(before)
         assert list(mpl.rcParams["font.family"]) == original_font
     finally:
@@ -488,7 +708,8 @@ def test_implicit_time_groups_and_legacy_reports_do_not_invent_group_dates() -> 
     assert "group_context" not in report.report_meta
     figures = report.build_risk_trend_figures("income", target="target", include_total=False)
     try:
-        assert all(" ~ " not in axis.get_title() for axis in figures[0].axes)
+        assert not any(text.get_gid() == "mars-group-date"
+                       for axis in figures[0].axes for text in axis.texts)
     finally:
         plt.close(figures[0])
     report = _build_group_date_report()
@@ -497,7 +718,8 @@ def test_implicit_time_groups_and_legacy_reports_do_not_invent_group_dates() -> 
     figure = report.build_risk_trend_figures("income", target="target")[0]
     try:
         assert figure.texts[0].get_text().startswith("income")
-        assert all(" ~ " not in axis.get_title() for axis in figure.axes)
+        assert not any(text.get_gid() == "mars-group-date"
+                       for axis in figure.axes for text in axis.texts)
     finally:
         plt.close(figure)
 
@@ -511,23 +733,26 @@ def test_plot_export_entries_share_total_choice_and_long_display_name(tmp_path: 
     )
     figure = fragment.figures[0]
     try:
-        summary = figure.texts[0].get_text()
-        assert len(summary.splitlines()) > 3
-        assert all(not axis.get_title().split("\n")[-1].startswith("Total (")
+        display_text = next(text for text in figure.texts
+                            if text.get_gid() == "mars-display-name")
+        assert len(display_text.get_text().splitlines()) > 1
+        assert len(figure.texts[0].get_text().splitlines()) == 2
+        assert all(not axis.get_title().startswith("Total (")
                    for axis in figure.axes)
         assert "<svg" in fragment.html
-        renderer = figure.canvas.get_renderer()
         figure.canvas.draw()
-        summary_box = figure.texts[0].get_window_extent(renderer)
-        title_boxes = [axis.title.get_window_extent(renderer) for axis in figure.axes
-                       if axis.get_title()]
-        assert summary_box.y0 > max(box.y1 for box in title_boxes)
+        renderer = figure.canvas.get_renderer()
+        summary_patch = next(patch for patch in figure.artists
+                             if patch.get_gid() == "mars-summary-box")
+        date_boxes = [_group_date_text(axis).get_window_extent(renderer)
+                      for axis in figure.axes if axis.get_title()]
+        assert summary_patch.get_window_extent(renderer).y0 > max(box.y1 for box in date_boxes)
     finally:
         plt.close(figure)
     for image_format in ("png", "svg"):
         paths = report.save_risk_trend_images(
             tmp_path / image_format, "income", target="target", image_format=image_format,
-            include_total=False,
+            include_total=False, dpi=300,
         )
         assert len(paths) == 1 and paths[0].stat().st_size > 1_000
 
@@ -554,6 +779,10 @@ def test_write_html_charts_use_same_context_and_total_switch(
         captured.append({
             "include_total": include_total,
             "summary": figure.texts[0].get_text(),
+            "display_names": [text.get_text() for text in figure.texts
+                              if text.get_gid() == "mars-display-name"],
+            "dates": [_group_date_text(axis).get_text() for axis in figure.axes
+                      if axis.get_title()],
             "titles": [axis.get_title() for axis in figure.axes if axis.get_title()],
         })
         return figure
@@ -563,6 +792,7 @@ def test_write_html_charts_use_same_context_and_total_switch(
     assert len(captured) == 2  # 每个目标各一张图，不重复按特征解析全量数据。
     for data in captured:
         assert data["include_total"] is False
-        assert data["summary"].startswith("家庭收入（元）\nincome")
-        assert any(title.startswith("[2026-01-01 ~ 2026-01-20]\n") for title in data["titles"])
-        assert all(not title.split("\n")[-1].startswith("Total (") for title in data["titles"])
+        assert data["summary"].startswith("income")
+        assert data["display_names"] == ["家庭收入（元）"]
+        assert "[2026-01-01 ~ 2026-01-20]" in data["dates"]
+        assert all(not title.startswith("Total (") for title in data["titles"])
