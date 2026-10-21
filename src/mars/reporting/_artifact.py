@@ -1,4 +1,4 @@
-"""可携带报告契约与单文件 JSON/Parquet 持久化。"""
+"""定义公共报告契约，并用单个 ZIP 文件保存 JSON 清单和 Parquet 统计表。"""
 
 from __future__ import annotations
 
@@ -76,7 +76,10 @@ def _validate_description(description: dict[str, Any]) -> None:
 
 @runtime_checkable
 class Report(Protocol):
-    """外部消费者共享的结构化报告契约；不要求具体分析器或报告类型。
+    """供外部程序查询、引用和保存统计结果的公共报告契约。
+
+    报告按表名提供已计算结果，无需原始数据或特定分析器。
+    保存后的持久身份与查询参数可用于跨进程回放证据。
 
     Attributes
     ----------
@@ -98,7 +101,7 @@ class Report(Protocol):
     report_type: str
 
     def describe(self) -> dict[str, Any]:
-        """返回身份、目录、参数、定义、业务上下文和诊断。"""
+        """返回持久身份、表目录、字段定义、实际参数、业务上下文和诊断。"""
         ...
 
     def get_table(
@@ -114,17 +117,17 @@ class Report(Protocol):
         limit: int | None = None,
         sources: str | list[str] | None = None,
     ) -> ReportFrame:
-        """通过公开参数读取独立原生表。"""
+        """筛选、排序、选列并分页，返回与原表后端一致的独立容器。"""
         ...
 
     def get_feature(self, feature: str, *, limit: int = 100) -> dict[str, Any]:
-        """取得单特征元信息和证据表；limit=0 保留空表结构与省略计数。"""
+        """读取单特征元数据和关联表；limit=0 保留空表结构与省略计数。"""
         ...
 
     def search_features(
         self, query: str = "", *, sources: str | list[str] | None = None, limit: int = 20
     ) -> list[dict[str, Any]]:
-        """检索候选并返回稳定英文标识。"""
+        """按文本和来源查找特征，返回英文 ID 及业务元数据，默认最多 20 项。"""
         ...
 
     def query_page(self, name: str, **query: Any) -> dict[str, Any]:
@@ -146,23 +149,25 @@ class Report(Protocol):
         offset: int = 0,
         queries: dict[str, dict[str, Any]] | None = None,
     ) -> str:
-        """输出预算内 JSON；零行查询由 get_table 精确回放，继续取证另给正页长。"""
+        """按 Unicode 字符预算生成 JSON 证据；零行查询保留可回放引用。"""
         ...
 
     def save(self, path: str | Path, *, overwrite: bool = False) -> None:
-        """保存完整分析产物。"""
+        """保存完整统计表、语义目录和持久身份，默认拒绝覆盖已有文件。"""
         ...
 
 
 class ReportSnapshot(_ReportQuery):
-    """无需原始数据或会话的公共报告快照。
+    """保存公共统计表及其解释信息的独立报告快照。
+
+    可查询、分页、生成 AI 上下文和导出文件，无需原始样本或分析会话。
 
     Parameters
     ----------
     tables : dict[str, ReportFrame]
-        表名到原生统计表的映射；构造时复制容器。
+        公共表名到 Pandas/Polars 统计表的映射，构造时复制容器及 Pandas object 列中的可变值。
     description : dict[str, Any]
-        Report.describe 返回的完整目录和元信息。
+        ``Report.describe()`` 返回的完整目录和元数据，必须与 ``tables`` 的表名一致。
 
     Raises
     ------
@@ -171,7 +176,8 @@ class ReportSnapshot(_ReportQuery):
 
     Notes
     -----
-    恢复仅还原统计事实，不重建分箱器或执行计算。查询保留原表后端。
+    快照只恢复已保存的统计，不重建分箱器、模型或拟合状态，也不重算新样本。
+    查询保留原表后端；画像和分箱的历史表会在内存中补齐身份列。
 
     Examples
     --------
@@ -220,7 +226,7 @@ class ReportSnapshot(_ReportQuery):
         self._normalize_feature_tables()
 
     def _query_tables(self) -> dict[str, ReportFrame]:
-        """恢复全部原生统计表，不访问分析器。"""
+        """读取快照中的全部原生统计表，不访问分析器。"""
         return self._tables
 
     def _query_metadata(self) -> dict[str, Any]:
@@ -233,7 +239,7 @@ class ReportSnapshot(_ReportQuery):
         Returns
         -------
         dict[str, Any]
-            保留原始类型名、持久标识、单位和诊断的说明。
+            包含原报告类型、持久身份、表目录、单位、实际参数、上下文和诊断的独立说明。
 
         Examples
         --------
@@ -250,19 +256,20 @@ class ReportSnapshot(_ReportQuery):
         return cast(Dict[str, Any], json_safe(description))
 
     def show_table(self, name: str, **query: Any) -> pd.DataFrame:
-        """查询后附上可读名；英文标识仍可直接复制。
+        """查询并转换为 Pandas 表，缺少显示名时使用英文 ID。
 
         Parameters
         ----------
         name : str
-            公共表名。
+            ``describe()["tables"]`` 中的公共表名。
         **query : Any
-            get_table 查询参数。
+            传给 ``get_table`` 的筛选、排序、选列和分页参数，默认返回整表。
+            显式指定 ``columns`` 时只返回所列字段，不额外添加显示名列。
 
         Returns
         -------
         pd.DataFrame
-            附有显示名的独立小表；缺名回退英文名。
+            独立 Pandas 表。已有显示名列中的空值回退为对应英文 ID，不修改统计值。
 
         Examples
         --------
@@ -271,14 +278,19 @@ class ReportSnapshot(_ReportQuery):
         return self._display_frame(self.get_table(name, **query))
 
     def write_html(self, path: str, *, report_name: str = "MARS Report Snapshot") -> None:
-        """导出包含全部公共表和业务元信息的 HTML。
+        """将全部已保存统计与业务元数据导出为离线 HTML。
 
         Parameters
         ----------
         path : str
             HTML 路径；父目录必须存在。
         report_name : str
-            报告标题。
+            报告标题，默认使用 ``"MARS Report Snapshot"``。
+
+        Notes
+        -----
+        模型分交叉快照使用专用交互页面；其他快照使用通用表格页面。
+        导出不重新计算统计，也不恢复原报告的所有展示方法。
 
         Examples
         --------
@@ -294,12 +306,17 @@ class ReportSnapshot(_ReportQuery):
         write_profile_html(self, path=path, report_name=report_name)
 
     def write_excel(self, path: str) -> None:
-        """导出所有公共表及集中的业务元信息工作表。
+        """将所有公共表的当前值与业务元数据写入静态 Excel 工作簿。
 
         Parameters
         ----------
         path : str
             Excel 路径；父目录必须存在。
+
+        Notes
+        -----
+        每张公共表对应一个工作表，统计值沿用快照语义。
+        不使用分箱报告的原生透视模板，也不依赖 Excel 刷新透视缓存。
 
         Examples
         --------
@@ -317,17 +334,17 @@ class ReportSnapshot(_ReportQuery):
 
 
 def snapshot_report(report: object) -> ReportSnapshot:
-    """通过公共接口隔离完整统计表和业务元信息。
+    """通过公共接口复制完整统计表、语义目录和业务元数据。
 
     Parameters
     ----------
     report : object
-        满足公共契约的报告；允许外部实现。
+        实现 ``Report`` 契约的报告，也接受外部实现；无需原始样本。
 
     Returns
     -------
     ReportSnapshot
-        独立快照，保留持久标识和外部来源。
+        与原对象隔离的快照，保留报告类型、持久身份及来源，不重新计算指标。
 
     Raises
     ------
@@ -424,7 +441,7 @@ def _restore_polars_enums(
 
 
 def save_report(report: Report, path: str | Path, *, overwrite: bool = False) -> None:
-    """逐表写 ZIP；仅在全部完成后原子安装目标文件。"""
+    """逐表写入同目录临时 ZIP，全部完成后再原子写入目标路径。"""
     destination = Path(path)
     if destination.exists() and not overwrite:
         raise FileExistsError(f"Report already exists: {destination}")
@@ -493,17 +510,18 @@ def save_report(report: Report, path: str | Path, *, overwrite: bool = False) ->
 
 
 def load_report(path: str | Path) -> ReportSnapshot:
-    """从单个 marsreport 文件恢复完整公共报告，无需原始宽表。
+    """从单个 .marsreport 文件恢复已保存的公共统计表和语义目录。
 
     Parameters
     ----------
     path : str | Path
-        含 manifest.json 和 Parquet 表的 ZIP 文件。
+        包含 ``manifest.json`` 和 Parquet 表的 ZIP 文件，当前仅支持格式版本 1。
 
     Returns
     -------
     ReportSnapshot
-        保留表类型、schema、顺序、索引及持久身份的报告。
+        保留原报告类型、表后端、schema、顺序、索引及持久身份的快照。
+        无需原始宽表、分箱器或分析会话，也不重新计算统计。
 
     Raises
     ------
@@ -512,7 +530,8 @@ def load_report(path: str | Path) -> ReportSnapshot:
 
     Notes
     -----
-    文件访问错误传播 OSError；父目录和路径由调用者管理。
+    加载时校验清单、表 schema、行数和列顺序，不支持跨格式版本迁移。
+    文件访问错误传播 OSError；父目录和路径由调用方管理。
 
     Examples
     --------

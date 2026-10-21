@@ -38,7 +38,8 @@ def is_missing_html_value(value: Any) -> bool:
     Returns
     -------
     bool
-        缺失或不可展示数值返回 ``True``。
+        ``None`` 或 ``pd.isna`` 判定为缺失的标量返回 ``True``。
+        无法归约为布尔值的数组等对象返回 ``False``。
     """
     if value is None:
         return True
@@ -64,13 +65,14 @@ def format_html_value(
     value : Any
         待格式化值。
     as_percent : bool
-        是否按百分比展示。
+        是否将数值乘以 100 并添加百分号，默认 ``False``。整数 0 和 1 也按比例处理。
     precision : int
-        小数位数。
+        普通数值和百分比的小数位数，默认 2；紧凑模式的普通浮点数固定保留 4 位。
     missing_text : str
-        缺失值展示文本。
+        缺失值和非有限浮点数的替代文本，默认空字符串。
     compact_float : bool
-        是否使用建模报告中更紧凑的浮点格式。
+        是否启用建模报告格式，默认 ``False``。启用后整数加千分位，
+        绝对值至少为 1,000 的浮点数加千分位并保留 2 位小数。
 
     Returns
     -------

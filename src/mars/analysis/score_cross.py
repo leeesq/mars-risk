@@ -98,7 +98,7 @@ def _fit_axis(
     target: str | None = None,
     fit_source: str = "current_input",
 ) -> dict[str, Any]:
-    """共享分箱器拟合一次；固定定义保留 Score Cross 的右闭端点合同。"""
+    """用共享分箱器拟合一次，并将结果保存为 Score Cross 的右闭区间。"""
     _axis_definition(score, direction, [], specials, probability)
     effective_params = binner_params or {"n_bins": n_bins, "special_values": specials}
     points, provenance = _fit_score_bins(
@@ -189,7 +189,7 @@ def _assign(
     index = pl.lit(0)
     for point in definition["cutpoints"]:
         index = index + (score > point).cast(pl.Int64)
-    # 显式特殊值优先于概率域检查，但缺失和非有限值始终分开。
+    # 自定义缺失值先于特殊值和非法值判断，显式特殊值先于概率范围检查。
     missing = missing_condition_expr(
         original, dtype=dtype, missing_values=definition.get("missing_values")
     ) | score.is_nan()
@@ -210,7 +210,7 @@ def _ratio(numerator: pl.Expr, denominator: pl.Expr) -> pl.Expr:
 
 
 def _derive(frame: pl.DataFrame, parameters: dict[str, Any]) -> pl.DataFrame:
-    """从可加总人数派生同口径风险和未加权 Wilson 区间。"""
+    """根据样本计数和权重汇总值计算风险；Wilson 区间始终使用未加权整数人数。"""
     n, bad = pl.col("observed_sample_count"), pl.col("bad_sample_count")
     weighted = parameters["weights_col"] is not None
     denominator = pl.col("observed_weight_sum") if weighted else n
@@ -379,29 +379,34 @@ def cross_scores(
     feature_metadata: FeatureMetadata | None = None,
     business_context: dict[str, Any] | None = None,
 ) -> ScoreCrossReport:
-    """用一次固定分段和联合聚合比较同一行上已对齐的两个模型分。
+    """固定两个模型分的分箱，并统计同一样本在两轴交叉格子中的分布和风险。
 
     Parameters
     ----------
     df : pl.DataFrame | pd.DataFrame
         同一行已对齐的样本；跨引擎转换前投影必要字段，不合并独立数据集。
     score_x : str
-        主模型分原始 ID。
+        作为 X 轴的主模型分列名，使用原始字段标识。
     score_y : str
-        辅助模型分原始 ID，必须不同于 score_x。
+        作为 Y 轴的辅助模型分列名，必须不同于 score_x。
     score_directions : dict[str, str]
-        两个 ID 均须声明 higher_risk（高分高风险）或 lower_risk（高分低风险）。
+        必须为两个分数列分别声明 ``higher_risk``（高分高风险）或
+        ``lower_risk``（高分低风险）。风险方向不按列名推断。
     targets : list[str] | None
-        二元标签列表；缺失标签为未表现，可全好或全坏。None/空列表只分析分布。
+        二分类标签列，非缺失值须为 0 或 1。评估样本可全好或全坏，缺失标签视为未表现。
+        ``None`` 或空列表只分析分布；监督拟合仍要求参考集包含两个有效类别。
     cutpoints : dict[str, list[float]] | None
-        两个原始 ID 的有限切点；区间右闭，无界覆盖 reference 范围外的有限分。
+        按两个分数列指定有限切点，使用右闭区间。两端无界，可接收参考集范围外的有限分。
+        与 ``binning_reference`` 和 ``bin_definitions`` 互斥，不能同时指定拟合配置。
     binning_reference : pl.DataFrame | pd.DataFrame | None
-        用户指定的拟合参考集；不传时当前输入各轴拟合一次，绝不猜训练分组。
+        拟合分箱使用的参考集。默认在当前输入上为每轴拟合一次，不按组名选择训练样本。
         监督分箱须在此参考集中提供 binning_target；跨组、周期和评估目标复用定义。
     n_bins : int | dict[str, int]
-        请求正常段数，默认 5；也可按两个原始 score ID 指定不同箱数。实际箱数可能减少。
+        正常分箱数，须为 1～100 的整数，默认 5；可按两个原始分数列指定不同箱数。
+        特殊箱不占正常箱数量，实际箱数可能减少；显式切点或保存定义以其实际箱数为准。
     bin_definitions : dict[str, dict[str, Any]] | None
-        get_score_bin_definitions 的保存定义，使用时不拟合；与 reference/cutpoints 互斥。
+        ``get_score_bin_definitions`` 返回的固定定义，使用时不拟合。
+        与 ``binning_reference`` 和 ``cutpoints`` 互斥，也不能同时指定拟合配置。
     binning_type : Literal["native", "optimal", "lite_opt"]
         复用 profile_risk 的共享分箱引擎；默认 native。显式切点/保存定义不接受拟合配置。
     method : Literal["quantile", "uniform", "cart"] | None
@@ -422,28 +427,36 @@ def cross_scores(
     n_jobs : int | None
         共享分箱器并行参数；None 使用引擎默认值，-1 或正整数。
     group_col : str | None
-        既有分组字段；与时间同时提供时只保留实际 group/period 组合。
+        已有的样本分组列，默认不拆分样本组。分组轴与时间轴独立，
+        同时提供时只生成数据中实际出现的 group/period 组合。
     time_col : str | None
-        日期字段，复用既有日期解析及时间粒度。
+        用于独立时间轴的日期列。默认不划分周期，即使提供了 ``group_col`` 也不推断时间。
     time_grain : str | None
-        month/day/week 等既有语义；须配 time_col。
+        日期聚合粒度，例如 ``"month"``、``"day"`` 和 ``"week"``。
+        须同时提供 ``time_col``；有日期列但未指定粒度时按月聚合。
     weights_col : str | None
-        有限非负权重，允许零；bad_rate 使用 bad_weight_sum / observed_weight_sum。
+        样本权重列，值须有限、非负且非缺失，允许零。提供后 bad_rate 使用
+        bad_weight_sum / observed_weight_sum；未提供时使用坏人数 / 有表现人数。
     amount_col : str | None
-        复用金额 helper：null/NaN/负值不贡献金额；非有限非缺失金额报错。
+        额外计算金额统计的列。null、NaN 和负值不贡献金额，无穷值和非数值会报错。
+        金额坏率为 bad_amt / (good_amt + bad_amt)，不受样本权重影响。
     special_values : dict[str, list[float]] | None
-        每个 score 的显式有限特殊值，单独保存为特殊箱，不混入风险等级。
+        按分数列指定有限特殊值，默认不增加特殊值。特殊值单独成箱，没有 risk_rank，
+        且优先于概率范围检查。
     missing_values : list[Any] | dict[str, list[Any]] | None
         共享缺失值语义；一个列表应用于两轴，或按原始 score ID 指定。随定义保存、加载复用。
         已声明的 inf/-inf 优先进入缺失箱；未声明的非有限值继续进入 invalid。
     probability_scores : list[str] | None
-        明确声明为 [0,1] 概率的 score；域外值进入 invalid，普通分不限制域。
+        明确按 [0, 1] 概率检查的分数列。范围外取值进入 invalid 箱；
+        默认不将任何列视为概率，普通分数不限制在此范围内。
     min_observed : int
-        低样本提示门槛，仅影响状态，保留实际风险。
+        有表现人数低于此值时标记 low_sample，默认 30。仅影响状态，保留实际风险值。
     confidence_level : float
-        未加权整数 bad/n 的 Wilson 置信水平；加权区间不支持。
+        使用未加权整数坏人数和有表现人数计算的 Wilson 置信水平，默认 0.95。
+        加权风险仍附未加权区间，加权区间状态为 unsupported。
     max_scopes : int
-        实际 group/period 组合上限；输出规模为 scopes × targets × 完整箱对。
+        实际 group/period 组合数上限，默认 10,000，超出时报错。
+        输出行数随范围数、目标数和完整分箱对数的乘积增长。
     feature_metadata : FeatureMetadata | None
         复用原始 ID、展示名、来源、业务描述和单位格式。
     business_context : dict[str, Any] | None
@@ -452,7 +465,8 @@ def cross_scores(
     Returns
     -------
     ScoreCrossReport
-        独立 bins/cells/边际/overall 快照；加载后仍可用公共展示与规则回放函数。
+        包含 bins、cells、row_summary、column_summary 和 overall 表的独立快照。
+        加载后仍可使用公共展示与规则回放函数。
 
     Raises
     ------
@@ -461,8 +475,10 @@ def cross_scores(
 
     Notes
     -----
-    计数和占比包含所有特殊箱；多个 target 的人数不可相加。比例为小数，delta
-    为小数差。规则只精确回放完整保存分段，不支持箱内连续阈值的插值。
+    计数和占比包含所有特殊箱；同一批样本在各目标下重复统计，多个 target 的人数不可相加。
+    比例保存为小数，delta_vs_row 为格子坏率减同一 X 行坏率，展示时换算为百分点。
+    边际和总体先加总计数再重算风险，Lift 以同 target/group/period 的真实整体坏率为基准。
+    规则只精确回放完整保存分段，不支持箱内连续阈值的插值。
     parameters.scope_dimensions 记录 group/period 的实际来源、列和生效时间粒度，
     不从标签或周期数量猜测时间维度；未声明时间时内部 Total 只用于统计 scope。
     此元数据随快照保存；旧快照缺少字段时保留原统计与参数，由展示端明确降级。
@@ -846,7 +862,7 @@ def cross_scores(
 
 
 def get_score_bin_definitions(report: Report) -> dict[str, dict[str, Any]]:
-    """提取保存的固定定义供下一报告复用，不拟合或读取原始样本。
+    """提取固定分箱定义，供后续报告复用同一套边界。
 
     Parameters
     ----------
@@ -856,7 +872,8 @@ def get_score_bin_definitions(report: Report) -> dict[str, dict[str, Any]]:
     Returns
     -------
     dict[str, dict[str, Any]]
-        方向、切点、端点和特殊值定义的独立副本。
+        按 x、y 轴组织的独立副本，包含分数列名、方向、切点、端点和特殊值；
+        自动拟合的定义另含拟合来源。
         自定义缺失列表中的受限非有限浮点标签恢复为 Python 值，供固定定义计算复用。
 
     Raises
@@ -1012,7 +1029,7 @@ def evaluate_score_policy(
     *,
     baseline: dict[str, Any] | None = None,
 ) -> ReportSnapshot:
-    """仅从已保存格子回放完整分段组合，返回绑定父报告的独立派生快照。
+    """按已保存的交叉格子回放规则，返回引用父报告的独立快照。
 
     Parameters
     ----------
@@ -1028,14 +1045,15 @@ def evaluate_score_policy(
         括号覆盖优先级；最多 240 字符、96 词元、12 层括号。只覆盖完整正常箱集合，
         不接受连续阈值或隐含特殊箱；不产生自动审批语义。
     baseline : dict[str, Any] | None
-        显式基准规则；None 为全原样本基准，记录为 all_samples。
+        用于比较留存和风险变化的规则，格式同 ``candidate``。
+        ``None`` 使用包含全部特殊箱的原始样本，记录为 all_samples。
 
     Returns
     -------
     ReportSnapshot
-        summary（候选/基准的留存和剔除）、regions（四布尔区域）、changes（实际覆盖
-        和风险差）、axis_regions（统一 X/Y 门槛时）、cell_decisions 和 bins。保存不会
-        改父报告；不自动写文件，不输出上线结论或外推拒绝样本标签。
+        包含 summary（候选与基准的留存和剔除）、regions（基准与候选通过条件的四种组合）、
+        changes（实际留存和风险差）、cell_decisions 和 bins；AND/OR 规则另有 axis_regions。
+        调用和保存均不修改父报告，调用时不自动写文件。结果只描述当前历史样本。
 
     Raises
     ------
@@ -1173,7 +1191,10 @@ def evaluate_score_policy(
 
 
 class ScoreCrossReport(ReportSnapshot):
-    """固定分段的独立双分数报告；专用方法委托公共函数供加载后的快照复用。
+    """保存固定分箱下两个模型分的交叉统计。
+
+    由 ``cross_scores`` 生成，包含分箱定义、格子、边际和整体统计。
+    ``evaluate_policy`` 调用公共回放函数；加载后的通用快照也可使用同一函数。
 
     Parameters
     ----------
@@ -1198,7 +1219,8 @@ class ScoreCrossReport(ReportSnapshot):
         candidate : dict[str, Any]
             声明式 x_only/y_only/and/or/staircase/expression 规则，格式见 evaluate_score_policy。
         baseline : dict[str, Any] | None
-            显式基准；None 为 all_samples。缺失默认拒绝，仅依赖轴影响通过条件。
+            用于比较的基准规则；``None`` 为包含特殊箱的全部原样本（all_samples）。
+            显式规则默认拒绝缺失分数，仅规则依赖的轴影响通过条件。
 
         Returns
         -------

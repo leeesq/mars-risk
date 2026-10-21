@@ -58,60 +58,75 @@ def profile_stats(
     psi_min_bin_size: float = 0.02,
 ) -> MarsProfileReport:
     """
-    为指定指标生成轻量画像报告。
+    按指定指标生成数据画像，默认不生成字符分布图。
 
     Parameters
     ----------
     df : pl.DataFrame | pd.DataFrame
         待画像样本表。
     metrics : list[str]
-        本次需要计算的数据质量或统计指标，必须显式传入。
+        本次计算的数据质量、统计或对比指标，必须显式传入。
+        ``schema`` 和 ``unseen`` 需要 ``benchmark_df``，且不在默认指标中。
     features : list[str] | None
-        本次画像的特征列。
+        本次画像的特征列。默认从当前表中选择符合排除列和类型条件的列；
+        对比指标默认检查当前表与基准表的列名并集。
     feature_metadata : FeatureMetadata | None
         完整特征字典或含 feature 列的 Pandas/Polars 表；按本次特征裁剪。
     business_context : dict[str, Any] | None
         用户提供的 JSON 业务上下文，与实际计算配置分开保存。
     benchmark_df : pl.DataFrame | pd.DataFrame | None
-        PSI 基准样本。传入后用其拟合分箱并构造 expected distribution；不会参与
-        overview、数据质量或其他统计指标。未提供分组时仍会计算当前全量相对基准的 PSI。
+        PSI 和对比指标的基准样本。计算 PSI 时，用全部基准样本拟合分箱，
+        并以基准整体分布为参考；未分组时仍可计算当前整体相对基准的 PSI。
+        基准样本不计入 overview、数据质量或其他当前数据统计。
+        未提供时，PSI 在当前数据上拟合分箱，并以最小分组为参考。
     categorical_features : list[str] | None
-        显式声明的类别特征，用于整数编码类别的 unseen 和 PSI 分箱。
+        额外声明为类别的特征，供 unseen 和 PSI 识别整数编码类别。
+        默认按字段类型判断；声明的列必须属于本次分析范围。
     group_col : str | None
-        已存在的分组列名。
+        已存在的趋势分组列。与时间列同时提供时，优先使用此列分组。
     time_col : str | None
-        原始日期列名，用于生成趋势分组。
+        原始日期列。未指定 ``group_col`` 时，按 ``time_grain`` 生成趋势分组。
     time_grain : str | None
         时间聚合粒度，例如 ``"day"``、``"week"``、``"month"`` 或 ``"7d"``。
+        未指定时按月聚合；仅按日期生成分组时生效。
     missing_values : list[int | float | str] | None
-        额外视为缺失的取值。
+        除 null 和 NaN 外，额外视为缺失的取值。默认不增加业务缺失码。
     special_values : list[Any] | None
-        连续统计和 PSI 计算中需要识别的特殊值。
+        从连续统计中排除、在 PSI 中单独分箱的取值。默认无额外特殊值；
+        是否将特殊值箱计入 PSI 由 ``psi_include_special`` 控制。
     exclude_features : list[str] | None
         本次画像需要排除的列名。
     include_dtypes : type | pl.DataType | list[type | pl.DataType] | None
         本次画像允许保留的数据类型。
     enable_sparkline : bool
-        是否生成 overview 中的字符分布图。
+        是否在 overview 中生成数值特征的字符分布图。默认关闭，不影响统计指标。
     sparkline_bins : int
-        字符分布图的直方图分箱数量。
+        字符分布图的直方图分箱数，默认 8；仅在启用字符图时生效。
     sparkline_sample_size : int
-        字符分布图最多使用的采样行数。
+        字符分布图使用的最多行数，默认 200,000。超出时仅为字符图随机抽样，
+        不改变画像统计指标使用的样本。
     psi_include_missing : bool
-        计算 PSI 时是否纳入缺失值箱。
+        是否将缺失值箱计入 PSI。默认排除，缺失率仍单独计算。
     psi_include_special : bool
-        计算 PSI 时是否纳入特殊值箱。
+        是否将特殊值箱计入 PSI。默认排除，不影响特殊值识别。
     psi_remove_empty_bins : bool
-        数值特征 PSI 分箱时是否移除全局空箱。
+        是否移除 PSI 数值分箱中没有拟合样本的箱，默认开启。
     psi_merge_small_bins : bool
-        数值特征 PSI 分箱时是否合并小样本箱。
+        是否合并 PSI 数值分箱中的小样本箱，默认开启。
     psi_min_bin_size : float
-        数值特征 PSI 合并小样本箱时使用的最小样本占比。
+        PSI 数值分箱合并小箱时的最小样本占比，默认 0.02；
+        仅在 ``psi_merge_small_bins=True`` 时生效。
 
     Returns
     -------
     MarsProfileReport
-        包含所请求指标表的画像报告。
+        包含 overview、所请求的趋势表、对比表和运行元数据的报告。
+
+    Notes
+    -----
+    缺失率、零值率、唯一值率和众数占比均以当前样本总数为分母。
+    均值、分位数等连续统计排除 null、NaN、自定义缺失值和特殊值。
+    PSI 的缺失值箱、特殊值箱是否参与计算由对应开关控制。
 
     Examples
     --------
@@ -158,9 +173,8 @@ class MarsDataProfiler(MarsBaseEstimator):
     """
     数据质量、统计分布和稳定性画像器。
 
-    `MarsDataProfiler` 只保存稳定策略，不保存本次运行数据。每次调用
-    :meth:`generate_profile` 都会构造独立的运行上下文，因此同一个实例可以安全复用到
-    不同 DataFrame。
+    构造函数保存缺失处理和 PSI 分箱策略。每次调用 :meth:`generate_profile`
+    都会接收本次数据、特征和分组配置，同一实例可以连续处理不同 DataFrame。
 
     Examples
     --------
@@ -192,25 +206,27 @@ class MarsDataProfiler(MarsBaseEstimator):
         Parameters
         ----------
         missing_values : list[int | float | str] | None
-            额外视为缺失的取值。
+            除 null 和 NaN 外，额外视为缺失的取值。默认不增加业务缺失码。
         special_values : list[Any] | None
-            连续统计和 PSI 计算中需要识别的特殊值。
+            从连续统计中排除、在 PSI 中单独分箱的取值。默认无额外特殊值。
         psi_n_bins : int
-            PSI 计算使用的最大分箱数。
+            PSI 数值分箱数上限及类别 Top-K 数量，默认 10。
+            类别特征只保留频数最高的 K 个类别，其他类别进入 Other 箱。
         psi_bin_method : ProfileBinMethod
-            PSI 数值特征分箱策略。
+            PSI 数值分箱方法，默认等频分箱 ``"quantile"``，也可使用 ``"uniform"``。
         psi_remove_empty_bins : bool
-            数值特征 PSI 分箱时是否移除全局空箱。
+            是否移除 PSI 数值分箱中没有拟合样本的箱，默认开启。
         psi_merge_small_bins : bool
-            数值特征 PSI 分箱时是否合并小样本箱。
+            是否合并 PSI 数值分箱中的小样本箱，默认开启。
         psi_min_bin_size : float
-            数值特征 PSI 合并小样本箱时使用的最小样本占比。
+            PSI 数值分箱合并小箱时的最小样本占比，默认 0.02；
+            仅在 ``psi_merge_small_bins=True`` 时生效。
         psi_cv_ignore_threshold : float
-            分组 PSI 最大值低于该阈值时，变异系数强制置零。
+            分组 PSI 最大值低于此阈值时，将变异系数置零，默认 0.05。
         psi_batch_size : int
-            PSI 趋势计算的特征批大小。
+            每批计算 PSI 的特征数，默认 50；控制中间表规模，不改变指标口径。
         overview_batch_size : int
-            overview 计算的特征批大小。
+            每批计算 overview 的特征数，默认 500；控制中间表规模，不改变指标口径。
         """
         super().__init__()
         self.missing_values: list[Any] = list(missing_values or [])
@@ -254,48 +270,61 @@ class MarsDataProfiler(MarsBaseEstimator):
         df : pl.DataFrame | pd.DataFrame
             待画像样本表。
         metrics : list[str] | None
-            本次计算的指标；不传时使用默认全量画像指标。
+            本次计算的指标。默认计算数据质量和统计指标；
+            ``schema`` 和 ``unseen`` 需要显式请求并提供 ``benchmark_df``。
         features : list[str] | None
             本次画像的特征列；不传时使用过滤后的全部候选列。
+            对比指标默认检查当前表与基准表的列名并集，排除分组、日期和显式排除列。
         feature_metadata : FeatureMetadata | None
             完整特征字典或含 feature 列的 Pandas/Polars 表。
         business_context : dict[str, Any] | None
             用户提供的 JSON 业务上下文，未知信息不推断。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
-            PSI 基准样本。传入后用其拟合分箱并构造 expected distribution；不会参与
-            overview、数据质量或其他统计指标。未提供分组时仍会计算当前全量相对基准的 PSI。
+            PSI 和对比指标的基准样本。计算 PSI 时，用全部基准样本拟合分箱，
+            并以基准整体分布为参考；未分组时仍可比较两表的整体分布。
+            基准样本不计入 overview、数据质量或其他当前数据统计。
+            未提供时，PSI 在当前数据上拟合分箱，并以最小分组为参考。
         categorical_features : list[str] | None
-            显式声明的类别特征，用于整数编码类别的 unseen 和 PSI 分箱。
+            额外声明为类别的特征，供 unseen 和 PSI 识别整数编码类别。
+            默认按字段类型判断；声明的列必须属于本次分析范围。
         exclude_features : list[str] | None
             本次画像需要排除的列名。
         include_dtypes : type | pl.DataType | list[type | pl.DataType] | None
             只保留指定数据类型的特征列。
         group_col : str | None
-            已存在的分组列名。
+            已存在的趋势分组列。与时间列同时提供时，优先使用此列分组。
         time_col : str | None
-            原始日期列名；与 `time_grain` 配合时会生成临时时间分组列。
+            原始日期列。未指定 ``group_col`` 时，按 ``time_grain`` 生成趋势分组。
         time_grain : str | None
             时间聚合粒度，例如 ``"day"``、``"week"``、``"month"`` 或 ``"7d"``。
+            未指定时按月聚合；仅按日期生成分组时生效。
         enable_sparkline : bool
-            是否生成 overview 中的字符分布图。
+            是否在 overview 中生成数值特征的字符分布图，默认开启。
         sparkline_bins : int
-            字符分布图的直方图分箱数量。
+            字符分布图的直方图分箱数，默认 8；仅在启用字符图时生效。
         sparkline_sample_size : int
-            字符分布图最多使用的采样行数。
+            字符分布图使用的最多行数，默认 200,000。超出时仅为字符图随机抽样，
+            不改变画像统计指标使用的样本。
         psi_include_missing : bool
-            计算 PSI 时是否纳入缺失值箱。
+            是否将缺失值箱计入 PSI。默认排除，缺失率仍单独计算。
         psi_include_special : bool
-            计算 PSI 时是否纳入特殊值箱。
+            是否将特殊值箱计入 PSI。默认排除，不影响特殊值识别。
 
         Returns
         -------
         MarsProfileReport
-            包含 overview、数据质量趋势表和统计趋势表的数据画像报告。
+            包含 overview、数据质量趋势表、统计趋势表、对比表和运行元数据的报告。
 
         Raises
         ------
         ValueError
             指标、特征、benchmark 或对比配置无效时抛出。
+
+        Notes
+        -----
+        当前数据的统计指标使用全部样本，字符分布图可按 ``sparkline_sample_size`` 抽样。
+        缺失率等数据质量指标以样本总数为分母；均值、分位数等连续统计排除
+        null、NaN、自定义缺失值和特殊值。
 
         Examples
         --------
@@ -350,7 +379,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             diagnostics=[],
         )
 
-        # benchmark 只在 PSI 或 comparison 请求中解析。
+        # 基准样本只用于 PSI 和对比指标，不能混入当前数据的质量或统计汇总。
         benchmark_pl: pl.DataFrame | None = None
         psi_features: list[str] | None = None
         if benchmark_df is not None and (

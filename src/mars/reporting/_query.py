@@ -1,4 +1,4 @@
-"""报告结果查询与有预算的 AI 上下文；只消费已有表，不执行指标计算。"""
+"""查询已有统计表，并按字符预算生成可回放的 AI 上下文。"""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def query_table(
     limit: int | None = None,
     _copy_result: bool = True,
 ) -> ReportFrame:
-    """在原生表上执行受校验的筛选、排序、投影和分页，并返回独立容器。"""
+    """校验查询后按原生后端筛选、排序、选列和分页，返回独立容器。"""
     if (
         type(offset) is not int
         or offset < 0
@@ -176,7 +176,7 @@ def query_table(
 
 
 class _ReportQuery:
-    """两个领域报告共享的轻量结果查询，不持有原始数据。"""
+    """领域报告和快照共用的结果查询，只读取已计算的统计表。"""
 
     def _initialize_semantics(
         self,
@@ -184,7 +184,7 @@ class _ReportQuery:
         business_context: dict[str, Any] | None = None,
         legacy: dict[str, str] | None = None,
     ) -> None:
-        """集中保存业务定义；稳定英文标识不进入统计计算。"""
+        """整理特征字典与业务上下文，沿用英文 ID，不重算统计。"""
         features: list[str] = list(self._query_metadata().get("feature_dtypes", {}))
         inferred: dict[str, str] = dict(legacy or {})
         for table in self._query_tables().values():
@@ -281,26 +281,28 @@ class _ReportQuery:
         sources: str | list[str] | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """按英文标识、显示名、定义和来源检索，重复中文名返回所有候选。
+        """按英文标识、显示名、描述和来源检索，同名特征分别返回。
 
         Parameters
         ----------
         query : str
-            不区分大小写的包含查询；空字符串匹配全部。
+            在英文 ID、显示名、描述和来源中查找包含此文本的特征，不区分大小写。
+            默认空字符串匹配全部特征。
         sources : str | list[str] | None
-            来源筛选，语义同 get_table。
+            按已登记来源筛选，默认不限制；与文本条件取交集，未知来源报错。
         limit : int
-            非负返回数量上限。
+            非负返回数量上限，默认 20；设为 0 时返回空列表。
 
         Returns
         -------
         list[dict[str, Any]]
-            明确包含 feature 和原始业务元数据的候选列表。
+            按字典顺序返回候选，每项包含 ``feature`` 和已登记的业务元数据。
+            相同中文名可匹配多个英文 ID，最终返回数仍受 ``limit`` 限制。
 
         Raises
         ------
         ValueError
-            查询或数量无效时抛出。
+            查询文本、来源或数量无效时抛出。
 
         Examples
         --------
@@ -318,14 +320,14 @@ class _ReportQuery:
         ][:limit]
 
     def save(self, path: str | Path, *, overwrite: bool = False) -> None:
-        """逐表保存完整报告为单个 JSON/Parquet ZIP 产物。
+        """将完整报告保存为包含 JSON 清单与 Parquet 表的单个 ZIP 文件。
 
         Parameters
         ----------
         path : str | Path
-            目标文件；父目录必须存在。
+            目标文件路径，通常使用 ``.marsreport`` 后缀；父目录必须存在。
         overwrite : bool
-            默认拒绝覆盖；True 原子替换已存在文件。
+            是否覆盖已有文件，默认拒绝覆盖。设为 True 时，完整写入临时文件后再原子替换。
 
         Notes
         -----
@@ -341,7 +343,7 @@ class _ReportQuery:
         save_report(self, path, overwrite=overwrite)
 
     def _display_frame(self, frame: ReportFrame) -> pd.DataFrame:
-        """对已有显示名做英文回退；精确投影绝不追加身份字段。"""
+        """将缺少的显示名回退为英文 ID，显式选列时不追加身份字段。"""
         from mars.compute import to_pandas_frame
 
         result = to_pandas_frame(frame).copy()
@@ -413,7 +415,7 @@ class _ReportQuery:
         return frame
 
     def _query_metadata(self) -> dict[str, Any]:
-        """读取两类报告各自保存的元数据。"""
+        """由具体报告提供实际计算参数和诊断。"""
         raise NotImplementedError
 
     def _query_tables(self) -> dict[str, ReportFrame]:
@@ -608,28 +610,33 @@ class _ReportQuery:
         Parameters
         ----------
         name : str
-            describe 目录中的规范表名。
+            ``describe()["tables"]`` 中的公共表名，未计算的表不在目录中。
         features : str | list[str] | None
-            原始特征 ID，None 为全部。单特征表匹配 feature；角色表匹配任一端点，
-            多 ID 采用并集；报告级 scope 匹配任一声明模型分，不复制格子行。
-            关系表通过目录的桥接成员筛选原统计行，不按特征展开规则指标。
+            原始英文特征 ID，默认不限制。单特征表匹配 ``feature``；
+            含多个特征角色的表匹配任一角色，多 ID 取并集。
+            报告声明固定特征范围时，匹配其中任一特征即可保留统计行。
+            规则等关系表通过成员表查找相关统计行，不为每个特征复制指标。
         columns : list[str] | None
-            投影字段；在筛选、排序之后投影。
+            返回字段，默认保留全部列；显式指定时只返回所列字段，并保持指定顺序。
+            筛选和排序可使用未返回的列。
         filters : dict[str, Any] | None
-            字段到标量相等条件或 {op, value}；支持 eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null。
-            非有限值接受既有 {$mars: float, value: nan/inf/-inf} 标签；普通字符串不转换。
+            字段到标量相等条件或 ``{"op": ..., "value": ...}`` 的映射，默认不筛选。
+            支持 eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null，各字段条件取交集。
+            非有限值接受 ``{"$mars": "float", "value": "nan"}`` 标签，
+            ``value`` 也可为 ``"inf"`` 或 ``"-inf"``；普通字符串保持原类型。
         sort_by : str | list[str] | None
-            排序字段。
+            单个或多个排序字段，默认保留原行序；相同排序键保持原顺序。
         descending : bool
-            是否降序；空值置后。
+            是否按 ``sort_by`` 降序排列，默认升序；空值置后。
         offset : int
-            非负起始行号。
+            筛选并排序后跳过的行数，默认 0，必须为非负整数。
         limit : int | None
             非负最大行数；0 返回保留列 schema 的空表，None 不限制。
             排序配合 limit 实现 Top-K；需要续页计数时使用 limit 为正整数或 None 的 query_page。
         sources : str | list[str] | None
-            已登记来源；角色表匹配任一端点来源，独立于 features，条件间采用交集。
-            来源未知时报错；旧单特征表仍采用同一 feature 的来源条件。
+            按已登记来源筛选，默认不限制。含多个特征角色的表匹配任一角色的来源；
+            与 ``features`` 条件取交集，来源未知时报错。
+            单特征表要求同一 ``feature`` 同时满足特征与来源条件。
             规则来源指成员特征的业务来源，不是候选生成器来源；可与 features 命中不同成员。
 
         Returns
@@ -674,7 +681,9 @@ class _ReportQuery:
         Returns
         -------
         dict[str, Any]
-            原生 data、计数、截断原因、next_offset 和可重放的 reference。
+            ``data`` 保留原生 DataFrame 类型；另含筛选后的总行数、本页行数、
+            本页之后的省略行数、截断原因和可重放引用 ``reference``。
+            ``next_offset`` 指向下一页，结束时为 None。
 
         Raises
         ------
@@ -729,41 +738,45 @@ class _ReportQuery:
         offset: int = 0,
         queries: dict[str, dict[str, Any]] | None = None,
     ) -> str:
-        """生成问题相关的预算内摘要；完整报告仍是可分页的事实依据。
+        """查询已计算结果，并在字符预算内生成可回放的 JSON 摘要。
 
         Parameters
         ----------
         tables : list[str] | None
-            表目录名称；默认采用目录的 default_ai_queries，未声明时第一张表；queries 给定时默认其键。
+            需要查询的公共表名。默认采用目录的 ``default_ai_queries``，
+            未声明时选第一张表；提供 ``queries`` 时默认使用其中的表名。
         features : str | list[str] | None
-            原始英文标识。
+            所有选中表共用的英文特征 ID 条件，默认不限制；匹配规则同 ``get_table``。
         columns : list[str] | None
-            共同列投影；宽趋势可按日期列选择范围。
+            所有选中表共用的返回字段，默认保留全部列；宽趋势表可按日期列选择范围。
         filters : dict[str, Any] | None
-            get_table 的筛选条件。
+            所有选中表共用的筛选条件，格式同 ``get_table``，默认不筛选。
         limit : int
-            每表非负整数行数上限；AI 上下文不接受无界的 None。
+            每表的非负整数行数上限，默认 10；不接受无界的 None。
             0 保留空证据、schema、匹配数和查询引用，继续取证定位另给正页长。
         max_chars : int
-            最终 JSON 的 Unicode 字符预算，不等于 token 数。非空查询至少保留一条完整证据；
-            必要字段口径和查询范围无法同时容纳时明确拒绝。
+            最终 JSON 的 Unicode 字符预算，默认 16,000，必须至少为 512。
+            预算包含身份、查询、口径和省略说明，按字符计数，不按 token 计数。
+            非空查询至少保留一条完整证据；必要说明与证据无法同时容纳时抛出异常。
         sources : str | list[str] | None
-            来源筛选。
+            所有选中表共用的来源筛选条件，默认不限制；匹配规则同 ``get_table``。
         sort_by : str | list[str] | None
-            排序列。
+            所有选中表共用的排序字段，默认保留原行序。
         descending : bool
-            是否降序。
+            是否按排序字段降序排列，默认升序。
         offset : int
-            每表起始位置。
+            每表筛选并排序后跳过的行数，默认 0。
         queries : dict[str, dict[str, Any]] | None
-            每表的 get_table 参数覆盖共同参数，支持异构表查询及 limit=0。
+            表名到 ``get_table`` 查询参数的映射，同名参数覆盖上述共同参数。
+            默认各表共用上述参数；可为列结构不同的表分别指定字段、条件和 ``limit=0``。
 
         Returns
         -------
         str
-            标准 JSON；定义仅出现一次，相同 null 口径存放在表级 field_defaults，
-            字段定义继承该默认值。evidence.query 表示裁剪后的有效查询，可用 get_table 精确回放；
-            identities 按行补充投影省略的特征身份。省略记录包含数量、原因及继续查询定位。
+            标准 JSON 字符串。相同 null 口径存放在表级 ``field_defaults``，
+            字段定义继承该默认值。``evidence.query`` 记录预算裁剪后的查询，
+            可用 ``get_table`` 精确回放；``identities`` 按行补充未选出的特征身份。
+            省略记录包含数量、原因及继续查询位置，完整统计仍保存在报告中。
 
         Raises
         ------
@@ -1015,7 +1028,7 @@ class _ReportQuery:
             width: int,
             previously_omitted: int,
         ) -> None:
-            """保持原列顺序，只裁末尾维度，有效查询与省略开销参加同一计量。"""
+            """按原顺序保留分组列前缀，查询与省略说明也计入字符预算。"""
             retained = set(dimensions[:width])
             dimension_set = set(dimensions)
             projected = [
@@ -1058,7 +1071,7 @@ class _ReportQuery:
                 omitted_columns = m["columns"]
                 wide_item["truncated"] = True
 
-                # 二分寻找预算内最大的稳定前缀，避免宽表逐列反复编码整个信封。
+                # 二分查找预算内可保留的最多前缀列，减少整个 JSON 的重复编码次数。
                 lower, upper, fitting = 1, len(dimensions) - 1, 1
                 while lower <= upper:
                     width = (lower + upper) // 2
@@ -1164,20 +1177,23 @@ class _ReportQuery:
         return _encode(payload)
 
     def get_feature(self, feature: str, *, limit: int = 100) -> dict[str, Any]:
-        """关联读取单特征概览、分箱和趋势，并明确缺失的数据类别。
+        """读取与单个特征相关的已有统计表，并列出无可用行的结果类别。
 
         Parameters
         ----------
         feature : str
-            稳定英文特征 ID；已知但无证据时返回 evidence_status=no_evidence。
+            原始英文特征 ID；已登记但没有匹配统计行时，
+            ``evidence_status`` 为 ``"no_evidence"``。
         limit : int
             每表非负最大行数，默认 100；0 保留空表 schema、匹配状态和省略数。
-            完整表可继续 get_table 分页。
+            需要更多行时，可用 ``get_table`` 指定 offset 和 limit 继续查询。
 
         Returns
         -------
         dict[str, Any]
-            tables、omitted_rows、unavailable 和 evidence_status；返回原生 DataFrame，不自动渲染。
+            包含特征身份、元数据、``tables``、每表 ``omitted_rows``、
+            ``unavailable`` 类别和 ``evidence_status``。
+            ``tables`` 保留原生 DataFrame 类型，不自动渲染，也不按成员特征复制规则指标。
 
         Raises
         ------

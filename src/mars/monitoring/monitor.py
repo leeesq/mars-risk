@@ -79,7 +79,8 @@ class MarsMonitoringReport:
     detail_table : DataFrame
         分箱明细表。
     trend_tables : dict of str to DataFrame
-        PSI、缺失率、坏账率等指标趋势表。
+        特征级 PSI、缺失率和风险指标趋势表；只包含本次评估实际生成的指标。
+        逐箱坏率另见 ``bin_stat_trend_tables["bad_rate"]``。
     missing_by_day_table : DataFrame or None
         按日缺失率趋势表。
     bin_stat_table : DataFrame
@@ -209,13 +210,16 @@ class MarsMonitor(MarsBaseEstimator):
             未显式传入分箱器时使用的分箱策略。``"lite_opt"`` 需要标签；
             无标签分布监控建议使用 ``"native"``。
         binner_params : Dict[str, Any] | None
-            构造默认分箱器时使用的参数。
+            未提供 ``binner`` 时传给所选分箱器的构造参数，默认使用分箱器自身的默认值。
+            配置非空时不能同时向 ``monitor`` 传入显式 ``binner``，否则评估器报错。
         bin_stat_metrics : List[str] | None
-            需要展开为分箱趋势表的统计指标。
+            需要展开为逐箱趋势宽表的指标。None 或空列表使用默认指标：
+            count、observed_count、pct、bad_rate、mean、min、max 和 median。
+            明细中不存在的指标会跳过。
         psi_include_missing : bool
-            计算 PSI 时是否包含缺失值箱。
+            PSI 是否纳入缺失箱，默认 ``False``；排除后在剩余箱中重新归一化分布。
         psi_include_special : bool
-            计算 PSI 时是否包含特殊值箱。
+            PSI 是否纳入特殊箱，默认 ``False``；排除后在剩余箱中重新归一化分布。
 
         Raises
         ------
@@ -270,25 +274,29 @@ class MarsMonitor(MarsBaseEstimator):
             目标变量列名。传入时非空值必须为 ``0``、``1``、``True`` 或 ``False``；
             空值表示尚未到表现期。为 ``None`` 时只输出无标签分布监控。
         binner : MarsBinnerBase | None
-            显式复用的分箱器。
+            本次复用的已拟合分箱器。默认 ``None``，由评估器自动拟合；
+            提供后复用已有规则，不重新拟合。
         benchmark_df : FrameLike | None
             基准期样本。未传 ``binner`` 时用于拟合分箱规则和 PSI 基准；评估期
             target 缺列或全空时，可用其中的有效 target 执行监督分箱。
         feature_data_source : Dict[str, List[str]] | None
-            特征来源映射。
+            来源名称到特征列表的映射，用于报告的来源信息；默认不提供。
         group_col : str | None
-            已存在的分组列名。
+            已存在的分组列名，优先于日期分组。默认 ``None``，有时间列时按时间分组，
+            无时间列时只计算整体统计。
         time_col : str | None
-            原始日期列名。
+            原始日期列名，默认 ``None``。提供后用于日期分组和按日缺失率统计。
         time_grain : str | None
-            时间聚合粒度。
+            未指定 ``group_col`` 时使用的日期粒度，默认 ``None`` 按月分组。
+            支持 day、week、month 和 Nd/Nw/Nm。
         weights_col : str | None
-            样本权重列名。
+            分箱评估使用的样本权重列，默认不加权。
+            原始值的均值、极值、中位数及 target 表现覆盖表仍按未加权样本统计。
         batch_size : int
-            批量评估时的特征批大小。
+            每批交给分箱评估器的特征数，默认 100，不改变统计口径。
         trend_column_order : TrendColumnOrder
-            趋势宽表中时间或分组取值列的展示顺序；``"asc"`` 保持从早到晚，
-            ``"desc"`` 则从晚到早。``Total`` 列如存在会固定在最后。
+            趋势宽表的分组列按自然顺序排列，默认 ``"asc"``；``"desc"`` 为逆序。
+            日期标签通常对应从早到晚或从晚到早。``Total`` 列如存在会固定在最后。
         psi_include_missing : bool | None
             本次监控计算 PSI 时是否纳入缺失值箱；``None`` 表示沿用实例默认值。
         psi_include_special : bool | None

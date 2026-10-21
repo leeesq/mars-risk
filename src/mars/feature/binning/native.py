@@ -17,31 +17,30 @@ from mars.utils.logger import logger
 
 class MarsNativeBinner(MarsBinnerBase):
     """
-    原生高性能特征分箱器。
+    使用 Polars 和决策树学习分箱规则。
 
-    基于 Polars 向量化计算与 Scikit-Learn 决策树算法构建。支持针对连续型变量的等频、
-    等宽与决策树（CART）离散化策略，以及针对类别型变量的头部频数保留策略。特殊值与
-    缺失值在执行核心分箱逻辑前会被强制物理隔离。
+    数值特征支持等频、等宽和决策树（CART）分箱。类别特征按频数保留
+    前 ``n_bins`` 个类别，其余类别进入 Other。拟合正常箱时排除缺失值和特殊值。
 
     Attributes
     ----------
     bin_cuts_ : dict of str to list of float
-        针对连续型特征拟合生成的物理切点映射字典。数组形态为 `[-inf, cut_1, ..., cut_n, inf]`。
+        各数值特征的切点列表，形态为 ``[-inf, cut_1, ..., cut_n, inf]``。
 
     cat_cuts_ : dict of str to list of str
         针对类别型特征拟合生成的高频类别保留映射字典。
 
     fit_failures_ : dict of str to str
-        记录在拟合过程中触发严重计算异常的特征名称及其内部堆栈报错信息。
+        拟合异常或回退的特征及诊断原因。
 
     feature_names_in_ : list of str
-        实际参与拟合管道的全局特征名称列表。
+        本次拟合的输入特征名列表。
 
     Notes
     -----
-    当数据集体量极大且连续变量呈严重长尾或零膨胀分布时，无监督的等频与等宽算法极易生成
-    绝对占比极低甚至频数为 0 的异常物理箱。开启 `merge_small_bins` 选项可在不显著增加
-    计算开销的前提下，强制修复连续区间的碎化问题，保障后续 WOE 映射的稳定性。
+    长尾或零值集中的数值分布可能产生空箱或小样本箱。等频、等宽分箱可以通过
+    ``merge_small_bins=True`` 合并小箱；等宽分箱还可用 ``remove_empty_bins=True``
+    移除空箱。两个选项默认均关闭。
 
     Examples
     --------
@@ -72,7 +71,8 @@ class MarsNativeBinner(MarsBinnerBase):
         Parameters
         ----------
         method : Literal['cart', 'quantile', 'uniform']
-            数值特征的分箱策略。
+            数值分箱方法，默认为等频 ``"quantile"``；``"uniform"`` 为等宽，
+            ``"cart"`` 使用目标标签学习切点。类别特征始终按频数保留类别。
         n_bins : int
             最大分箱数量，不含缺失值箱和特殊值箱。
         special_values : List[Union[int, float, str]] | None
@@ -80,17 +80,20 @@ class MarsNativeBinner(MarsBinnerBase):
         missing_values : List[Union[int, float, str]] | None
             需要额外识别为缺失的值集合。
         min_bin_size : float
-            单箱最小样本占比约束。
+            单个正常箱占拟合表总行数的最小比例，默认为 0.05。
+            CART 用于最小叶子样本数；等频、等宽仅在 ``merge_small_bins=True`` 时生效。
         merge_small_bins : bool
-            是否在无监督分箱后自动合并小样本箱。
+            是否在等频、等宽分箱后合并占比不足 ``min_bin_size`` 的箱，默认关闭。
         cart_params : Dict[str, Any] | None
-            透传给 ``DecisionTreeClassifier`` 的参数。
+            仅在 ``method="cart"`` 时传给 ``DecisionTreeClassifier`` 的额外参数；
+            默认使用空字典。
         remove_empty_bins : bool
             是否在 ``uniform`` 分箱时清理空箱。
         join_threshold : int
             高基数类别映射切换为 Hash Join 的阈值。
         n_jobs : int
-            并行计算使用的核心数限制。
+            CART 的并行任务数。``-1`` 使用 CPU 核心数减 1，至少为 1；
+            ``1`` 使用单任务。
         """
         super().__init__(
             n_bins=n_bins,
@@ -101,7 +104,7 @@ class MarsNativeBinner(MarsBinnerBase):
        )
         self.method = method
         self.min_bin_size = min_bin_size
-        self.merge_small_bins = merge_small_bins # 挂载到实例
+        self.merge_small_bins = merge_small_bins
         self.remove_empty_bins = remove_empty_bins
 
         self.cart_params = cart_params if cart_params is not None else {}
@@ -122,35 +125,34 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def _fit_impl(self, X: pl.DataFrame, y: Any | None = None) -> None:
         """
-        [Core Dispatcher] 原生分箱核心拟合与路由引擎。
+        按列类型分发分箱任务。
 
-        该方法充当整个分箱流程的“交通指挥枢纽”。它通过一次完整的 Schema 扫描，
-        将特征划分为三大阵营（全空、数值、类别），并自动过滤掉零方差特征，
-        最后将有效特征分发给对应的底层算法进行拟合。
+        先识别全空、数值和类别列。全空列保留空规则，常量数值列使用单箱规则，
+        其余列交给对应算法。CART 的逐特征异常记入 ``fit_failures_`` 并回退到单箱。
 
         Parameters
         ----------
         X : pl.DataFrame
-            训练数据集 (特征矩阵)。
+            训练特征表。
         y : Any | None
-            目标变量 (Label)。
+            目标标签。
             - 无监督分箱 (quantile, uniform, categorical) 时可为 None。
             - 有监督分箱 (cart) 时必须提供。
 
         Process Flow
         ------------
         1. **特征探查与分流**:
-           - 全空列 (Null): 直接赋予空切点，安全熔断。
+           - 全空列 (Null): 保留空切点或空类别规则。
            - 类别列 (Categorical/String/Bool): 放入 `cat_cols` 队列。
            - 数值列 (Numeric): 放入 `num_cols` 队列。
         2. **零方差前置拦截 (Numeric)**:
-           - 向量化极速提取所有数值列的 `min` 和 `max`。
+           - 批量提取所有数值列的 `min` 和 `max`。
            - 拦截 `min == max` (单一值) 的特征，直接赋予 `[-inf, inf]` 兜底。
         3. **算法分发**:
            - 数值列分发至 `_fit_quantile`, `_fit_uniform`, 或 `_fit_cart_parallel`。
            - 类别列分发至 `_fit_categorical_native`。
         4. **异常容错**:
-           - 捕获无法分箱的特征并存入 `self.fit_failures_`，不阻塞全局流程。
+           - CART 的单特征失败写入 ``self.fit_failures_``，并生成单箱回退规则。
         """
         if self.method == "cart" and y is None:
             raise ValueError("Decision Tree Binning ('cart') requires y.")
@@ -198,7 +200,7 @@ class MarsNativeBinner(MarsBinnerBase):
 
             stats_exprs = []
 
-            #利用 fill_nan(None) 将 NaN 转为自动被忽略的 Null
+            # 将 NaN 转为 null，使极值聚合同时忽略两种缺失值。
             if float_cols:
                 stats_exprs.extend([
                     pl.col(float_cols).fill_nan(None).min().name.suffix("_min"),
@@ -254,15 +256,16 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def _apply_min_bin_size(self, X: pl.DataFrame, valid_num_cols: List[str]) -> None:
         """
-        [Algorithm] 单趟 CDF 前向贪心合并 (One-Pass CDF Greedy Merge).
+        按累计样本数从左到右合并相邻小箱。
 
-        用于消除等频/等宽分箱产生的、样本占比小于 min_bin_size 的微型碎片箱。
+        仅用于等频、等宽分箱。最小样本量按拟合表总行数乘以 ``min_bin_size``
+        向上取整；缺失值和特殊值不参与累计，但仍计入这个分母。
         """
         if not self.merge_small_bins or self.min_bin_size <= 0:
             return
 
         raw_exclude = self.special_values + self.missing_values
-        total_rows = X.height  # [核心修复 1] 提取数据集的绝对总行数作为全局分母
+        total_rows = X.height  # 最小箱样本量以拟合表总行数为分母，包含缺失值和特殊值。
 
         for col in valid_num_cols:
             raw_cuts = self.bin_cuts_.get(col, [])
@@ -322,10 +325,9 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def _fit_categorical_native(self, X: pl.DataFrame, cols: List[str]) -> None:
         """
-        [Algorithm] 类别特征极速分箱 (Top-N Truncation)。
+        按频数保留前 ``n_bins`` 个类别。
 
-        这是针对高基数类别特征（High Cardinality Categorical Features）的极速降维算法。
-        它基于频率统计，保留样本量最大的 Top-K 个类别独立成箱，其余长尾类别予以截断。
+        每个保留类别单独成箱。未保留的类别和后续新类别在转换时进入 Other 箱。
 
         Parameters
         ----------
@@ -334,13 +336,13 @@ class MarsNativeBinner(MarsBinnerBase):
         cols : List[str]
             被判定为类别型的特征列表。
 
-        Architectural Note (架构精要)
-        -----------------------------
+        Notes
+        -----
         1. **参数复用**: 这里的 `K` 值直接复用基类的 `self.n_bins` (即最大箱数)。
         2. **隐式长尾归集**: 本方法只需将 Top-K 类别写入 `self.cat_cuts_`。
            在 `transform` 阶段，任何未命中 `cat_cuts_` 字典的长尾类别（或新出现的类别），
-           都会极其优雅地触发基类的 `otherwise(default_bin)` 机制，
-           自动跌入 `IDX_OTHER` (-2) 兜底箱中，无需在 fit 阶段手动将它们替换为 "Other"。
+           都由基类映射到 ``IDX_OTHER``（-2），
+           无需在 ``fit`` 时替换原始类别。
         """
         if not hasattr(self, "cat_cuts_"):
             self.cat_cuts_ = {}
@@ -366,7 +368,7 @@ class MarsNativeBinner(MarsBinnerBase):
                 self.cat_cuts_[c] = []
                 continue
 
-            # 核心：使用 Polars 极速统计频次，取前 n_bins 个
+            # 按频数保留前 n_bins 个类别，其余类别在转换时进入 Other。
             # 例如 n_bins=10，则保留最多 10 个独立类别
             top_k_df = clean_series.value_counts(sort=True).head(self.n_bins)
             top_vals = top_k_df.get_column(c).to_list()
@@ -377,10 +379,9 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def _fit_quantile(self, X: pl.DataFrame, cols: List[str]) -> None:
         """
-        执行等频分箱 (One-Shot Quantile Query)。
+        批量计算等频切点，低基数数值列改用相邻唯一值中点。
 
-        该方法摒弃了传统的“循环、筛选、计算”模式, 转而利用 Polars 的延迟计算特性,
-        将数千个特征的分位数计算合并为一个单一的原子查询计划 (Atomic Query Plan)。
+        将各列的分位数表达式合并到一次 ``X.select`` 调用，减少逐列调度。
 
         Parameters
         ----------
@@ -394,17 +395,16 @@ class MarsNativeBinner(MarsBinnerBase):
         1. 查询计划合并：
         - 传统实现: 针对 N 个特征执行 N 次 `quantile()` 调用, 触发 N 次内存扫描。
         - Mars 实现: 构建一个扁平化的表达式列表 `[col1_q1, col1_q2, ..., colN_qM]`。
-          通过 `X.select(q_exprs)` 将该列表一次性喂给 Rust 引擎。引擎会优化执行路径,
-          在单次 (或极少数次) 内存扫描中并行完成所有特征的切点计算。
+          通过 ``X.select(q_exprs)`` 一次提交表达式，由 Polars 执行。
 
         2. 数据质量控：
-        - 源头隔离: 在计算分位数前, 利用 `pl.when().then(None)` 将 `special_values` 和
-          `missing_values` 临时替换为 `Null`, 确保切点的分布仅由业务层面的“正常值”决定。
+        - 源头隔离: 计算分位数前过滤 null、NaN、``special_values`` 和
+          ``missing_values``，切点只由正常值决定。
         - 自动去重: 针对高偏态数据 (如某些取值极度集中的分位数一致), 会自动执行 `set()`
           去重并重新排序, 防止生成重复切点导致的 `Cut Error`。
 
         3. 低基数优化：
-        - 针对二值/离散整数 (如 0/1), Quantile 往往会切出 [0.0, 1.0] 这种尴尬边界。
+        - 针对二值/离散整数 (如 0/1), Quantile 往往会切出 [0.0, 1.0] 这类边界。
         - 优化逻辑: 若特征唯一值数量 <= n_bins, 自动降级为"中点切分", 例如 [0, 1] 会被切在 0.5。
         """
         # 构建分位点
@@ -417,7 +417,7 @@ class MarsNativeBinner(MarsBinnerBase):
         raw_exclude = self.special_values + self.missing_values
 
         # 批量计算 n_unique, 用于路由低基数逻辑
-        # 这一步开销很小, Polars 针对数值列的 n_unique 有极速优化
+        # 唯一值数决定使用分位点还是相邻值中点。
         unique_exprs = []
         for c in cols:
             col_dtype = X.schema[c]
@@ -534,10 +534,10 @@ class MarsNativeBinner(MarsBinnerBase):
 
     def _fit_uniform(self, X: pl.DataFrame, cols: List[str]) -> None:
         """
-        执行等宽分箱 (Uniform/Step Binning)。
+        批量计算等宽切点，并按配置移除空箱。
 
-        该方法利用 Polars 的向量化算子, 将所有特征的统计信息提取和切点生成分为两个物理阶段,
-        在保证统计严谨性的同时, 最大程度减少对原始数据的扫描次数。
+        先批量计算各列极值和唯一值数，再生成切点；唯一值数不超过 ``n_bins``
+        时改用相邻唯一值中点。
 
         Parameters
         ----------
@@ -558,10 +558,9 @@ class MarsNativeBinner(MarsBinnerBase):
 
         2. 空箱动态优化：
         - 仅在 `remove_empty_bins=True` 时触发。
-        - 机制: 利用 Polars 的 `cut` 和 `value_counts` 算子, 在主进程中并行嗅探初始等宽
+        - 机制: 利用 Polars 的 `cut` 和 `value_counts` 算子, 检查初始等宽
           切点下的样本分布。
-        - 压缩逻辑: 识别样本量为 0 的区间, 并将相邻的空箱进行物理合并。这在数据分布极端
-          偏态 (如长尾分布)时, 能有效防止产生毫无意义的无效分箱。
+        - 压缩逻辑: 识别样本量为 0 的区间, 并删除对应边界，减少无样本区间。
         """
         raw_exclude = self.special_values + self.missing_values
 
@@ -688,8 +687,8 @@ class MarsNativeBinner(MarsBinnerBase):
         """
         执行并行的决策树分箱。
 
-        该方法是 Mars 库的“动力心脏”, 专门针对高 PCR (计算传输比) 任务设计。
-        它通过“生产-消费”流水线模式, 将 Polars 的预处理能力与 Sklearn 的拟合能力深度耦合。
+        主线程按列过滤无效值，并对特征和标签应用同一掩码。
+        joblib 的 ``threading`` 后端并行拟合各列，避免进程间序列化特征数组。
 
         Parameters
         ----------
@@ -703,15 +702,15 @@ class MarsNativeBinner(MarsBinnerBase):
         Notes
         -----
         1. 计算重心前置：
-        - 在 `cart_task_gen` 生成器中, 利用 Polars 的位运算内核极速完成空值和特殊值的过滤。
+        - 在 `cart_task_gen` 生成器中, 用 Polars 掩码完成空值和特殊值的过滤。
         - 异构对齐: 使用生成的 Numpy 掩码 (Mask) 同时对 x 和 y 进行物理切片,
-          确保两端数据行索引在没有任何显式 Join 操作的情况下实现绝对对齐。
+          确保两端数据行索引在没有任何显式 Join 操作的情况下保持行对应。
 
         2. 混合并行调度：
         - 后端选择: 采用 `threading` 后端配合 `n_jobs`。
-        - 依据: 由于 `x_clean` 和 `y_clean` 切片已在主进程内存中完成, 使用多线程可实现
-          **零拷贝** 传递给 Worker, 规避了多进程频繁序列化大数据块的物流负担。
-        - 锁优化: 利用 Sklearn 底层在拟合过程中会释放 GIL 的物理特性, 实现真正的多核利用。
+        - 依据: 由于 `x_clean` 和 `y_clean` 切片已在主进程内存中完成, 使用线程可共享数组引用，
+          避免多进程序列化。
+        - 锁优化: 树拟合的部分底层计算释放 GIL，可以并行执行。
 
         3. 内存防护：
         - 异常追踪: 引入 `fit_failures_` 属性。任何由于数据极端分布或内存溢出导致的
@@ -786,15 +785,12 @@ class MarsNativeBinner(MarsBinnerBase):
                 if not x_clean.flags['C_CONTIGUOUS']:
                     x_clean = np.ascontiguousarray(x_clean)
 
-                # y 端利用 Numpy 的视图切片
+                # 标签应用相同掩码，保持特征和标签按行对应。
                 y_clean = y_np[valid_mask.to_numpy()]
 
                 yield c, x_clean, y_clean
 
-        # Backend 选型:
-        # 如果数据量极大, threading 会受限于 GIL。
-        # 但因为 Sklearn 的树拟合大部分是在 C++ 层释放了 GIL 的,
-        # 且任务分发开销 (PCR) 在第一阶段很低, 所以 threading 是合理的。
+        # 树拟合的部分底层计算释放 GIL，线程还可避免数组的进程间序列化。
         results = Parallel(n_jobs=self.n_jobs, backend="threading", verbose=0)(
             delayed(worker)(name, x, y) for name, x, y in cart_task_gen()
        )

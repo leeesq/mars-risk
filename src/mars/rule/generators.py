@@ -78,19 +78,22 @@ class MarsCombinationRuleGenerator(MarsRuleGenerator):
     Parameters
     ----------
     n_bins : int
-        每个特征的目标分位区间数。
+        数值特征的目标分位区间数，默认为 5；重复分位点去重后可能减少。
     max_cross_features : int
-        单条组合规则最多包含的特征数。
+        单条组合规则最多引用的特征数，默认为 2。两特征生成 AND、OR 组合，
+        三个及以上特征只生成 AND 组合。
     max_candidates : int
-        生成器候选上限。
+        本生成器最多返回的候选数，默认为 100,000；工作流还会应用合并后的总预算。
     random_state : int | None
         宽表预筛抽样种子。
     prefilter_single_rules : bool
-        是否先按样本内 Lift 排序单规则，再生成交叉候选。
+        是否先按样本内 Lift 排序单变量规则，默认开启。开启后最多使用
+        ``max(8, isqrt(max_candidates))`` 条单变量规则生成交叉候选。
     feature_prefilter_top_k : int
         宽表统计预筛最多保留的特征数。
     feature_prefilter_min_features : int
-        触发 :class:`MarsStatsSelector` 的数值特征数。
+        触发 :class:`MarsStatsSelector` 预筛的数值特征数，默认为 500；
+        少于该值时直接生成分位点规则。
     feature_prefilter_sample_size : int
         统计预筛最大样本数。
 
@@ -132,7 +135,22 @@ class MarsCombinationRuleGenerator(MarsRuleGenerator):
         target: str,
         features: Sequence[str] | None = None,
     ) -> List[MarsRule]:
-        """生成分位点与交叉规则。"""
+        """生成分位点与交叉规则。
+
+        Parameters
+        ----------
+        df : FrameLike
+            用于生成候选的训练表；规则结果不保存原始数据。
+        target : str
+            目标列名。默认推断候选特征时排除该列；显式传入 ``features`` 时由调用方排除。
+        features : Sequence[str] | None
+            候选特征范围；默认推断除目标列外的数值特征，显式范围也只保留数值列。
+
+        Returns
+        -------
+        list[MarsRule]
+            返回受候选预算限制的分位点规则和交叉规则。
+        """
         frame: pl.DataFrame = to_polars_frame(df)
         numeric_features: List[str] = _resolve_numeric_features(frame, target, features)
         numeric_features = self._prefilter_features(frame, target, numeric_features)
@@ -224,7 +242,35 @@ class MarsTreeRuleGenerator(MarsRuleGenerator):
     """从多棵随机浅层决策树提取叶子路径。
 
     每棵树使用确定性中位数填充值和显式缺失指示器训练；提取路径时将缺失分支还原为
-    ``IS MISSING``，避免训练矩阵与部署命中语义漂移。
+    ``IS MISSING``，使训练和后续执行的缺失命中保持一致。
+
+    Parameters
+    ----------
+    n_trees : int
+        训练的浅层树数量，默认为 15。
+    max_depths : Sequence[int] | None
+        每棵树随机选择的最大深度集合；默认使用 ``(2, 3, 4)``。
+    feature_fraction : float
+        每棵树抽取的原始特征比例，默认为 0.8，至少抽取一个特征。
+    n_jobs : int
+        joblib 并行拟合任务数，默认为 ``-1``，按 joblib 约定使用可用核心。
+    random_state : int | None
+        特征抽样、深度选择和树种子的随机种子；默认不固定。
+    dt_params : Dict[str, Any] | None
+        传给 ``DecisionTreeClassifier`` 的参数，默认空字典。
+        显式参数优先于生成器补充的默认值；启用 Optuna 后，
+        调优结果会改写深度和叶子样本量。
+    tuning_backend : Literal["none", "optuna"]
+        是否在各树内部调参，默认 ``"none"``；``"optuna"`` 使用分层 CV ROC AUC。
+    tuning_trials : int
+        启用 Optuna 后每棵树的试验次数，默认为 10。
+
+    Raises
+    ------
+    ValueError
+        树数量或调参次数小于 1、特征比例不在 (0, 1] 内、深度包含非正值，
+        或调参后端不受支持时抛出。
+
     """
 
     def __init__(
@@ -261,7 +307,23 @@ class MarsTreeRuleGenerator(MarsRuleGenerator):
         target: str,
         features: Sequence[str] | None = None,
     ) -> List[MarsRule]:
-        """训练浅层树并提取可部署路径规则。"""
+        """训练浅层树并提取可部署路径规则。
+
+        Parameters
+        ----------
+        df : FrameLike
+            用于生成候选的训练表；规则结果不保存原始数据。
+        target : str
+            目标列名。默认推断候选特征时排除该列；显式传入 ``features`` 时由调用方排除。
+        features : Sequence[str] | None
+            候选特征范围；默认推断除目标列外的数值特征，显式范围也只保留数值列。
+
+        Returns
+        -------
+        list[MarsRule]
+            返回多棵浅层树的去重路径规则，并补充显式缺失规则。
+            没有数值特征时返回空列表；样本不足或目标不足两类时只返回缺失规则。
+        """
         frame: pl.DataFrame = to_polars_frame(df)
         numeric_features: List[str] = _resolve_numeric_features(frame, target, features)
         if not numeric_features:
@@ -416,7 +478,23 @@ class MarsTreeRuleGenerator(MarsRuleGenerator):
 
 
 class MarsForestRuleGenerator(MarsRuleGenerator):
-    """从随机森林叶子路径提取候选规则。"""
+    """从随机森林叶子路径提取候选规则。
+
+    Parameters
+    ----------
+    n_estimators : int
+        森林中的树数量，默认为 50。
+    max_depth : int
+        每棵树的最大深度，默认为 3。
+    feature_fraction : float
+        每次分裂可考虑的模型矩阵特征比例，默认为 0.8。
+    min_samples_leaf : NumericLeafSize
+        叶子的最小样本量，默认 0.01。整数表示人数，浮点数表示训练样本比例。
+    random_state : int | None
+        随机森林种子；默认不固定。
+    n_jobs : int
+        sklearn 并行任务数，默认为 ``-1``，使用全部可用核心。
+    """
 
     def __init__(
         self,
@@ -443,7 +521,23 @@ class MarsForestRuleGenerator(MarsRuleGenerator):
         target: str,
         features: Sequence[str] | None = None,
     ) -> List[MarsRule]:
-        """训练随机森林并提取全部叶子路径。"""
+        """训练随机森林并提取全部叶子路径。
+
+        Parameters
+        ----------
+        df : FrameLike
+            用于生成候选的训练表；规则结果不保存原始数据。
+        target : str
+            目标列名。默认推断候选特征时排除该列；显式传入 ``features`` 时由调用方排除。
+        features : Sequence[str] | None
+            候选特征范围；默认推断除目标列外的数值特征，显式范围也只保留数值列。
+
+        Returns
+        -------
+        list[MarsRule]
+            返回森林叶子路径和显式缺失规则，按规范表达式去重。
+            没有候选特征、样本不足或目标不足两类时返回空列表。
+        """
         original: pl.DataFrame = to_polars_frame(df)
         frame, selected, x_values, y_values, model_features = _model_training_data(
             original,
@@ -479,7 +573,38 @@ class MarsForestRuleGenerator(MarsRuleGenerator):
 
 
 class MarsGBDTRuleGenerator(MarsRuleGenerator):
-    """从 sklearn 或 LightGBM GBDT 弱学习器提取规则路径。"""
+    """从 sklearn 或 LightGBM GBDT 弱学习器提取规则路径。
+
+    Parameters
+    ----------
+    backend : Literal["sklearn", "lightgbm"]
+        模型后端，默认为 ``"sklearn"``；LightGBM 在使用时延迟导入。
+    n_estimators : int
+        弱学习器数量，默认为 80。
+    max_depth : int
+        每棵树的最大深度，默认为 3。
+    learning_rate : float
+        弱学习器的学习率，默认为 0.05。
+    feature_fraction : float
+        特征采样比例，默认为 0.8。sklearn 使用 ``max_features``，
+        LightGBM 使用同名参数。
+    min_samples_leaf : NumericLeafSize
+        叶子的最小样本量，默认 0.01。整数表示人数，浮点数表示训练样本比例。
+        LightGBM 将比例换算为至少一个样本的 ``min_child_samples``。
+    random_state : int | None
+        模型随机种子；默认不固定。
+    n_jobs : int
+        LightGBM 的并行任务数，默认为 ``-1``；sklearn 后端不使用该参数。
+    model_params : Dict[str, Any] | None
+        额外模型参数，默认空字典。sklearn 后端允许覆盖 ``max_features``，
+        其他参数应避开构造时明确传入的同名项；LightGBM 后端以生成器配置为准。
+
+    Raises
+    ------
+    ValueError
+        模型后端不受支持，或树数量、最大深度、特征比例、叶子样本量、
+        学习率不满足要求时抛出。
+    """
 
     def __init__(
         self,
@@ -516,7 +641,23 @@ class MarsGBDTRuleGenerator(MarsRuleGenerator):
         target: str,
         features: Sequence[str] | None = None,
     ) -> List[MarsRule]:
-        """训练指定 GBDT 后端并提取路径规则。"""
+        """训练指定 GBDT 后端并提取路径规则。
+
+        Parameters
+        ----------
+        df : FrameLike
+            用于生成候选的训练表；规则结果不保存原始数据。
+        target : str
+            目标列名。默认推断候选特征时排除该列；显式传入 ``features`` 时由调用方排除。
+        features : Sequence[str] | None
+            候选特征范围；默认推断除目标列外的数值特征，显式范围也只保留数值列。
+
+        Returns
+        -------
+        list[MarsRule]
+            返回指定 GBDT 后端的路径规则和显式缺失规则，按规范表达式去重。
+            没有候选特征、样本不足或目标不足两类时返回空列表。
+        """
         original: pl.DataFrame = to_polars_frame(df)
         frame, selected, x_values, y_values, model_features = _model_training_data(
             original,
@@ -607,7 +748,45 @@ class MarsGBDTRuleGenerator(MarsRuleGenerator):
 
 
 class MarsIsolationRuleGenerator(MarsRuleGenerator):
-    """从孤立森林异常路径生成无监督候选规则。"""
+    """从孤立森林异常路径生成无监督候选规则。
+
+    模型不使用目标值拟合，但训练矩阵仍只保留目标转为数值后非空且非 NaN 的行。
+    候选的业务风险方向和最终资格由挖掘工作流评估。
+
+    Parameters
+    ----------
+    n_estimators : int
+        孤立树数量，默认为 100。
+    max_samples : Union[int, float, Literal["auto"]]
+        每棵树使用的样本数或比例，传给 sklearn；默认 ``"auto"``。
+    feature_fraction : float
+        每棵树抽取的模型矩阵特征比例，默认为 0.8。
+    contamination : Union[float, Literal["auto"]]
+        sklearn 的异常比例参数，默认 ``"auto"``。
+        候选筛选使用的异常标记由 ``anomaly_quantile`` 单独确定。
+    path_depth_limit : int
+        提取路径时允许的最大深度，默认为 4；更深的叶子路径不生成候选。
+    min_leaf_samples : int
+        叶子命中人数下限，默认为 50。
+    anomaly_quantile : float
+        异常分数的分位阈值，默认为 0.95；达到阈值的行标记为异常。
+        仅保留异常人数大于 0、且异常比例不低于全体异常比例的叶子。
+    max_candidates : int
+        去重后最多返回的候选数，默认为 5,000，包含显式缺失规则。
+    random_state : int | None
+        模型随机种子；默认不固定。
+    n_jobs : int
+        sklearn 并行任务数，默认为 ``-1``，使用全部可用核心。
+    model_params : Dict[str, Any] | None
+        传给 ``IsolationForest`` 的额外参数，默认空字典。
+        不应与生成器明确传入的模型参数重复。
+
+    Raises
+    ------
+    ValueError
+        树数量、路径深度、叶子人数或候选预算小于 1，
+        特征比例不在 (0, 1] 内，或异常分位阈值不在 (0, 1) 内时抛出。
+    """
 
     def __init__(
         self,
@@ -649,7 +828,23 @@ class MarsIsolationRuleGenerator(MarsRuleGenerator):
         target: str,
         features: Sequence[str] | None = None,
     ) -> List[MarsRule]:
-        """训练孤立森林并提取受深度和预算约束的路径。"""
+        """训练孤立森林并提取受深度和预算约束的路径。
+
+        Parameters
+        ----------
+        df : FrameLike
+            用于生成候选的训练表；规则结果不保存原始数据。
+        target : str
+            目标列名。默认推断候选特征时排除该列；显式传入 ``features`` 时由调用方排除。
+        features : Sequence[str] | None
+            候选特征范围；默认推断除目标列外的数值特征，显式范围也只保留数值列。
+
+        Returns
+        -------
+        list[MarsRule]
+            返回符合路径深度、叶子样本数和异常比例条件的去重规则。
+            没有候选特征或样本不足时返回空列表。
+        """
         original: pl.DataFrame = to_polars_frame(df)
         frame, selected, x_values, _, model_features = _model_training_data(
             original,

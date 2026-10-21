@@ -39,16 +39,19 @@ class MarsRuleReport(_ReportQuery):
     Attributes
     ----------
     report_id : str
-        构造时生成并在查询、保存与恢复后保持的报告身份。
+        构造时生成的报告标识，查询、保存和恢复时保持不变。
     report_type : str
-        rule 或 rule_benchmark；后者不包含规则资格。
+        ``rule`` 或 ``rule_benchmark``；后者不包含规则部署资格。
     format_version : int
-        公共 marsreport 格式版本，目前为 1。
+        公共 ``.marsreport`` 格式版本，目前为 1。
 
     Notes
     -----
     Rule 仍为 Experimental。报告只保存已有证据，不重建 RuleSet 或赋予部署权限。
-    业务元数据、上下文或规则表达式校验失败传播 ValueError。
+    业务元数据、上下文或规则表达式校验失败时抛出 ``ValueError``。
+    特征查询依据规则成员关系筛选原统计表，每条统计行只返回一次。
+    ``features`` 和 ``sources`` 条件必须同时满足，但可以匹配同一规则的不同特征。
+    ``sources`` 指特征元数据中的业务来源；候选生成来源保存在规则表和候选表中。
 
     Examples
     --------
@@ -104,7 +107,8 @@ class MarsRuleReport(_ReportQuery):
         Returns
         -------
         dict[str, Any]
-            独立目录副本；无规则和未计算状态保持原义。
+            独立目录副本，包含各表的统计粒度、单位、状态和特征关联方式。
+            未执行分析保持 ``not_computed``，已执行但没有结果保持 ``computed_empty``。
 
         Examples
         --------
@@ -121,19 +125,21 @@ class MarsRuleReport(_ReportQuery):
         return description
 
     def show_table(self, name: str, **query: Any) -> pd.DataFrame:
-        """查询小表并附上业务显示名。
+        """查询报告表，并处理已有显示名列的空值。
 
         Parameters
         ----------
         name : str
             公共表名。
         **query : Any
-            get_table 查询条件、投影和分页参数。
+            传给 ``get_table`` 的筛选、排序、选列和分页参数。
+            显式指定 ``columns`` 时，仅返回所选字段。
 
         Returns
         -------
         pd.DataFrame
-            独立可读表，英文 ID 保留。
+            独立 Pandas 表。已有显示名列的空值会回退为英文 ID；
+            不额外添加身份列或显示名列。
 
         Examples
         --------
@@ -254,7 +260,8 @@ class MarsRuleReport(_ReportQuery):
         Returns
         -------
         str
-            完整且对用户字段执行 HTML 转义的文档。
+            自包含 HTML 文档，用户字段经过 HTML 转义。candidates 只预览前 100 行，
+            并显示总数和完整查询入口；Excel 与 ``.marsreport`` 保存完整表。
 
         Examples
         --------

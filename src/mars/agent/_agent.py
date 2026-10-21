@@ -45,13 +45,14 @@ class MarsRiskAgent:
     provider : MarsAgentProvider | None
         同步模型接口；为空时仅可通过 execute_tool 使用确定性工具。
     max_iterations : int
-        每轮用户请求允许的模型调用次数。
+        每轮用户请求允许的模型调用次数，默认 8。
     max_tool_calls : int
-        每轮最多执行的工具数，包含失败调用。
+        每轮最多执行的工具数，默认 24，包含失败调用。下一批调用将超限时，整批不执行。
     max_context_chars : int
-        系统提示、工具定义和消息的序列化字符上限，不是精确 token 预算。
+        系统提示、工具定义和消息的序列化字符上限，默认 100,000，最小 4,096。
+        按字符计数，不换算为 token。
     max_result_chars : int
-        单次工具 data 的序列化字符上限；表格通过分页控制大小。
+        单次工具 data 的序列化字符上限，默认 16,000，最小 1,024；表格通过分页控制大小。
     compute_budget : MarsAgentComputeBudget | None
         单次计算的规模上限；None 使用默认预算。独立于输出字符预算和报告查询。
 
@@ -62,8 +63,8 @@ class MarsRiskAgent:
 
     Notes
     -----
-    首版使用同步、顺序工具执行。完整历史按轮保留；达到上下文上限后显式停止，
-    不静默丢弃工具配对消息。调用方可 clear_history 后通过报告标识继续分析。
+    工具同步、顺序执行。完整历史按轮保留；达到上下文上限后停止，并返回停止原因。
+    调用方可用 ``clear_history`` 清理消息，再通过报告标识继续分析。
     """
 
     def __init__(
@@ -104,7 +105,7 @@ class MarsRiskAgent:
         session: MarsAgentSession,
     ) -> MarsAgentToolResult:
         """
-        不调用模型，直接执行相同校验和适配链路的领域工具。
+        直接执行已注册的分析工具，使用与模型调用相同的参数校验和计算预算。
 
         Parameters
         ----------

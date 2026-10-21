@@ -1,4 +1,4 @@
-"""复用筛选器真实矩阵与事件的可携带相关性报告。"""
+"""保存筛选器的相关矩阵和决策记录，并提供查询与展示方法。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ._result import _result_report
 
 
 def _correlation_report(selector: Any) -> CorrelationReport:
-    """将唯一 signed 矩阵转换为规范上三角，随后由调用方释放 dense 缓存。"""
+    """从有符号相关矩阵提取上三角和决策记录，随后由调用方释放稠密矩阵缓存。"""
     candidates = selector._corr_candidates
     matrix = selector._corr_matrix
     n = len(candidates)
@@ -143,24 +143,26 @@ def _correlation_report(selector: Any) -> CorrelationReport:
 
 
 def get_correlation_matrix(report: Report, features: list[str] | None = None) -> pd.DataFrame:
-    """从保存的上三角和实际对角恢复诱导子矩阵，不重新计算。
+    """从已保存的上三角与实际对角值恢复所选特征的相关子矩阵。
 
     Parameters
     ----------
     report : Report
-        原始报告或 load_report 的通用快照。
+        原始相关性报告，或 ``load_report()`` 恢复的相关性快照；不访问原始样本。
     features : list[str] | None
-        原始 ID；None 使用整个候选集合，大集合应显式限定。
+        进入相关性阶段的英文候选 ID，决定返回矩阵的行列及顺序。
+        默认使用全部候选；候选较多时宜显式限定范围。
 
     Returns
     -------
     pd.DataFrame
-        请求顺序的 signed 矩阵；不可用值为 NaN。
+        按请求顺序排列的有符号相关矩阵，不可用值为 NaN。
+        对角线沿用已保存的实际结果，不补为 1。
 
     Raises
     ------
     ValueError
-        类型错误、重复 ID 或 ID 未进入相关阶段。
+        报告类型不符、候选 ID 重复或 ID 未进入相关性阶段时抛出。
 
     Examples
     --------
@@ -176,7 +178,7 @@ def get_correlation_matrix(report: Report, features: list[str] | None = None) ->
     diagonal = report.get_table("features", features=selected)
     for row in diagonal.iter_rows(named=True):
         matrix.loc[row["feature"], row["feature"]] = row["diagonal"]
-    # 先限定两端为所选集合，再转换有限子矩阵；不转出整个 pairs。
+    # 先筛选两端均在所选范围内的特征对，避免转换完整 pairs 表。
     pairs = report.get_table(
         "pairs",
         filters={
@@ -198,25 +200,28 @@ def get_related_features(
     offset: int = 0,
     limit: int = 20,
 ) -> pl.DataFrame:
-    """按绝对相关降序返回 peers；来源只过滤 peer，同值保持候选顺序。
+    """按相关系数绝对值降序返回其他特征及其筛选证据。
+
+    来源条件只筛选另一端特征，不限制中心特征；相关系数绝对值相同时保留候选顺序。
 
     Parameters
     ----------
     report : Report
-        correlation 报告，支持加载后的通用快照。
+        ``report_type="correlation"`` 的原始报告或通用快照。
     feature : str
-        查询中心的原始 ID。
+        作为查询中心的英文候选 ID，必须已进入相关性阶段。
     sources : str | list[str] | None
-        peer 来源；未知来源报错。与中心 ID 条件采用交集。
+        另一端特征的业务来源，默认不限制；来源未知时报错。
     offset : int
-        非负分页起点。
+        按相关系数绝对值排序后跳过的行数，默认 0，必须为非负整数。
     limit : int
-        最大行数。
+        最大返回行数，默认 20，必须为非负整数；0 返回空表。
 
     Returns
     -------
     pl.DataFrame
-        peer ID、展示名、来源、signed 值、最终入选及真实触发事件。
+        另一端特征的 ID、显示名、来源、有符号相关系数、最终入选状态及实际淘汰事件。
+        决策记录来自原筛选过程，不根据相关系数重新生成。
 
     Raises
     ------
@@ -291,21 +296,24 @@ def show_correlation_matrix(
     *,
     max_features: int = 30,
 ) -> Any:
-    """展示有限 signed 矩阵，固定 [-1, 1] 色标，空值与零分开。
+    """展示指定数量特征的有符号相关矩阵，使用固定 [-1, 1] 色标。
+
+    空值单独着色，有效零值保留为 0，不重新计算相关系数。
 
     Parameters
     ----------
     report : Report
-        原始或加载后的报告。
+        原始相关性报告或加载后的相关性快照。
     features : list[str] | None
-        展示候选 ID；默认候选顺序。
+        展示候选的英文 ID 及顺序，默认使用全部候选的原顺序。
     max_features : int
-        展示上限；截断数量保留在 caption，原报告不变。
+        最多展示的特征数，默认 30，必须为正整数。
+        仅展示所选列表的前若干项，省略数量显示在表标题中，不截断原报告。
 
     Returns
     -------
     Any
-        Notebook 可显示、可 to_html/to_excel 的 Pandas Styler。
+        可在 Notebook 中显示的 Pandas Styler，也可调用 ``to_html()`` 或 ``to_excel()``。
 
     Raises
     ------
@@ -339,14 +347,16 @@ def show_correlation_matrix(
 
 
 class CorrelationReport(ReportSnapshot):
-    """相关性独立快照；加载后使用同名公共函数获得相同专用操作。
+    """保存相关矩阵、候选状态和筛选决策的独立报告快照。
+
+    ``load_report()`` 返回通用快照，可用本模块同名公共函数继续执行矩阵和邻居查询。
 
     Parameters
     ----------
     tables : dict[str, Any]
-        列式结果表。
+        候选目录、上三角特征对和筛选记录等已计算结果表。
     description : dict[str, Any]
-        完整语义目录。
+        与结果表对应的完整语义目录，含方法、候选范围、实际参数和业务元数据。
 
     Examples
     --------
@@ -355,17 +365,18 @@ class CorrelationReport(ReportSnapshot):
     """
 
     def get_matrix(self, features: list[str] | None = None) -> pd.DataFrame:
-        """从保存结果恢复 signed 诱导子矩阵，不访问原始数据。
+        """从保存结果恢复所选特征的有符号相关子矩阵，不访问原始样本。
 
         Parameters
         ----------
         features : list[str] | None
-            原始候选 ID，None 使用全部；大集合建议显式限定。
+            英文候选 ID，决定矩阵行列及顺序；默认使用全部候选。
+            候选较多时宜显式限定范围。
 
         Returns
         -------
         pd.DataFrame
-            请求顺序的矩阵，不可用值为 NaN；保留实际对角。
+            按请求顺序排列的矩阵，不可用值为 NaN；对角线沿用保存的实际结果。
 
         Raises
         ------
@@ -386,23 +397,23 @@ class CorrelationReport(ReportSnapshot):
         offset: int = 0,
         limit: int = 20,
     ) -> pl.DataFrame:
-        """取得与中心特征相关的 peers，来源只过滤另一端。
+        """查询与中心特征相关的其他特征，按相关系数绝对值降序返回。
 
         Parameters
         ----------
         feature : str
             原始候选 ID，不以中文名作为键。
         sources : str | list[str] | None
-            peer 来源，与中心条件采用交集。
+            仅筛选另一端特征的业务来源，默认不限制；未知来源报错。
         offset : int
-            非负起始行号。
+            排序后跳过的行数，默认 0，必须为非负整数。
         limit : int
-            最大返回数，按绝对相关降序，同值保持候选顺序。
+            最大返回行数，默认 20；0 返回空表。相关系数绝对值相同时保留候选顺序。
 
         Returns
         -------
         pl.DataFrame
-            signed 值、peer 业务元数据、最终状态与真实事件证据。
+            有符号相关系数、另一端特征的业务元数据、最终入选状态和实际筛选事件。
 
         Raises
         ------
@@ -416,19 +427,20 @@ class CorrelationReport(ReportSnapshot):
         return get_related_features(self, feature, sources=sources, offset=offset, limit=limit)
 
     def show_matrix(self, features: list[str] | None = None, *, max_features: int = 30) -> Any:
-        """显示固定 [-1,1] 发散色标的小矩阵，未知值与有效零分开。
+        """用固定 [-1, 1] 色标展示相关矩阵，空值与有效零值分别着色。
 
         Parameters
         ----------
         features : list[str] | None
-            原始候选 ID；None 使用候选顺序。
+            英文候选 ID 及展示顺序，默认使用全部候选的原顺序。
         max_features : int
-            正数显示上限；省略数量在 caption 中提示，快照不截断。
+            最多展示的特征数，默认 30，必须为正整数。
+            仅展示所选列表的前若干项，省略数量显示在表标题中，不截断快照。
 
         Returns
         -------
         Any
-            支持 Notebook/to_html/to_excel 的 Styler，含原始 ID、展示名及来源。
+            包含英文 ID、显示名和来源的 Pandas Styler，支持 Notebook 展示及 HTML/Excel 导出。
 
         Raises
         ------

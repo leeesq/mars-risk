@@ -26,9 +26,10 @@ class MarsRuleEvaluation:
     Parameters
     ----------
     overall_table : polars.DataFrame
-        ``slice="__overall__"`` 的整体评估长表。
+        整体评估长表，``slice="__overall__"``；每条规则、每个目标分别保存
+        hit、miss 和 total 行。
     slice_table : polars.DataFrame
-        按业务分组或时间切片展开的评估长表。
+        按业务分组或时间切片展开的同结构长表；未请求切片时为空。
     metadata : Mapping[str, Any]
         数据集角色、目标和列配置等运行元数据。
     """
@@ -39,11 +40,12 @@ class MarsRuleEvaluation:
 
 
 class MarsRuleEvaluator:
-    """在样本、金额和客户维度评估规则。
+    """评估规则命中的样本、金额和客户指标。
 
-    评估器接受 Pandas 或 Polars 输入，输出固定 Polars 长表。每个目标只使用该目标非空且
-    合法二分类数值的样本，未定义比率保留为 null。分布人数保留全部样本，
-    全未观测切片仍输出 ``status="unobserved"``，不生成监督指标。
+    接受 Pandas 或 Polars 表，返回固定结构的 Polars 长表。每个目标分别校验标签，
+    sample_count、事件率和 Lift 只使用该目标已表现样本；total_count 和分布覆盖率
+    保留全部样本。未定义比率为 null。全未表现切片仍保留分布人数，
+    状态为 ``"unobserved"``，监督指标为空。
 
     Examples
     --------
@@ -83,34 +85,39 @@ class MarsRuleEvaluator:
         rule_set : MarsRuleSet
             不含样本指标的规则定义。
         target : str
-            生成和主要筛选使用的二分类目标。
+            主二分类目标列，用于评估并写入 ``primary_target`` 元数据。
         aux_targets : Sequence[str] | None
-            仅参与评估的辅助目标。
+            额外评估的目标列；每个目标独立排除自己的 null、NaN 标签，默认不添加。
         dataset : str
-            写入长表的样本角色标签。
+            写入长表 ``dataset`` 的样本角色，默认为 ``"evaluation"``；不改变计算样本。
         group_col : str | None
-            已存在的切片列。
+            已存在的业务分组列。提供后按该列切片，优先于 ``time_col``。
         time_col : str | None
-            用于生成时间切片的日期列。
+            未传 ``group_col`` 时，用于生成时间切片的日期列；两者都省略时只计算整体。
         time_grain : str | None
             ``day``、``week``、``month`` 或 ``year``；不传时保留原始日期文本。
         amount_col : str | None
-            金额指标列。
+            金额列。提供后计算已表现样本中的金额覆盖、事件金额占比和金额 Lift；
+            省略时相关指标保持 null。
         customer_col : str | None
-            客户去重指标列。
+            客户标识列。提供后计算已表现样本中的去重客户指标；
+            省略时相关指标保持 null。
         batch_size : int
             单批物化和聚合的规则数量。
         direction : RuleDirection
-            精确检验使用的风险方向。
+            单侧超几何检验的方向，默认为 ``"high_risk"``；
+            ``"low_risk"`` 使用低事件率尾部。仅统计计算开启时影响检验值。
         confidence_level : float
             Wilson 单侧置信水平。
         compute_statistics : bool
-            是否计算 Wilson、精确检验和 BH-FDR；关闭时仍保留固定可空列。
+            是否增加 Wilson 单侧置信界、超几何检验 p 值和 BH q 值，默认关闭。
+            关闭时保留这些列并填 null；开启时在相同 dataset、target、slice 内校正。
 
         Returns
         -------
         MarsRuleEvaluation
-            整体表、切片表和运行元数据。
+            整体表、切片表和运行元数据。每行由 dataset、rule_id、target、slice
+            和 group 标识；coverage 的分母为相同 dataset、target、slice 的已表现人数。
 
         Raises
         ------

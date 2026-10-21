@@ -124,7 +124,52 @@ class MarsModelEvaluator:
         importance_table: pd.DataFrame | None = None,
         psi_include_missing: bool = False,
     ) -> MarsModelingReport:
-        """对已打分样本构建模型评估报告。"""
+        """按样本分组评估已有预测分，并生成指标及曲线明细。
+
+        Parameters
+        ----------
+        df : FrameLike
+            已包含预测分、主目标和分组列的样本表，不在此方法中训练或预测。
+        pred_col : str
+            待评估的预测分列。计算 LogLoss、Brier 和捕获率时，将分数裁剪到概率范围。
+        group_col : str
+            主目标的样本分组列，按 train、val、oot 和其他名称的顺序展示。
+        target : str
+            主目标列，非缺失标签必须为 0/1；空值表示未表现，不参与表现指标。
+            全局有效标签只有一类时，PSI 分箱评估会报错。
+        benchmark_col : str | None
+            单个对照模型分列，默认不提供；列表中未包含时，将其插入 ``benchmark_cols`` 首位。
+        benchmark_cols : Sequence[str] | None
+            多个对照模型分列，默认无对照。只比较已有分数，不用这些列拟合 PSI 分箱。
+        time_col : str | None
+            用于汇总各主分组起止日期的时间列，默认不统计日期。
+            解析失败的日期转为缺失值，不用于自动生成分组。
+        val_target : str | None
+            兼容的单个辅助目标入口，默认不提供；列表中未包含时，将其插入 ``aux_targets`` 首位。
+        aux_targets : Sequence[str] | None
+            额外评估的目标列，默认无辅助目标；不改变主目标的分箱和 PSI 基准。
+        target_group_cols : Mapping[str, str] | None
+            辅助目标到专用分组列的映射。未配置的辅助目标使用 ``group_col``。
+        feature_cols : Sequence[str] | None
+            需要计算特征 PSI 的列，默认不计算；不存在于输入中的列会跳过。
+        importance_table : pd.DataFrame | None
+            已计算的特征重要性表，默认不提供。只复制到报告元数据，不重新计算重要性。
+        psi_include_missing : bool
+            模型分和特征 PSI 是否纳入缺失箱，默认 ``False``，排除后重新归一化分布。
+
+        Returns
+        -------
+        MarsModelingReport
+            分组指标汇总、模型分及可选特征 PSI、ROC、KS、校准和分数分布明细。
+
+        Notes
+        -----
+        本模块的 AUC、KS 和 F1 使用 0～100 百分制，坏率、LogLoss 和 Brier 保留原数值。
+        表现指标要求目标和当前预测分均非空。单个分组无有效样本或标签只有一类时，区分度指标为 NaN。
+        对照模型还会排除对照分缺失的行，因此对照指标与当前模型的样本数可能不同。
+        PSI 复用原生等频 10 箱，在本次全量输入上拟合，并按主分组比较。
+        缺少必需列时抛出 ValueError。
+        """
         self.group_col = group_col
         self.target_col = target
         self.benchmark_col = benchmark_col

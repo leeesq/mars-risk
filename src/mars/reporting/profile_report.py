@@ -17,7 +17,7 @@ from mars.reporting._query import ReportFrame, _ReportQuery
 
 class ProfileData(NamedTuple):
     """
-    画像报告底层数据对象集合。
+    汇总画像报告的概览、趋势和对比表。
 
     Attributes
     ----------
@@ -28,7 +28,7 @@ class ProfileData(NamedTuple):
     stats_trends : dict of str to DataFrame
         统计分布指标的趋势宽表字典。
     comparisons : dict of str to DataFrame
-        Schema drift 与 unseen rate 对比表字典。
+        字段类型变化（schema drift）与新增类别占比（unseen rate）的对比表字典。
 
     Examples
     --------
@@ -49,8 +49,8 @@ class MarsProfileReport(_ReportQuery):
     """
     数据特征画像与质量评估报告容器。
 
-    管理 `MarsDataProfiler` 产出的特征概览、数据质量趋势和统计分布趋势表，并提供表格读取、
-    富文本视图和 Excel 导出方法。
+    保存 `MarsDataProfiler` 已计算的概览、数据质量、统计分布和对比表。
+    支持查询、Notebook 展示及 Excel、HTML 导出，查询时不重新计算统计。
 
     Attributes
     ----------
@@ -63,14 +63,14 @@ class MarsProfileReport(_ReportQuery):
     stats_tables : dict of str to DataFrame
         统计分布指标趋势表字典。
     comparison_tables : dict of str to DataFrame
-        显式请求的 current/benchmark 对比表。
+        显式请求的当前样本与基准样本对比表。
     report_meta : dict of str to Any
-        本次运行的轻量元数据与结构化诊断。
+        本次运行的实际参数、计算口径和结构化诊断。
 
     Notes
     -----
     `show_overview` 与 `show_trend` 使用 Pandas Styler 显示色带、数据条和 sparkline。
-    `write_excel()` 导出带条件格式的电子表格。
+    `write_excel()` 导出带条件格式的电子表格，`write_html()` 导出离线单文件报告。
 
     Examples
     --------
@@ -99,19 +99,22 @@ class MarsProfileReport(_ReportQuery):
         Parameters
         ----------
         overview : Union[pl.DataFrame, pd.DataFrame]
-            特征概览宽表。
+            已计算的特征概览宽表，每行对应一个特征。
         dq_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-            数据质量趋势表字典。
+            指标名到数据质量趋势宽表的映射，分组值或时间段作为列。
         stats_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]]
-            统计指标趋势表字典。
+            指标名到统计趋势宽表的映射，分组值或时间段作为列。
         comparison_tables : Dict[str, Union[pl.DataFrame, pd.DataFrame]] | None
-            Schema drift 与 unseen rate 对比表字典。
+            字段类型变化与新增类别占比的对比表，默认不包含对比结果。
         report_meta : Dict[str, Any] | None
-            报告运行元数据与可恢复诊断。
+            本次运行的实际参数与诊断，默认使用空字典，不补算缺少的统计。
         feature_metadata : FeatureMetadata | None
-            以英文标识为键的业务字典，或包含 feature 列的 Pandas/Polars 表。
+            以英文特征 ID 为键的业务字典，或包含 ``feature`` 列的 Pandas/Polars 表。
+            支持 ``display_name``、``description``、``data_source`` 和 ``unit``；
+            默认不补充业务解释，已有身份列中的有效信息仍会保留。
         business_context : dict[str, Any] | None
-            可选 JSON 业务上下文；不推断未提供的信息。
+            JSON 业务上下文，仅用于解释结果，不改变统计。
+            标签定义按 ``labels`` 中的目标字段登记，未提供的信息标为 unknown。
         """
         self.overview_table = overview
         self.dq_tables = dq_tables
@@ -121,8 +124,7 @@ class MarsProfileReport(_ReportQuery):
         self._calculation_status: ReportFrame | None = None
         self._initialize_semantics(feature_metadata, business_context)
 
-        # 建立索引：将所有指标名映射到对应的数据源类型 ('dq' 或 'stat')
-        # 这允许我们在 show_trend 中快速定位
+        # 按指标名定位数据质量、统计或对比表，供 show_trend 复用。
         self._metric_index: Dict[str, str] = {}
         for k in self.dq_tables.keys():
             self._metric_index[k] = "dq"
@@ -132,7 +134,7 @@ class MarsProfileReport(_ReportQuery):
             self._metric_index[k] = "comparison"
 
     def _query_tables(self) -> dict[str, ReportFrame]:
-        """沿用 Agent 的画像表目录，保留每张原生结果表。"""
+        """按公共目录命名画像表，保留各表的 Pandas/Polars 类型。"""
         return {"overview": self.overview_table,
                 **({"calculation_status": self._calculation_status} if self._calculation_status is not None else {}),
                 **{f"dq.{k}": v for k, v in self.dq_tables.items()},
@@ -145,12 +147,13 @@ class MarsProfileReport(_ReportQuery):
 
     def get_profile_data(self) -> ProfileData:
         """
-        返回画像报告的原始数据对象。
+        返回报告中已计算的统计表。
 
         Returns
         -------
         ProfileData
             包含概览表、数据质量趋势表、统计趋势表和对比表的命名元组。
+            这些表沿用报告中的对象，不包含原始样本。
 
         Examples
         --------
@@ -175,7 +178,7 @@ class MarsProfileReport(_ReportQuery):
         dq_keys = list(self.dq_tables.keys())
         stat_keys = list(self.stats_tables.keys())
 
-        # 样式定义 (Inline CSS for portability)
+        # 内嵌 CSS，使 Notebook 摘要无需加载外部样式。
         # 胶囊样式，用于包裹指标名
         pill_style = (
             "background-color: #e8f4f8; color: #2980b9; border: 1px solid #bce0eb; "
@@ -192,7 +195,7 @@ class MarsProfileReport(_ReportQuery):
             """将指标名称渲染为 HTML 胶囊标签。"""
             if not keys:
                 return "<span style='color:#ccc'>None</span>"
-            # 为了防止指标太多撑爆屏幕，限制显示数量 (例如只显示前 20 个，后面加 ...)
+            # 摘要最多显示 30 个指标名，其余只显示数量，避免面板过宽。
             display_keys = keys[:30]
             pills = "".join([f"<span style='{pill_style}'>'{escape(k)}'</span>" for k in display_keys])
             if len(keys) > 30:
@@ -269,16 +272,17 @@ class MarsProfileReport(_ReportQuery):
         path : str
             输出 Excel 文件路径。
         group_ascending : bool
-            趋势页中分组列的横向排序方向。
+            趋势页分组列的横向排序方向，默认按列名升序排列。
         sort_by : Union[str, List[str]]
-            趋势页内部的排序依据。
+            趋势页特征行的排序字段，默认按 ``total`` 排序。
+            可传入单列名或多列列表，字段必须存在于相应趋势表。
         sort_ascending : bool
-            趋势页内部是否按 ``sort_by`` 升序排列。
+            是否按 ``sort_by`` 升序排列特征行，默认降序。
 
         Returns
         -------
         None
-            方法仅产生文件写入副作用。
+            写入报告文件，不返回数据。
 
         Notes
         -----
@@ -309,19 +313,27 @@ class MarsProfileReport(_ReportQuery):
         *,
         report_name: str = "MARS Data Profile",
     ) -> None:
-        """Export a self-contained interactive HTML profile report.
+        """导出可离线浏览的单文件画像 HTML 报告。
+
+        报告包含元数据、概览、数据质量、统计和对比表，支持搜索及按原值排序。
+        不生成图表，也不重新计算统计。
 
         Parameters
         ----------
         path : str
-            Output HTML file path.
+            输出文件路径，默认写入 ``mars_profile_report.html``；父目录必须存在。
         report_name : str
-            Report title displayed in the HTML header.
+            HTML 页头和浏览器标签页的报告标题，默认使用 ``"MARS Data Profile"``。
 
         Returns
         -------
         None
-            The method only writes the report file.
+            写入报告文件，不返回数据。
+
+        Notes
+        -----
+        父目录不存在时，底层写入函数抛出 ``FileNotFoundError``；
+        报告渲染或文件写入失败时抛出 ``RuntimeError``。
 
         """
         write_profile_html(self, path=path, report_name=report_name)
@@ -368,13 +380,14 @@ class MarsProfileReport(_ReportQuery):
         features : Union[str, List[str]] | None
             需要展示的特征名称。若为 ``None``，展示全部特征。
         sort_by : Union[str, List[str]] | None
-            排序依据列。若为 ``None``，默认先按 ``dtype`` 再按 ``missing_rate`` 排序。
+            特征行的排序字段。默认按已有的 ``dtype``、``missing_rate`` 依次排序；
+            显式指定时只使用所列字段，排序先于列投影和行数限制。
         sort_ascending : bool
-            是否按 ``sort_by`` 升序排列。
+            是否按排序字段升序排列，默认降序；也适用于默认排序字段。
         columns : list[str] | None
-            展示字段；先查询再转为 Pandas。
+            展示字段。默认保留全部列；显式指定时只返回所列字段，并保持指定顺序。
         limit : int | None
-            最大展示行数；排序配合 limit 实现 Top-K，None 保留历史默认。
+            排序后的最大展示行数，默认不限制。设为 0 时返回保留列结构的空视图。
         sources : str | list[str] | None
             按已有特征来源筛选；来源未知时明确报错。
 
@@ -437,18 +450,19 @@ class MarsProfileReport(_ReportQuery):
         features : Union[str, List[str]] | None
             需要展示的特征名称。若为 ``None``，展示全部特征。
         group_ascending : bool
-            分组列或时间切片列的横向排序方向。
+            分组列或时间切片列的横向排序方向，默认按列名升序。
+            仅在 ``columns=None`` 时生效；身份列置前，``total`` 置后。
         sort_by : Union[List[str], str] | None
             表内排序依据，可以是单列或多列列表。``None`` 优先选择 ``total``；
             没有该列的比较表按 ``feature`` 排序，均遵守 ``sort_ascending``。
         sort_ascending : bool
             是否按 ``sort_by`` 升序排列。
         columns : list[str] | None
-            展示字段；先查询再转为 Pandas。
+            展示字段。默认保留全部列并排列分组列；显式指定时保持所列字段及其顺序。
         limit : int | None
-            最大展示行数；None 保留历史默认。
+            排序后的最大展示行数，默认不限制。设为 0 时返回保留列结构的空视图。
         sources : str | list[str] | None
-            按已有特征来源筛选。
+            按已登记来源筛选特征，默认不限制；与 ``features`` 取交集，未知来源报错。
 
         Returns
         -------
@@ -471,7 +485,7 @@ class MarsProfileReport(_ReportQuery):
         >>> hasattr(report.show_trend("missing", features="age"), "to_html")
         True
         """
-        # 路由逻辑：查找指标属于哪个表
+        # 先确定指标所属的表，再复用公共查询的筛选、排序和投影。
         source_type = self._metric_index.get(metric)
         if source_type is None:
             # 提供可用指标的快速提示，方便交互式探索。
@@ -483,18 +497,18 @@ class MarsProfileReport(_ReportQuery):
         vmax: float | None
         if source_type == "dq":
             # DQ 默认配置
-            cmap = "RdYlGn_r"  # 红色代表高风险 (高缺失)
-            vmin, vmax = 0, 1  # 率通常在 0~1 之间
+            cmap = "RdYlGn_r"  # 比例越高，颜色越接近红色。
+            vmin, vmax = 0, 1  # 数据质量比例使用 0～1 的固定色阶。
 
         else: # 统计及比较表沿用各自的原生结果。
             # 统计指标默认配置
-            cmap = "Blues"     # 蓝色代表数值高低 (中性)
+            cmap = "Blues"     # 颜色深浅只表示数值大小。
             vmin, vmax = None, None
 
         # 特殊指标覆盖配置
         if metric == "psi":
-            cmap = "RdYlGn_r" # PSI 高了是坏事
-            vmin, vmax = 0.0, 0.5 # 锚定阈值
+            cmap = "RdYlGn_r" # PSI 越高，颜色越接近红色。
+            vmin, vmax = 0.0, 0.5 # 固定色阶便于比较不同切片。
 
         prefix = {"dq": "dq", "stat": "stats", "comparison": "comparison"}[source_type]
         # 按原始表 schema 选择默认排序，显式请求仍由公共查询校验。

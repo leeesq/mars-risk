@@ -51,8 +51,8 @@ class MarsScorecard:
     """
     评分卡结果对象。
 
-    该对象封装了由已拟合分箱器和逻辑回归系数推导出的分值明细表，
-    同时保留评分卡刻度参数，便于导出 CSV、Excel 或生成部署 SQL。
+    保存已拟合分箱器和逻辑回归系数对应的分箱分值，以及评分刻度参数。
+    可导出 CSV、Excel，或生成评分 SQL。
 
     本对象属于 Experimental Scoring API；生产使用应固定 MARS 版本并验证评分映射和生成 SQL。
 
@@ -121,9 +121,10 @@ class MarsScorecard:
         Parameters
         ----------
         round_decimals : int
-            分值保留的小数位数。为 ``0`` 时，分箱分值列会转为整数。
+            分值保留的小数位数，默认 0；为 0 时，分箱分值列会转为整数。
         rebalance : bool
-            是否把四舍五入产生的总分漂移回补到基础分。
+            是否将所有明细行分值的舍入差合计回补到基础分，默认 ``True``。
+            回补基于整张分值表的行和，不按单个样本实际命中的分箱计算。
 
         Returns
         -------
@@ -133,7 +134,7 @@ class MarsScorecard:
         Raises
         ------
         ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+            分值表没有 ``points`` 列，或小数位数、分值无法转换为所需数值类型时抛出。
 
         Examples
         --------
@@ -367,18 +368,24 @@ class MarsScorecard:
         Parameters
         ----------
         features : List[str] | None
-            需要生成 SQL 的特征列表。默认为全部系数特征。
+            需要生成 SQL 的特征列表，None 或空列表使用全部系数特征。
+            不在系数字典中的特征会跳过。
         table_prefix : str
             SQL 中引用特征列时使用的表别名前缀。传空字符串表示不加前缀。
         score_name : str
             最终总分字段名称。
         include_base_points : bool
-            是否在总分表达式中包含基础分。
+            是否在总分表达式中加入基础分，默认 ``True``；不影响各特征的分值表达式。
 
         Returns
         -------
         str
             可直接嵌入 ``SELECT`` 语句的 SQL 片段。若没有任何有效特征，则返回空字符串。
+
+        Notes
+        -----
+        缺失条件仅生成 ``IS NULL``，不会为 ``binner.missing_values`` 中的业务缺失码
+        单独生成条件。使用业务缺失码时，需核对 SQL 与 Python 分箱的处理是否一致。
 
         Examples
         --------
@@ -434,17 +441,18 @@ def build_scorecard(
     Parameters
     ----------
     binner : MarsBinnerBase
-        已拟合的分箱器，且能够提供分箱映射与 WOE 信息。
+        已拟合的分箱器。缺少分箱映射或 WOE 时，尝试用缓存的拟合数据补齐；
+        无可用缓存时抛出 ValueError。
     coefficients : Dict[str, float]
         特征系数字典，键为特征名，值为对应逻辑回归系数。
     intercept : float
         逻辑回归截距项。
     pdo : float
-        Points to Double the Odds 参数，必须为正数。
+        好坏赔率翻倍时增加的分数（Points to Double the Odds），必须为正数。
     base_score : float
         评分卡基准分数。
     base_odds : float
-        基准赔率，必须为正数。
+        ``base_score`` 对应的好坏赔率，必须为正数，用于计算评分偏移量。
 
     Returns
     -------

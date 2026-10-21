@@ -1,4 +1,4 @@
-"""MARS 建模全链路 Pipeline 主类。"""
+"""串联特征筛选、WOE 转换和建模的 Pipeline。"""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ class MarsModelingPipeline:
     """
     串联特征筛选、可选 WOE 分箱和 Modeling 建模的高层 Pipeline 编排器。
 
-    Pipeline 面向风控建模宽表场景，默认保持树模型链路简单：先筛选特征，再进入建模。
-    LR 或评分卡链路可以显式加入 ``MarsWOEBinningStep``，把原始特征转换为 ``*_woe`` 后再筛选
-    或建模。该类不是 sklearn ``Pipeline`` 的严格子类，但保留熟悉的 ``fit``、``transform`` 和
-    ``predict`` 调用方式。
+    Pipeline 按 ``steps`` 的顺序处理风控建模宽表。
+    树模型通常先筛选特征，再建模。LR 或评分卡可加入 ``MarsWOEBinningStep``，
+    将原始特征转换为 ``*_woe`` 后再筛选或建模。
+    本类提供 ``fit``、``transform`` 和 ``predict``，不继承 sklearn ``Pipeline``。
 
     Notes
     -----
@@ -157,7 +157,8 @@ class MarsModelingPipeline:
         Returns
         -------
         pandas.DataFrame or polars.DataFrame
-            保留原始上下文列，并追加已拟合 WOE 特征后的样本。返回类型尽量与输入一致。
+            保留工作表中的原始列，并按配置追加 WOE 特征。筛选步骤只更新后续使用的特征列表，
+            不从工作表删列；建模步骤不参与转换。返回类型与输入一致。
         """
         self._check_is_fitted()
         working_df = to_polars_frame(df)
@@ -193,9 +194,10 @@ class MarsModelingPipeline:
         df : FrameLike
             待打分样本。
         pred_col : str
-            预测分列名。
+            追加或覆盖的预测分列名，默认 ``"pred_score"``。
         inplace : bool
-            当输入为 Pandas DataFrame 时，是否允许在输入对象上原地写入预测列。
+            是否允许预测器在转换后的 Pandas 工作表上写入预测列，默认 ``False``。
+            Pipeline 会先复制并转换输入，因此不会直接修改调用方的原始表。
 
         Returns
         -------

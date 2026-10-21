@@ -92,7 +92,7 @@ def calculate_f1(
     y_pred : np.ndarray | pd.Series
         预测为正类的概率或风险分。
     threshold : float
-        将概率转为二分类预测的阈值。
+        正类预测阈值，默认 0.5。分数先经 ``as_probability`` 处理，大于等于阈值时预测为正类。
 
     Returns
     -------
@@ -123,14 +123,15 @@ def normalize_metric_directions(
     metric_directions: Mapping[str, MetricDirection] | None = None,
 ) -> dict[str, MetricDirection]:
     """
-    归一化指标方向配置。
+    统一指标名和优化方向的大小写，并补齐未指定的方向。
 
     Parameters
     ----------
     metric_names : Sequence[str]
         本次调参需要计算的指标名。
     metric_directions : Mapping[str, MetricDirection] | None
-        用户显式指定的指标优化方向。
+        以小写指标名为键的方向覆盖，默认不覆盖。
+        未指定的指标使用项目默认方向，未登记的自定义指标默认 ``"maximize"``。
 
     Returns
     -------
@@ -215,7 +216,8 @@ def evaluate_metric(
     y_pred : np.ndarray | pd.Series
         预测为正类的概率或风险分。
     metric_params : Mapping[str, Any] | None
-        指标参数，例如 ``f1_threshold``。
+        指标参数，默认使用内置配置。当前 F1 读取 ``f1_threshold``，默认 0.5；
+        AUC、KS 和自定义指标不读取此字典。
     custom_metrics : Mapping[str, MetricCallable] | None
         用户自定义指标函数字典。
 
@@ -314,7 +316,8 @@ def as_probability(preds: Any) -> np.ndarray:
     Returns
     -------
     numpy.ndarray
-        一维正类概率数组。
+        转为 float 并展平的一维数组。任一非缺失值超出 [0, 1] 时，对整组值应用 sigmoid；
+        全部值都在 [0, 1] 内时原样返回数值，不重新校准，也不从多列中选择正类列。
 
     Examples
     --------
@@ -394,8 +397,8 @@ class CatBoostKSMetric:
 
     Notes
     -----
-    CatBoost 的 ``evaluate`` 返回值第一项参与最优迭代选择，第二项为权重。这里不做
-    weighted KS，只保证多维或分块输入会被安全一维化。
+    ``evaluate`` 取 ``approxes[0]`` 并展平为一维数组，返回 0～1 范围的 KS 和固定权重 1.0。
+    ``get_final_error`` 将 KS 恢复为百分制；样本权重不参与 KS 计算。
 
     Examples
     --------
@@ -431,12 +434,12 @@ class CatBoostKSMetric:
         target : Any
             真实标签。
         weight : Any
-            样本权重，本轮暂不使用。
+            CatBoost 传入的样本权重，当前实现不使用，不影响 KS 或返回权重。
 
         Returns
         -------
         tuple of float, float
-            0-1 量纲 KS 与固定权重。
+            0～1 范围的 KS 与固定权重 1.0。
 
         Raises
         ------
@@ -463,12 +466,12 @@ class CatBoostKSMetric:
 
     def get_final_error(self, error: float, weight: float) -> float:
         """
-        将 CatBoost 内部 0-1 量纲结果恢复为百分制 KS。
+        将 CatBoost 内部 0～1 范围的结果恢复为百分制 KS。
 
         Parameters
         ----------
         error : float
-            CatBoost 内部传入的 0-1 量纲指标值。
+            CatBoost 内部传入的 0～1 范围指标值。
         weight : float
             CatBoost 传入的指标权重，本实现不使用。
 

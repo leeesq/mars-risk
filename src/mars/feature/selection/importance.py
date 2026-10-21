@@ -1,4 +1,4 @@
-"""MARS 特征筛选器实现模块。"""
+"""模型重要性与 SHAP 特征筛选。"""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ class MarsImportanceSelector(_MarsXYSelector):
     """
     基于模型重要性或 SHAP 的特征筛选器。
 
-    该选择器支持直接消费已有 importance table，也可以训练 sklearn/树模型
-    读取 ``feature_importances_`` 或 ``coef_``。当 ``method="shap"`` 时，
-    选择器计算 mean absolute SHAP value 并统一输出 MARS importance table。
+    可读取已有重要性表，也可训练模型后读取 ``feature_importances_`` 或绝对系数。
+    ``method="shap"`` 使用平均绝对 SHAP 值。独热编码列的重要性会求和到原始特征，
+    最终统一输出 ``importance_table_``。
 
     Attributes
     ----------
@@ -57,26 +57,33 @@ class MarsImportanceSelector(_MarsXYSelector):
         Parameters
         ----------
         estimator : Union[str, Any]
-            底层模型类型或实例。
+            模型名称或可拟合的模型实例，默认为 ``"lgbm"``。名称支持
+            ``"rf"``、``"extra_trees"``、``"lr"``、``"lgbm"``、``"xgb"`` 和 ``"cat"``。
+            传入实例时先复制再训练；提供外部重要性表时不训练模型。
         estimator_params : dict | None
-            底层模型初始化参数。
+            按模型名称创建实例时使用的参数，默认空字典；传入模型实例时不应用。
         method : Literal['importance', 'shap']
-            重要性筛选策略。
+            重要性计算方式。默认 ``"importance"`` 读取模型重要性或绝对系数；
+            ``"shap"`` 训练模型后对最多前 300 行计算平均绝对 SHAP 值。
         selection_mode : Literal['top_k', 'threshold', 'percentile']
-            特征保留模式。
+            默认 ``"top_k"`` 按重要性保留前 K 个；``"threshold"`` 保留重要性
+            大于等于阈值的特征；``"percentile"`` 保留排名靠前的指定比例。
         selection_threshold : Union[int, float, str]
-            对应筛选模式下的阈值。
+            ``top_k`` 时为保留数量，默认 50；``threshold`` 时为重要性下限；
+            ``percentile`` 时为保留比例，支持 0～1 的比例、1 以上的百分数或 ``"50%"``。
+            比例会限制在 0～1 内，保留数量向上取整。
         cv : int
-            交叉验证折数。
+            保留的交叉验证配置，默认为 3；当前实现仅保存该值，不执行交叉验证。
         n_jobs : int
-            并行任务数量。
+            按名称创建且支持 ``n_jobs`` 的模型所用任务数，默认为 ``-1``；
+            显式 ``estimator_params`` 中的配置优先。
         random_state : int
             随机种子。
 
         Raises
         ------
         ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+            ``method`` 或 ``selection_mode`` 不受支持时抛出。
 
         """
         super().__init__()
@@ -362,13 +369,15 @@ class MarsImportanceSelector(_MarsXYSelector):
         Parameters
         ----------
         X : pl.DataFrame | pd.DataFrame
-            输入特征表。若未显式传入 ``y``，则必须包含目标列。
+            候选特征表。使用外部重要性表时可省略标签；需要训练模型时，
+            目标标签由 ``y`` 单独传入。
         y : Any | None
-            二分类目标数组。
+            模型训练标签，按位置与 ``X`` 对应。提供 ``importance_table`` 时可省略。
         features : Sequence[str] | None
             本次参与筛选的特征列；不传时使用输入表中的全部候选列。
         importance_table : pd.DataFrame | pl.DataFrame | None
-            预先计算好的重要性表，需包含 ``feature`` 与 ``importance`` 列。
+            预先计算的重要性表，至少包含 ``feature`` 和 ``importance`` 列。
+            提供后直接排序和筛选，不训练模型；候选范围外的特征会被忽略。
 
         Returns
         -------

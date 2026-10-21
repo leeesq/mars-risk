@@ -283,11 +283,11 @@ def profile_risk(
     n_jobs: int | None = None,
 ) -> MarsRiskProfile:
     """
-    运行高层分箱风险评估工作流。
+    自动拟合分箱，并生成一个或多个目标的风险评估结果。
 
-    `profile_risk` 统一编排分箱器构建、分箱评估、多目标合并和结果对象组装，
-    最终返回 `MarsRiskProfile`。函数本身不承担绘图副作用；如需查看趋势图，
-    请直接调用 `report.plot_risk_trends(...)`。
+    返回的 `MarsRiskProfile` 包含报告和已拟合分箱器。多目标共享同一套分箱边界，
+    汇总表和明细表分别保存各目标的结果。调用后不会自动绘图，
+    可用 `report.plot_risk_trends(...)` 查看趋势。
 
     Parameters
     ----------
@@ -300,49 +300,55 @@ def profile_risk(
         本次参与评估的特征列。传入 `None` 时一次性排除全部目标列以及已声明的
         分组、时间、权重、金额列，再将同一特征集用于所有目标和 raw KS。
     feature_data_source : dict[str, list[str]] | None
-        特征来源映射，用于在报告中保留数据源维度。
+        数据源名称到特征列表的映射，用于在报告中标明特征来源。
     feature_metadata : FeatureMetadata | None
         完整业务字典或含 feature 列的 Pandas/Polars 表；英文标识保持不变。
     business_context : dict[str, Any] | None
         可选 JSON 业务上下文，多标签定义按 labels 的目标标识登记。
     group_col : str | None
-        已存在的分组列名。
+        已存在的趋势分组列。与时间列同时提供时，优先使用此列分组。
     time_col : str | None
-        原始日期列名。
+        原始日期列。未指定 `group_col` 时，用于生成趋势分组；
+        同时用于日期范围和按日缺失率统计。
     time_grain : str | None
         时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
+        须同时提供 `time_col`，默认按月聚合；已有 `group_col` 时不改变分组。
     weights_col : str | None
-        样本权重列名。
+        样本权重列。提供后按权重计算分布和风险指标；默认按样本数计算。
     amount_col : str | None
-        金额列名。
+        金额列。提供后额外计算金额统计和金额坏率；默认不计算金额指标。
     binning_type : Literal["native", "optimal", "lite_opt"]
-        自动构建分箱器时使用的分箱器类型。
+        自动拟合使用的分箱引擎，默认 `"native"`。
+        无标签时，监督分箱会回退为 native 等频分箱。
     method : Literal["quantile", "uniform", "cart"] | None
-        高层公开的分箱方法参数。`native` 下映射到底层 `method`，
+        数值分箱方法。`native` 下映射到底层 `method`，
         `optimal` 和 `lite_opt` 下映射到底层 `prebinning_method`。
-        传入 `None` 时沿用高层默认解析逻辑。
+        传入 `None` 时使用引擎默认值：native 和 lite_opt 为等频分箱，optimal 为 CART。
     n_bins : int | None
-        高层公开的目标分箱数。传入后映射到底层 `n_bins`。
+        正常分箱数量上限，不含缺失值箱和特殊值箱。`None` 使用引擎默认值 10，
+        实际箱数可能因重复切点、合并或约束而减少。
     min_bin_size : float | int | None
-        高层公开的最小分箱样本约束。传入后映射到底层 `min_bin_size`。
+        拟合时的最小箱样本约束，`None` 使用引擎默认值 0.05。
+        native CART 支持整数人数或浮点比例；其他引擎使用比例。
+        native 无监督分箱仅在 `merge_small_bins=True` 时据此合并小箱。
     monotonic_trend : Literal["ascending", "descending", "peak", "valley", "auto", "auto_asc_desc"] | None
-        高层公开的趋势约束参数。仅对 `optimal` 和 `lite_opt` 生效；当
+        分箱坏率的趋势约束。仅对 `optimal` 和 `lite_opt` 生效；当
         `binning_type="native"` 时会发出 `warnings.warn(...)` 提示并忽略。
         当通过 `profile_risk` 使用 `optimal` 或 `lite_opt` 且未显式传值时，
         高层默认补成 `"auto_asc_desc"`。这与直接构造 `MarsLiteOptBinner()`
         时底层默认的 `"auto"` 不同。
     missing_values : list[Any] | None
-        显式透传给分箱器的 `missing_values`。
+        除 null 和 NaN 外，额外视为缺失的取值。`None` 使用分箱器默认缺失处理。
     special_values : list[Any] | None
-        显式透传给分箱器的 `special_values`。
+        需要单独分箱的特殊值。默认无额外特殊值，与缺失值箱分开保存。
     psi_include_missing : bool
-        计算 PSI 时是否纳入缺失值箱。
+        是否将缺失值箱计入 PSI，默认排除；不改变其他指标的缺失处理。
     psi_include_special : bool
-        计算 PSI 时是否纳入特殊值箱。
+        是否将特殊值箱计入 PSI，默认排除；不改变特殊值分箱。
     binner_params : dict[str, Any] | None
-        单层高级分箱器参数入口。同一份字典可以同时包含多种分箱器参数；
+        分箱引擎的额外参数，使用单层字典。同一份字典可以包含多种引擎的参数；
         运行时只读取当前 `binning_type` 适用的键，其他已识别但不适用的键会被忽略。
-        该参数不得包含任何已公开的高频参数，也不得包含底层别名 `prebinning_method`。
+        已有对应公开参数的配置必须直接传入函数；此字典也不接受底层别名 `prebinning_method`。
 
         当前允许的高级参数如下：
 
@@ -352,7 +358,8 @@ def profile_risk(
           `min_cat_fraction`, `cart_params`, `join_threshold`
         - `lite_opt`: `n_prebins`, `join_threshold`
     benchmark_df : pl.DataFrame | pd.DataFrame | None
-        基准期样本。未传显式 ``binner`` 时用于拟合分箱规则和构造 PSI 基准；
+        用于拟合分箱规则并构造 PSI 基准的样本。未提供时，在当前 `df` 上拟合，
+        并以最小分组作为 PSI 基准。基准样本不计入当前评估统计。
         监督分箱时必须包含当前首个 target 的至少两个有效类别。多 target 场景只用
         首个 target 拟合一次，后续 target 复用同一分箱规则。
     feature_start_aware_reference : bool
@@ -370,7 +377,9 @@ def profile_risk(
         此参数会被忽略并记录 warning。该参数不改变分箱、IV、KS、AUC、Lift、
         数据质量或 WOE 相关性口径。实际识别结果记录在返回报告的 `report_meta` 中。
     risk_corr_baseline : RiskCorrBaseline
-        RC 的基准选择方式。
+        各正常箱坏率相关性（RC）的基准。默认 `"total"` 使用当前全量分箱坏率；
+        `"first_group"` 使用最小分组；`"benchmark"` 使用显式基准或有效的上线首期参考。
+        选择 `"benchmark"` 却没有可用参考时会报错。
     ordered_metric_sort_by : OrderedMetricSortBy
         KS/AUC 的排序口径。默认 `"woe"` 适合普通特征预测力评估；
         评估概率、分数或强有序变量时建议传 `"bin_index"`。
@@ -384,9 +393,10 @@ def profile_risk(
         正整数。raw 模式允许的最多数值特征数，默认 50；超限在分箱和排序前报错。
         类别特征不占额度，binned 模式不执行数量限制。
     batch_size : int
-        批量评估时的特征批大小。
+        每批评估的特征数，默认 100，必须为正整数。控制中间表规模，不改变指标口径。
     n_jobs : int | None
-        显式透传给分箱器的 `n_jobs`。
+        分箱器的并行任务数。`None` 使用引擎默认值 `-1`，
+        即 CPU 核心数减 1，至少为 1；正整数指定任务数。
 
     Returns
     -------
@@ -401,7 +411,7 @@ def profile_risk(
     Notes
     -----
     `report.report_meta["feature_start_aware_reference"]` 表示本次是否实际构造出
-    feature-start reference，而不是简单回显调用参数。已识别的特征及上线日期分别
+    按特征上线日构造的参考。已识别的特征及上线日期分别
     保存在 `feature_start_reference_features` 和 `feature_start_reference_dates` 中。
 
     Examples

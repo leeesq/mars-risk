@@ -109,6 +109,7 @@ def metric_expr(context: ProfileRunContext, options: ProfileComputeOptions, col:
     if not is_num:
         return pl.lit(None, dtype=pl.Float64)
 
+    # 数据质量比例保留全量分母；连续统计才排除缺失码和特殊值。
     keep_mask = raw_col.is_not_null()
     if col_dtype in [pl.Float32, pl.Float64]:
         keep_mask &= raw_col.is_not_nan()
@@ -155,6 +156,7 @@ def overview_exprs(
         zeros_expr = (pl.col(col) == 0).sum() if is_numeric_feature(context, col) else pl.lit(0, dtype=pl.UInt32)
         exprs.append((zeros_expr / total_len).alias("zeros_rate"))
     if "unique" in selection.dq_metrics:
+        # 超过百万行时仅 overview 改用近似去重，分组趋势仍使用精确去重。
         unique_expr = pl.col(col).approx_n_unique() if context.df.height > 1_000_000 else pl.col(col).n_unique()
         exprs.append((unique_expr / total_len).alias("unique_rate"))
     if "mode" in selection.dq_metrics:

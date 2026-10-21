@@ -41,7 +41,7 @@ SAFE_REPLACEMENTS: Dict[str, str] = {
 }
 def _sanitize_console_text(text: str) -> str:
     """
-    清洗控制台输出文本中的高风险字符。
+    替换控制台图形符号，并处理当前编码无法表示的字符。
 
     Parameters
     ----------
@@ -139,16 +139,15 @@ if HAS_COLORLOG:
 
 def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     """
-    获取 MARS 框架专属的全局 Logger 实例（单例模式）。
+    获取名为 ``mars`` 的全局日志记录器。
 
-    该函数负责创建和配置 logger，包括设置输出格式、颜色（如果可用）以及
-    防止在交互式环境（如 Jupyter Notebook）中出现重复日志的问题。
+    首次配置时添加标准输出处理器；已存在可用处理器时直接返回，避免重复输出。
 
     Parameters
     ----------
     level : int
-        日志的初始过滤级别 (例如 logging.INFO, logging.DEBUG)。
-        默认值为 logging.INFO。
+        首次配置时的日志过滤级别，默认 ``logging.INFO``。
+        已有可用处理器时不修改级别；运行中修改级别请使用 ``set_log_level``。
 
     Returns
     -------
@@ -157,11 +156,9 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
 
     Notes
     -----
-    1. **单例模式**: 如果该名称的 Logger 已经存在且包含处理器，则直接返回，不重复添加 Handler。
-    2. **独立性**: 设置 `propagate=False` 防止日志向上传播到根记录器，避免被其他库的配置污染。
-    3. **样式**:
-       - 彩色模式: [MARS] 时间 - 级别 - 消息 (不同级别不同颜色)
-       - 普通模式: [MARS] 时间 - 级别 - 消息
+    使用 ``hasHandlers()`` 检查可用处理器，也会检查允许传播到的父级处理器。
+    新建配置使用 ``propagate=False``，防止根日志记录器重复输出。
+    日志格式为 ``[MARS] 时间 - 级别 - 消息``，安装 colorlog 时按级别着色。
 
     Examples
     --------
@@ -175,8 +172,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     # ---------------------------------------------------------
     # 1. 幂等性检查 (Idempotency Check)
     # ---------------------------------------------------------
-    # 如果 logger 已经有了处理器 (handlers)，说明已经被初始化过。
-    # 直接返回以防止重复添加 Handler，这在 Jupyter Notebook 重复运行单元格时尤为重要。
+    # hasHandlers() 也检查可传播到的父级处理器；已有可用配置时不重复添加。
     if logger.hasHandlers():
         return logger
 
@@ -203,7 +199,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
             'CRITICAL': 'bold_red',  # 严重：加粗红
         }
 
-        # 使用 colorlog 进行带颜色的格式化
+        # colorlog 使用级别颜色包装日志文本。
         # %(log_color)s ... 切换颜色
         # %(reset)s ... 重置颜色
         formatter = SafeColoredFormatter(
@@ -230,8 +226,7 @@ def get_mars_logger(level: int = logging.INFO) -> logging.Logger:
     # 4. 传播控制 (Propagation Control)
     # ---------------------------------------------------------
     # 禁止日志向上传播到 root logger。
-    # 这样可以防止 MARS 的日志被其他库（如 TensorFlow, PyTorch）的默认配置再次打印，
-    # 确保日志输出的纯净性。
+    # 防止根日志记录器再次输出同一条消息。
     logger.propagate = False
 
     return logger
@@ -248,6 +243,7 @@ def set_log_level(level: Union[str, int]) -> None:
     level : Union[str, int]
         目标日志级别。可以是 ``logging`` 常量，也可以是字符串形式的
         级别名称，例如 ``"DEBUG"``、``"info"`` 或 ``"WARNING"``。
+        字符串忽略大小写，未知名称按 ``INFO`` 处理；同时更新现有处理器的级别。
 
     Returns
     -------

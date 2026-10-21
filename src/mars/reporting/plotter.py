@@ -34,7 +34,7 @@ from matplotlib.transforms import Bbox  # noqa: E402
 
 
 class _RiskTrendSummaryBox(FancyBboxPatch):
-    """同一背景包围新增中文和原说明，并跟随导出 DPI 与 tight 裁剪重测边界。"""
+    """用同一背景包围中文名和统计说明，并按导出 DPI 与 tight 裁剪重测边界。"""
 
     def __init__(self, fig: plt.Figure, summary: Text, name: Text) -> None:
         self._texts = (summary, name)
@@ -47,7 +47,7 @@ class _RiskTrendSummaryBox(FancyBboxPatch):
         )
 
     def _update_bounds(self, renderer: RendererBase | None) -> None:
-        """使用本次 renderer 的真实字形边界，避免初次 draw 的像素度量污染高清导出。"""
+        """按本次 renderer 测量字形，避免高分辨率导出沿用首次绘制的像素边界。"""
         content = Bbox.union([text.get_window_extent(renderer) for text in self._texts])
         bounds = content.transformed(self.get_transform().inverted())
         self.set_bounds(bounds.x0, bounds.y0, bounds.width, bounds.height)
@@ -83,7 +83,7 @@ class _RiskTrendFigure(Figure):
 
 
 class _RiskTrendHeader(LayoutEngine):
-    """从冻结的旧图基准重排新增行；导出预绘使用目标后端，tight 终绘保留该布局。"""
+    """以初始图形尺寸排列中文名和日期；导出时按目标后端重测，并保留 tight 裁剪布局。"""
 
     _adjust_compatible = True
     _colorbar_gridspec = False
@@ -114,7 +114,7 @@ class _RiskTrendHeader(LayoutEngine):
             fig.dpi = dpi
 
     def _layout(self, fig: Figure, renderer: RendererBase) -> None:
-        """所有新增高度和净距均从未扩展基准计算，保留轴的英寸尺寸和原文字属性。"""
+        """从初始图形尺寸计算文字所需高度与间距，保留坐标轴的英寸尺寸和文字属性。"""
         width, height = self._size
         summary = self._summary
         summary_x, summary_y = self._summary_position
@@ -179,17 +179,17 @@ class _RiskTrendHeader(LayoutEngine):
 
 class MarsPlotter:
     """
-    专注于风控特征效能与稳定性分析的可视化工具。
+    将分箱评估明细绘制为风险趋势图或嵌入式 HTML。
 
-    该工具统一处理分箱明细表到 Matplotlib 图形和嵌入式 HTML 的转换，
-    适用于 Notebook 交互展示和 HTML 报告生成。
+    适用于 Notebook 展示和 HTML 报告生成。绘图读取已计算的明细，
+    不拟合分箱规则；有标签时展示风险指标，无标签时展示分布与 PSI。
 
     Attributes
     ----------
     UNIT_WIDTH : int
-        单个子图的基准宽度。
+        单个子图的基准宽度，单位为英寸。
     UNIT_HEIGHT : float
-        单个子图的基准高度。
+        单个子图的基准高度，单位为英寸。
 
     Examples
     --------
@@ -198,8 +198,8 @@ class MarsPlotter:
     True
     """
 
-    UNIT_WIDTH = 3  # 单个子图的基准宽度
-    UNIT_HEIGHT = 2.75 # 单个子图的基准高度
+    UNIT_WIDTH = 3  # 单个子图的基准宽度，单位为英寸。
+    UNIT_HEIGHT = 2.75 # 单个子图的基准高度，单位为英寸。
 
     @staticmethod
     def _as_pandas_detail_frame(df_detail: Union[pd.DataFrame, pl.DataFrame]) -> pd.DataFrame:
@@ -252,7 +252,7 @@ class MarsPlotter:
 
     @staticmethod
     def _summarize_binning_metrics(df_detail: pd.DataFrame) -> tuple[float, float, float]:
-        """按单个面板口径汇总 IV、KS 和 AUC。"""
+        """汇总面板 IV 与 AUC，KS 优先取已有 ks 的最大值，否则取 ks_bin。"""
         iv_value = float(df_detail["iv_bin"].sum()) if "iv_bin" in df_detail.columns else 0.0
         ks_column = "ks" if "ks" in df_detail.columns else "ks_bin"
         ks_value = float(df_detail[ks_column].max()) if ks_column in df_detail.columns else 0.0
@@ -266,7 +266,7 @@ class MarsPlotter:
         panel_df: pd.DataFrame,
         reference_df: pd.DataFrame | None,
     ) -> float:
-        """按参考坏率表计算单个面板的 RC。"""
+        """按正常箱与参考箱坏率计算 Spearman RC；参考不足或无法定义时沿用 1.0。"""
         if reference_df is None or reference_df.empty:
             return 1.0
 
@@ -417,15 +417,17 @@ class MarsPlotter:
         Parameters
         ----------
         df_detail : Union[pd.DataFrame, pl.DataFrame]
-            分箱评估明细表。
+            已计算的分箱评估明细表，需含特征、分组、箱编号、箱标签和样本数。
+            有标签数据还需 ``observed_count`` 与 ``bad``，以区分已表现样本和全样本。
         feature : str
-            需要绘制的特征名。
+            需要绘制的英文特征 ID，按 ``feature`` 列精确匹配。
         group_col : str
-            趋势分组列名。
+            分组列名，默认 ``"month"``；每组生成一个面板，不作为日期范围推断依据。
         target_name : str
-            目标变量展示名称。
+            图中显示的目标名称，默认 ``"Target"``；只控制文字，不筛选目标行。
         risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
-            当前特征绘图使用的 RC 参考坏率表；传入后图中 RC 与报告口径保持一致。
+            RC 参考坏率表，包含 ``feature``、``bin_index`` 和 ``base_br``。
+            按特征与正常箱匹配；默认不提供参考，图中 RC 沿用 1.0 的回退值。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
             `both` 同时展示两条风险线。
@@ -433,9 +435,11 @@ class MarsPlotter:
             输出 PNG 的渲染分辨率。为 ``None`` 时使用默认值 ``150``。
 
         time_range : tuple[str, str] | None
-            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+            本次数据有效 ``time_col`` 的最小和最大日期，用于图中日期说明。
+            必须显式提供合法范围；默认 None 会抛出 ``ValueError``，不从分组名推测日期。
         include_total : bool
-            是否显示 Total 面板；不改变全局统计和已解析的 RC 参考。
+            是否显示 Total 面板，默认显示；不改变全局统计、共享坐标范围或 RC 参考。
+            关闭后没有其他面板时抛出 ``ValueError``。
 
         Returns
         -------
@@ -995,36 +999,37 @@ class MarsPlotter:
         include_total: bool = True,
     ) -> None:
         """
-        绘制特征分箱风险趋势图 (支持有标签/无标签模式自适应)。
+        在 Notebook 中展示单特征的分箱风险趋势图。
 
-        该图表集成了特征的：
-        - 样本分布 (Counts)
-        - 坏率走势 (Bad Rate)
-        - 跨期一致性 (RiskCorr)
-        - 统计指标 (IV, KS, AUC, PSI)
+        图中展示样本分布、坏率、RC 及 IV、KS、AUC、PSI。
+        无标签时只展示样本分布与 PSI；有标签但未表现的分组保留分布，风险指标显示未定义。
 
         Parameters
         ----------
         df_detail : pd.DataFrame | pl.DataFrame
-            评估明细数据表，需包含 'feature', 'bin_index', 'count' 等列。
+            已计算的分箱明细，需含 ``feature``、分组列、``bin_index``、``bin_label`` 和 ``count``。
+            有标签数据还需 ``observed_count`` 与 ``bad``，以区分已表现样本和全样本。
         feature : str
-            目标特征名。
+            需要绘制的英文特征 ID，按 ``feature`` 列精确匹配。
         group_col : str
-            分组维度列名（如月份、客群）。
+            分组列名，默认 ``"month"``；每组生成一个面板，不作为日期范围推断依据。
         target_name : str
-            目标变量名称，用于标题显示。
+            图中显示的目标名称，默认 ``"Target"``；只控制文字，不筛选目标行。
         risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
-            当前特征绘图使用的 RC 参考坏率表；传入后图中 RC 与报告口径保持一致。
+            RC 参考坏率表，包含 ``feature``、``bin_index`` 和 ``base_br``。
+            按特征与正常箱匹配；默认不提供参考，图中 RC 沿用 1.0 的回退值。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
             `both` 同时展示两条风险线。
         dpi : int | None
-            绘图分辨率。
+            展示用 PNG 的分辨率，默认 150；None 也使用 150。
 
         time_range : tuple[str, str] | None
-            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+            本次数据有效 ``time_col`` 的最小和最大日期，用于图中日期说明。
+            必须显式提供合法范围；默认 None 会抛出 ``ValueError``，不从分组名推测日期。
         include_total : bool
-            是否显示 Total 面板；不改变全局统计和已解析的 RC 参考。
+            是否显示 Total 面板，默认显示；不改变全局统计、共享坐标范围或 RC 参考。
+            关闭后没有其他面板时抛出 ``ValueError``。
 
         Returns
         -------
@@ -1081,37 +1086,41 @@ class MarsPlotter:
         """
         批量绘制多个特征的分箱风险趋势图。
 
-        支持按指定指标（IV/KS/AUC）对特征进行排序展示。
+        读取已有明细，按指定指标（IV、KS 或 AUC）排列特征后逐个展示。
 
         Parameters
         ----------
         df_detail : pd.DataFrame | pl.DataFrame
-            评估明细数据表。
+            已计算的分箱评估明细表，字段要求同 ``plot_feature_binning_risk_trend``。
         features : list[str]
-            待绘图的特征名称列表。
+            待绘图的英文特征 ID 列表，绘制顺序由 ``sort_by`` 决定。
         group_col : str
-            分组维度列。
+            分组列名，默认 ``"month"``；用于分面及选择排序所需的 Total 行。
         target_name : str
-            目标名。
+            图中显示的目标名称，默认 ``"Target"``；只控制文字，不筛选目标行。
         target_key : str | None
-            批量绘图时当前目标列的标识；仅用于日志与标题上下文。
+            保留的目标标识参数，默认 None；当前实现不读取此值，也不据此筛选明细。
         dpi : int
-            图像分辨率。
+            展示用 PNG 的分辨率，默认 150。
         show_risk : Literal["count", "amt", "both"]
             风险线展示模式。`count` 仅展示件数坏率，`amt` 仅展示金额坏率，
             `both` 同时展示两条风险线。
         sort_by : str
-            排序依据指标，可选 'iv', 'ks', 'auc'。
+            特征排序指标，默认 ``"iv"``，支持 ``"iv"``、``"ks"`` 和 ``"auc"``。
+            优先使用 Total 组；没有 Total 时使用全部明细。空字符串或其他值保留传入顺序。
         ascending : bool
-            是否升序排列（默认降序，即最重要的特征排在最前面）。
+            是否按排序指标升序排列，默认降序；数值大小不直接表示业务重要性。
         risk_corr_reference_df : pd.DataFrame | pl.DataFrame | None
-            批量绘图时共用的 RC 参考坏率表。
+            各特征共用的 RC 参考坏率表，包含 ``feature``、``bin_index`` 和 ``base_br``。
+            默认不提供参考，图中 RC 沿用 1.0 的回退值。
         risk_corr_baseline : RiskCorrBaseline
-            批量绘图阶段默认生效的 RC 基准。
+            保留的基准参数，默认 ``"total"``；当前实现不读取此值。
+            图中 RC 参考由 ``risk_corr_reference_df`` 决定。
         time_range : tuple[str, str] | None
-            由 ``time_col`` 解析出的原始时间最小值和最大值；缺失时抛出 ``ValueError``。
+            本次数据有效 ``time_col`` 的最小和最大日期，所有特征共用此说明。
+            必须显式提供合法范围；默认 None 会抛出 ``ValueError``，不从分组名推测日期。
         include_total : bool
-            是否显示 Total 面板；不改变特征排序和全局统计。
+            是否显示 Total 面板，默认显示；不改变特征排序、全局统计或共享坐标范围。
 
         Returns
         -------

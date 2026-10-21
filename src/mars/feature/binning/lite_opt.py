@@ -75,16 +75,15 @@ class MarsLiteOptBinner(MarsBinnerBase):
     """
     轻量级启发式最优分箱器。
 
-    该分箱器面向宽表风控分析场景，先复用 ``MarsNativeBinner`` 生成细粒度预分箱，
-    再在预分箱统计表上执行趋势约束合并。它不依赖数学规划求解器，适合作为
-    ``MarsOptimalBinner`` 的高速轻量替代方案。
+    先用 ``MarsNativeBinner`` 生成预分箱，再按坏账率趋势合并相邻数值箱。
+    适合需要趋势约束、且希望省去数学规划求解的宽表分析。
 
     Attributes
     ----------
     bin_cuts_ : dict of str to list of float
         数值特征最终切点，形态为 ``[-inf, ..., inf]``。
     cat_cuts_ : dict of str to list of list
-        类别特征 Top-K 分组规则。
+        类别特征按频数保留的 Top-K 分组规则。
     fit_failures_ : dict of str to str
         拟合失败并回退的特征及原因。
     fitted_trends_ : dict of str to str
@@ -123,7 +122,8 @@ class MarsLiteOptBinner(MarsBinnerBase):
         n_bins : int
             最终正常分箱数量上限，不含缺失值箱和特殊值箱。
         min_bin_size : float
-            最终正常箱的最小全量样本占比。
+            最终正常箱占拟合表总行数的最小比例，默认为 0.05；
+            缺失值和特殊值仍计入分母。
         monotonic_trend : TrendShape
             趋势约束，支持以下取值：
 
@@ -144,7 +144,8 @@ class MarsLiteOptBinner(MarsBinnerBase):
         join_threshold : int
             高基数类别转换时切换到 Join 映射的阈值。
         n_jobs : int
-            预分箱阶段可使用的并行核心数。
+            传给原生预分箱器的并行任务数。``-1`` 使用 CPU 核心数减 1，
+            至少为 1；``1`` 使用单任务。
 
         Raises
         ------

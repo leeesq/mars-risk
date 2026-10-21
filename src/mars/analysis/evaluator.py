@@ -66,8 +66,8 @@ class MarsRiskProfile:
     单次风险画像结果。
 
     `MarsRiskProfile` 是 `MarsBinEvaluator.evaluate` 和 `profile_risk` 的统一返回对象，
-    用来把评估报告、拟合后的分箱器、本次目标列和元数据放在同一个结果容器中。
-    调用方可以直接使用 `report` 查看或导出报表，也可以复用 `binner` 对新样本做转换。
+    保存报告、分箱器、本次目标列和运行元数据。
+    可以通过 `report` 查看或导出结果，也可以复用 `binner` 转换新样本。
 
     Attributes
     ----------
@@ -91,9 +91,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
     """
     分箱效果评估器。
 
-    该评估器用于对一组特征的分箱结果计算 IV、KS、AUC、PSI、Lift、单调性、
-    分组趋势和明细分布。构造函数只保存稳定评估策略和默认分箱器配置；数据、
-    目标列、特征范围、分组列和时间聚合粒度都由每次 `evaluate` 调用传入。
+    根据特征分箱计算 IV、KS、AUC、PSI、Lift 和单调性，并生成分组趋势及分箱明细。
+    构造函数保存可复用的评估策略和默认分箱配置。
+    每次 `evaluate` 调用接收数据、目标、特征、分组和时间聚合粒度。
 
     每次 `evaluate` 都会返回新的 `MarsRiskProfile`，其中包含报告对象和本次使用的
     分箱器。评估器实例不会把上一次拟合出的分箱器作为下一次调用的隐式状态，
@@ -139,7 +139,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         binning_type : Literal['native', 'optimal', 'lite_opt']
             未显式传入分箱器时使用的默认分箱策略。
         binner_params : Dict[str, Any] | None
-            构造默认分箱器时使用的参数。
+            构造默认分箱器时使用的参数，默认使用引擎自身的默认配置。
+            与 `evaluate` 的显式 `binner` 不能同时使用。
         feature_start_aware_reference : bool
             是否默认启用按特征上线时间重锚的稳定性参考，默认为 `False`。启用后，
             `evaluate` 必须收到可解析的 `time_col`；仅有 `group_col` 时会记录 warning
@@ -154,7 +155,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
             使用上线首期参考，`"first_group"` 仍使用全局首组。该参数不影响分箱、
             预测力、数据质量或 WOE 相关性指标。
         risk_corr_baseline : RiskCorrBaseline
-            RC 的默认基准选择方式。
+            RC 的默认坏率基准。`"total"` 使用当前全量，`"first_group"` 使用最小分组；
+            `"benchmark"` 需要显式基准或有效的上线首期参考。
         ordered_metric_sort_by : OrderedMetricSortBy
             KS/AUC 的默认排序口径。`"woe"` 适合普通特征预测力评估；
             `"bin_index"` 适合概率、分数和强有序变量。
@@ -206,46 +208,49 @@ class MarsBinEvaluator(MarsBaseEstimator):
         batch_size: int = 100,
     ) -> MarsRiskProfile:
         """
-        对一次数据上下文执行分箱评估。
+        使用自动拟合或显式传入的分箱器评估本次样本。
 
         Parameters
         ----------
         df : pl.DataFrame | pd.DataFrame
             待评估样本表。
         target : str | None
-            二分类目标列名。为 `None` 或列不存在时会进入无标签模式，只计算分布类指标
-            和 PSI，不计算 IV、KS、AUC 等依赖标签的指标。
+            二分类目标列，非缺失值须为 0 或 1。为 `None`、列不存在或标签全部缺失时，
+            进入无标签模式，只计算分布指标和 PSI。仅有一个有效类别时会报错。
         features : list[str] | None
-            本次评估的特征列；不传时自动排除目标列和分组列后选择候选特征。
+            本次评估的特征列，金额列始终排除。默认排除目标、内部分组、权重和金额列；
+            建议显式传入业务特征，避免将原始日期或原始分组列纳入评估。
         group_col : str | None
-            已存在的分组列名，例如月份、客群或样本切片。
+            已存在的趋势分组列，例如月份、客群或样本切片。与时间列同时提供时，
+            优先使用此列分组。
         time_col : str | None
-            原始日期列名；与 `time_grain` 配合时会生成临时时间分组列。
+            原始日期列。未指定 `group_col` 时，用于生成趋势分组；
+            同时用于日期范围、按日缺失率和特征上线时间识别。
         time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
-            仅在传入 `time_col` 时生效，默认按 `"month"` 聚合。
+            须同时提供 `time_col`，默认按 `"month"` 聚合；已有 `group_col` 时不改变分组。
         feature_data_source : dict[str, list[str]] | None
-            特征来源映射，只对本次 active features 生效，用于报告中保留来源分层。
+            数据源名称到特征列表的映射，仅为本次评估的特征保存来源。
         feature_metadata : FeatureMetadata | None
             以英文标识为键的完整业务字典或含 feature 列的 Pandas/Polars 表。
         business_context : dict[str, Any] | None
             可选 JSON 业务上下文，多标签信息按 labels 中的目标字段组织。
         weights_col : str | None
-            样本权重列名。
+            样本权重列。提供后按权重计算分布和风险指标；默认按样本数计算。
         amount_col : str | None
             金额列名；传入后会在 `detail_table` 中额外产出金额视角指标。
         binner : MarsBinnerBase | None
-            显式复用的分箱器；传入后不会再根据 `binning_type` 和 `binner_params`
-            构造新分箱器。
+            已拟合的分箱器。传入后直接复用固定规则，不重新拟合；
+            不能同时设置评估器构造参数 `binner_params`。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
             基准期样本。未传入 ``binner`` 时用其拟合分箱规则，并始终作为 PSI
             expected distribution；已传入 ``binner`` 时只按该固定规则构造基准分布。
-            active features 与 ``weights_col`` 必须存在。监督分箱或
+            必须包含全部评估特征和已声明的 ``weights_col``。监督分箱或
             ``risk_corr_baseline="benchmark"`` 时还必须包含至少两个有效类别的 target。
         psi_include_missing : bool
-            计算 PSI 时是否单独保留缺失值分布。
+            是否将缺失值箱计入 PSI，默认排除；不改变其他指标的缺失处理。
         psi_include_special : bool
-            计算 PSI 时是否单独保留特殊值分布。
+            是否将特殊值箱计入 PSI，默认排除；不改变特殊值分箱。
         feature_start_aware_reference : bool | None
             是否按特征上线时间重锚稳定性参考。传入 `None` 时沿用构造函数中的默认
             配置，传入布尔值时仅覆盖本次评估。启用后必须有可解析的 `time_col`；
@@ -267,7 +272,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ordered_metric_sort_by : OrderedMetricSortBy | None
             本次评估使用的 KS/AUC 排序口径；传入 `None` 时沿用实例初始化时保存的默认值。
         batch_size : int
-            批量评估时的特征批大小。
+            每批评估的特征数，默认 100，必须为正整数。控制中间表规模，不改变指标口径。
 
         Returns
         -------
@@ -332,7 +337,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
 
         if not has_target:
-            # 注入常量标签可以复用同一套聚合链路，后续再擦除标签依赖指标。
+            # 无标签时先用常量标签复用聚合计算，报告组装后再将依赖标签的指标置空。
             working_df = working_df.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
 
         input_group_col = group_col
@@ -1237,10 +1242,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         """
         构建评估报告的明细、汇总与趋势数据。
 
-        该方法负责将向量化计算的中间结果重塑为具备业务深度的三层报表体系：
-        明细层 (Detail)、审计层 (Summary) 和趋势层 (Trend)。
-
-        产出的 Summary 报表坚持极简与客观原则，仅保留最核心的预测力与稳定性评估指标。
+        将分箱统计整理为 detail、summary 和 trend_tables，并统一输出表的类型。
+        汇总表保存特征级预测力和稳定性指标，明细表保留分组与分箱结果。
 
         Parameters
         ----------
@@ -1251,9 +1254,13 @@ class MarsBinEvaluator(MarsBaseEstimator):
         metrics_total : pl.DataFrame
             仅包含全量（total）统计的数据。用于获取特征全局区分度。
         group_col : str
-            分组维度列名（如 'month'）。
+            统计结果中的分组列名，例如 `"month"`。
         monotonicity_df : pl.DataFrame
-            单调性检查结果。包含特征在全量分组下的 Spearman 相关系数 (mono)。
+            Total 正常箱序号与坏率的 Spearman 相关系数（mono）。
+        binner : MarsBinnerBase
+            本次使用的分箱器，提供切点、标签和 WOE 信息。
+        target_name : str
+            本次评估使用的目标列名，写入明细和 RC 参考表。
         feature_source_map : Dict[str, str] | None
             特征到来源分组的映射，用于在汇总报告中保留来源字段。
         display_group_col : str | None
@@ -1272,9 +1279,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
         Returns
         -------
         MarsBinningReport
-            报告容器实例。包含 Summary, Trend, Detail 三张重塑后的报表。
+            包含汇总表、分箱明细、各指标趋势表及 RC 参考表的报告。
         """
-        # 表构造全部下沉到 _evaluation.report_parts，evaluator 只负责输出格式和 report 对象装配。
+        # 复用 report_parts 构表，在此统一输出类型并组装报告对象。
         reference_table = (
             risk_corr_reference_table
             if risk_corr_reference_table is not None

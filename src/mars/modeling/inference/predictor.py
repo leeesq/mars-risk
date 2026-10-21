@@ -16,7 +16,11 @@ from mars.modeling.evaluation import MarsModelEvaluator
 
 
 class ModelPredictor:
-    """复用统一后端注册表与适配器的预测器。"""
+    """按训练时的特征顺序和类别取值调用模型预测后端。
+
+    本类不拟合模型。输入为 Polars、``inplace=False`` 且未声明类别特征时，
+    优先尝试后端的 Polars 路径；其他情况使用 Pandas 路径，再恢复输出类型。
+    """
 
     def __init__(
         self,
@@ -27,7 +31,22 @@ class ModelPredictor:
         model_type: str,
         category_levels: Dict[str, Sequence[Any]] | None = None,
     ) -> None:
-        """保存训练后模型、特征契约与显式后端标识。"""
+        """保存模型和预测输入约定。
+
+        Parameters
+        ----------
+        model : Any
+            已训练模型，由 ``model_type`` 对应的预测适配器调用。
+        feature_list : Sequence[str]
+            训练时使用的特征列及顺序。预测时只将这些列交给模型，缺列会报错。
+        categorical_features : Sequence[str] | None
+            需要恢复为 Pandas category 的特征，默认无类别特征。
+        model_type : str
+            显式指定的模型后端名称，预测时按注册表解析，不从模型对象推测。
+        category_levels : Dict[str, Sequence[Any]] | None
+            训练时的类别取值，默认 ``None``。提供后按这些类别转换，未知类别变为缺失；
+            未登记取值的类别列按本次输入创建 category。
+        """
         self.model: Any = model
         self.features: List[str] = list(feature_list)
         self.categorical_features: List[str] = list(categorical_features or [])
@@ -95,7 +114,27 @@ class ModelPredictor:
         pred_col: str = "pred_score",
         inplace: bool = False,
     ) -> FrameLike:
-        """追加预测分数，并保持调用方偏好的数据框类型。"""
+        """在样本表中追加或覆盖预测分列。
+
+        Parameters
+        ----------
+        df : FrameLike
+            包含全部训练特征的样本表，其他列原样保留。
+        pred_col : str
+            预测分列名，默认 ``"pred_score"``；同名列会覆盖。
+        inplace : bool
+            默认 ``False``，返回新表。为 True 且输入为 Pandas 时直接写入原表；
+            Polars 输入始终返回新表。
+
+        Returns
+        -------
+        FrameLike
+            含预测分的样本表，保持输入的 Pandas 或 Polars 类型。
+
+        Notes
+        -----
+        预测分含义由模型及后端决定。缺少训练特征或后端名称无效时抛出 ValueError。
+        """
         prefer_polars = is_polars_dataframe(df)
         if prefer_polars and not inplace and isinstance(df, pl.DataFrame):
             preds = self._safe_predict_logic_polars(df)

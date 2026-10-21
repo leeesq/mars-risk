@@ -29,23 +29,25 @@ def get_score_cell(
     *,
     filters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """查询完整格子证据和固定区间，不接触明细或重新分箱。
+    """查询指定交叉格子的统计证据和固定区间。
 
     Parameters
     ----------
     report : Report
         原始 score_cross 报告或加载后的快照。
     x_bin : str
-        保存的 X bin_id。
+        已保存的 X 轴 bin_id，例如 ``"b0"``；使用原始箱标识，不使用展示编号 X1。
     y_bin : str
-        保存的 Y bin_id。
+        已保存的 Y 轴 bin_id，例如 ``"b1"``；使用原始箱标识，不使用展示编号 Y1。
     filters : dict[str, Any] | None
-        target/group/period 等原生过滤；可同时返回同一格子多个样本范围。
+        按 target、group 和 period 等字段筛选。默认返回此格子在全部样本范围下的记录，
+        每条记录保留目标、分组和周期。
 
     Returns
     -------
     dict[str, Any]
-        page（含 report_id/table/query）、两个区间原生表及完整格子统计。
+        ``page`` 为格子统计查询页，包含 report_id、table 和 query；
+        ``intervals`` 为按 x、y 轴组织的原生区间表。
 
     Raises
     ------
@@ -79,25 +81,28 @@ def show_score_matrix(
     include_special: bool = False,
     color_range: tuple[float, float] | None = None,
 ) -> Any:
-    """先限定单一样本范围再显示低到高风险矩阵，附真实边际和总体。
+    """显示单个样本范围的双分数矩阵，按低风险到高风险排列。
 
     Parameters
     ----------
     report : Report
         score_cross 报告或加载后的快照。
     filters : dict[str, Any] | None
-        target/group/period 原生筛选；匹配多组时使用首组并在 caption 明示。
+        按 target、group 和 period 筛选。默认使用首个匹配范围，并在 caption 中注明。
     metric : str
-        bad_rate、delta_vs_row 或 sample_share，展示单位为百分比/百分点。
+        格子展示指标，可选 bad_rate、delta_vs_row 和 sample_share，默认 bad_rate。
+        坏率和样本占比显示为百分比，行坏率差显示为百分点。
     include_special : bool
-        是否展开特殊箱；默认折叠但注明未展示样本数。
+        是否展示特殊箱，默认折叠并注明省略的样本数。折叠后仍使用包含特殊箱的边际和总体。
     color_range : tuple[float, float] | None
-        小数单位固定色标；delta 必须以 0 为中心；默认坏率/占比 [0,1]。
+        用小数指定色标上下界。默认坏率和样本占比使用 [0, 1]，行坏率差使用 [-1, 1]。
+        上下界须递增，行坏率差的色标须关于 0 对称。
 
     Returns
     -------
     Any
-        可 Notebook 显示及 to_html/to_excel 的 Pandas Styler；格子标注有表现人数。
+        可在 Notebook 显示、用 to_html/to_excel 导出的 Pandas Styler。
+        格子标注有表现人数；TOTAL 展示重算后的边际指标，行坏率差视图的 TOTAL 展示坏率。
 
     Raises
     ------
@@ -145,7 +150,7 @@ def show_score_matrix(
             f"{risk} | n={'—' if pd.isna(count) else int(count)} | {row['status']}"
         )
         statuses.loc[row["x_bin"], row["y_bin"]] = row["status"]
-    # TOTAL 从边际整数统计取值；delta 的边际不定义为格子差值的均值。
+    # TOTAL 直接读取边际重算后的指标；行坏率差视图的 TOTAL 展示边际坏率。
     margin_metric = "sample_share" if metric == "sample_share" else "bad_rate"
     for axis, ids, table in (("x", xs, "row_summary"), ("y", ys, "column_summary")):
         marginal = report.get_table(table, filters=scope)
@@ -205,7 +210,7 @@ def write_score_cross_html(
     report_name: str = "MARS Score Cross",
     policy_reports: list[Report] | None = None,
 ) -> None:
-    """导出真实聚合证据的离线矩阵、双向梯度和安全分箱规则交互。
+    """导出自包含 HTML，展示交叉矩阵、沿两轴的风险变化和分箱规则回放。
 
     Parameters
     ----------
@@ -214,9 +219,10 @@ def write_score_cross_html(
     path : str | Path
         目标路径；父目录须存在。
     report_name : str
-        转义后的报告标题。
+        页面标题，默认 ``"MARS Score Cross"``；写入 HTML 前会转义。
     policy_reports : list[Report] | None
-        显式回放的派生报告；离线切换并查看留存、四区域、覆盖差及格子差异。
+        已回放的派生规则报告，须来自当前 report_id。提供后可离线查看留存、
+        四区域、覆盖差和格子差异；默认不附加派生报告。
 
     Returns
     -------

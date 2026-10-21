@@ -10,10 +10,10 @@ import polars as pl
 
 class MarsDate:
     """
-    [MarsDate] 日期处理核心组件 (Pure Polars Edition).
+    为 Polars 数据框构造日期解析和分组表达式。
 
     专为 Polars DataFrame 操作设计。
-    所有方法均返回 ``pl.Expr`` 对象，可直接用于 Polars 的表达式系统中。
+    日期解析、分组和格式化方法返回 ``pl.Expr``，可用于 ``select`` 或 ``with_columns``。
 
     Attributes
     ----------
@@ -22,8 +22,7 @@ class MarsDate:
 
     Notes
     -----
-    该类不直接处理数据，而是构建 Polars 表达式树。
-    这意味着它的开销极低，且能完美融入 ``lazy()`` 执行计划中。
+    构造表达式时不读取数据。表达式在数据框执行查询时求值，也可用于 LazyFrame。
 
     Examples
     --------
@@ -36,7 +35,7 @@ class MarsDate:
     @staticmethod
     def _to_expr(col: Union[str, pl.Expr]) -> pl.Expr:
         """
-        [Internal] 将输入归一化为 Polars 表达式。
+        将列名转为 Polars 表达式，已有表达式原样返回。
 
         Parameters
         ----------
@@ -56,22 +55,20 @@ class MarsDate:
     @staticmethod
     def smart_parse_expr(col: Union[str, pl.Expr]) -> pl.Expr:
         """
-        [智能解析] 生成多路尝试的日期解析表达式。
+        按多种日期格式依次尝试解析，取首个成功结果。
 
-        采用 "Coalesce" (多路合并) 策略，能够自动处理混合格式的脏数据。
+        同一列可以包含多种支持的日期格式。所有格式均解析失败时，结果为 Null。
 
         Notes
         -----
-        1. **统一字符串解析**: 先转为 ``pl.Utf8``，再按显式格式解析，避免 Polars 2.0
-           废弃的 ``String -> Date`` 直接 cast 路径。
-        2. **强制转 String**: 对于 Date、Datetime、整数和字符串列，统一进入格式化解析链路。
-           这解决了整数日期 (如 20250101) 被误读为天数偏移的 bug。
-        3. **多格式尝试**: 依次尝试解析常用的 ISO 格式、紧凑格式、斜杠和点号格式。
+        输入先转为 ``pl.Utf8``，再按显式格式解析，避免直接将整数日期解释为天数偏移。
+        依次尝试 ISO 日期、紧凑日期、斜杠日期、点号日期和带时间的 ISO 字符串。
+        Datetime 解析结果只保留日期部分。
 
         Parameters
         ----------
         col : Union[str, pl.Expr]
-            待解析的列名或表达式。支持 String, Int (如 20230101), Date, Datetime 类型。
+            待解析的列名或表达式。支持 String、Int（如 20230101）、Date 和 Datetime 类型。
 
         Returns
         -------
@@ -86,27 +83,23 @@ class MarsDate:
         """
         expr = MarsDate._to_expr(col)
 
-        # 预生成 String 表达式用于多格式解析尝试
+        # 先转字符串，避免把 20250101 这样的整数日期解释为天数偏移。
         str_expr = expr.cast(pl.Utf8)
 
-        # Coalesce: 从上到下尝试，返回第一个非 Null 的结果。
-        # 这里不使用 expr.cast(pl.Date)，否则字符串列在 Polars 新版本会触发弃用警告。
+        # coalesce 逐项取首个非 Null 结果；显式解析格式也避免直接 cast 日期的弃用警告。
         return pl.coalesce([
-            # 1. 标准 ISO 格式 (2025-01-01)
-            # 强化匹配：部分特殊 Object 转 Str 后可能符合此格式
+            # 标准 ISO 日期也覆盖原生 Date 列转成字符串后的值。
             str_expr.str.to_date("%Y-%m-%d", strict=False),
 
-            # 2. 紧凑格式 (20250101)
-            # 解决 Int 类型转为 Str 后的情况
+            # 紧凑日期覆盖整数转成字符串后的值。
             str_expr.str.to_date("%Y%m%d", strict=False),
 
-            # 3. 斜杠格式 (2025/01/01)
+            # 兼容斜杠和点号分隔的日期。
             str_expr.str.to_date("%Y/%m/%d", strict=False),
 
-            # 4. 点号格式 (2025.01.01)
             str_expr.str.to_date("%Y.%m.%d", strict=False),
 
-            # 5. Datetime 字符串格式，覆盖原生 Datetime 列 cast 到 Utf8 后的表现。
+            # 原生 Datetime 列转成字符串后，解析时间部分并取日期。
             str_expr.str.to_datetime("%Y-%m-%d %H:%M:%S%.f", strict=False).dt.date(),
             str_expr.str.to_datetime("%Y-%m-%dT%H:%M:%S%.f", strict=False).dt.date(),
         ])
@@ -114,28 +107,29 @@ class MarsDate:
     @staticmethod
     def dt2day(dt: Union[str, pl.Expr], interval: str = "1d") -> pl.Expr:
         """
-        将日期转换为指定天数粒度 (如 '1d', '3d', '14d')。
+        按指定天数生成日期或日期区间。
 
-        如果是多天 (>1d)，则以该列的最小日期 (min) 作为锚点计算区间，
-        并返回类似周粒度的字符串区间表现形式 (如 '20260101-0103')。
+        多天区间以当前表达式作用范围内的最小有效日期为起点。
+        区间标签形如 ``"20260101-0103"``，包含起止两天。
 
         Parameters
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
         interval : str
-            时间间隔，支持 "day", "1d", "3d", "14d", "30d" 等格式。
+            每个区间的天数，默认 ``"1d"``。支持 ``"day"``、``"1d"``、
+            ``"3d"``、``"14d"`` 和 ``"30d"`` 等格式。
 
         Returns
         -------
         pl.Expr
-            当 interval 为 1d 时，返回 pl.Date 类型。
-            当 interval > 1d 时，返回 pl.Utf8 (String) 区间格式。
+            间隔为 1 天时返回 ``pl.Date``；多天时返回 ``pl.Utf8``（String）区间标签。
+            无法解析的日期保留为 Null。
 
         Raises
         ------
         ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+            ``interval`` 既不是 ``"day"``，也不是数字加 ``"d"`` 的格式时抛出。
 
         Examples
         --------
@@ -158,8 +152,7 @@ class MarsDate:
         if n_days == 1:
             return parsed_dt
 
-        # 多天逻辑 (>1d)
-        # 获取该列的全局最小日期 (锚点)
+        # 多天区间从本次数据的最早有效日期开始，同一日期在不同数据切片中可能分到不同区间。
         min_dt = parsed_dt.min()
 
         # 计算每一行日期与全局锚点相差的天数
@@ -173,7 +166,7 @@ class MarsDate:
         start_of_period = min_dt + pl.duration(days=offset_days_expr)
         end_of_period = start_of_period + pl.duration(days=n_days - 1)
 
-        # 拼接为 "YYYYMMDD-MMDD" 的字符串格式，保持与 week 一致的视觉体验
+        # 区间末日包含在内，标签与周分组统一使用 YYYYMMDD-MMDD 格式。
         return pl.concat_str([
             start_of_period.dt.strftime("%Y%m%d"),
             pl.lit("-"),
@@ -183,26 +176,27 @@ class MarsDate:
     @staticmethod
     def dt2week(dt: Union[str, pl.Expr], interval: str = "1w") -> pl.Expr:
         """
-        将日期转换为指定周数粒度的字符串区间 (如 '20260126-0201').
+        按指定周数生成日期区间标签，如 ``"20260126-0201"``。
 
-        逻辑：向下取整到周一作为起点，加上 6 天作为周末终点，最后拼接字符串。
+        每周从周一开始。多周区间以当前数据中最早日期所在周的周一为起点。
 
         Parameters
         ----------
         dt : Union[str, pl.Expr]
             日期列名或表达式。
         interval : str
-            周聚合间隔，支持 ``"week"``、``"1w"``、``"2w"`` 等格式。
+            每个区间的周数，默认 ``"1w"``。支持 ``"week"``、``"1w"``、
+            ``"2w"`` 等格式，周数必须为正整数。
 
         Returns
         -------
         pl.Expr
-            类型为 ``pl.Utf8`` (String) 的表达式。
+            类型为 ``pl.Utf8``（String）的区间标签表达式，包含起止两天。
 
         Raises
         ------
         ValueError
-            当 `interval` 不是 ``"week"`` 或 ``"Nw"`` 格式时抛出。
+            ``interval`` 不是 ``"week"`` 或正整数加 ``"w"`` 的格式时抛出。
 
         Examples
         --------
@@ -238,17 +232,19 @@ class MarsDate:
         dt : Union[str, pl.Expr]
             日期列名或表达式。
         interval : str
-            月聚合间隔，支持 ``"month"``、``"1m"``、``"2m"`` 等格式。
+            每个区间的自然月数，默认 ``"1m"``。支持 ``"month"``、``"1m"``、
+            ``"2m"`` 等格式，月数必须为正整数。``m`` 表示月。
 
         Returns
         -------
         pl.Expr
-            类型为 ``pl.Utf8`` (String) 的表达式。
+            类型为 ``pl.Utf8``（String）的表达式。单月标签为 ``YYYYMM``，
+            多月标签为 ``YYYYMM-YYYYMM``；多月区间按连续月份序号整除划分。
 
         Raises
         ------
         ValueError
-            当 `interval` 不是 ``"month"`` 或 ``"Nm"`` 格式时抛出。
+            ``interval`` 不是 ``"month"`` 或正整数加 ``"m"`` 的格式时抛出。
 
         Examples
         --------
@@ -355,7 +351,7 @@ class MarsDate:
         dt : Union[str, pl.Expr]
             日期列名或表达式。
         fmt : str
-            输出的格式化字符串，默认 "%Y-%m-%d"。
+            控制输出字符串的日期格式，默认 ``"%Y-%m-%d"``。
 
         Returns
         -------

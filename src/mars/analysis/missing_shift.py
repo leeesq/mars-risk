@@ -45,27 +45,34 @@ class MarsMissingShiftConfig:
     enabled_detectors : tuple[AnomalyType, ...]
         启用的检测器。默认同时检测分段变化、边界异常、单日异常和持续高缺失。
     min_period_samples : int
-        单个时间切片参与检测所需的最小样本数，默认 ``30``。
+        时间切片参与检测所需的最小样本数，默认 ``30``。
+        不足的切片保留在趋势表中，并分隔相邻检测区间。
     min_segment_size : int
-        分段变点两侧各自所需的最少有效时间切片数，默认 ``3``。
+        分段变点两侧各取的有效切片数，默认 ``3``，至少为 2；仅用于分段变化检测。
     reference_window : int
-        边界和单日事件使用的相邻参考切片数，默认 ``3``。
+        相邻参考窗口的切片数，默认 ``3``。单点事件左右各取此数量；
+        无显式基准时，边界事件从内侧取此数量。
     max_boundary_periods : int
         开头或结尾边界事件最多覆盖的切片数，默认 ``3``。
     max_segment_candidates : int
         每个连续有效区间保留的 Binseg 候选上限，默认 ``5``。
     min_abs_delta : float
-        缺失率绝对变化门槛，默认 ``0.03``。
+        统计型事件的缺失率绝对变化门槛，默认 ``0.03``，即 3 个百分点。
+        此门槛与相对变化门槛满足任意一个即可，仍须通过最小有效变化和 FDR 检查。
     min_effect_delta : float
-        进入统计确认的最小有效变化，默认 ``0.005``。
+        统计型事件必须达到的绝对变化，默认 ``0.005``，即 0.5 个百分点。
+        同时作为相对变化分母的下限，避免参考缺失率接近零时放大比值。
     min_relative_delta : float
-        相对缺失率变化门槛，默认 ``0.30``。
+        缺失率相对变化门槛，默认 ``0.30``，即 30%。
+        相对变化为绝对变化除以参考缺失率与 ``min_effect_delta`` 中的较大值。
     fdr_q_threshold : float
-        Benjamini-Hochberg 全局 FDR 的 q 值门槛，默认 ``0.05``。
+        全部特征和统计检测器候选共同参与 Benjamini-Hochberg 校正后的 q 值上限，
+        默认 ``0.05``。持续高缺失检测按业务红线判断，不参与 FDR 检查。
     high_missing_rate_threshold : float
-        持续高缺失检测的全局缺失率红线，默认 ``0.90``。
+        持续高缺失检测的默认红线，默认 ``0.90``。有效切片缺失率达到红线即计入连续区间。
     feature_high_missing_rate_thresholds : Mapping[str, float]
-        按特征覆盖持续高缺失红线的映射，默认空映射。
+        特征名到缺失率红线的映射。指定的特征使用各自红线，其他特征使用全局红线。
+        默认空映射，键必须属于本次扫描特征。
     min_high_periods : int
         合并为持续高缺失事件所需的连续切片数，默认 ``2``。
 
@@ -203,7 +210,7 @@ class MarsMissingShiftResult:
     source_table : pl.DataFrame
         数据源级异常汇总表；未提供数据源映射时为空表。
     trend_table : pl.DataFrame
-        ``feature × period`` 粒度的缺失计数、缺失率和检测资格长表。
+        每个 feature/period 的缺失计数、缺失率、检测资格和异常标记。
     config : MarsMissingShiftConfig
         生成当前结果所使用的扫描配置。
 
@@ -317,16 +324,16 @@ class MarsMissingShiftResult:
         group_ascending: bool = True,
     ) -> pd.io.formats.style.Styler:
         """
-        将长版日缺失率按需透视为 Notebook 趋势热力表。
+        将各时间切片的缺失率透视为 Notebook 趋势热力表。
 
         Parameters
         ----------
         features : str | Sequence[str] | None
-            需要展示的特征。默认按最大异常幅度选择异常特征。
+            需要展示的特征。默认按最大异常幅度选择异常特征；无异常时返回空表。
         max_features : int
             未显式指定特征时最多展示的特征数，默认 ``20``。
         group_ascending : bool
-            日期列是否按升序排列，默认 ``True``。
+            时间切片列是否按升序排列，默认 ``True``；不改变扫描结果中的顺序。
 
         Returns
         -------
@@ -394,13 +401,13 @@ class MarsMissingShiftResult:
         Parameters
         ----------
         features : str | Sequence[str] | None
-            需要绘制的特征。默认按异常幅度选择异常特征。
+            需要绘制的特征。默认按最大异常幅度选择异常特征；无异常时须显式指定特征。
         max_features : int
             未显式指定特征时最多绘制的特征数，默认 ``12``。
         columns : int
             子图列数，默认 ``2``。
         figsize_per_plot : tuple[float, float]
-            每个子图的宽度和高度，默认 ``(6.0, 3.2)``。
+            每个子图的宽度和高度，单位为英寸，默认 ``(6.0, 3.2)``。
 
         Returns
         -------
@@ -608,7 +615,7 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
     """
     扫描静态训练宽表中的日级或其他时间粒度缺失率异常。
 
-    该实验 API 同时检测持续分段变化、首尾边界异常、内部单日异常和持续高缺失。
+    此实验 API 检测分段变化、首尾边界异常、内部单点异常和持续高缺失。
     统计型候选统一通过业务效果门槛与全局 FDR 确认；结果只用于数据质量复核，
     不会自动删除特征或阻断后续建模。
 
@@ -644,17 +651,22 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         df : pl.DataFrame | pd.DataFrame
             待扫描的当前数据宽表。
         date_col : str
-            日期列名，按 ``time_grain`` 聚合。
+            按 ``time_grain`` 聚合的日期列。无法解析日期的行不参与扫描；
+            全部日期均无法解析时会报错。
         features : list[str] | None
             待扫描特征；默认扫描除 ``date_col`` 外的全部列。
         time_grain : str
             时间粒度，默认 ``"1d"``，复用 ``MarsDate.from_grain`` 的格式。
         missing_values : list[Any] | None
-            除 null/NaN 外需要按缺失处理的业务占位值。
+            除 null 和 NaN 外，额外按缺失处理的业务占位值。默认不增加业务缺失码，
+            当前样本和基准样本使用同一配置。
         feature_data_source : dict[str, str] | None
-            特征到数据源的映射，用于趋势和数据源汇总。
+            特征名到数据源名称的映射，用于趋势和数据源汇总。
+            未映射的特征记为 UNMAPPED；不提供映射时，数据源汇总表为空。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
-            可选历史基准。提供时首尾边界优先与其聚合缺失率比较。
+            首尾边界事件的历史参考样本。提供时以各特征的基准整体缺失率作为参考，
+            否则使用边界内侧的相邻窗口。须包含全部扫描特征，类型须兼容，
+            行数须达到 ``min_period_samples``；无需包含日期列。
         config : MarsMissingShiftConfig | None
             检测配置；默认使用 ``MarsMissingShiftConfig()``。
 
@@ -667,6 +679,12 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         ------
         ValueError
             当日期、特征、benchmark 或配置不满足输入契约时抛出。
+
+        Notes
+        -----
+        只检查数据中实际出现的时间切片，不补齐无记录日期。各窗口先加总缺失数和样本数，
+        再计算缺失率，不平均切片缺失率。低样本切片保留展示，但不参与检测，
+        检测区间也不会跨过低样本切片。
 
         Examples
         --------
@@ -811,7 +829,7 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         feature_data_source: dict[str, str],
         min_period_samples: int,
     ) -> pl.DataFrame:
-        """单次聚合生成特征日级缺失计数与检测资格长表。"""
+        """按时间切片聚合缺失计数，并保留低样本切片及其排除原因。"""
         schema = df.schema
         missing_exprs = [
             missing_condition_expr(
@@ -1149,7 +1167,7 @@ class MarsMissingShiftScanner(MarsBaseEstimator):
         data_source: str,
         config: MarsMissingShiftConfig,
     ) -> list[_Candidate]:
-        """生成同时偏离左右参考窗口的内部单日候选。"""
+        """生成相对左右窗口同向偏离的单切片候选，再合并两侧参考计数。"""
         window = config.reference_window
         if len(block) < window * 2 + 1:
             return []
@@ -1366,7 +1384,7 @@ _TREND_META_COLUMNS = {"feature", "dtype", "data_source"}
 
 
 def _eligible_blocks(feature_df: pl.DataFrame) -> list[list[int]]:
-    """将有效日期拆成不会跨越低样本日期的连续索引块。"""
+    """将有效切片拆成连续索引块；低样本切片分隔区间，不补齐无记录日期。"""
     eligible = feature_df.get_column("is_detection_eligible").to_list()
     blocks: list[list[int]] = []
     current: list[int] = []

@@ -16,10 +16,10 @@ F = TypeVar('F', bound=Callable[..., Any])
 
 def time_it(func: F) -> F:
     """
-    [性能监控] 记录函数或方法的执行耗时。
+    在函数或方法成功返回后记录执行耗时。
 
-    会自动识别是被装饰的是 "独立函数" 还是 "类方法"，并在日志中打印
-    ClassName.MethodName 或 FunctionName。
+    日志记录函数名，按首个位置参数判断是否添加类名。
+    耗时单位为秒；函数抛出异常时不记录耗时，异常继续向调用方传播。
 
     Parameters
     ----------
@@ -44,14 +44,12 @@ def time_it(func: F) -> F:
         """执行被装饰函数并记录耗时。"""
         start = time.time()
 
-        # 执行业务逻辑
         result = func(*args, **kwargs)
 
         end = time.time()
         duration = end - start
 
-        # 智能名称解析
-        # 如果第一个参数是对象实例且包含 __class__ 属性，通常意味着这是个方法
+        # 按首个位置参数推测实例方法名称；常见标量和容器按普通函数处理。
         if args and hasattr(args[0], '__class__') and not isinstance(args[0], (str, int, float, list, dict)):
              # 格式: ClassName.method_name
             name = f"{args[0].__class__.__name__}.{func.__name__}"
@@ -66,9 +64,9 @@ def time_it(func: F) -> F:
 
 def deprecated(reason: str) -> Callable[[F], F]:
     """
-    [生命周期] 标记函数为“已废弃”的装饰器。
+    在每次调用函数前发出弃用警告。
 
-    当调用被装饰的函数时，会触发 FutureWarning, 提示用户该函数即将移除。
+    警告类型为 ``FutureWarning``，警告位置指向调用方；发出警告后继续执行原函数。
 
     Parameters
     ----------
@@ -105,13 +103,13 @@ def safe_run(default_return: Any = None) -> Callable[[F], F]:
     """
     异常捕获装饰器。
 
-    如果函数执行过程中抛出异常，记录 Error 级别的日志，阻止程序崩溃，
-    并返回指定的默认值。常用于非核心路径的辅助功能（如发送通知、绘图）。
+    函数抛出 ``Exception`` 时，记录 ERROR 级别日志并返回默认值。
+    适用于允许失败的辅助操作，如通知和绘图。
 
     Parameters
     ----------
     default_return : Any
-        发生异常时返回的默认值。默认为 None。
+        捕获 ``Exception`` 后返回的值，默认 ``None``；成功时仍返回原函数结果。
 
     Returns
     -------

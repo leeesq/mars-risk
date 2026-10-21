@@ -99,7 +99,7 @@ def _replace_ks_columns(
     keys: list[str],
     columns: list[str],
 ) -> pl.DataFrame:
-    """按匹配标记替换指标，保留有效的空 KS，禁止空值回退到旧分箱结果。"""
+    """按匹配键替换 KS，原始值 KS 无法计算时保留空值，不回退到分箱 KS。"""
     renamed = {col: f"__ks_{index}" for index, col in enumerate(columns)}
     joined = _left_join_nulls(
         frame,

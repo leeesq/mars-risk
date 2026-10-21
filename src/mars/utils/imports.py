@@ -18,7 +18,7 @@ def optional_import(module_name: str) -> Any:
     Returns
     -------
     Any
-        模块对象；依赖不存在时返回 ``None``。
+        模块对象；导入期间抛出 ``ImportError`` 时返回 ``None``，包括模块自身缺少依赖的情况。
 
     Examples
     --------
@@ -47,7 +47,8 @@ def require_optional_module(
     feature_name : str
         当前依赖服务的功能名称，用于错误信息。
     extra_hint : str
-        推荐安装命令或依赖说明。
+        导入失败时附在异常消息中的安装命令或说明。
+        默认提示安装 ``mars-risk[ml,tuning]``，本函数不会执行安装。
 
     Returns
     -------
@@ -57,7 +58,7 @@ def require_optional_module(
     Raises
     ------
     ImportError
-        依赖未安装时抛出，并提示用户安装对应 extra。
+        导入模块或模块所需依赖时发生 ``ImportError``，附上功能名称和安装提示后抛出。
 
     Examples
     --------

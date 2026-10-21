@@ -36,7 +36,11 @@ def filter_compatible_values(
     dtype: pl.DataType | None,
     values: Sequence[Any] | None,
 ) -> list[Any]:
-    """仅保留可与当前列 dtype 安全比较的取值。"""
+    """筛选可与列类型比较的数值或字符串，不做类型转换。
+
+    数值列仅保留 int 和 float，排除 bool；字符串列仅保留 str。
+    其他列类型或未提供取值时返回空列表。
+    """
     if not values:
         return []
 
@@ -57,7 +61,7 @@ def values_to_exclude(
     missing_values: Sequence[Any] | None = None,
     special_values: Sequence[Any] | None = None,
 ) -> list[Any]:
-    """返回缺失值与特殊值的类型安全并集。"""
+    """合并缺失值和特殊值，筛去与列类型不兼容的值，保留顺序和重复值。"""
     candidates = list(missing_values or []) + list(special_values or [])
     return filter_compatible_values(dtype, candidates)
 
@@ -68,7 +72,23 @@ def missing_condition_expr(
     dtype: pl.DataType | None = None,
     missing_values: Sequence[Any] | None = None,
 ) -> pl.Expr:
-    """为列构造共享缺失判断表达式。"""
+    """构造包含 Null、浮点 NaN 和自定义缺失值的判断表达式。
+
+    Parameters
+    ----------
+    column : str | pl.Expr
+        待判断的列名或表达式。
+    dtype : pl.DataType | None
+        列的实际类型，用于启用浮点 NaN 检查及筛选自定义缺失值。
+        默认 ``None``，此时只检查 Null。
+    missing_values : Sequence[Any] | None
+        额外视为缺失的取值，默认无额外取值。只匹配与 ``dtype`` 兼容的值。
+
+    Returns
+    -------
+    pl.Expr
+        缺失时为 True 的布尔表达式，不修改输入列。
+    """
     expr = pl.col(column) if isinstance(column, str) else column
     condition = expr.is_null()
 
@@ -88,7 +108,11 @@ def missing_rate_expr(
     dtype: pl.DataType | None = None,
     missing_values: Sequence[Any] | None = None,
 ) -> pl.Expr:
-    """基于共享缺失语义构造缺失率表达式。"""
+    """以全部行数为分母，计算 Null、浮点 NaN 和自定义缺失值的占比。
+
+    ``dtype`` 控制 NaN 检查及自定义值的类型匹配；默认 ``None`` 时只统计 Null。
+    返回 Polars 表达式，比例为 0～1，不按标签是否已表现筛选样本。
+    """
     return (
         missing_condition_expr(
             column,
@@ -119,7 +143,11 @@ def build_missing_by_period_stats(
     period_col: str,
     missing_values: Sequence[Any] | None = None,
 ) -> pl.DataFrame:
-    """使用共享表达式按时间维度构造缺失率宽表。"""
+    """按指定期间列统计缺失率，并保留全样本 ``total`` 列。
+
+    不存在的特征列会跳过；期间列不存在时抛出 ValueError。
+    分组列转为字符串列名，``total`` 以全部样本为分母；无可用特征时返回空表。
+    """
     if period_col not in df.columns:
         raise ValueError(f"Column '{period_col}' not found.")
 

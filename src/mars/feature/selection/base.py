@@ -58,12 +58,13 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         X : Union[pl.DataFrame, pd.DataFrame]
             待裁剪的数据集。
         on_missing : Literal['error', 'warn', 'ignore']
-            输入缺少已选择特征时的处理策略。默认报错；宽松模式仅保留实际存在列。
+            输入缺少已选特征时的处理策略，默认报错。``warn`` 记录警告并跳过缺列，
+            ``ignore`` 直接跳过；两种宽松模式均只保留实际存在的已选特征。
 
         Returns
         -------
         pl.DataFrame or pd.DataFrame
-            仅保留 ``selected_features_`` 以及目标列后的数据集。
+            按 ``selected_features_`` 的顺序保留特征的表；目标列不会自动附加。
 
         Raises
         ------
@@ -236,13 +237,14 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
         self._corr_matrix = None
 
     def get_correlation_report(self) -> CorrelationReport:
-        """返回本次成功拟合的独立相关性快照，不改变 get_report 的决策表返回值。
+        """返回本次成功拟合保存的相关性结果。
 
         Returns
         -------
         CorrelationReport
-            完整相关阶段候选结果及真实事件。关闭或候选不足时状态明确为 skipped。
-            表查询的 features 匹配任一端点，sources 匹配任一端点来源，两条件采用交集。
+            相关阶段候选特征的统计结果和实际决策事件。关闭相关性筛选或候选不足时，
+            状态记录跳过原因。查询 ``features`` 可匹配特征对的任一端，
+            ``sources`` 可匹配任一端的来源；两个条件必须同时满足。
 
         Raises
         ------
@@ -251,8 +253,8 @@ class MarsBaseSelector(MarsBaseEstimator, ABC):
 
         Notes
         -----
-        保存后可用 reporting 的 get_related_features、get_correlation_matrix 和
-        show_correlation_matrix；不需要原始数据，也不触发新的相关计算。
+        报告支持 reporting 的 ``get_related_features``、``get_correlation_matrix``
+        和 ``show_correlation_matrix``。这些查询只读取保存的结果，无需原始数据。
 
         Examples
         --------

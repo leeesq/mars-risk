@@ -40,20 +40,20 @@ class MarsBinnerBase(MarsTransformer):
     """
     MARS 分箱器抽象基类。
 
-    该基类定义了分箱器的公共状态、索引协议以及数值/类别特征的统一转换行为。
+    基类定义公共状态、分箱索引和数值、类别特征的转换方式。
     子类负责学习切点或类别分组规则，基类则负责缓存管理、映射导出、
     WOE 物化、统计报告和 SQL 生成。
 
     Attributes
     ----------
     bin_cuts_ : dict of str to list of float
-        数值型特征的物理切点，每个列表均以 ``[-inf, ..., inf]`` 闭合。
+        数值特征的切点列表，两端为 ``-inf`` 和 ``inf``；全空特征可为空列表。
     cat_cuts_ : dict of str to list of list
-        类别型特征的分组映射规则。将零散的字符串/分类标签聚类为逻辑组。
+        类别特征的分组规则。每个子列表中的类别映射到同一个正常箱。
     bin_mappings_ : dict of str to dict of int to str
-        分箱可视化映射表。将物理索引映射为业务可读标签。
+        分箱索引到展示标签的映射。
     bin_woes_ : dict of str to dict of int to float
-        分箱权重字典。存储每个分箱索引对应的 WOE 值。
+        各特征的分箱索引到 WOE 值的映射。
     feature_names_in_ : list of str
         拟合时输入的原始特征列名。
     fit_failures_ : dict of str to str
@@ -94,30 +94,28 @@ class MarsBinnerBase(MarsTransformer):
         n_jobs: int = -1
    ) -> None:
         """
-        初始化分箱器基类, 配置全局业务规则与并行策略。
+        配置分箱数量、特殊值、缺失值和并行资源。
 
         Parameters
         ----------
         n_bins : int
-            期望的最大分箱数量。最终生成的箱数可能少于此值 (受单调性约束或样本量影响)。
+            正常分箱数量上限，不含 Missing、Other 和 Special 箱。
+            单调性约束、样本量或重复切点可能使实际箱数减少。
         special_values : List[Union[int, float, str]] | None
-            特殊值列表。
-            - 在部分场景中, 某些特定取值 (如 -999, -1)代表特定含义, 会被强制分配到独立的负数索引分箱中, 不参与正常区间的切分。
+            需要单独成箱的业务取值，例如 ``-999``、``-1``。
+            这些值不参与正常区间切分，使用从 ``-3`` 开始的负数索引；默认不额外配置。
         missing_values : List[Union[int, float, str]] | None
-            自定义缺失值列表。除了原生的 `null` 和 `NaN` 外, 用户可指定其他代表缺失的值。
+            除原生 null 和 NaN 外，需要映射到 Missing 箱的取值；默认不额外配置。
         join_threshold : int
-            在 `transform` 阶段, 为防止因构建过深的逻辑分支树 (When-Then Tree)导致的计算图解析缓慢:
-            - 当类别特征的基数 (Unique Values) 低于此值时, 使用内存级 `replace` 映射。
-            - 当基数超过此值时, 自动切换为 `Hash Join` 模式。
+            类别转换时选择映射实现的阈值，默认为 100。
+            已拟合类别映射的条目数大于该值时使用 Hash Join，否则使用 ``replace``。
         n_jobs : int
-            并行计算的核心数:
-            - `-1`: 自动使用 `CPU核心数 - 1`, 预留一个核心保证系统响应。
-            - `1`: 强制单线程模式, 便于调试。
-            - `N`: 使用指定的核心数。
+            并行任务数。``-1`` 使用 CPU 核心数减 1，至少为 1；
+            ``1`` 使用单任务，其余值传给具体分箱算法。
 
         Notes
         -----
-        初始化阶段不执行任何重型计算。所有计算资源 (进程池、线程池) 均在 `fit` 阶段按需按需申请。
+        初始化仅保存配置和空状态；``fit`` 按算法需要创建进程池或线程池。
         """
         super().__init__()
         self.features: list[str] = []
@@ -159,11 +157,12 @@ class MarsBinnerBase(MarsTransformer):
         X : pl.DataFrame | pd.DataFrame
             输入特征矩阵。
         y : pl.Series | pd.Series | np.ndarray | list[Any] | None
-            目标变量。监督型分箱器或监督型分箱方法会使用该参数。
+            与 ``X`` 按行对应的目标标签。CART、LiteOpt 和 Optimal 分箱要求提供；
+            无监督分箱可省略。提供标签后还会计算 WOE，标签要求由具体算法确定。
         features : list[str] | None
             本次拟合的特征列；不传时由具体分箱器使用全部候选列。
         cat_features : list[str] | None
-            显式指定为类别型的特征列。
+            强制按类别处理的列；不传时由具体分箱器按数据类型识别。
 
         Returns
         -------
@@ -368,7 +367,7 @@ class MarsBinnerBase(MarsTransformer):
             需要转换的已拟合规则子集。不传时要求输入包含全部可用规则特征。
         on_missing : Literal['error', 'warn', 'ignore']
             输入缺少请求特征时的处理策略。默认报错；``warn`` 与 ``ignore``
-            只转换实际存在的请求特征。
+            只转换实际存在的已知规则列，其中 ``warn`` 还会记录缺列警告。
         return_type : Literal['index', 'label', 'woe']
             输出形式。``"index"`` 返回分箱索引，``"label"`` 返回分箱标签，
             ``"woe"`` 返回对应分箱的 WOE 值。
@@ -376,13 +375,14 @@ class MarsBinnerBase(MarsTransformer):
             当 ``return_type="woe"`` 且当前实例尚未物化 WOE 映射时，
             计算 WOE 的批处理特征数。
         lazy : bool
-            是否保持延迟执行。为 ``True`` 时返回 ``pl.LazyFrame``。
+            是否强制返回 ``pl.LazyFrame``。默认 ``False`` 沿用输入的执行模式；
+            输入本身为 LazyFrame 时，结果仍为 LazyFrame。
 
         Returns
         -------
         pl.DataFrame or pd.DataFrame or pl.LazyFrame
-            分箱转换结果。若设置了 ``set_output("pandas")`` 且结果为 eager
-            DataFrame，则返回 Pandas 对象。
+            保留原始列，并追加 ``_bin`` 或 ``_woe`` 转换列。非延迟结果默认返回 Polars 表；
+            设置 ``set_output("pandas")`` 后返回 Pandas 表。
 
         Raises
         ------
@@ -859,34 +859,25 @@ class MarsBinnerBase(MarsTransformer):
         """
         根据列类型筛选可安全参与比较的配置值。
 
-        在强类型引擎 (如 Polars)中, 类型不匹配是导致崩溃的主要原因。该方法通过预扫描
-        Schema, 确保用户定义的业务逻辑 (缺失值、特殊值)与数据的物理存储类型保持绝对兼容。
+        按当前列类型筛选缺失值和特殊值配置，避免比较时发生类型不匹配。
 
         Parameters
         ----------
         dtype : pl.DataType
             当前处理列的原始数据类型。
         values : List[Any]
-            用户在配置中指定的数值列表 (如 [-999, 'unknown', None])。
+            用户配置的取值列表，例如 ``[-999, 'unknown', None]``。
 
         Returns
         -------
         List[Any]
-            经过物理类型对齐后的清洗列表。
+            可与当前列类型比较的配置值列表。
 
         Notes
         -----
-        1. 严格过滤机制：
-        若目标列为数值型, 系统会剔除所有非数值项。特别地, 由于 Python 中 `True == 1`,
-        系统会显式排除布尔类型, 防止逻辑误判导致的异常成箱。
-
-        2. 宽容转换机制：
-        若目标列为非数值型, 系统会将所有配置项强制转换为字符串。这保证了在进行
-        `is_in` 操作或 `join` 操作时, 比较操作发生在相同的物理类型之上。
-
-        3. 空值剥离：
-        `None` 和 `np.nan` 会在此阶段被剥离, 转由 `is_null()` 和 `is_nan()` 算子在
-        Polars 内核中进行更高效率的处理。
+        数值列只接受非布尔的 int、float 配置；Boolean 列只接受布尔配置，
+        避免 ``True == 1`` 造成误匹配。其他列的配置值转为字符串。
+        ``None`` 和浮点 NaN 由专用缺失判断处理，不加入配置比较列表。
         """
         if not values:
             return []
@@ -1005,57 +996,36 @@ class MarsBinnerBase(MarsTransformer):
         lazy: bool = False
    ) -> Union[pl.DataFrame, pl.LazyFrame]:
         """
-        [分箱转换]
+        按已拟合规则追加分箱转换列。
 
-        兼容数值与类别特征, 支持 Eager 与 Lazy 模式。
-
-        该方法采用了“表达式瀑布流 (Expression Waterfall)”设计, 通过 Polars 的原生算子实现
-        了高效的向量化转换。针对高基数类别特征, 采用了 Join 优化策略以规避深层逻辑树带来的性能损耗。
+        支持数值和类别特征，保留输入的 Eager 或 Lazy 执行模式。
 
         Parameters
         ----------
         X : Union[pl.DataFrame, pl.LazyFrame]
-            待转换的数据集。支持延迟计算流 (LazyFrame) 以优化长流水线性能。
+            待转换的特征表。
         features : list[str] | None
-            已由 public ``transform`` 校验过的规则特征子集。
+            已由公共 ``transform`` 校验的规则特征子集。
         return_type : Literal['index', 'label', 'woe']
-            转换后的输出格式:
-            - 'index': 输出分箱索引 (Int16 类型)。
-            - 'label': 输出分箱的可读标签 (Utf8 类型, 如 "01_[10.5, 20.0)")。
-            - 'woe': 输出对应的 WOE 值 (Float32 类型)。
+            输出格式。``index`` 为 Int16 分箱索引，``label`` 为 Utf8 展示标签，
+            ``woe`` 为 Float32 WOE 值。
         woe_batch_size : int
-            仅在 return_type='woe' 且未预计算 WOE 时有效。指定并行计算 WOE 的批大小。
-            - 若遇到内存溢出 (OOM)，请将此值调小 (如 50)；若内存充足，调大此值可提升吞吐量。
+            仅在请求 WOE 且映射尚未计算时生效，控制每批计算的特征数。
         lazy : bool
-            是否保持延迟执行状态。若为 True, 则无论输入是 Eager 还是 Lazy, 均返回 LazyFrame。
+            为 ``True`` 时强制返回 LazyFrame；默认 ``False`` 沿用输入执行模式。
 
         Returns
         -------
         Union[pl.DataFrame, pl.LazyFrame]
-            转换后的数据集。原列保持不变, 新增以 `_bin` 或 `_woe` 为后缀的转换列。
+            保留原始列，并追加 ``_bin`` 或 ``_woe`` 转换列的表。
 
         Notes
         -----
-        1. 分箱索引协议，为了确保与下游 Profiler 和 PSI 计算算子对齐, 系统采用以下固定索引:
-        - `IDX_MISSING (-1)`: 缺失值及自定义缺失值。
-        - `IDX_OTHER (-2)`: 类别型特征中的未见类别 (Unseen categories)。
-        - `IDX_SPECIAL_START (-3)`: 特殊值分箱起始索引 (向负无穷延伸)。
-        - `[0, N]`: 正常数值区间或类别分组索引。
-
-        2. 数值型转换：
-        - 预处理: 利用 `_get_safe_values` 确保缺失值/特殊值的类型与列 Schema 严格一致。
-        - core: 使用 `pl.cut` 进行向量化区间划分。
-        - 组合: 通过 `pl.when().then()` 瀑布流, 按照 "缺失值 -> 特殊值 -> 正常区间" 的优先级进行合并。
-
-        3. 类别型转换：
-        - **路径 A (低基数)**: 使用 `replace` 算子进行内存级映射, 速度极快。
-        - **路径 B (高基数)**: 当类别数超过 `join_threshold` 时, 自动转为 `Join` 模式。
-            这避免了构建数千个 `when-then` 分支导致的逻辑树深度爆炸 (Stack Overflow 风险),
-            将逻辑判断转化为哈希连接操作, 极大提升了宽表转换效率。
-
-        4. 自动路由与路由安全：
-        - 在进行 Utf8 类型操作 (如类别分组)前, 系统会自动创建临时 Utf8 缓存列。
-        - 转换结束后, 会自动清理所有产生的中间 Join 列和临时缓存列, 保证输出 Schema 纯净。
+        Missing 索引为 -1，Other 为 -2，Special 从 -3 向负方向扩展，正常箱从 0 开始。
+        数值列用 ``pl.cut`` 切分，缺失值优先于特殊值，特殊值优先于正常区间。
+        类别匹配键保留布尔类型标记，文本保持原始大小写和编号。
+        类别映射条目数超过 ``join_threshold`` 时使用 Hash Join，否则使用 ``replace``。
+        临时列名会避开已有列，转换结束后移除临时列。
         """
         exprs = []
         temp_join_cols: list[str] = []
@@ -1275,7 +1245,7 @@ class MarsBinnerBase(MarsTransformer):
 
     @staticmethod
     def _detect_trend_scientific(woes: List[float]) -> str:
-        """基于差分的严格单调性与峰谷检测"""
+        """用相邻 WOE 差分判断非递减、非递增和峰谷形态。"""
         y = np.array([w for w in woes if w is not None and not np.isnan(w)])
         n = len(y)
 
@@ -1285,7 +1255,7 @@ class MarsBinnerBase(MarsTransformer):
         # 计算差分
         diff = np.diff(y)
 
-        # 严格单调性 (Ascending / Descending)
+        # 允许相邻值相等，分别判断非递减和非递增。
         if np.all(diff >= 0):
             return "ascending"
         if np.all(diff <= 0):
@@ -1332,9 +1302,10 @@ class MarsBinnerBase(MarsTransformer):
             原始特征数据集。
         y : pl.Series | pd.Series
             二分类目标标签，仅接受 0/1、Boolean 及对应的合法字符串。
-            空值、NaN 和空字符串表示未表现样本。``-1`` 不属于本接口的标签哨兵。
+            null、NaN 和空字符串表示未表现样本。``-1`` 视为非法标签，不表示未表现。
         update_woe : bool
-            是否将本次计算得到的 WOE 同步回写到 ``bin_woes_``。
+            是否用本次已表现样本计算的 WOE 更新 ``bin_woes_``，默认为 ``True``。
+            设为 ``False`` 时只返回统计结果，保留已有 WOE 映射。
         batch_size : int
             特征分批处理大小。减小该值可进一步降低内存峰值。
         include_bin_index : bool
@@ -1360,8 +1331,8 @@ class MarsBinnerBase(MarsTransformer):
         Notes
         -----
         该方法依赖当前分箱器已完成拟合，并会复用 ``transform(return_type="index")``
-        的输出结果来执行聚合统计。分箱规则不受本次评估标签空值影响，但所有标签
-        依赖指标只使用已表现样本。合法单类别可生成计数和坏账率，
+        的输出结果来执行聚合统计。评估前会剔除未表现样本，
+        因此本表的样本数、分布和监督指标均使用已表现样本；分箱规则保持不变。合法单类别可生成计数和坏账率，
         缺少两类支持的监督指标沿用缺失状态；校验失败不更新已有 WOE。
 
         Examples
@@ -1605,22 +1576,23 @@ class MarsBinnerBase(MarsTransformer):
         """
         批量更新分箱规则并即时重算相关统计量。
 
-        允许用户批量传入需要强行修改切点的特征字典，系统将自动更新内部规则，
-        并在单次扫描中重新计算所有被修改特征的 WOE 和分箱统计量。
+        用传入的切点或类别分组替换已有规则，再计算已更新特征的 WOE 和分箱统计量。
+        更新后的规则会作为用户配置保存，后续拟合时仍有同类型特征则继续应用。
 
         Parameters
         ----------
         bin_rules : Dict[str, Union[List[Union[int, float]], List[List[Any]]]]
             待修改的特征分箱规则字典。
-            - 数值型特征：传入内部切点列表，如 {'age': [25, 30, 45]} (系统会自动补齐 -inf 和 inf)。
-            - 类别型特征：传入二维分组列表，如 {'city': [['北京', '上海'], ['广州', '深圳'], ['其他']]}。
+            - 数值型特征：传入内部切点列表，如 ``{'age': [25, 30, 45]}``，自动补齐 ``-inf`` 和 ``inf``。
+            - 类别型特征：传入二维分组列表，如 ``{'city': [['北京', '上海'], ['广州', '深圳'], ['其他']]}``。
         X : Union[pl.DataFrame, pd.DataFrame] | None
-            用于重新计算 WOE 的数据。若为 None，将尝试使用 fit 时缓存的 _cache_X。
+            用于重新计算 WOE 的数据。为 ``None`` 时使用 ``fit`` 缓存的 ``_cache_X``。
         y : Any | None
             二分类目标标签，支持 0/1、Boolean 及既有字符串表示；null/NaN 和空字符串
             不参与统计。此接口不将 -1 作为未表现哨兵。若为 None，尝试使用拟合缓存。
         on_unknown : Literal['error', 'warn', 'ignore']
-            ``bin_rules`` 包含未知或无规则特征时的处理策略。
+            ``bin_rules`` 包含未知或无规则特征时的处理策略，默认报错。
+            ``warn`` 记录警告并跳过，``ignore`` 直接跳过；至少需要更新一个已知特征。
 
         Returns
         -------
@@ -1675,7 +1647,7 @@ class MarsBinnerBase(MarsTransformer):
         if calc_y.drop_nulls().len() == 0:
             raise ValueError("Target 'y' must contain at least one observed value.")
 
-        # 遍历更新物理切点状态
+        # 更新规则，随后重建标签映射和 WOE。
         for feature, splits in bin_rules.items():
             if feature not in known_features:
                 continue
@@ -1708,7 +1680,7 @@ class MarsBinnerBase(MarsTransformer):
         if not updated_features:
             raise ValueError("No known binner features were updated.")
 
-        # 仅截取被更新的特征列送入 profile 引擎，实现单次极速扫描
+        # 只评估已更新的特征，避免重算其他特征的统计量。
         stats_df = self.profile_bin_performance(
             X=calc_X.select(updated_features),
             y=calc_y,
@@ -1813,14 +1785,16 @@ class MarsBinnerBase(MarsTransformer):
             - 'index': 输出分箱序号 (适合 XGBoost/LightGBM 树模型部署)
             - 'label': 输出分箱的中文/字符标签 (适合 BI 看板、数据分析或规则引擎)
         map_missing : bool
-            是否将缺失值映射为对应的 WOE/Index/Label。
+            是否把 SQL NULL 映射到 Missing 箱对应的值，默认为 ``True``；
+            设为 ``False`` 时输出 NULL。
         map_special : bool
-            是否将特殊值映射为对应的 WOE/Index/Label。
+            是否把特殊值映射到 Special 箱对应的值，默认为 ``True``；
+            设为 ``False`` 时保留特殊值原值。
 
         Returns
         -------
         str
-            标准 SQL 脚本（多字段间已用逗号安全分隔，可直接嵌入 SELECT 子句）。
+            逗号分隔的 SQL 表达式，可嵌入 ``SELECT`` 子句。
 
         Raises
         ------

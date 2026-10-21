@@ -25,7 +25,7 @@ class MarsRuleAnalysis:
     cumulative_table : polars.DataFrame
         按 RuleSet 顺序累计覆盖与边际贡献表，按需包含金额与客户指标。
     bootstrap_table : polars.DataFrame
-        可选 top-k Lift bootstrap 区间；默认分析不会执行重采样。
+        最终规则的 Lift bootstrap 分位数区间；默认不执行重采样，表为空。
     metadata : Mapping[str, Any]
         分析目标、字段配置、配对预算和样本量。
     """
@@ -63,23 +63,28 @@ def analyze_rule_set(
     customer_col : str | None
         可选客户列；提供后计算交互、累计及边际去重客户指标。
     max_pairs : int
-        交互分析的最大规则对数量。
+        交互分析的规则对预算，默认为 5,000。按 RuleSet 顺序枚举两两组合，
+        达到预算后停止；累计贡献仍覆盖全部规则。
     bootstrap_repeats : int
-        最终规则 Lift 重采样次数；``0`` 表示关闭。
+        最终规则 Lift 的有放回重采样次数，默认 ``0`` 关闭。
+        某次重采样没有总体事件或没有规则命中时，不计入该规则的有效重复次数。
     confidence_level : float
-        bootstrap 双侧区间置信水平。
+        bootstrap 双侧分位数区间的置信水平，默认为 0.95；
+        与 evaluator 的 Wilson 单侧置信界分别计算。
     random_state : int
         bootstrap 随机种子。
 
     Returns
     -------
     MarsRuleAnalysis
-        交互、累计表与运行元数据。
+        交互、累计、可选 bootstrap 表及运行元数据。统计前排除目标转为数值后
+        的 null 和 NaN；累计覆盖为规则前缀的并集，边际贡献只统计本条新增命中。
 
     Raises
     ------
     ValueError
-        配对预算非法、输入缺列或目标非二分类时抛出。
+        规则对预算、重采样次数或置信水平非法，输入缺列、无可用标签
+        或观测标签不为 0/1 时抛出。
 
     Examples
     --------

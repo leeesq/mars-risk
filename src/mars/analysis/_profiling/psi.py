@@ -29,7 +29,11 @@ def get_psi_trend(
     features: list[str] | None = None,
     benchmark_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
-    """计算特征相对内部首组或外部 benchmark 的 PSI。"""
+    """计算各分组及当前整体相对同一基准分布的 PSI。
+
+    显式 benchmark 同时用于拟合分箱和构造参考分布；未提供时在当前数据拟合分箱，
+    并以分组最小值对应的样本作为参考。无分组但有显式基准时只返回整体 PSI。
+    """
     if context.group_col is None and benchmark_df is None:
         raise ValueError("PSI requires `group_col`, `time_col`, or `benchmark_df`.")
 
@@ -499,7 +503,11 @@ def calc_psi_from_stats(
     include_special: bool,
     expected_stats_df: pl.LazyFrame | None = None,
 ) -> pl.LazyFrame:
-    """基于聚合频次表计算 PSI。"""
+    """按聚合频次计算各组和整体的 PSI。
+
+    先排除未纳入计算的缺失值箱和特殊值箱，再分别归一化当前分布与参考分布。
+    整体 PSI 使用各箱跨组加总后的频次，不平均各组 PSI。
+    """
     feat_col = "feat_idx" if "feat_idx" in stats_df.collect_schema().names() else "feature"
     filter_cond = psi_valid_condition(
         pl.col("bin_id"),

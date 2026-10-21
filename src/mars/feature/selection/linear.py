@@ -1,4 +1,4 @@
-"""MARS 特征筛选器实现模块。"""
+"""相关性、VIF 和逐步回归特征筛选。"""
 
 from __future__ import annotations
 
@@ -19,16 +19,16 @@ class MarsLinearSelector(_MarsXYSelector):
     """
     面向传统 LR 建模的线性特征筛选器。
 
-    该选择器按相关性过滤、VIF 过滤和逐步回归三个阶段收敛候选特征。
-    输入可以是 Polars 或 Pandas；统计建模边界会转换为 Pandas/NumPy，
-    以复用 statsmodels 的 Logit、AIC/BIC 和 VIF 实现。
+    依次按配置执行相关性、VIF 和逐步回归筛选。输入支持 Polars 和 Pandas，
+    计算时转为 Pandas/NumPy。VIF 和 Logit 诊断使用 statsmodels。
 
     Attributes
     ----------
     selected_features_ : list of str
         最终入选特征。
     coef_table_ : pandas.DataFrame
-        最终 Logit 模型的系数、标准误和 p-value。
+        Logit 系数表。逐步回归成功时还包含标准误和 p-value；
+        未执行或无法完成 Logit 诊断时可能为空。
     vif_table_ : pandas.DataFrame
         VIF 阶段的最终候选特征 VIF 表。
     stepwise_history_ : pandas.DataFrame
@@ -64,28 +64,32 @@ class MarsLinearSelector(_MarsXYSelector):
         enable_corr_filter : bool
             是否启用相关性去重阶段。
         corr_thr : float
-            相关性去重阈值。
+            特征间绝对相关系数的去重阈值，默认为 0.8，达到阈值即剔除一侧。
+            优先保留与目标的绝对 Spearman 相关系数较大的特征，相等时保留靠前者。
         corr_method : str
-            相关性计算方法。
+            特征间相关系数的 Pandas 计算方法，默认为 ``"spearman"``。
         enable_vif_filter : bool
             是否启用 VIF 筛查阶段。
         vif_threshold : float
-            VIF 阈值。
+            启用 VIF 筛选时的上限，默认为 5.0；每轮剔除 VIF 最高且超过上限的特征。
         enable_stepwise : bool
             是否启用逐步回归阶段。
         stepwise_direction : str
-            逐步回归方向。
+            仅在启用逐步回归时生效。支持 ``"forward"``、``"backward"``
+            和 ``"both"``，默认前向加入特征。
         stepwise_criterion : str
-            逐步回归优化准则。
+            仅在启用逐步回归时生效。支持 ``"aic"`` 和 ``"bic"``，默认优化 AIC；
+            只有信息准则下降时才接受加入或移除。
         max_features : int | None
-            最终保留特征数上限。
+            最终特征数上限，默认不限。超出时按与目标的绝对 Spearman
+            相关系数保留前 N 个；前向加入阶段也受该上限约束。
         n_jobs : int
-            并行任务数量。
+            保留的并行配置，默认为 ``-1``；当前筛选实现仅保存该值。
 
         Raises
         ------
         ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+            逐步回归方向或信息准则不受支持时抛出。
 
         """
         super().__init__()
@@ -449,15 +453,16 @@ class MarsLinearSelector(_MarsXYSelector):
         Parameters
         ----------
         X : pl.DataFrame | pd.DataFrame
-            输入特征表。
+            输入特征表。候选列先尝试转为数值，完全无法转换的列会被剔除。
         y : Any
-            二分类目标数组。
+            按位置与 ``X`` 对应的二分类目标数组。候选数值列或目标存在
+            缺失、NaN 或无穷值的行会整行删除；清理后必须保留两个目标类别。
         features : Sequence[str] | None
             本次参与筛选的特征列；不传时使用输入表中的全部候选列。
         feature_metadata : FeatureMetadata | None
-            既有原始 ID 到展示名、来源、单位和业务描述的元数据。
+            特征英文 ID 对应的展示名、业务来源、单位和描述，用于相关性报告。
         business_context : dict[str, Any] | None
-            JSON 业务语义；未提供的样本单位、训练集含义保持 unknown。
+            可序列化为 JSON 的业务上下文；未提供的样本单位和训练集含义保持 unknown。
 
         Returns
         -------

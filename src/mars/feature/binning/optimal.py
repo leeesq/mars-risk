@@ -32,27 +32,26 @@ class MarsOptimalBinner(MarsBinnerBase):
     """
     基于数学规划的最优分箱器。
 
-    该组件集成了空间降维预分箱技术与 OptBinning 核心规划算法。通过在指定的目标事件率
-    （Event Rate）单调性约束、最小区间占比及最小事件数等边界条件下，求解信息值（IV）最大化
-    的混合整数规划或约束编程问题，生成具备极高鲁棒性与严格业务逻辑解释性的特征切点。
+    数值特征先由 ``MarsNativeBinner`` 预分箱，再交给 OptBinning 求解。
+    求解器在箱数、事件率趋势、最小样本量和事件数约束下优化 IV。
+    类别特征使用 OptBinning 的类别合并。
 
     Attributes
     ----------
     bin_cuts_ : dict of str to list of float
-        针对连续型特征求解生成的物理切点映射字典。
+        各数值特征的切点列表。
 
     cat_cuts_ : dict of str to list of list
-        针对类别型特征求解生成的离散组合分类映射字典。
+        各类别特征的分组列表。
 
     fit_failures_ : dict of str to str
-        记录在拟合过程中触发求解器异常、数据类型不支持或超时熔断的特征名称及其内部诊断原因。
+        求解失败、超时或回退的特征及诊断原因。
 
     Notes
     -----
-    该离散化评估器在执行过程中高度依赖底层预分箱产生的搜索边界。在面临极度偏态的特征分布时，
-    求解器可能因无法在给定的 `min_bin_size` 与单调性约束下找到可行解 (Infeasible) 而崩溃。
-    为此，引擎内部构建了完备的异常隔离与降级回退机制，确保流水线在处理高噪超宽表时具备
-    绝对的稳定性。
+    预分箱切点限定数值求解的搜索范围。样本不足、预分箱不可用、求解异常
+    或无可行解时，数值特征回退到原生分箱，并在 ``fit_failures_`` 中记录原因。
+    部分特征仍有可用规则时允许拟合成功；全部特征无可用规则时抛出异常。
 
     Examples
     --------
@@ -94,11 +93,12 @@ class MarsOptimalBinner(MarsBinnerBase):
         n_bins : int
             最大分箱数量，不含缺失值箱和特殊值箱。
         min_n_bins : int
-            允许求解器返回的最小分箱数。
+            数值最优求解的最小正常箱数，默认为 2；回退规则可少于该值。
         min_bin_size : float
-            单箱最小样本占比约束。
+            数值正常箱占拟合表总行数的最小比例，默认为 0.05。
+            排除该特征的缺失值和特殊值后，仍按总行数计算最小样本数。
         min_bin_n_event : int
-            单箱最少事件数约束。
+            数值最优求解中每箱最少的目标事件数，默认为 30。
         prebinning_method : Literal['quantile', 'uniform', 'cart']
             求解前的预分箱策略。
         n_prebins : int
@@ -112,9 +112,10 @@ class MarsOptimalBinner(MarsBinnerBase):
         time_limit : int
             单个特征的求解时间上限，单位为秒。
         max_cats_to_solver : int | None
-            进入求解器搜索空间的最大类别数。
+            类别预处理保留的高频类别数，默认为 100；其余合并为
+            ``__Mars_Other_Pre__``。``None`` 表示关闭这一步截断。
         min_cat_fraction : float
-            类别特征单一类别的最小样本占比。
+            传给 OptBinning ``cat_cutoff`` 的低频类别合并阈值，默认为 0.05。
         special_values : List[Any] | None
             需要独立隔离的特殊值集合。
         missing_values : List[Any] | None
@@ -122,13 +123,15 @@ class MarsOptimalBinner(MarsBinnerBase):
         cart_params : Dict[str, Any] | None
             透传给预分箱决策树的参数。
         fallback_binner_params : Dict[str, Any] | None
-            最优求解失败后使用的原生分箱回退参数。只允许覆盖
+            数值最优求解失败后使用的原生分箱配置。默认使用等频分箱，
+            继承 ``n_bins``、``min_bin_size``，并开启小箱合并。只允许覆盖
             ``method``、``n_bins``、``min_bin_size``、``merge_small_bins``、
             ``remove_empty_bins`` 和 ``cart_params``。
         join_threshold : int
             高基数类别映射时切换到 Join 模式的阈值。
         n_jobs : int
-            并行计算使用的核心数限制。
+            预分箱与逐特征求解的并行任务数。``-1`` 使用 CPU 核心数减 1，
+            至少为 1；``1`` 使用单任务。
 
         Raises
         ------
@@ -334,13 +337,13 @@ class MarsOptimalBinner(MarsBinnerBase):
 
         Notes
         -----
-        - 1. 计算重心前置: 在 `num_task_gen` 内部利用 Polars进行极速过滤, Worker 仅接收经过净化的 Numpy 视图。
+        - 1. 计算重心前置: 在 `num_task_gen` 内部用 Polars 过滤无效值，worker 只接收正常值的 NumPy 数组。
 
-        - 2. 两阶段联动: 先调用 `MarsNativeBinner` 获取粗粒度切点,
-          随后将其作为 `user_splits` 注入 `optbinning`, 极大缩小了数学规划的搜索空间。
+        - 2. 两阶段联动: 先调用 `MarsNativeBinner` 获取预分箱切点,
+          随后将其作为 `user_splits` 注入 `optbinning`, 限定数学规划搜索的候选边界。
 
-        - 3. 并发控制: 使用 `loky` 后端。由于单个特征的最优求解耗时较长 PCR,
-          支付跨进程通讯成本以换取独立 CPU 核心的满载运行是非常合算的。
+        - 3. 并发控制: 使用 `loky` 后端。各特征由独立进程求解；
+          任务传入已过滤的连续数组，减少数据转换。
         """
         # 包装为具名 Series，便于下游复用统一的目标列读取逻辑。
         y_series = pl.Series(name="target", values=y_np)
@@ -395,10 +398,8 @@ class MarsOptimalBinner(MarsBinnerBase):
                 if len(col_data) < 10 or np.var(col_data) < MIN_VARIANCE:
                     return col, None, "Low variance or insufficient samples"
 
-                # 将绝对值转换回当前数据的相对比例
-                # OptBinning 源码限制 min_bin_size 必须在 (0, 0.5] 之间
-                    # 如果占比 > 0.5，意味着无法分出 2 个箱子，求解器会无解报错。
-                    # 强制截断为 0.5 是为了让求解器至少能尝试分出 2 个箱 (或证明不可分)。
+                # 把总样本量约束换算为正常值样本中的比例。
+                # OptBinning 要求比例在 (0, 0.5] 内，超出时直接回退。
                 current_ratio = min_bin_size_abs / len(col_data)
 
                 # 如果比例超过 0.5, 说明当前数据甚至无法切分出两个满足要求的箱子
@@ -617,7 +618,7 @@ class MarsOptimalBinner(MarsBinnerBase):
                     continue
 
                 valid_mask_np = valid_mask.to_numpy() # 预转 Numpy 掩码
-                # 强制转为 Utf8 确保传给 optbinning 的绝对是字符串
+                # 求解器接收字符串类别，正式规则再恢复原值类型。
                 col_data = clean_series.cast(pl.Utf8).to_numpy()
                 clean_y = y_np[valid_mask_np]
 

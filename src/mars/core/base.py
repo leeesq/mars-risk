@@ -61,7 +61,8 @@ class MarsBaseEstimator(BaseEstimator):
         Parameters
         ----------
         transform : Literal['default', 'pandas', 'polars']
-            目标输出格式。
+            控制后续转换结果的类型。``"default"`` 随输入类型返回，
+            ``"pandas"`` 和 ``"polars"`` 分别指定对应类型。默认值为 ``"default"``。
 
         Returns
         -------
@@ -71,7 +72,7 @@ class MarsBaseEstimator(BaseEstimator):
         Raises
         ------
         ValueError
-            当输入参数、列配置或数据状态不满足当前方法要求时抛出。
+            ``transform`` 不是 ``"default"``、``"pandas"`` 或 ``"polars"`` 时抛出。
 
         Examples
         --------
@@ -103,7 +104,7 @@ class MarsBaseEstimator(BaseEstimator):
         X: pl.DataFrame | pl.LazyFrame | pd.DataFrame,
     ) -> Union[pl.DataFrame, pl.LazyFrame]:
         """
-        确保输入被转换为 Polars DataFrame 或 LazyFrame。
+        将输入转为 Polars 数据框，并记录输出类型偏好。
 
         Parameters
         ----------
@@ -378,7 +379,8 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         X : pl.DataFrame | pd.DataFrame
             输入特征矩阵。
         y : pl.Series | pd.Series | np.ndarray | list[Any] | None
-            目标变量。若为 ``None``，则执行无监督拟合流程。
+            与 ``X`` 逐行对应的标签，默认 ``None``。基类将标签转换为 Polars Series，
+            再交给子类；是否允许省略标签由子类的拟合实现决定。
 
         Returns
         -------
@@ -392,8 +394,8 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Notes
         -----
-        该基类仅提供最小公共拟合契约。若子类需要向用户暴露额外参数，
-        应直接重写公共 ``fit`` 方法，而不是依赖内部实现钩子的隐式透传。
+        基类负责输入转换、Pandas 索引校验和拟合状态记录。
+        子类需要额外的公开拟合参数时，应重写 ``fit`` 并显式声明参数。
 
         Examples
         --------
@@ -441,8 +443,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Notes
         -----
-        该基类不再承担子类私有参数的公开入口。若子类需要额外的转换参数，
-        应在子类自己的公共 ``transform`` 方法中显式声明。
+        子类需要额外的公开转换参数时，应重写 ``transform`` 并显式声明参数。
 
         Examples
         --------
@@ -474,7 +475,7 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
         X : Union[pl.DataFrame, pd.DataFrame]
             输入特征矩阵。
         y : Any | None
-            目标变量。
+            与 ``X`` 逐行对应的标签，默认 ``None``。是否允许省略由子类决定。
 
         Returns
         -------
@@ -483,8 +484,8 @@ class MarsTransformer(MarsBaseEstimator, TransformerMixin, ABC):
 
         Notes
         -----
-        若子类公开的 ``fit`` 或 ``transform`` 带有额外参数，应同步重写
-        ``fit_transform``，避免这些参数再次隐藏在基类实现之外。
+        本方法依次调用 ``fit(X, y)`` 和 ``transform(X)``。
+        子类的 ``fit`` 或 ``transform`` 需要额外参数时，应同步重写 ``fit_transform``。
 
         Examples
         --------

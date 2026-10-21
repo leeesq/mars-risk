@@ -32,14 +32,15 @@ RuleQualification = Literal["exploratory", "validated", "temporally_validated"]
 
 @dataclass(frozen=True)
 class MarsRule:
-    """表示与样本评估结果无关的可部署规则。
+    """保存规则表达式、生成来源和稳定标识，不保存样本指标。
 
     Parameters
     ----------
     expression : str
-        Mars Rule DSL 表达式。
+        Mars Rule DSL 表达式。构造时解析、校验并规范化，用规范文本生成 ``rule_id``。
     source : str
-        规则来源，例如 ``manual``、``combination`` 或 ``tree``。
+        候选生成来源，默认为 ``manual``，也可为 ``combination`` 或 ``tree``。
+        该字段与特征元数据中的业务来源不同。
     labels : tuple[str, ...]
         调用方附加的稳定标签。
 
@@ -85,11 +86,11 @@ class MarsRuleMetricCondition:
     Parameters
     ----------
     metric : str
-        固定长表中的指标列名。
+        评估长表中支持的指标列名，例如 ``lift``、``event_count`` 或 ``coverage``。
     operator : {"<", "<=", "==", "!=", ">=", ">"}
         比较运算符。
     value : float
-        比较阈值。
+        比较阈值，单位与指标一致。coverage 和事件率使用小数比例，Lift 无量纲。
     """
 
     metric: str
@@ -138,13 +139,16 @@ class MarsRuleFilter:
     Parameters
     ----------
     conditions : tuple[MarsRuleMetricCondition, ...]
-        单行评估结果必须同时满足的指标条件。
+        规则命中行必须同时满足的指标条件；所需指标为 null 时不通过。
     targets : "primary"、"all" 或目标列元组
-        参与筛选的目标范围。
+        参与筛选的目标范围。默认 ``"primary"`` 只检查主目标；
+        ``"all"`` 检查全部评估目标，目标列元组则只检查指定目标。
     target_scope : {"all", "any"}
-        多目标条件的聚合方式。
+        多目标结果的通过方式。默认 ``"all"`` 要求每个目标都通过，
+        ``"any"`` 要求至少一个目标通过。
     slice_pass_rate : float | None
-        提供切片结果时要求通过的最小切片比例；``None`` 表示只使用 overall。
+        整体通过后，切片还需满足的最小通过比例。默认 ``None`` 只检查 overall；
+        指定比例且存在切片表时，每个目标分别计算切片通过率。
     """
 
     conditions: Tuple[MarsRuleMetricCondition, ...]
@@ -202,9 +206,11 @@ class MarsRuleMiningSpec:
     Parameters
     ----------
     profile : {"explore", "production"}
-        探索模式保留点估计筛选；生产模式强制独立验证与统计门禁。
+        默认 ``"explore"`` 按点估计筛选，结果资格保持 exploratory；
+        ``"production"`` 要求独立验证，并强制检查置信界、FDR 和适用的时间条件。
     direction : {"high_risk", "low_risk"}
-        规则风险方向。
+        默认 ``"high_risk"`` 寻找高事件率人群；``"low_risk"`` 寻找低事件率人群。
+        方向决定排序和统计检验尾部；筛选阈值由两个 filter 单独控制。
     candidate_filter : MarsRuleFilter
         训练集候选筛选规则。
     validation_filter : MarsRuleFilter
@@ -212,13 +218,15 @@ class MarsRuleMiningSpec:
     grade_filters : Mapping[str, MarsRuleFilter]
         规则等级到筛选条件的映射。
     selection_strategy : {"ranked", "cascade"}
-        最终规则选择策略。
+        默认 ``"ranked"`` 在完整样本上评估、排序并去重；
+        ``"cascade"`` 每轮在剩余人群中重新生成和筛选，已选规则以 OR 累积覆盖。
     top_k : int
         最终最多保留的规则数。
     max_candidates : int
         合并生成器后允许评估的候选上限。
     iou_threshold : float
-        命中人群 IoU 去重阈值。
+        规则命中集合的交并比阈值，默认为 0.3。候选与更高优先级规则的 IoU
+        大于等于该值时被剔除。
     batch_size : int
         规则批量评估大小。
     iou_batch_size : int
@@ -228,11 +236,13 @@ class MarsRuleMiningSpec:
     random_state : int
         默认生成器随机种子。
     on_generator_error : {"raise", "record"}
-        单生成器失败时的处理方式。
+        默认 ``"raise"`` 立即抛出生成器异常；``"record"`` 记录错误后继续处理其他来源。
     confidence_level : float
-        production Wilson 单侧置信水平。
+        Wilson 单侧置信水平，默认为 0.95。production 使用相应的 Lift 置信界
+        检查筛选条件；高级分析中的 bootstrap 使用单独的双侧区间。
     max_fdr : float
-        production Benjamini-Hochberg 最大 q 值。
+        production 允许的最大 BH q 值，默认为 0.05；
+        按相同 dataset、target 和 slice 内的候选检验校正。
     min_time_slices : int
         获得时间验证资格所需的最少有效切片数。
     """
@@ -326,7 +336,7 @@ class MarsRuleMiningSpec:
         Returns
         -------
         MarsRuleMiningSpec
-            Lift 上限分别为 0.9 和 0.8 的低风险策略。
+            训练候选 Lift 上限为 0.9、验证 Lift 上限为 0.8 的低风险策略。
         """
         candidate_filter = MarsRuleFilter(
             conditions=(
@@ -358,7 +368,7 @@ class MarsRuleMiningSpec:
 
 @dataclass
 class MarsRuleSet:
-    """有序、可部署的规则集合。
+    """保存有序规则定义、等级归属和部署资格。
 
     Parameters
     ----------
@@ -371,7 +381,8 @@ class MarsRuleSet:
     qualification : {"exploratory", "validated", "temporally_validated"}
         规则集部署资格；手工构造和 explore 结果默认为 ``exploratory``。
     validation_summary : Mapping[str, Any]
-        生成资格状态所依据的验证摘要。
+        资格状态所依据的验证摘要。具有验证资格时必须满足摘要契约；
+        默认空摘要用于 exploratory 规则集。
     """
 
     rules: Sequence[MarsRule] = field(default_factory=tuple)
@@ -443,12 +454,14 @@ class MarsRuleSet:
         Returns
         -------
         pandas.DataFrame | polars.DataFrame
-            与输入类型一致的命中结果表。
+            保留输入列并追加命中列，返回类型与输入一致。
+            ``rule__<rule_id>`` 为 0/1 命中标记，``rule_hit_count`` 为命中规则数，
+            ``grade__<等级>__hit_count`` 为各等级命中数。空规则集的总命中数为 0。
 
         Raises
         ------
         ValueError
-            输入缺少任一规则引用列时抛出。
+            输入缺少任一规则引用列时抛出。规则与列类型不兼容时传播 schema 校验异常。
         """
         input_is_polars: bool = isinstance(df, pl.DataFrame)
         frame: pl.DataFrame = to_polars_frame(df)
@@ -695,9 +708,10 @@ class MarsRuleSet:
         table_alias : str
             输入表别名；空字符串表示不添加前缀。
         include_grade_counts : bool
-            是否输出等级命中计数列。
+            是否生成各等级的命中计数列，默认为 ``True``；逐规则和总命中列始终生成。
         minimum_qualification : Literal["validated", "temporally_validated"] | None
-            SQL 导出要求的最低部署资格；``None`` 仅用于显式开发导出。
+            SQL 导出的最低部署资格，默认要求 ``validated``；
+            ``None`` 允许显式开发导出，``temporally_validated`` 要求时间验证资格。
         missing_policy : Literal["reject", "normalized_to_null"]
             ``IS MISSING`` 的 ANSI SQL 策略；默认拒绝，声明上游已完成 NaN 到
             NULL 规范化后才允许映射。

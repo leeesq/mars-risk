@@ -25,13 +25,13 @@ class MarsStatsSelector(MarsBaseSelector):
     """
     基于风控统计指标的特征筛选器。
 
-    该筛选器将数据质量、IV/Lift、PSI、相关性和白黑名单规则串成一个漏斗式筛选流程。
+    依次检查数据质量、IV/Lift、PSI、RC 和 WOE 相关性，并应用白黑名单。
     构造函数只保存阈值、分箱策略、缺失/特殊值配置以及运行资源参数；样本数据、
     目标列、特征范围、分组列和时间列都由 `fit` 传入。
     质量、分布和 PSI 使用全量样本；监督分箱、IV/Lift、RC 与 WOE 相关性只使用
     target 非空的已表现样本。
 
-    典型用法是先用粗分箱低成本压缩特征空间，再用精细分箱和稳定性规则做最终筛选。
+    可以先用粗分箱减少候选特征，再用精细分箱和稳定性阈值筛选。
     `white_list` 中的特征会尽量绕过自动剔除规则，`black_list` 中的特征会被强制排除。
 
     Examples
@@ -83,23 +83,28 @@ class MarsStatsSelector(MarsBaseSelector):
         Parameters
         ----------
         missing_thr : float
-            缺失率剔除阈值。
+            全量样本缺失率上限，默认为 0.90；超过上限时剔除特征。
         zeros_thr : float
-            零值率剔除阈值。
+            全量样本零值率上限，默认为 0.90；超过上限时剔除特征。
         mode_thr : float
-            单一众数占比剔除阈值。
+            全量样本众数占比上限，默认为 0.90；超过上限时剔除特征。
         iv_thr : float
-            精筛阶段保留特征所需的最低 IV。
+            精筛 IV 下限，默认为 0.01；IV 大于等于该值时保留。
+            IV 不达标的特征仍可通过 Lift 条件召回。
         lift_thr : float | None
-            精筛阶段保留特征所需的最低 Lift。
+            精筛 Lift 召回阈值，默认为 1.2。至少一个 Total 分箱的 Lift
+            大于该值、且样本占比大于 ``min_sample_rate`` 时可召回；``None`` 关闭召回。
         min_sample_rate : float
-            计算 Lift 时单个分箱所需的最低样本占比。
+            精筛 Lift 召回所需的单箱样本占比下限，默认为 0.05，使用严格大于比较。
         psi_thr : float | None
-            稳定性筛选的 PSI 上限。
+            各监控分组最大 PSI 的上限，默认为 0.25；PSI 必须小于该值。
+            ``None`` 关闭 PSI 筛选。
         rc_thr : float | None
-            排名变化率筛选阈值。
+            各监控分组最小风险排序相关系数 RC 的下限，默认为 0.5；
+            RC 必须大于等于该值。``None`` 关闭 RC 筛选。
         corr_thr : float | None
-            已表现样本上的 WOE 相关性筛选阈值。
+            已表现样本上的绝对 WOE 相关系数上限，默认为 0.95。
+            超过上限时按 IV 优先级剔除一侧；``None`` 关闭相关性筛选。
         feature_start_aware_reference : bool
             是否默认启用按特征上线时间重锚的稳定性参考，默认为 `False`。启用后，
             `fit` 必须收到可解析的 `time_col`；仅有 `group_col` 不能识别上线日期。
@@ -114,36 +119,38 @@ class MarsStatsSelector(MarsBaseSelector):
             `"first_group"` 仍使用全局首组。该参数只影响 Stage 4 PSI 和 Stage 5 RC，
             不改变 Stage 1 数据质量、Stage 2/3 IV/Lift、分箱或 WOE 相关性筛选。
         risk_corr_baseline : RiskCorrBaseline
-            RC 的默认基准选择方式。
+            RC 坏率排序的参考分布，默认为 ``"total"``。``"benchmark"``
+            使用显式基准样本或识别出的上线首期，``"first_group"`` 使用最早分组。
         psi_include_missing : bool
-            稳定性筛选和评估报告计算 PSI 时是否纳入缺失值箱。
+            稳定性筛选和评估报告的 PSI 是否纳入 Missing 箱，默认不纳入。
         psi_include_special : bool
-            稳定性筛选和评估报告计算 PSI 时是否纳入特殊值箱。
+            稳定性筛选和评估报告的 PSI 是否纳入 Special 箱，默认不纳入。
         skip_rough_scan : bool
             是否跳过粗筛分箱阶段。
         skip_fine_scan : bool
             是否跳过精筛分箱阶段。
         rough_iv_thr : float
-            粗筛阶段保留特征所需的最低 IV。
+            粗筛 IV 阈值，默认为 0.01，使用严格大于比较；未通过时可由 Lift 召回。
         rough_lift_thr : float
-            粗筛阶段保留特征所需的最低 Lift。
+            粗筛 Lift 召回阈值，默认为 1.2；至少一个分箱的 Lift 和样本占比
+            分别大于该值和 ``rough_min_sample_rate`` 时可召回。
         rough_min_sample_rate : float
-            粗筛阶段计算 Lift 时单个分箱所需的最低样本占比。
+            粗筛 Lift 召回所需的单箱样本占比下限，默认为 0.02，使用严格大于比较。
         missing_values : List[Any] | None
             需要视为缺失的取值列表。
         special_values : List[Any] | None
             需要单独处理的特殊值列表。
         binning_params : Dict[str, Any] | None
-            精筛阶段分箱器参数。支持增量更新，传入的字典将与默认配置合并，未指定的参数将保留默认值。
+            精筛分箱参数，与默认配置合并；未指定的项保留默认值。
             默认配置为：`{"prebinning_method": "cart", "n_bins": 10, "min_bin_size": 0.05}`。
         rough_binning_params : Dict[str, Any] | None
-            粗筛阶段分箱器参数。支持增量更新，传入的字典将与默认配置合并，未指定的参数将保留默认值。
+            粗筛分箱参数，与默认配置合并；未指定的项保留默认值。
             默认配置为：`{"method": "quantile", "n_bins": 20, "min_bin_size": 0.02, "merge_small_bins": True}`。
         batch_size : int | None
-            批量评估时的特征批大小。
+            每批评估的特征数，默认 100；``None`` 也按 100 处理。
         n_jobs : int
-            并行任务数，含义遵循 joblib 约定；精筛分箱默认继承该值，
-            显式 ``binning_params['n_jobs']`` 优先。
+            分箱器的并行任务数；``-1`` 使用 CPU 核心数减 1，至少为 1。
+            精筛分箱默认继承该值，显式 ``binning_params['n_jobs']`` 优先。
         """
         super().__init__()
 
@@ -172,7 +179,7 @@ class MarsStatsSelector(MarsBaseSelector):
             "min_bin_size": 0.02,
             "merge_small_bins": True
         }
-        # 如果用户传了参数，就更新对应的值，否则保持默认
+        # 仅覆盖显式传入的项，其余粗分箱参数保留默认值。
         if rough_binning_params:
             default_rough_params.update(rough_binning_params)
         self.rough_binning_params = default_rough_params
@@ -242,8 +249,9 @@ class MarsStatsSelector(MarsBaseSelector):
         target : str
             二分类目标列名。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
-            基准样本表。传入后用于拟合粗筛和精筛分箱规则，并提供 PSI expected
-            distribution；质量和 PSI 仍使用完整 ``df``，IV、Lift、RC 和相关性使用
+            基准样本表。提供后用于拟合粗筛、精筛规则，并提供 PSI 参考分布；
+            监督分箱只使用基准表中已表现样本。质量和 PSI 使用完整 ``df``，
+            IV、Lift、RC 和相关性使用
             ``df`` 中 target 非空的已表现样本。
         features : list[str] | None
             候选特征列；不传时会从样本表中自动推断。
@@ -256,7 +264,7 @@ class MarsStatsSelector(MarsBaseSelector):
         group_col : str | None
             已存在的分组列名，用于趋势和稳定性筛选。
         time_col : str | None
-            原始日期列名；与 `time_grain` 配合时生成时间分组。
+            原始日期列名；未传 ``group_col`` 时，与 ``time_grain`` 配合生成时间分组。
         time_grain : str | None
             时间聚合粒度，例如 `"day"`、`"week"`、`"month"` 或 `"7d"`。
         white_list : list[str] | None
@@ -297,7 +305,7 @@ class MarsStatsSelector(MarsBaseSelector):
         start-aware 的实际状态、识别特征和上线日期可通过分箱报告 `report_meta` 中的
         `feature_start_aware_reference`、`feature_start_reference_features` 和
         `feature_start_reference_dates` 查看。前者表示是否实际构造出 reference，
-        不是简单回显调用参数。晚接入特征若已因全量缺失率超过 `missing_thr` 在
+        不会直接回显调用参数。晚接入特征若已因全量缺失率超过 `missing_thr` 在
         Stage 1 被删除，不会进入后续 start-aware 稳定性计算。
 
         Examples
@@ -547,7 +555,7 @@ class MarsStatsSelector(MarsBaseSelector):
                             {"white_list_len": len(valid_white_list)},
                             len(current_features), len(self.selected_features_))
 
-        # 触发底层引擎缓存销毁与空间压缩
+        # 清理分箱器中的样本缓存，保留规则和筛选结果。
         if self._stage3_binner is not None:
             if self.selected_features_:
                 self._stage3_binner.prune(self.selected_features_)
@@ -623,7 +631,7 @@ class MarsStatsSelector(MarsBaseSelector):
         Returns
         -------
         pl.DataFrame | pd.DataFrame
-            仅保留筛选结果的转换表；输出类型与 `df` 一致。
+            保留已选特征，并在目标列存在时附加目标列；输出格式由 ``set_output`` 控制。
 
         Notes
         -----
@@ -802,7 +810,28 @@ class MarsStatsSelector(MarsBaseSelector):
         keep_target: bool = True,
         on_missing: Literal["error", "warn", "ignore"] = "error",
     ) -> Union[pl.DataFrame, pd.DataFrame]:
-        """根据筛选结果严格裁剪数据，并可选择保留目标列。"""
+        """按筛选结果保留特征，并按需附加目标列。
+
+        Parameters
+        ----------
+        df : Union[pl.DataFrame, pd.DataFrame]
+            待转换的样本表。
+        keep_target : bool
+            是否附加拟合时指定的目标列，默认为 ``True``。输入未包含目标列时不附加。
+        on_missing : Literal["error", "warn", "ignore"]
+            输入缺少已选特征时的处理策略，默认报错。``warn`` 记录警告后跳过，
+            ``ignore`` 直接跳过；两者均只返回实际存在的已选特征。
+
+        Returns
+        -------
+        pl.DataFrame or pd.DataFrame
+            按已选特征顺序裁剪的表；保留目标时，目标列放在末尾。
+            输出格式由 ``set_output`` 控制。
+
+        Notes
+        -----
+        未拟合、缺少已选特征或 ``on_missing`` 无效时，继承的校验会抛出 ``ValueError``。
+        """
         result = super().transform(df, on_missing=on_missing)
         if not keep_target or self.target is None:
             return result
@@ -857,7 +886,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         Notes
         -----
-        在 Notebook 环境中优先返回富样式表格；若环境不支持，则退化为日志打印。
+        在 Notebook 中优先展示带样式的表格；无法展示时使用日志输出。
 
         Examples
         --------
@@ -1009,7 +1038,7 @@ class MarsStatsSelector(MarsBaseSelector):
             mode_rate = row["mode_rate"]
             zeros_rate = row["zeros_rate"]
 
-            # 实施特定属性旁路绕过数据分布的边界校验
+            # 白名单特征跳过质量阈值检查。
             if self._should_bypass_filter(feat):
                 self._register_feature_decision(feat, "Selected", "Quality", "White List", missing)
                 kept_features.append(feat)
@@ -1149,7 +1178,7 @@ class MarsStatsSelector(MarsBaseSelector):
                     iv_value,
                 )
 
-        # 构建分箱失败时的容错矩阵，确保声明属性不发生物理丢失
+        # 为分箱失败的白名单特征保留回退规则。
         kept_set = set(kept_features)
         for f in features:
             if self._should_bypass_filter(f) and f not in kept_set:
@@ -1263,7 +1292,7 @@ class MarsStatsSelector(MarsBaseSelector):
             else:
                 self._register_feature_decision(feat, "Dropped", "Fine_Scan", "Low IV & No Lift Recall", iv_total)
 
-        # 执行针对数学期望异常结果的系统级强制路由分配
+        # 补回尚未保留的白名单特征，并为缺失的 IV 记录 0。
         kept_set = set(kept_features)
         for f in features:
             if self._should_bypass_filter(f) and f not in kept_set:
@@ -1582,7 +1611,7 @@ class MarsStatsSelector(MarsBaseSelector):
         Parameters
         ----------
         path : str
-            持久化导出路径。引擎根据扩展名执行 `.csv` 或复合样式 `.xlsx` 的落盘处理。
+            输出路径。按扩展名写入 ``.csv`` 或带样式的 ``.xlsx`` 文件。
 
         Returns
         -------
@@ -1640,7 +1669,9 @@ class MarsStatsSelector(MarsBaseSelector):
         path : str
             JSON 结构存储路径。
         blacklist_stages : List[str] | None
-            界定需写入惩罚名单的阶段。支持字符串模糊匹配（例如 'quality' 匹配质量校验环节）。
+            只将指定阶段的淘汰记录加入黑名单。按阶段名做不区分大小写的子串匹配，
+            例如 ``'quality'`` 匹配质量校验阶段；默认使用全部阶段。
+            用户预设黑名单始终保留。
 
         Returns
         -------
@@ -1757,7 +1788,7 @@ class MarsStatsSelector(MarsBaseSelector):
         Parameters
         ----------
         iv_thresholds : List[float] | None
-            自定义统计边界截断数组。默认渲染 [0.02, 0.05, 0.10] 区间梯度。
+            IV 统计阈值，按升序输出达到各阈值的特征数；默认 ``[0.02, 0.05, 0.10]``。
 
         Returns
         -------

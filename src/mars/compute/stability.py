@@ -18,7 +18,11 @@ def psi_valid_condition(
     include_missing: bool,
     include_special: bool,
 ) -> pl.Expr:
-    """构造基于 Int16 分箱索引的 PSI 有效箱筛选条件。"""
+    """按分箱索引筛选参与 PSI 计算的箱。
+
+    ``include_missing=False`` 时排除缺失箱 -1；``include_special=False`` 时
+    排除索引小于等于 -3 的特殊箱。汇总箱需由调用方预先移除。
+    """
     condition = pl.lit(True)
     if not include_missing:
         condition &= bin_expr != -1
@@ -153,7 +157,11 @@ def psi_exprs(
     include_special: bool = True,
     epsilon: float = METRIC_EPSILON,
 ) -> list[pl.Expr]:
-    """组合 PSI 支撑列与分箱贡献表达式。"""
+    """在有效箱内重新归一化当前与期望分布，并计算单箱 PSI。
+
+    缺失箱和特殊箱默认均参与。排除某类箱时，当前和期望分布的分母同步剔除这些箱；
+    被排除箱的贡献为 Null。输入必须已移除汇总箱。
+    """
     valid_condition = psi_valid_condition(
         pl.col(bin_col),
         include_missing=include_missing,
@@ -190,7 +198,10 @@ def psi_exprs(
 
 
 def normalize_risk_corr_baseline(value: str | None) -> RiskCorrBaseline:
-    """标准化并校验 RiskCorr 基准模式。"""
+    """将 RC 基准名去除首尾空格并转为小写，None 或空串按 total 处理。
+
+    仅接受 total、first_group 和 benchmark，其他值抛出 ValueError。
+    """
     normalized = str(value or "total").strip().lower()
     valid_modes = {"total", "first_group", "benchmark"}
     if normalized not in valid_modes:
@@ -209,7 +220,27 @@ def risk_corr_expr(
     method: RiskCorrMethod = "spearman",
     output_col: str = "risk_corr",
 ) -> pl.Expr:
-    """构造分组级 RC 聚合表达式。"""
+    """计算各箱坏率与参考坏率的相关系数。
+
+    Parameters
+    ----------
+    bad_rate_col : str
+        当前分组的逐箱坏率列，默认 ``"bad_rate"``。
+    reference_col : str
+        按箱对齐的参考坏率列，默认 ``"base_br"``。
+    observed_count_col : str
+        已表现样本数列，默认 ``"observed_count"``，用于判断整组是否有已表现样本。
+    method : RiskCorrMethod
+        相关系数方法，默认 ``"spearman"``；也可使用 ``"pearson"``。
+    output_col : str
+        结果列名，默认 ``"risk_corr"``。
+
+    Returns
+    -------
+    pl.Expr
+        分组聚合表达式。已表现样本总数小于等于 0 时返回 Null；
+        仅一行时返回 1.0，相关计算产生 NaN 时也按 1.0 处理。
+    """
     return (
         pl.when(pl.col(observed_count_col).sum() <= 0)
         .then(pl.lit(None).cast(pl.Float64))

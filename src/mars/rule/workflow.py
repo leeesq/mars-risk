@@ -47,9 +47,10 @@ class MarsRuleMiningResult:
     Parameters
     ----------
     status : {"success", "no_rules"}
-        最终业务状态；合法零入选使用 ``no_rules``。
+        最终业务状态。没有规则通过筛选时为 ``no_rules``，仍保留淘汰审计；
+        数据、DSL 和计算异常会继续抛出。
     rule_set : MarsRuleSet
-        最终可部署规则定义。
+        最终规则定义与资格；能否导出部署 SQL 还取决于资格和缺失值策略。
     candidate_table : polars.DataFrame
         候选来源、淘汰阶段和原因审计表。
     evaluation : MarsRuleEvaluation
@@ -133,12 +134,13 @@ class MarsRuleMiningResult:
         feature_metadata: FeatureMetadata | None = None,
         business_context: dict[str, Any] | None = None,
     ) -> MarsRuleReport:
-        """构造不产生文件副作用的结构化报告。
+        """将已有挖掘结果整理为结构化报告。
 
         Parameters
         ----------
         analysis : MarsRuleAnalysis | None
-            显式执行的高级分析；不传时省略相关 section。
+            已显式计算的高级分析结果；默认不添加交互、累计和 bootstrap 表，
+            并在 ``analysis_states`` 中记录未计算状态。
         feature_metadata : FeatureMetadata | None
             英文特征 ID 对应的中文名、业务来源、定义和单位。
         business_context : dict[str, Any] | None
@@ -148,6 +150,7 @@ class MarsRuleMiningResult:
         -------
         MarsRuleReport
             满足公共 Report 契约，可查询、保存及导出 HTML 或 Excel 的报告。
+            本方法只整理已有结果，不重新挖掘、验证或自动执行高级分析。
 
         Examples
         --------
@@ -242,21 +245,23 @@ def mine_rules(
     target : str
         主二分类目标列。
     validation_df : FrameLike | None
-        独立验证样本；不传时明确降级为样本内探索。
+        独立验证样本。explore 下省略时使用训练表做样本内筛选，并发出警告；
+        production 下必须提供，否则报错。
     aux_targets : Sequence[str] | None
         仅参与评估和类型化筛选的辅助目标。
     features : Sequence[str] | None
         自动生成使用的数值特征；不传时排除所有数据角色列后推断。
     group_col : str | None
-        已存在的验证切片列。
+        验证样本中已有的业务分组列；提供后优先于 ``time_col``。
     time_col : str | None
-        用于构造验证时间切片的日期列。
+        未传 ``group_col`` 时，用于构造验证时间切片的日期列。
     time_grain : str | None
-        ``day``、``week``、``month`` 或 ``year``。
+        验证时间切片粒度，支持 ``day``、``week``、``month`` 和 ``year``；
+        不传时保留日期列的原始文本。
     amount_col : str | None
-        金额指标列。
+        用于规则评估的金额列，默认不计算金额指标。
     customer_col : str | None
-        客户去重指标列。
+        用于去重客户指标的客户标识列，默认不计算客户指标。
     seed_rules : Sequence[Union[str, MarsRule]] | None
         用户提供的 DSL 规则候选。
     spec : MarsRuleMiningSpec | None
@@ -267,7 +272,8 @@ def mine_rules(
     Returns
     -------
     MarsRuleMiningResult
-        不保存原始 DataFrame 的可审计挖掘结果。
+        不保存原始 DataFrame 的挖掘结果，包含最终规则、完整候选审计、评估表和实际策略。
+        没有合法入选规则时返回 ``status="no_rules"`` 与空 RuleSet。
 
     Raises
     ------
