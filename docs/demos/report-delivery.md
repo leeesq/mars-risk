@@ -1,12 +1,14 @@
 ---
-description: Home Credit 2018 全量公开案例，保存统计与有限查询共同支持人工阅读和外部 Agent。
+description: 为 Home Credit 2018 分析结果选择 HTML、Excel、快照或查询摘要，并核对交付文件中的关键值。
 ---
 
 # 7 · 同一次分析，如何交付给不同使用者？
 
 <div class="mars-cases" markdown="1">
 
-本批保留 Home Credit 两张 application 表的全部 356,255 条记录。TARGET 来自原比赛训练表，比赛测试表的 48,744 条记录保持 null。APPLY_DATE 是按 ID 稳定散列生成的演示日期。0train 用于拟合和 PSI 基准，1val 用于验证或筛选，2test 与 3oot 用于固定结果的独立复核，4_oot_undue 仅表示比赛未公开标签。日期、元数据和角色映射见[输入方案与分区说明](../user-guide/home-credit-data.md)。
+本例使用 Home Credit 两张 application 表的全部 356,255 条记录。`TARGET` 来自原比赛训练表；比赛测试表的 48,744 条记录没有公开标签，因此保持 null。`APPLY_DATE` 是按 ID 稳定散列生成的演示日期。
+
+`0train` 用于拟合，也作为 PSI 的基准样本。`1val` 用于验证或筛选，`2test` 和 `3oot` 用于独立复核固定结果；`4_oot_undue` 对应比赛未公开标签的记录。日期、元数据和字段角色见[输入方案与分区说明](../user-guide/home-credit-data.md)。
 
 ## 本批实际结果
 
@@ -14,13 +16,14 @@ description: Home Credit 2018 全量公开案例，保存统计与有限查询�
 
 --8<-- "docs/assets/cases/previews.txt:case7"
 
-HTML 供人工探索，Excel 交付当前静态公共表，.marsreport 保留目录、参数与查询身份，有限 JSON 提供有范围的证据。
-同批工作簿关键值逐项对快照核验。Excel 不执行 HTML 交互，也不依赖旧透视缓存。
-默认特征查询的身份列依次为 `feature → display_name → dtype → data_source`，显式 `columns`
-按请求精确投影。案例 JSON、报告目录和 AI 上下文均由同批真实查询生成；manifest 中的
-`source_commit` 记录生成时的已知 Git 基线，代码指纹记录实际用于生成的工作树实现。
-cases.zip 只包含明确允许的统计产物与源码，个人写作 Skill、原始 CSV、清洗宽表、样本 ID 明细均不进入公共材料。
-无原数据可加载现成快照并重放查询；完整复算须自行取得三个官方文件并传路径。
+按使用方式选择格式：用 HTML 交互查看，用 Excel 读取当前静态公共表，用 `.marsreport` 保存目录、参数和报告查询身份。只需部分证据时，可以导出限定范围的 JSON。
+同批工作簿的关键值已经逐项与快照核对。Excel 不执行 HTML 中的交互，也不依赖旧透视缓存。
+
+默认特征查询依次返回身份列 `feature → display_name → dtype → data_source`；显式指定 `columns` 时，结果严格按请求选择列。
+案例 JSON、报告目录和 AI 上下文均由同批查询生成。manifest 的 `source_commit` 记录生成时已知的 Git 基线，代码指纹记录实际用于生成的工作树代码。
+
+`cases.zip` 只包含允许公开的统计产物和源码，不包含个人写作 Skill、原始 CSV、清洗宽表或样本 ID 明细。
+没有原数据时，仍可加载现成快照并按引用重放查询。需要完整复算时，先自行取得三个官方文件，再向脚本传入文件路径。
 
 | 读者用途 | 文件 |
 | --- | --- |
@@ -32,7 +35,7 @@ cases.zip 只包含明确允许的统计产物与源码，个人写作 Skill、�
 
 === "人工分析"
 
-    从报告查看真实表与图，按实际分母判断。完整可运行代码使用共享准备入口，复用同一宽表与固定参考样本。
+    下面的代码读取同批 Excel 和快照，核对关键值，并生成外部 Agent 任务说明。
 
     ```python
     --8<-- "docs/snippets/task_cases.py:delivery"
@@ -40,7 +43,7 @@ cases.zip 只包含明确允许的统计产物与源码，个人写作 Skill、�
 
 === "Agent 消费"
 
-    新进程按目录读取已保存统计；实际有限 JSON 中的引用可重放。
+    在新进程中加载快照，先查看报告目录，再查询已保存的统计结果。下方 JSON 包含查询结果；按其中的 `reference` 可以再次查询同一证据。
 
     ```python
     from mars.reporting import load_report
@@ -63,7 +66,7 @@ cases.zip 只包含明确允许的统计产物与源码，个人写作 Skill、�
 python docs/snippets/task_cases.py --case 7 --data-dir examples/home-credit-2018/data/raw_data --output-dir output/task-cases
 ```
 
-首次生成全部关联证据用 --case all。文件缺失会明确失败，正式入口不回退合成数据。
+首次运行时，用 `--case all` 生成全部关联证据。缺少输入文件时，脚本会报错，不会自动改用合成数据。
 [数据下载与输入准备](../user-guide/home-credit-data.md) · [完整共享源码](../snippets/task_cases.py) · [共享包](../assets/cases/cases.zip) · [来源和哈希](../assets/cases/manifest.json) · [案例索引](index.md)
 
 </div>

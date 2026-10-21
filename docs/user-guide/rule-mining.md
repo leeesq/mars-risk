@@ -12,14 +12,14 @@ description: 使用 mars.rule 生成、验证、筛选、部署和报告策略�
 
 ## 最小工作流
 
-下面的示例只使用 seed DSL，便于明确展示训练筛选、验证筛选和部署输出。省略 `generators` 时，
+下面的示例只使用 seed DSL，依次演示训练筛选、验证筛选和部署输出。省略 `generators` 时，
 MARS 会默认同时运行组合规则和浅层树。
 
 ```python
 --8<-- "docs/snippets/rule_mining.py"
 ```
 
-`MarsRuleMiningResult` 不保存原始 DataFrame。核心字段是 `status`、`rule_set`、
+`MarsRuleMiningResult` 不保存原始 DataFrame。主要字段是 `status`、`rule_set`、
 `candidate_table`、`evaluation`、`spec` 和 `metadata`。没有规则合法入选时，`status="no_rules"`，
 同时返回空 RuleSet 和淘汰审计；数据、DSL 或计算错误不会伪装成空结果。
 
@@ -42,8 +42,8 @@ null/NaN。DSL 在执行前校验缺列、字面量类型、表达式长度、to
 
 ## 默认筛选与方向
 
-高风险默认候选阈值为 Lift ≥ 1.2、事件数 ≥ 3、覆盖率 1%–50%；验证阈值为 Lift ≥ 2.0、
-事件数 ≥ 3、覆盖率 1%–50%。提供时间或业务切片时至少 80% 切片通过。
+高风险候选的默认阈值为 Lift ≥ 1.2、事件数 ≥ 3、覆盖率 1%～50%；验证阈值为 Lift ≥ 2.0、
+事件数 ≥ 3、覆盖率 1%～50%。提供时间或业务切片时，至少 80% 的切片需要通过。
 
 ```python
 from mars.rule import MarsRuleMiningSpec
@@ -104,10 +104,10 @@ production 必须提供独立 `validation_df`。验证阶段使用单侧 95% Wil
 数值特征达到 500 个时，组合生成器最多抽样 100,000 行，并直接复用 `MarsStatsSelector` 预筛到
 最多 300 个特征。
 
-树、森林、GBDT 和孤立森林不会再依赖不可部署的缺失 sentinel。训练矩阵为每个数值特征构造
-稳定填充值和显式缺失指示器，并把模型分支还原为 DSL 的 `IS MISSING`、`IS NOT MISSING`、比较和受控
-`OR` 条件。`MarsTreeRuleGenerator.n_jobs` 控制多棵浅层树的 Joblib 并行度。
-Optuna 使用固定种子的分层交叉验证 ROC AUC，不再优化训练集准确率。
+树、森林、GBDT 和孤立森林用填充值和显式缺失指示器处理数值特征的缺失。
+导出规则时，生成器将模型分支还原为 DSL 的 `IS MISSING`、`IS NOT MISSING`、比较和受控 `OR` 条件，
+不要求部署环境识别内部填充值。`MarsTreeRuleGenerator.n_jobs` 控制多棵浅层树的 Joblib 并行度。
+Optuna 使用固定随机种子，以分层交叉验证的 ROC AUC 为优化目标。
 
 ## 评估、部署和报告
 
@@ -140,24 +140,25 @@ benchmark_report = MarsRuleReport.from_benchmark(
 benchmark_html = benchmark_report.render_html()
 ```
 
-`analysis.interaction_table` 和 `analysis.cumulative_table` 同时包含样本、金额和客户维度的组合、累计
-及边际指标。`result.to_report()` 总是为最终规则生成 `rule_explanations` 结构化解释表；未显式传入
-高级分析时仍省略 interactions/cumulative/bootstrap section。bootstrap 默认关闭，只对最终
-top-k 规则执行，不参与候选筛选。
+`analysis.interaction_table` 和 `analysis.cumulative_table` 按样本、金额和客户统计规则组合、累计命中及新增命中。
+`result.to_report()` 总会为最终规则生成 `rule_explanations` 解释表。
+未显式传入高级分析时，报告省略 interactions、cumulative 和 bootstrap 区域。
+bootstrap 默认关闭，只对最终 top-k 规则执行，不参与候选筛选。
 
 RuleSet JSON 固定 `artifact_type="mars_rule_set"`、`schema_version=1` 和
 `expression_version=2`，并保存 qualification 和验证摘要。未知字段/版本、重复 ID、篡改 ID、
-未知等级引用均 fail closed。`generate_sql()` 只承诺 ANSI SQL `CASE WHEN` 命中列、等级计数和
+未知等级引用都会报错。`generate_sql()` 只承诺输出 ANSI SQL `CASE WHEN` 命中列、等级计数和
 总命中数；默认要求至少 `validated`。含 `IS MISSING` 的规则只有在调用方声明
 `missing_policy="normalized_to_null"` 时才允许导出，表示 SQL 上游已完成 NaN→NULL 规范化。
 
 ## 公共报告与外部 Agent
 
-`result.to_report(feature_metadata=..., business_context=...)` 支持公共 describe/get_table、
-query_page、search_features/get_feature、to_ai_context 和 save。
-多特征规则用 AST 成员桥接查询，不按特征重复存储指标；来源参数使用业务特征来源，
-与 candidates.sources 的生成器来源分开。原报告和 load_report 恢复后的通用快照共享查询。
-no_rules 保留审计；显式高级分析的合法零行标为 computed_empty，未执行标为 not_computed。
-规则 sample_count/coverage 以对应目标已表现样本为口径，不能混用交叉报告全样本人数。
-快照不是 RuleSet JSON，不取得新样本 transform 或部署能力。
+`result.to_report(feature_metadata=..., business_context=...)` 支持公共 `describe()`、`get_table()`、
+`query_page()`、`search_features()`、`get_feature()`、`to_ai_context()` 和 `save()`。
+查询多特征规则时，接口根据 AST 中的成员特征找到规则，不会为每个特征重复存储指标。
+来源参数指业务特征来源，`candidates.sources` 则记录候选生成器来源。原报告和 `load_report()` 恢复的快照使用相同查询方式。
+
+`no_rules` 结果仍保留审计。显式执行高级分析后，合法的零行结果标为 `computed_empty`；未执行则标为 `not_computed`。
+规则的 `sample_count` 和 `coverage` 使用对应目标的已表现样本，不能混用交叉报告的全样本人数。
+报告快照只保存统计结果，RuleSet JSON 才保存对新样本执行 `transform()` 和部署所需的定义与资格。
 完整可运行示例、目录口径和外部 Agent Prompt 见[规则报告与外部 Agent](rule-reports-and-agents.md)。

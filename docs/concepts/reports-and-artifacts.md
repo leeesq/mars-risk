@@ -8,21 +8,24 @@ MARS 将计算结果分成内存中的结构化对象和可选的持久化产物
 
 ## Report
 
-Report 保存汇总表、明细表、趋势表和元数据。它适合在 Python 中继续筛选、排序、复盘或组合，
-也可以按需导出 Excel、HTML 和图表资产。
+Report 保存汇总表、明细表、趋势表和元数据。你可以在 Python 中继续筛选、排序或组合分析结果，
+也可以按需导出 Excel、HTML 和图表文件。
 
-导出不是读取结果的前置步骤。对自动化流程，优先消费公共 `describe/get_table/query_page`
-接口；画像、分箱、相关性及模型分交叉报告可通过 `save/load_report` 保存为含 JSON 清单及 Parquet 完整统计表的
-单个 `.marsreport` 文件。恢复的 `ReportSnapshot` 不需要原始数据和分析器，可被外部 Agent
-直接查询，也可登记到 `MarsAgentSession`。持久报告标识在恢复后保持不变，AI 上下文是受预算
-限制的摘要。业务元数据、实际参数及计算状态的完整说明见
-[外部 Agent 指南](../user-guide/external-agents.md)。对人工交付，再调用
-`write_excel()` 或 `write_html()`。
+读取结果无需先导出文件。自动化流程优先调用公共 `describe()`、`get_table()` 和 `query_page()` 接口。
+画像、分箱、相关性和模型分交叉报告可以通过 `save()` 保存为单个 `.marsreport` 文件，
+其中包含 JSON 清单和 Parquet 完整统计表。
 
-`to_ai_context()` 的 `evidence.query` 表示预算内实际展示的查询范围，保存加载后可直接精确回放。
-数值投影省略特征列时，`identities` 按行保留既有身份，业务元数据只关联当前页及必要关系端点。
-字符预算覆盖这些身份、有效查询、说明与完整 JSON；最小必要信封无法容纳时明确报错。
-同名 `status` 按真实报告与表解释，通用计算状态、模型分交叉风险状态和字段比较状态分别定义。
+调用 `load_report()` 后得到 `ReportSnapshot`。外部 Agent 无需原始数据和分析器，就能查询快照；
+也可以将快照登记到 `MarsAgentSession`。加载后，持久报告标识保持不变。
+AI 上下文只提供预算范围内的摘要；业务元数据、实际参数和计算状态见
+[外部 Agent 指南](../user-guide/external-agents.md)。需要向人交付文件时，再调用 `write_excel()` 或 `write_html()`。
+
+`to_ai_context()` 的 `evidence.query` 记录实际展示的行、列和查询条件，保存并加载后仍可直接回放。
+只选择数值列、未输出特征列时，`identities` 会按行保留特征身份。
+业务元数据仅包含当前页涉及的实体，以及解释关系所需的端点。
+字符预算包含身份信息、实际查询、说明及 JSON 的其他内容；必要信息超过预算时，接口会报错。
+
+解释 `status` 时，先确认报告类型和表名。通用计算状态、模型分交叉的风险状态和字段比较状态各有定义。
 
 ## HTML 与 Excel
 
@@ -34,8 +37,7 @@ Excel 适合归档和人工筛选。HTML 适合大量特征的搜索、图表浏
 Modeling 的 artifact 保存调参历史、运行配置、模型、重要性和元数据。`artifact_dir=None` 表示完全
 不落盘；指定目录时，每次运行创建独立子目录，避免覆盖旧实验。
 
-Artifact 是实验复现和模型交付材料，不等同于 report。Report 回答“本次结果如何”，artifact
-回答“本次模型如何产生并如何恢复”。
+Artifact 用于复现实验和交付模型。Report 回答“本次结果如何”，artifact 回答“本次模型如何产生和恢复”。
 
 ## Binner JSON Artifact
 

@@ -17,12 +17,12 @@ description: 查询、展示、导出与保存公共分析报告；保留评分�
 
 ## 适用场景
 
-Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或人工交付；Scorecard 将已拟合分箱规则
-与逻辑回归系数转换为评分映射和 SQL。
+你可以继续筛选、复核和组合 Report 中的结果，再导出 Excel/HTML 归档或交付。
+Scorecard 则将已拟合的分箱规则和逻辑回归系数转换为评分映射和 SQL。
 
 ## 1. 获得 Report
 
-下面的受测试示例定义了 `report`，后续导出调用均基于该对象：
+下面的示例已纳入文档测试。它会定义 `report`，后续导出调用都使用这个对象：
 
 ```python
 --8<-- "docs/snippets/quickstart.py"
@@ -30,7 +30,7 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 
 常见对象与字段：
 
-| Report | 状态 | 高价值字段 |
+| Report | 状态 | 常用字段 |
 | --- | --- | --- |
 | `MarsProfileReport` | Stable | `overview_table`、`dq_tables`、`stats_tables`、`comparison_tables`、`report_meta` |
 | `MarsBinningReport` | Stable | `summary_table`、`detail_table`、`trend_tables` |
@@ -45,8 +45,9 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 画像、分箱、相关性与模型分交叉报告提供 Stable `describe()`、`get_table()`、`to_ai_context()` 和 `get_feature()`。
 这些方法只查询已计算结果，不调用 LLM、不重新计算统计，也不修改原报告。
 
-规则报告也满足公共 Report 契约，summary 为挖掘级汇总；成员特征查询通过轻量桥接，
-不复制规则指标。候选、切片、显式高级分析与 no_rules 状态说明见
+规则报告也满足公共 Report 契约，summary 汇总一次挖掘的结果。
+按成员特征查询时，接口先找到相关规则，再读取规则指标，不为每个特征复制指标。
+候选、切片、显式高级分析和 no_rules 状态见
 [规则报告与外部 Agent](rule-reports-and-agents.md)。
 
 ```python
@@ -61,14 +62,15 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 `sort_by`、`descending`、`offset`、`limit` 和 `sources`。筛选是字段到标量相等条件，或
 `{"op": "gt", "value": 0.1}`；操作符只允许 eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null。
 没有 SQL 或表达式执行入口。排序在列投影之前，排序配合 `limit` 就是 Top-K。
-`sources` 使用统一 `feature_metadata` 中的来源，旧来源参数通过薄适配合并；未知来源会报错。
+`sources` 使用 `feature_metadata` 中的来源，旧来源参数会转换为同一格式后合并；未知来源会报错。
 
-画像与分箱真正以 `feature` 为维度的原生表（包括直接访问的属性）默认采用
+画像和分箱报告中，按 `feature` 统计的原生表（包括直接访问的属性）默认采用以下列顺序：
 `feature → display_name → dtype → data_source → 其他维度与指标`。已有 `target`/`y`
 前缀保留。`dtype` 来自当前输入的原始 schema，参考类型另见 `benchmark_dtype`；
 用户的 `feature_metadata` 仍只接受 `display_name`、`description`、`data_source`、`unit`。
-缺少可读名时原表为 null，展示可回退英文；未知来源为 UNMAPPED。非空矛盾明确失败。
-长描述和单位保存在集中字典，不重复到每个箱。关系表保留 feature_a/feature_b 等原角色。
+未提供显示名时，原表保留 null，展示时可以使用英文名；未知来源记为 UNMAPPED。
+非空身份信息存在冲突时会报错。长描述和单位保存在集中字典中，不重复写入每个分箱行。
+关系表保留 feature_a/feature_b 等原有角色字段。
 
 `columns=None` 返回默认 schema；显式 `columns=[...]` 仅返回所列字段并保持指定顺序，
 `show_*` 与快照 `show_table()` 也遵守这个规则。可以按未输出的列筛选/排序，错误字段会报错。
@@ -79,8 +81,8 @@ Report 用于继续筛选、复盘和组合计算；Excel/HTML 用于归档或�
 的总体箱统计。历史快照保存过的趋势表仍保留。读取旧文件先严格校验磁盘版本、schema 和完整性，
 再在内存补齐身份列；没有可靠原始类型时 dtype 保留 null，不采用旧趋势的聚合 Float64。
 
-画像/分箱 AI JSON 默认只含 overview/summary 前 10 行；规则报告默认 summary 一行和最多三条
-最终验证证据，不默认输出 expression。预算为 16000 个 Unicode 字符，不是 token 数。
+画像／分箱的 AI JSON 默认只包含 overview/summary 前 10 行；规则报告默认包含 summary 一行和最多三条
+最终验证证据，不默认输出 expression。预算为 16,000 个 Unicode 字符，按字符计数，不按 token 计数。
 可以按表、特征和列缩小范围。省略的参数和行有明确引用及原因；预算连说明都容不下时抛
 `ValueError`，不会输出无效 JSON。日期使用 ISO-8601；浮点非有限值使用带类型的 `$mars` 标记；
 Null 使用 JSON null，0 保留数值。Null 的业务原因需要结合标签状态、诊断与计算参数解释。
@@ -114,13 +116,13 @@ report.write_html(
 风险趋势图和 HTML Charts 需要评估阶段已经提供有效 `time_col`。`group_col` 不能替代日期范围。
 
 `MarsProfileReport.write_html()` 始终生成无外部资源的单文件，包含 Metadata、Overview、
-DQ、Stats 和 Comparisons 页面；它不生成图表。所有 Stable 报告导出已改为严格失败：
-资源缺失、请求内容未生成或写入失败都会抛异常，不再只记日志后返回成功。
+DQ、Stats 和 Comparisons 页面，不生成图表。
+所有 Stable 报告导出都会在资源缺失、请求内容未生成或写入失败时抛出异常。
 全局搜索与每张表的局部搜索按交集生效；清空其中一个仍保留另一个条件。
 局部搜索只影响所属表，排序和页面切换保留条件。当前是页面导航，没有行级分页。
 
 DQ/Stats 页面内部只展示当前指标，指标页签支持键盘方向键和 Home/End，并在外层切换后保留选择。
-率显示两位百分比，浮点统计显示两位小数，整数计数保留整数，小数权重不截断；
+比例显示为保留两位小数的百分比，浮点统计显示两位小数，整数计数保留整数，小数权重不截断；
 PSI/IV/Lift/WOE 保持各自数值，AUC 使用自身数值格式，KS 为 0–100 点。
 缺失显示 `—`，原始数值仍可从 tooltip 或 `get_table()` 查看。排序使用未舍入原值，
 全局和局部搜索可检索英文、中文名及来源；元数据、日期、状态和类别不参与数值色阶。
@@ -142,7 +144,7 @@ report.save_risk_trend_images(
 report.write_html("risk_report.html", max_plots=3, include_total=False)
 ```
 
-分箱 HTML 的 `include_detail` 控制 **Grouped Pivot 明细区域**，`include_charts` 独立控制
+分箱 HTML 的 `include_detail` 控制 Grouped Pivot 明细区域，`include_charts` 独立控制
 原生趋势图。`include_detail=False` 会省去 Pivot 页面、导航、控件及其明细数据；图表仍可
 读取原报告明细。两项均为 False 时可以导出纯摘要页面，无需 `time_col`；启用图表时仍需有效
 时间信息。旧 `#pivot` / `#pivot-section` 链接会回退到有效页面。
@@ -154,8 +156,8 @@ Notebook 与完整 HTML 的 Features 均按唯一英文特征计数；PSI 报警
 **PSI > 0.25 的特征（任一标签触发）**，同一特征多标签触发只计一次。
 未计算值不触发报警，报警数为零不能证明全部特征正常。
 
-统一的 keyword-only `include_total=True` 适用于 build/plot/save/HTML 原生图入口。
-它仅控制 Total 面板，全局 IV/KS/AUC、样本数、Missing、RC 参考与底层明细仍来自完整统计。
+build/plot/save/HTML 原生图入口都接受仅限关键字参数 `include_total=True`。
+该参数只控制是否显示 Total 面板。全局 IV/KS/AUC、样本数、Missing、RC 参考和底层明细仍来自完整统计。
 关闭后没有任何面板时明确报错。普通业务组名称包含 Total 仍保留。
 
 `MarsBinningReport.write_excel()` 无论源报告的 `ks_method` 是 raw 还是 binned，都复用同一
@@ -164,7 +166,7 @@ Notebook 与完整 HTML 的 Features 均按唯一英文特征计数；PSI 报警
 读取导出的 `ks`，综合指标保留模板的 average 聚合。最终汇总使用对应 Total 的分箱 KS，
 最终 KS 趋势保留首目标、实际分组与身份列。全部逐箱 KS 未定义的组在 Excel 中保持空值。
 
-原生 Excel 只使用已物化的数据构建导出副本，不重新拟合或评估，也不改写源报告。
+原生 Excel 只根据已计算的数据构建导出副本，不重新拟合或评估，也不改写源报告。
 口径说明分别记录源报告 `ks_method`、导出 binned 口径、`max(detail.ks_bin)` 来源及单位；
 raw 计算诊断明确属于源报告。Python 公共查询、`describe()`、AI 上下文、保存/加载、HTML
 和绘图继续遵循源报告语义，raw 模式数值特征的最终 `ks` 与类别特征的 binned 回退保持原样。
@@ -269,7 +271,7 @@ python docs/snippets/portable_reports.py
 `MarsStatsSelector.fit/fit_transform` 和两个报告构造器都接受 `feature_metadata`、
 `business_context`。内部 Agent 的 `register_dataset` 也可登记这些信息。
 
-特征字典以**原始英文字段名**为稳定键，支持 `display_name/description/data_source/unit` 四个
+特征字典以原始英文字段名为稳定键，支持 `display_name/description/data_source/unit` 四个
 可选字符串字段，缺失值允许 null。Pandas/Polars DataFrame 必须有 `feature` 列，其余列对应上述
 字段；重复记录、非字符串值和未知字段报错。字典可覆盖整个项目，报告按实际分析特征裁剪。
 重复中文名合法，检索返回全部候选及英文标识；`features=` 和 `get_feature` 仍只查询原始标识。
@@ -291,10 +293,10 @@ selector 中为“来源 → 特征列表”，在分箱报告构造器中为“
 
 ### 分页查询、证据与上下文预算
 
-`get_table` 保留原生 DataFrame 类型；筛选、排序、分页后返回独立容器。支持原标识、
+`get_table` 保留原生 DataFrame 类型，筛选、排序和分页后返回独立容器。支持原标识、
 来源、列投影、eq/ne/lt/le/gt/ge/in/not_in/is_null/is_not_null 筛选、稳定排序、offset、limit。
 日期/分组宽表范围通过 columns 选择，长明细通过 filters 选择。真实日期类型列支持 ISO-8601
-字符串筛选，使 JSON 证据查询可直接重放；普通字符串列不进行日期推断。Pandas 索引仍保留，但不作为
+字符串筛选，因此可以直接重放 JSON 证据查询；普通字符串列保持字符串类型。Pandas 索引仍保留，但不作为
 查询列；需要筛选索引时先在自己的消费代码中处理。
 
 `query_page` 使用相同参数，额外返回 `total_rows/returned_rows/omitted_rows/truncated`、
@@ -313,28 +315,29 @@ selector 中为“来源 → 特征列表”，在分箱报告构造器中为“
 
 `to_ai_context(queries={table: get_table_options}, max_chars=16000)` 支持不同表使用不同条件；
 旧的 features/columns/filters/limit 等共同参数会适配到相同查询路径。摘要不能替代完整文件。
-桥接关系的 key 与 feature 可以指向同一列；原报告和保存后的快照均可筛选、分页和生成
-AI 证据，统计行不会按成员展开。有限上下文关联保留实际返回页涉及的成员和关系两端；
+成员关系的 key 和 feature 可以指向同一列。原报告和保存后的快照都支持筛选、分页和生成 AI 证据，
+统计行不会按成员重复展开。有限上下文只保留实际返回页涉及的成员和关系两端；
 报告声明的 `feature_scope` 用于解释实际返回的汇总行，不附带未返回特征的字典。
-窄投影省略身份列时，`evidence.identities` 与 `rows` 一一对应，保留既有身份字段；裁行同步裁身份。
-宽趋势的指标只定义一次，日期/分组以原始列标识为维度，证据保持与原表对应的紧凑宽行。
-`evidence.query` 是实际展示子集的有效查询；预算裁剪后 `columns/limit` 同步缩减，
-可直接传回 `get_table` 重建展示行和列。原筛选后的 `total_rows` 与省略说明保留。
+
+未选择身份列时，`evidence.identities` 会保留既有身份字段，与 `rows` 一一对应；减少返回行数时，身份信息同步缩减。
+宽趋势表只定义一次指标，日期／分组仍用原始列名标识，证据行与原表保持对应。
+`evidence.query` 记录实际展示子集的查询。预算裁剪后，`columns` 和 `limit` 会同步缩减，
+直接传回 `get_table` 即可重建展示的行和列。结果仍保留原筛选后的 `total_rows` 和省略说明。
 非有限值筛选使用既有 `$mars` float 标记，标量与 `in` 列表均可 JSON 回放；畸形标签明确报错，
 普通字符串不转换，NaN 相等和空判断沿用各后端现有规则。
-预算涵盖整个最终 JSON 的 Unicode 字符，包含查询与身份，**不是 token 数**。超预算依次裁剪完整时间列、行及
-说明块，省略记录包含数量、原因和 describe/get_table 定位。极小预算容不下必要身份及引用时
-报 ValueError。未选择特征的项目字典不会默认注入上下文。
+预算按最终 JSON 的 Unicode 字符计数，包含查询和身份，**不是 token 数**。
+超出预算时，接口依次裁剪完整时间列、行和说明块，并记录省略数量、原因及 `describe` / `get_table` 查询位置。
+必要身份和引用仍超过预算时，接口会抛出 `ValueError`。上下文默认不包含未选择特征的项目字典。
 
 ### 单文件格式与恢复 { #snapshot-format }
 
 `.marsreport` 是 ZIP，格式版本 **1**：`manifest.json` 保存持久身份、报告类型、全部表目录、
 粒度、字段类型、指标定义、参数、上下文、元数据、状态/诊断及来源；`tables/0000.parquet` 等
-文件保存每张完整统计表，清单把编号路径映射回公共表名。它不是 pickle，不反序列化代码，
-外部程序可用 ZIP、JSON、Parquet 标准库读取。表顺序和列顺序明确保留。
+文件保存每张完整统计表，清单把编号路径映射回公共表名。文件不使用 pickle，也不反序列化代码。
+外部程序可以用支持 ZIP、JSON 和 Parquet 的工具读取，表顺序和列顺序会明确保留。
 
-保存按表处理，不把整个报告转换为 Pandas 或大 JSON。父目录需存在；默认拒绝覆盖，
-`overwrite=True` 原子替换。写入在同目录临时文件完成后安装；失败清理临时文件，
+保存时逐表处理，不把整个报告转换为 Pandas 或大 JSON。父目录必须存在，默认拒绝覆盖已有文件。
+设置 `overwrite=True` 时，先写入同目录的临时文件，再原子替换目标文件；失败会清理临时文件，
 不改变已有完整文件。无效 ZIP、清单、缺失表、schema/顺序/行数不一致和非 1 版本明确报错；
 当前没有历史版本迁移器。
 
@@ -360,9 +363,9 @@ JSON 中的浮点非有限值统一为 `{"$mars":"float","value":"nan"}`、
 零仍是数值零，普通字符串 `"NaN"/"Infinity"` 不转换。描述、AI 上下文、Agent 工具及文件清单
 共用此规则。原消费者需停止把报告字符串标记或 Agent null 当作统一非有限数编码。
 
-`calculation_status` 按目标/特征/分组/指标族保存计算状态与原因；无标签为 not_computed，
-标签存在但全未表现为 unobserved。单箱、正常箱样本不足或坏率恒定时 mono 未定义，
-不再把 NaN/null 填为 1.0。使用旧占位筛选单调性的代码应检查状态后处理缺失。
+`calculation_status` 按目标、特征、分组和指标族保存计算状态及原因。未提供标签时为 not_computed，
+标签存在但全部未表现时为 unobserved。只有一个箱、正常箱样本不足或坏率恒定时，mono 未定义，
+NaN/null 会保持缺失。旧代码若依赖 1.0 占位值筛选单调性，应改为先检查状态，再处理缺失。
 IV、PSI 和原始/分箱 KS 公式保持现有口径；KS 为 0–100 点数，坏率为 0–1 比例，
 count 字段根据实际 weights_col 标明原始样本数或权重和。类别原始 KS 回退和失败仍见
 `ks_source_by_feature/raw_ks_diagnostics`；分箱失败/跳过继续见已有 fit/diagnostics 信息。

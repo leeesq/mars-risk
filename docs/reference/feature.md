@@ -4,7 +4,7 @@ description: Feature stable API：分箱器和特征选择器。
 
 # Feature
 
-**状态：Stable。** 高层任务见[分箱与风险评估](../user-guide/binning-risk-evaluation.md)和
+**状态：Stable。** 完整操作见[分箱与风险评估](../user-guide/binning-risk-evaluation.md)和
 [特征筛选](../user-guide/feature-selection.md)。
 
 ## Binner

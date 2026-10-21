@@ -19,7 +19,7 @@ description: Analysis stable API：数据画像和风险评估。
 
 ## 固定双模型分交叉
 
-使用方式与统计边界见[相关性与模型分交叉](../user-guide/correlation-and-score-cross.md)。
+操作方法、统计口径与限制见[相关性与模型分交叉](../user-guide/correlation-and-score-cross.md)。
 
 ::: mars.analysis.cross_scores
 

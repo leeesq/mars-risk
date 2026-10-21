@@ -9,8 +9,8 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 
 ## 适用场景
 
-特征筛选用于将宽表候选特征压缩成可建模、可监控的集合。MARS 提供统计筛选、线性筛选和重要性
-筛选三类对象；它们可以独立使用，也可以进入 Pipeline。
+用特征筛选从宽表中选出适合建模和监控的候选字段。MARS 提供统计、线性和重要性三类选择器，
+可以独立使用，也可以组合到 Pipeline 中。
 
 ## 统计筛选完整调用
 
@@ -29,15 +29,16 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 | `MarsLinearSelector` | `fit(X, y)` | L1、相关性和线性模型筛选 |
 | `MarsImportanceSelector` | `fit(X, y)` 或重要性表 | 模型原生重要性、SHAP 或已有重要性结果 |
 
-`MarsImportanceSelector.method` 只支持 `"importance"` 和 `"shap"`。从未实现的 `"rfe"`、
-`"sfm"` 选项已从 public contract 删除，构造时会立即拒绝。
+`MarsImportanceSelector.method` 只支持 `"importance"` 和 `"shap"`。
+`"rfe"` 和 `"sfm"` 未实现，构造时会立即报错。
 
 ## 基准样本
 
-`MarsStatsSelector.fit(..., benchmark_df=...)` 使用基准数据拟合粗筛和精筛分箱，并构造 PSI expected
-distribution。选择器采用双样本口径：质量、缺失率、分布和 PSI 使用完整 `df`；监督分箱、IV、
-Lift、RC 和 WOE 相关性只使用 `df` 中 target 非空的已表现样本。当前数据仍必须包含至少两个
-有效 target 类别；target 为空的最新未表现样本不会稀释标签类指标或 WOE 相关性。
+`MarsStatsSelector.fit(..., benchmark_df=...)` 用基准数据拟合粗筛和精筛分箱，并提供 PSI 的参考分布。
+监督分箱只使用拟合数据中 target 非空的已表现样本；提供基准表时，拟合数据就是 `benchmark_df`，否则使用 `df`。
+评估当前数据时，质量、缺失率、分布和 PSI 使用完整 `df`；IV、Lift、RC 和 WOE 相关性只使用 `df` 的已表现样本。
+当前数据仍须包含至少两个有效 target 类别。
+最新未表现样本的 target 为空，不会稀释标签类指标或 WOE 相关性。
 
 Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时，需要再次传入同一
 `benchmark_df` 才能复现基准口径。
@@ -53,9 +54,10 @@ Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时�
 `white_list` 保护必须保留的业务特征；`black_list` 排除泄漏、合规受限或线上不可用字段。黑名单优先
 于自动指标规则。
 
-三个 selector 的 `transform()` 都对缺少的已选特征默认报错；仅在调用方已处理 schema
-drift 时显式传 `on_missing="warn"` 或 `"ignore"`。报告级必需指标列缺失会终止；
-单特征指标缺行、为空或非有限值时，该特征以 `metric_unavailable` 淘汰并留在决策报告中。
+三个 selector 的 `transform()` 默认要求输入包含全部已选特征，缺列时会报错。
+调用方已处理 schema drift、确实允许缺列时，再显式传入 `on_missing="warn"` 或 `"ignore"`。
+报告缺少必需指标列时，筛选会终止；某个特征的指标缺行、为空或非有限值时，
+选择器会淘汰该特征，并在决策报告中记录 `metric_unavailable`。
 
 ## 常见失败
 

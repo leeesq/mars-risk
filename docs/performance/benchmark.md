@@ -4,20 +4,20 @@ description: MARS 0.0.28 分箱与规则性能基准的复现方法、结果和�
 
 # 性能基准
 
-性能结果必须同时记录代码版本、依赖、硬件、数据规模、参数和测量方法。此前缺少完整运行环境的
-结果不再作为 `0.0.24` 正式性能结论展示。
+阅读性能结果时，需要同时核对代码版本、依赖、硬件、数据规模、参数和测量方法。
+此前部分结果缺少完整运行环境，因此不再作为 `0.0.24` 的正式性能结论展示。
 
-本轮规则审计、完整相关性关系、宽表公共入口和跨进程报告消费的独立验收见
-[核心规模与报告消费验收](core-capacity.md)。它使用统一 CLI、隔离轮次、RSS 预算与有效证据检查，
-与下方历史结果分别记录；旧规则发布门禁继续适用。
+规则审计、完整相关性关系、宽表公共入口，以及新进程加载并查询报告的独立验收见
+[核心规模与报告消费验收](core-capacity.md)。这些验收使用统一 CLI，每轮独立运行，
+检查 RSS 预算和查询是否返回有效证据。结果与下方历史记录分开保存，原有规则发布门禁继续适用。
 
 ## 复现命令
 
 ### 完整分析链路（本地测量）
 
-新增 `benchmarks/benchmark_analysis.py` 复用既有固定种子宽表生成器与 RSS sampler。
-每次 CLI 调用是独立进程；`--source` 可指向优化前 src 快照，两侧使用同一脚本、工作负载和线程。
-结果输出放临时目录，例如 PowerShell：
+`benchmarks/benchmark_analysis.py` 复用既有宽表生成器和 RSS sampler，使用固定随机种子。
+每次 CLI 调用启动独立进程。用 `--source` 指向优化前的 src 快照后，可以让两侧使用同一脚本、工作负载和线程配置。
+将结果写入临时目录，例如在 PowerShell 中运行：
 
 ```powershell
 conda run -n mars python benchmarks/benchmark_analysis.py --rows 50000 --features 1001 --threads 4 --batch-size 50 --benchmark --output "$env:TEMP/analysis.json"
@@ -27,9 +27,9 @@ conda run -n mars python benchmarks/benchmark_analysis.py --stage profile --rows
 记录环境：2026-09-30 至 2026-10-01（Asia/Shanghai），Windows 11 10.0.26200，Intel x64
 Family 6 Model 183 Stepping 1，24 logical CPUs，Python 3.10.19、Polars 1.37.1、MARS 0.0.28，
 固定 4 个 Polars 线程。优化前为 `d3201a2` 的 src 快照，优化后为本次未提交工作树。
-随机种子 2026；50,000 行、1,001 个 Float32 特征，末批不足 50；含 NaN、特殊值 -999、
-4 个分组、样本权重和金额。分箱场景用前 25,000 行作显式基准拟合 8 箱，RC 使用默认 total。
-画像场景独立运行 missing/zeros/unique/mode/mean/std/min/max，不生成 sparkline。
+随机种子为 2026。输入包含 50,000 行、1,001 个 Float32 特征，最后一批不足 50 个特征；
+数据含 NaN、特殊值 -999、4 个分组、样本权重和金额。分箱场景以前 25,000 行作为显式基准，拟合 8 个箱，RC 使用默认的 total。
+画像场景在独立进程中运行 missing/zeros/unique/mode/mean/std/min/max，不生成 sparkline。
 
 两侧各 3 个独立进程，中位数如下（MiB = 1024² bytes）：
 
@@ -54,13 +54,13 @@ Family 6 Model 183 Stepping 1，24 logical CPUs，Python 3.10.19、Polars 1.37.1
 | 报告表构造 | 0.209 s | 0.194 s |
 
 阶段耗时不含所有输入预处理、对象装配和采样开销，不能直接相加等同总耗时。
-分箱评估主要收益是减少全量分箱宽表和显式基准长表，计算阶段峰值 RSS 约减半；耗时变化小于
-轮间波动，不宣称稳定提速。画像约减少 23% 耗时，计算阶段内存无明显收益。
+分箱评估减少了全量分箱宽表和显式基准长表的内存占用，计算阶段的峰值 RSS 约减半。
+耗时变化小于轮间波动，因此不能得出稳定提速的结论。画像耗时约减少 23%，计算阶段的内存占用没有明显改善。
 全进程峰值也包含数据生成，分别约为分箱 1907.7→959.9 MiB、独立画像 753.1→742.5 MiB；
 画像数据准备造成的峰值波动较大，不能据此宣称内存优化。
 
-sampler 每 10 ms 采样 RSS，总峰值取全程与计算阶段 sampler 观测最大值；可能漏掉更短暂峰值。
-输入准备完成后另起计算 sampler，增量相对该阶段起始 RSS。画像另起进程以避开评估后内存池。
+sampler 每 10 ms 采样 RSS，总峰值取全程和计算阶段 sampler 观察到的最大值，可能漏掉更短暂的峰值。
+输入准备完成后，另启 sampler 测量计算阶段；增量以这个阶段的起始 RSS 为基准。画像在独立进程中测量，避免此前评估留下的内存池影响结果。
 没有把 Polars clone 当作底层全复制。不同硬件、线程、dtype、箱数及基准策略需要重新测量；
 未验证百万行、3,000 特征或监督分箱器的大规模收益。
 
@@ -100,20 +100,20 @@ python benchmarks/benchmark_rule_stages.py \
 ```
 
 Native 对比需要额外安装 toad；Optimal 对比使用基础依赖中的 optbinning。
-规则发布门禁要求相同机器、环境和数据上，对比 `deimos-rule`
+规则发布门禁要求在相同机器、环境和数据上，对比 `deimos-rule`
 `e6714c5e795054e44f0c58ad7097668b4117b4a2` 的组合生成与评估：MARS 总耗时不得退化超过 15%，
 进程峰值 RSS 不得退化超过 20%。普通 CI 只运行 2k×20 smoke；100k×1000 对比在发布前手工运行。
-子阶段 benchmark 分别覆盖 evaluator、压缩位图 IoU、命中矩阵 analysis 和 cascade；同机预热后
-隔离运行 3 次取中位数，发布门禁要求 evaluator、IoU、analysis 相对改造前各至少提速 30%，
+子阶段 benchmark 分别覆盖 evaluator、压缩位图 IoU、命中矩阵 analysis 和 cascade。在同一机器预热后，
+分别独立运行 3 次并取中位数。发布门禁要求 evaluator、IoU、analysis 相对改造前各至少提速 30%，
 峰值 RSS 不得退化超过 10%。`rule-stages-before.json` 必须来自相同 commit 依赖环境和工作负载。
-由于该来源提交调用的是旧版 `MarsStatsSelector(target=..., features=...)` 构造签名，benchmark
-仅在 harness 中把这一调用适配为当前 `fit(..., target=..., features=...)`，预筛参数和排序口径不变。
+参考提交使用旧版构造签名 `MarsStatsSelector(target=..., features=...)`。
+benchmark 只在测量脚本（harness）中将这处调用改为当前的 `fit(..., target=..., features=...)`，预筛参数和排序口径不变。
 
 ## 0.0.28 规则门禁结果
 
-2026-08-12 在同一 Windows 机器和 `mars` Conda 环境分别启动隔离进程测量。Mars 与 deimos
-均使用已验证的 √预算单规则池和二阶 AND/OR 候选口径；完整精度切点与稳定排序差异使两者最终
-候选数相差 30 条（0.7%）。
+2026-08-12，在同一台 Windows 机器和 `mars` Conda 环境中，分别启动独立进程测量 Mars 与 deimos。
+两者均使用已验证的 √预算单规则池和二阶 AND/OR 候选口径。切点完整精度和稳定排序存在差异，
+最终候选数相差 30 条（0.7%）。
 
 | 项目 | Mars 0.0.28 | deimos `e6714c5` | 比值 / 门槛 |
 | --- | ---: | ---: | ---: |
@@ -121,7 +121,7 @@ Native 对比需要额外安装 toad；Optimal 对比使用基础依赖中的 op
 | 进程峰值 RSS | 2806.6 MB | 2756.8 MB | 1.0181 / ≤ 1.20 |
 | 候选规则数 | 4240 | 4270 | 仅作工作量校验 |
 
-同一环境的 10,000×100 分阶段 workload 预热后独立运行 3 次取中位数；原始结果保存在
+在同一环境中，对 10,000×100 的分阶段工作负载预热后，独立运行 3 次并取中位数。原始结果保存在
 `benchmarks/results/mars_rule_stages_0_0_28.json`：
 
 | 子阶段 | 中位耗时 | 峰值 RSS | 校验值 |
@@ -131,7 +131,7 @@ Native 对比需要额外安装 toad；Optimal 对比使用基础依赖中的 op
 | analysis | 0.7921 s | 323.4 MB | 4950 |
 | cascade | 0.0222 s | 302.6 MB | 1 |
 
-客户指标由逐规则对 Python 集合改为一次性因子化后，在同一 workload 上 analysis 从
+客户指标的计算从逐条规则处理 Python 集合改为一次性因子化后，在同一工作负载上，analysis 从
 5.3525 s 降至 0.7921 s（85.2%），峰值 RSS 从 312.9 MB 增至 323.4 MB（3.4%）。
 
 环境：Python 3.10.19、Polars 1.37.1、NumPy 2.2.6、scikit-learn 1.7.2、Windows
@@ -148,7 +148,7 @@ Native 对比需要额外安装 toad；Optimal 对比使用基础依赖中的 op
 
 ## 0.0.24 结果发布清单
 
-正式填写结果表前必须记录：
+填写正式结果表前，必须记录以下信息：
 
 | 项目 | 必填内容 |
 | --- | --- |
@@ -164,13 +164,13 @@ Native 对比需要额外安装 toad；Optimal 对比使用基础依赖中的 op
 
 ## 公共报告消费的针对性测量
 
-运行 `python benchmarks/benchmark_report_consumption.py`；该脚本直接构造统计表，不执行拟合。
+运行 `python benchmarks/benchmark_report_consumption.py`。脚本直接构造统计表，不执行拟合。
 2026-10-01 原始结果保存在 `benchmarks/results/report_consumption_20261001.json`。
 环境为 Windows 10.0.26200、Intel Core i7-14650HX、24 逻辑核、63.7 GiB 内存，
 Python 3.10.19、Pandas 2.3.3、Polars 1.37.1。运行时没有并行测试或文档构建。
 
-工作负载：10,000 行 Pandas overview，加 1 个特征、365 个日期列的 stats.mean；分页
-offset=9000、limit=10，查询/上下文运行 10 次取中位数，保存/恢复运行 3 次。
+工作负载包含 10,000 行 Pandas overview，以及 1 个特征、365 个日期列的 stats.mean。
+分页参数为 offset=9000、limit=10。查询和上下文操作各运行 10 次并取中位数，保存和恢复各运行 3 次。
 
 | 操作 | 中位耗时 | Python 分配峰值 | 校验结果 |
 | --- | ---: | ---: | --- |
@@ -180,6 +180,6 @@ offset=9000、limit=10，查询/上下文运行 10 次取中位数，保存/恢�
 | 完整保存 | 94.228 ms | 4,511,040 B | 单文件 587,148 B |
 | 完整恢复 | 60.756 ms | 5,539,585 B | 无原始宽表或分析器 |
 
-字符计数包含整个最终 JSON。`tracemalloc` 只记录 Python 分配，不含 Arrow/Polars 等原生内存，
-也不是进程 RSS。较小预算需要更多裁剪步骤，因此耗时更高。这里只报告本机绝对测量，
-没有旧版对照，不证明提速或峰值内存改善；本轮没有重跑大规模拟合矩阵。
+字符计数覆盖最终 JSON 的全部内容。`tracemalloc` 只记录 Python 分配，不包含 Arrow、Polars 等原生内存，
+也不等于进程 RSS。较小预算需要更多裁剪步骤，因此耗时更高。这里记录本机的绝对测量值；
+没有旧版对照，无法证明提速或峰值内存改善。本轮没有重跑大规模拟合矩阵。

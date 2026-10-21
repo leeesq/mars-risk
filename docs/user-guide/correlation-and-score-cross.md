@@ -4,9 +4,9 @@
 [案例 4：同一主模型等级内的辅助分](../demos/score-cross.md)。
 本页继续作为完整参数与口径参考，旧 Notebook [入口](../demos/correlation_and_score_cross.ipynb)保留。
 
-两个功能均输出独立报告，不需要 MarsAgentSession。`.marsreport` 沿用 manifest +
-Parquet 格式，保留身份、原生表、稳定顺序和业务语义；没有 pickle、个体数据或模型。
-所有机器比例用小数，`delta_vs_row` 为小数差，展示时转为百分点。
+相关性分析和模型分交叉各自返回独立报告，无需 MarsAgentSession。
+保存为 `.marsreport` 时，文件用 manifest + Parquet 保留报告身份、原生表、表列顺序和业务定义，
+不包含 pickle、个体数据或模型。接口返回的比例均使用小数；`delta_vs_row` 是小数差，展示时转换为百分点。
 
 <span id="相关性报告"></span>
 
@@ -21,18 +21,20 @@ Parquet 格式，保留身份、原生表、稳定顺序和业务语义；没有
 | Stats | Stage 3 binner 的目标感知 WOE；规范化 target 非空行；WOE null 填 0；Pearson | 严格 `>`；IV 降序，同值按 ID 升序，白名单保护 |
 | Linear | 请求池中可数值化的字段与 target 一起删除不完整行；inf 转 NaN；默认 raw Spearman | `>=`；绝对 target Spearman，强度同值保留左侧候选 |
 
-Linear 的清洗池包含随后因 target strength 无效而排除的常量列，未改为 pairwise deletion。
-Stats 在 `skip_fine_scan=True` 时继承 rough binner 作为 Stage 3 的 WOE 来源；参数会记录
-实际来源和拟合配置。两种表示/方法/样本范围不应直接当成同一口径比较。
+Linear 清洗数据时会检查整个请求池，包括随后因 target strength 无效而排除的常量列；
+它不会按特征对分别删除缺失行（pairwise deletion）。
+Stats 在 `skip_fine_scan=True` 时复用粗筛分箱器，作为 Stage 3 的 WOE 来源；参数会记录实际来源和拟合配置。
+两类报告使用的表示、相关方法和样本范围不同，比较前应先核对口径。
 
-`features` 是输入特征目录，包含未参与状态、实际对角值及最终入选状态；`pairs` 保存
-完整相关阶段候选池的规范上三角（含被剔除者）；`correlation_decisions` 是执行时的
-结构化事件；`selection` 和 Stats 的 `funnel` 沿用已有记录。
-signed 值只有一份规范存储；`abs_correlation=abs(correlation)` 物化用于原生排序。
-非有限相关值存为 null + unavailable，不伪造 0 或对角 1；引擎无法确认的原因不细分。
-元数据样本数为全局计算输入行数，绝不冒充原始逐对非缺失重叠数。
-Linear 的 Checked/max_corr 复用同一矩阵，统计原候选池其他特征（包含已剔除者）的
-最大绝对相关；它不表示最终入选特征之间的最大值，说明文本已澄清此范围。
+`features` 列出输入特征，记录是否参与、实际对角值和最终入选状态。
+`pairs` 保存相关阶段全部候选的上三角特征对，包括已剔除者；`correlation_decisions` 记录筛选时实际发生的决策事件。
+`selection` 和 Stats 的 `funnel` 保留已有筛选记录。
+
+每对特征只保存一份带符号的相关值，并生成 `abs_correlation=abs(correlation)` 供原生排序。
+非有限相关值保存为 null，并标记 unavailable，不填成 0 或对角 1；引擎无法确认的原因不再细分。
+元数据中的样本数是全局计算输入行数，不代表每对特征的非缺失重叠人数。
+Linear 的 Checked/max_corr 使用同一矩阵，计算该特征与原候选池其他特征的最大绝对相关，
+其中包括已剔除的特征，不能解释为最终入选特征之间的最大值。
 
 ```python
 from mars.reporting import (
@@ -51,14 +53,18 @@ show_correlation_matrix(restored, max_features=30)  # Notebook Styler，可 to_h
 ```
 
 `pairs.features` 匹配任一端点，多 ID 采用并集；`pairs.sources` 匹配任一端点来源。
-两种公共条件采用交集，可以由不同端点分别匹配。`get_related_features.sources` 只匹配
-peer 来源，另一端统一命名为 `peer_feature`，返回最终状态及真实触发事件引用。
-同绝对相关值保持规范候选顺序；分页稳定。普通表查询未知 ID 返回空表；专用矩阵/peer
-操作未知候选 ID 报 ValueError。矩阵是所选集合的诱导子矩阵，不重新计算。
-矩阵默认最多显示 30 个特征，固定 [-1,1] 发散色标，提示省略数；完整数据仍可查询。
+两个条件必须同时满足，但可以分别命中特征对的不同端点。
+`get_related_features.sources` 只匹配对端特征的来源，对端统一命名为 `peer_feature`；
+返回结果还包含最终状态和实际触发事件的引用。
 
-每次 fit 先重置缓存，失败后不能读上次报告。相关关闭、无候选、候选不足分别记录
-skipped 状态；未计算的对角为空值。仅在 fit 成功后固定快照并释放 dense 缓存。
+绝对相关值相同时，结果保持规范的候选顺序，分页顺序稳定。
+普通表查询未知 ID 时返回空表；专用矩阵或对端查询遇到未知候选 ID 时抛出 `ValueError`。
+矩阵从已计算结果中取出所选特征的子矩阵，不重新计算。
+默认最多显示 30 个特征，使用固定的 [-1,1] 发散色标，并提示省略数；完整数据仍可查询。
+
+每次 fit 先重置缓存，失败后不能读取上次报告。
+关闭相关性计算、没有候选或候选不足时，报告分别记录 skipped 状态，未计算的对角值保持为空。
+fit 成功后才会固定报告快照，并释放稠密矩阵缓存。
 
 <span id="固定分段交叉"></span>
 
@@ -82,15 +88,16 @@ report.get_table("cells", filters={"target": "fpd7", "group": "OOT", "x_bin": "b
                  sort_by="y_risk_rank")  # 同一 X 分段内 Y 的有序梯度
 ```
 
-两个分数已经在同一行对齐；不做独立表合并。输入先投影必要列，再跨引擎转换。
-标签批量联合聚合到一份格子分布，小统计表再展开不同 target；不同标签人数不能相加。
+输入表的每一行必须包含同一样本的两个分数，接口不会合并独立表。
+计算时先选择必要列，再转换表后端。多个标签先共同聚合为一份格子分布，再从统计小表展开不同 target；
+不同标签的人数不能相加。
 `group_col` 与 `time_col` 可同时提供，只输出实际 group/period 组合；时间解析及粒度
 复用既有语义。`max_scopes` 默认 10000，超过时报错，避免无界输出。
 
-分段配置互斥：显式 `cutpoints={两个原始ID: 切点列表}`、`binning_reference` 或
-`bin_definitions=get_score_bin_definitions(previous_report)`。无配置时全量当前输入各轴
-拟合一次，`fit_source=current_input`，不会猜哪个分组是训练集。所有 target/分组/月共用
-同一份 bins。默认请求 5 段，也可用 `n_bins={"score_main": 4, "prob_aux": 6}`；
+三种分段配置互斥：显式 `cutpoints={两个原始ID: 切点列表}`、`binning_reference`，或
+`bin_definitions=get_score_bin_definitions(previous_report)`。
+都未提供时，接口用当前全部输入为两个轴各拟合一次，记录 `fit_source=current_input`，不会猜测哪个分组是训练集。
+所有 target、分组和月份共用同一份 bins。默认请求 5 段，也可以用 `n_bins={"score_main": 4, "prob_aux": 6}`；
 实际正常箱数记录在定义及 `parameters.actual_n_bins`，重复值、常量、小样本或合并可减少箱数。
 不同报告不能假定分位箱可比，应复用保存定义。没有有效 reference 分数时须给显式切点。
 
@@ -111,21 +118,21 @@ report.get_table("cells", filters={"target": "fpd7", "group": "OOT", "x_bin": "b
 | `binning_target` | 监督拟合目标；默认首个 `targets`，也可明确指定参考集中的另一列。保存实际目标，不随页面切换重拟合 |
 | `n_jobs` | 共用分箱器的并行参数；不更改报告的 scope 定义 |
 
-`method="custom"` 不是公开方法。自定义走 `cutpoints`，保存复用走 `bin_definitions`。
+自定义分段使用 `cutpoints`，复用已保存分段使用 `bin_definitions`；公开方法不接受 `method="custom"`。
 公开 method、n_bins 等控制项不能重复塞进 `binner_params`，`prebinning_method` 也不能用来
 绕过高层 method 契约；冲突项按 `profile_risk` 的原规则报错。
-这两条无拟合路径不能附带 method、非默认引擎、监督目标或其他拟合配置；明确报错，不静默猜优先级。
+这两种配置无需拟合，不能同时传入 method、非默认引擎、监督目标或其他拟合配置，否则会报错。
 `n_bins` 的旧默认和显式切点调用兼容，实际箱数以切点/定义为准。
 
-监督路径（native cart、optimal、lite_opt）在所选参考集中验证 0/1 标签，剔除未表现标签并检查
-各轴可用分数样本是否具备两个类别；全好/全坏仍可用于报告评估，但不满足监督拟合要求。
+监督路径（native cart、optimal、lite_opt）先在所选参考集中校验 0/1 标签，排除未表现标签，
+再检查各轴可用分数样本是否包含两个类别。全好或全坏样本可以用于报告评估，但不能用于监督拟合。
 拟合过程不使用评估 `weights_col` 重新定义树目标。每轴定义的 `fit` 保存参考/可用样本数、
 目标、实际引擎参数、实际箱数及诊断；`get_score_bin_definitions` 将这些来源随定义返回。
 保存定义复用时 `fit_performed=False`，历史 `binning_target`/`fitted_targets` 仍明确记录。
 `binning_reference` 可来自任何用户指定的参考集，TRAIN/VAL/TEST/OOT 只是普通组名。
 
-已启用约束的自动拟合路径会将共享引擎的左闭切点适配为右闭定义，保留拟合参考样本的箱成员；切点恰好命中
-观测值时使用其前一个真实观测值作为右闭上界，不添加 epsilon。已启用的最小箱约束按最终
+启用约束后，自动拟合会将共享引擎的左闭切点转换为右闭定义，并保持拟合参考样本的分箱归属。
+切点恰好命中观测值时，使用前一个真实观测值作为右闭上界，不添加 epsilon。已启用的最小箱约束按最终
 右闭赋箱独立检查，实际箱数减少或无法满足的情况随 `fit` 记录。约束只针对拟合参考集，
 固定定义用于 OOT、独立验证集或其他数据时不重新拟合，也不强制新数据保持原箱占比。
 未启用约束的 native 自动路径沿用原来的右闭切点行为。
@@ -146,8 +153,8 @@ report = cross_scores(
 saved_bins = get_score_bin_definitions(report)
 ```
 
-方法路径、参数透传与一次拟合由 `tests/test_score_cross_binning.py` 覆盖。普通 score 和混合方向
-仍支持；风险方向及概率身份必须显式声明，不能由字段名推断。
+`tests/test_score_cross_binning.py` 覆盖方法选择、参数透传和只拟合一次的行为。
+接口也支持普通 score 和不同风险方向的两个轴；风险方向及哪些字段属于概率分数必须显式声明，不能由字段名推断。
 
 正常箱 `b0...` 按原数值顺序定义为右闭区间 `(lower,upper]`，外端无界，覆盖 reference
 范围外有限分数。`bins` 另存 risk_rank，展示与规则均低风险→高风险，高分低风险的轴
@@ -169,7 +176,7 @@ null/NaN 为 missing；非有限/无法数值化分为 invalid。概率域外值
 | overall | 同标签、同样本范围总体 |
 | bins | axis/bin_id；区间、开闭、方向、风险顺序、拟合来源 |
 
-边际和总体从原始整数计数相加后重算，绝不平均格子坏率/Lift/区间。
+计算边际和总体时，先加总原始整数计数，再重算指标，不平均格子的坏率、Lift 或置信区间。
 sample_share 包含全部特殊箱；折叠特殊箱不会重新归一化正常格占比。
 行/列边际也包括另一轴的隐藏特殊箱，页面基线直接读边际表。
 observed_coverage=有表现人数/全部人数；bad_rate=坏人数/有表现人数。
@@ -207,9 +214,9 @@ write_score_cross_html(restored, "cross.html", policy_reports=[policy])
 restored.write_excel("cross.xlsx")
 ```
 
-支持 x_only/y_only/and/or；门槛是整数 risk_rank（0 整轴拒绝，最大值为实际段数）。
-缺失/非法轴默认拒绝，x_only 不依赖 Y，y_only 不依赖 X。OR 允许任一依赖轴通过；每格
-计数一次。`accepted_special_bins={"x": ["missing"], "y": ["s0"]}` 可显式接受特殊箱。
+支持 x_only/y_only/and/or，门槛使用整数 risk_rank（0 表示整轴拒绝，最大值为实际段数）。
+缺失或非法分数默认拒绝。x_only 不检查 Y，y_only 不检查 X；OR 允许任一依赖轴通过，每格只计数一次。
+`accepted_special_bins={"x": ["missing"], "y": ["s0"]}` 可以显式接受特殊箱。
 
 staircase 示例：
 
@@ -223,8 +230,9 @@ policy = evaluate_score_policy(restored, candidate, baseline=baseline)
 ```
 
 未列出的 X 段确定拒绝。特殊 X 段需先显式列入 accepted_special_bins，再配置该段 step。
-这是 conditioned/staircase 规则，不能描述成全局独立 Y 门槛。箱内连续新阈值报错，
-粗交叉不能插值或按比例估计精确结果。规则随报告保存固定原区间与父 report_id。
+这是 conditioned/staircase 规则，每个 X 段可以使用不同的 Y 门槛。
+新阈值落在某个箱内部时会报错，粗分段不能通过插值或按比例估计得到精确结果。
+规则随报告保存固定的原区间和父 report_id。
 回放不修改父报告、不自动写文件、不选择最优策略或部署。
 
 ### 正常分箱表达式与离线规则
@@ -240,9 +248,9 @@ policy.save("expression-policy.marsreport")
 X/Y、AND/OR 和同轴标签大小写不敏感。支持 `< <= = == != >= >`；AND 优先于 OR，
 括号覆盖优先级。标签右侧允许整数简写；`X <= 2` 等于 `X <= X2`，表示固定风险顺序的
 前两行，不能解释成原始概率阈值 2。跨轴标签、非整数、越界、未知词元或源码均报中文错误。
-上限为 240 字符、96 词元、12 层括号，严格解析成限定 AST 后显式解释，不执行用户代码。
+表达式最多包含 240 个字符、96 个词元和 12 层括号。接口先严格解析为限定的 AST，再解释执行，不执行用户代码。
 正常箱表达式排除任一轴的特殊箱，OR 重叠只计一次；底层旧 policy 的显式特殊箱策略仍保留。
-非单调命中集合是分箱诊断集合，不自动映射为低风险通过门槛或业务审批。
+非单调的命中集合只用于分箱诊断，不会自动转换为低风险通过门槛或业务审批规则。
 
 表达式、解析 AST、限制、固定定义及父 report_id 随派生报告保存，机器可查询同一 summary，
 包含人数、表现覆盖、bad_rate、真实总体 Lift 和状态。页面结果也只加总已有格子证据，使用
@@ -258,36 +266,39 @@ summary 保存候选/基准的 retained/rejected 人数、占比、表现覆盖�
 与 X拒绝/Y通过的扩量候选区。不能只比较更严格规则的风险而隐藏覆盖差，也不会声称
 粗分段达到完全等覆盖。基准未给定时为 all_samples，包含特殊箱。
 
-默认业务名称为历史“样本留存率”，不是审批通过率。调用者应提供样本限制：例如只有
-存量通过客户标签，不能外推拒绝客户或未来完整申请客群。Wilson 描述单格不确定性，
-没有完成多重检验，也不证明辅助分具有稳定提升。
+默认业务名称沿用“样本留存率”，表示规则在当前样本中保留的比例，不能解释为审批通过率。
+调用方应说明样本限制。例如只有存量通过客户的标签时，结果不能外推到拒绝客户或未来完整申请客群。
+Wilson 描述单格不确定性，没有完成多重检验，也不证明辅助分具有稳定提升。
 
 ## 人与外部 Agent 共用证据
 
-`describe()` 记录表角色：pairs 有两个逐行端点；cross 的统计表声明报告级 score_x/
-score_y scope，无意义的单特征行不复制。标签、group、period 作为独立维度。中文名重复
-不会改变原始 ID 关联键。get_feature/search_features 能找到两端或两模型分。
-原生筛选、裁列、排序和分页后才转换展示数据。`to_ai_context(queries=..., max_chars=...)`
-输出完整 JSON，省略完整记录并保留截断数/继续位置；不默认塞整矩阵或个体明细。
+`describe()` 说明表中字段的角色：pairs 的每行包含两个特征端点；cross 统计表在报告级声明 score_x/score_y，
+不会复制成无意义的单特征行。标签、group 和 period 分别标识统计范围。
+中文名重复不会改变原始 ID 关联键，`get_feature()` / `search_features()` 可以找到关系两端或两个模型分。
+
+接口先在原生表中筛选、选择列、排序和分页，再转换展示数据。
+`to_ai_context(queries=..., max_chars=...)` 输出合法、完整的 JSON；超预算时省略整条记录，并保留省略数和继续查询位置，
+默认不输出整个矩阵或个体明细。
 证据引用由 report_id、表名、可重放 query 及记录中的 feature pair/target/group/period/
 bin_id 定位。未知业务字段保持 unknown。
 
-Notebook `show_score_matrix` 默认显示正常箱，标注特殊样本省略数，提供风险/row delta/
-全体样本占比着色及重算边际；匹配多范围时选择首个并在 caption 说明。Excel 包含所有
-公共表与元数据，比例保持小数。离线 HTML 自包含无 CDN，切换范围、指标、特殊箱、
-色标。紧凑矩阵逐格显示人数、全 scope 占比、坏率及 Lift；键盘箭头或点击只选格。
+Notebook 的 `show_score_matrix()` 默认显示正常箱，并标注省略的特殊样本数。
+你可以按风险、row delta 或全体样本占比着色，并查看重算后的边际指标。
+匹配多个范围时，展示首个范围并在 caption 中说明。Excel 包含所有公共表和元数据，比例保持小数。
+离线 HTML 自包含、无 CDN，支持切换范围、指标、特殊箱和色标。
+紧凑矩阵逐格显示人数、全 scope 占比、坏率和 Lift；键盘箭头或点击只选格。
 侧栏显示真实区间、X 行基线、Δ、覆盖、Wilson 和证据；两图分别固定 X 沿 Y、固定 Y 沿 X，
 采用真实行/列边际参考线，空/未观测断线，有效零保留在 0。
 规则输入和结果区独立，内侧命中边框保留热力颜色和选中外框。显式预回放 policy 的原统计
-仍在折叠区可查。周期语义来自实际分组来源：Score Cross 独立生成样本集和时间范围，
+仍在折叠区可查。周期的含义取决于实际分组来源。Score Cross 分别生成样本集和时间范围，
 `group_col` 不替代时间轴；新报告的 `parameters.scope_dimensions` 保存来源列和生效时间粒度。
-无时间维度时隐藏周期筛选，内部 `Total` 或 null 统计键保持原样，并明确未做跨期持续性验证。
+未提供时间维度时，页面隐藏周期筛选，保留内部 `Total` 或 null 统计键，并说明尚未验证跨期持续性。
 当前样本集只有一个周期时显示真实范围，不提供周期切换，也不据单期结果判断稳定性；
 多个真实周期可正常筛选，阅读提示随目标和样本集更新。
-另有未解析时间时保留“时间范围”筛选，不把未解析值计为真实周期。
+存在未解析时间时，页面保留“时间范围”筛选，但不会把未解析值计为真实周期。
 旧快照有完整 `time_col` / `time_grain` 声明时沿用其语义；缺少声明时显示“时间来源未知”，
 多个保存范围仍可通过“分组范围”筛选。不会按 `Total` 等标签或范围数量猜测时间维度。
-这些展示变化不改变统计表、分母、证据查询键或快照格式。热力背景保留固定发散色阶，
+页面展示不改变统计表、分母、证据查询键或快照格式。热力背景保留固定发散色阶，
 普通文字（包括禁用控件与 SVG 标签）采用至少 4.5:1 的对比度目标。
 旧保存报告可重导出新页面，无需原始明细、浏览器状态或重新拟合；已有字段/格式保持可读。
 
@@ -305,8 +316,8 @@ python docs/snippets/correlation_and_score_cross.py --report path/to/existing.ma
 数据明确为合成，不代表真实模型表现；生成 HTML、Excel、JSON、相关/交叉/派生快照。
 Notebook：[correlation_and_score_cross.ipynb](../demos/correlation_and_score_cross.ipynb)。
 
-兼容性调整：基础 Linear 相关筛选不再因未安装可选 statsmodels 而触发关闭的 VIF 和
-Logit 诊断导入失败。未安装时这些可选诊断表为空并记录状态，筛选结果不变；显式启用
-VIF/stepwise 仍要求安装 ml extra。安装 statsmodels 的既有用户行为保持，公开 API 无需迁移。
+基础 Linear 相关筛选无需安装可选的 statsmodels。
+未安装时，关闭的 VIF 和 Logit 诊断不会触发导入，相关诊断表为空并记录状态，筛选结果不变。
+显式启用 VIF/stepwise 时，仍须安装 ml extra。已安装 statsmodels 的用户继续使用原有行为，公开 API 无需迁移。
 
 实际测试、环境、分阶段耗时与内存、未验证范围见[验收与基准记录](../performance/correlation-score-cross.md)。

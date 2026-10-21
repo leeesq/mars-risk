@@ -9,7 +9,7 @@ description: 人工对话与外部 AI Agent 通过公共报告读取元数据、
 
 MARS 是面向人和 AI Agent 的高性能信贷风控工具箱。具备 Python 工具的外部 Agent 可以调用
 MARS 的画像、分箱评估、筛选、相关性和规则能力，取得结构化报告后继续查询、复核与交付。
-这些公共入口可以接入自建 Agent，无需 `MarsAgentSession` 或指定模型 SDK。
+你可以在自建 Agent 中调用这些公共入口，无需 `MarsAgentSession` 或指定模型 SDK。
 查询已有报告不会重新分箱、重算指标或访问原始样本；需要新范围或新维度时，
 Agent 应在调用方提供的数据和计算预算内明确发起新的分析。
 本文对应 MARS **0.0.28**。发布后可按[安装指南](../getting-started/installation.md)安装该版本；
@@ -27,18 +27,18 @@ Agent 决定要研究的问题和下一项计算，MARS 执行明确的分析并
 | 规则分析 Agent | 从真实生成器或明确种子产生候选，读取发现审计，并在独立样本上验证命中、覆盖和风险 | 候选来源、保留或淘汰理由及验证表现；[规则案例](../demos/rule-evidence.md) |
 | 报告与交付 Agent | 发现报告目录，按问题筛选与分页，核对状态和引用，再保存与导出 | 跨会话继续分析、证据引用、HTML／Excel 和有限 JSON；[保存查询](../demos/saved-reports.md)、[报告交付](../demos/report-delivery.md) |
 
-一次具体工作可以按“提出问题 → 明确数据与口径 → 调用计算 → 查询证据 → 判断是否需要补充分析”推进。
+一次分析可以按“提出问题 → 明确数据与口径 → 调用计算 → 查询证据 → 判断是否需要补充分析”推进。
 例如发现某个特征 PSI 上升后，Agent 可核对缺失与特殊箱、分区样本占比和有效标签，
 再决定是否补充时间／客群分析。每一步都保留实际参数、状态与报告引用；
 新计算需要原数据，读取快照只能回答已保存统计覆盖的问题。
 
 MARS 的建模（含 Pipeline）、监控和评分卡模块暂停功能迭代。
-外部 Agent 可以继续使用核心分析与报告能力构建定制流程；变化定位与统计关联提供诊断证据，
-业务原因仍需要额外验证。上述场景说明可组合的能力，具体 Agent 实现见调用方自己的工程。
+外部 Agent 可以继续用核心分析报告构建定制流程。定位变化、检查统计关联可以提供诊断证据，
+业务原因仍须额外验证。上表列出可以组合的操作，具体 Agent 由调用方实现。
 
 ## 最小链路
 
-取得报告、查询 Top-K、展示与导出，再保存完整结果：
+下面的示例依次取得报告、查询 Top-K、展示和导出结果，最后保存完整报告：
 
 ```python
 --8<-- "docs/snippets/minimal_report.py"
@@ -53,13 +53,13 @@ MARS 的建模（含 Pipeline）、监控和评分卡模块暂停功能迭代。
 `describe()` 返回持久 `report_id`、报告类型、表目录、粒度、行数、字段类型、单位、
 实际 `parameters`、状态、限制及来源。画像通常有 `overview`、`dq.<metric>`、
 `stats.<metric>`、`comparison.<metric>`；分箱报告有 `summary`、`detail`、`trend.<metric>`，
-其他报告以真实目录为准。没有计算的表不会凭空出现。
+其他报告以实际目录为准。未计算的表不会出现在目录中。
 
 先核对标签、样本范围、基准、分箱拟合来源、缺失处理及指标单位，再比较数值。
 KS 使用百分制，坏率与缺失率用比例，IV／PSI 无量纲；金额与币种独立记录。
-`calculation_status`、诊断和原始空值一起解释未表现、未计算、失败、样本不足和未定义值。
+结合 `calculation_status`、诊断和原始值，区分未表现、未计算、失败、样本不足和未定义。
 没有状态行也不能证明所有指标均可用；不要将缺失值解释为 0 或“没有风险”。
-字段语义按报告和表选择：画像／分箱的 `calculation_status` 使用
+先确认报告类型和表名，再解释字段。画像／分箱的 `calculation_status` 使用
 `computed/not_computed/unobserved/undefined/insufficient_samples/failed/skipped`；
 `no_target` 是未提供目标，`no_observed_labels` 是目标没有已观测标签。
 Score Cross 的格子、边际和整体表另用 `valid/low_sample/empty/unobserved/not_requested/invalid_denominator`，
@@ -69,7 +69,7 @@ Score Cross 的格子、边际和整体表另用 `valid/low_sample/empty/unobser
 
 计算时可传 `feature_metadata`，键为原始英文字段名，字段包括 `display_name`（中文名）、
 `data_source`、`description`、`unit`。也支持含 `feature` 列的 Pandas／Polars 字典表。
-报告不会重命名原宽表，也不在每个分箱／日期行重复长描述。
+报告保留原宽表的字段名，将长描述集中保存，不在每个分箱行或日期行重复写入。
 
 ```python
 metadata = {
@@ -94,8 +94,8 @@ metadata = {
 | 金额与币种 | `currency` 及明确的金额口径 |
 | 模型分方向 | `score_direction`，交叉分析还须显式提供计算方向参数 |
 
-未登记的解释保持 `unknown`。`describe().context_source` 区分用户提供的信息与实际执行参数；
-用户说明不能覆盖权重、分箱、筛选或样本处理事实。完整可运行字典例子见下方 portable_reports。
+未登记的解释保持 `unknown`。`describe().context_source` 会区分用户提供的信息和实际执行参数。
+用户说明不能改写实际使用的权重、分箱、筛选或样本处理方式。完整字典示例见下方的 `portable_reports.py`。
 
 ## 分页与证据回放 { #分页与证据回放 }
 
@@ -124,9 +124,10 @@ if page["next_offset"] is not None:
 省略记录的 `continue_at` 另给正页长查询，供 `query_page()` 继续取证。
 先筛选／排序，再列投影和分页，避免先把完整表转换为 Pandas／JSON。
 筛选只支持已有字段及限定操作符，不执行 SQL 或任意表达式。
-仅投影数值时，`to_ai_context()` 的 `evidence.identities` 按相同顺序补充每行未输出的特征身份列；
-与 `rows` 按行对应。相关性等关系表保留两端身份，规则关系继续采用已保存的桥接身份。
-`description.feature_metadata` 只关联返回页涉及的实体和必要 scope，不含未返回的请求特征。
+只选择数值列时，`to_ai_context()` 会在 `evidence.identities` 中补充未输出的特征身份，
+与 `rows` 按行对应。相关性等关系表保留两端身份；规则表根据已保存的成员关系保留身份。
+`description.feature_metadata` 只包含当前页涉及的实体，以及解释当前统计范围所需的信息，
+不附带未返回的请求特征。
 
 ## JSON 摘要与字符预算
 
@@ -142,7 +143,7 @@ context_json = restored.to_ai_context(
 )
 ```
 
-预算覆盖最终序列化 JSON 的 Unicode 字符，包括目录、元数据与省略说明，**不是 token 数**。
+预算按最终序列化 JSON 的 Unicode 字符计数，包括目录、元数据和省略说明，**不是 token 数**。
 可以选择表、特征、来源、筛选条件及列；不同表使用 `queries` 指定不同参数。
 超预算会省略完整字段、行或说明块，记录数量、原因与继续查询引用。
 `evidence.query` 始终表示最终生效的查询；裁列后写入实际 `columns`，裁行后写入实际 `limit`。
@@ -156,25 +157,26 @@ for item in context["evidence"]:
     replayed = restored.get_table(item["reference"], **item["query"])
 ```
 
-`identities` 与业务元数据也计入预算；裁行时同步裁减，元数据不会夹带后续页特征。
+`identities` 和业务元数据也计入预算。减少返回行数时，两者会同步缩减，不包含后续页的特征。
 非空查询至少保留一条完整证据；必要说明和这条证据无法一起放入预算时抛 `ValueError`。
 可提高预算，或用 `columns` 投影需要的字段。计算为空与预算拒绝保持区别，完整数据仍在报告和快照中。
 多个字段相同的空值口径可合并到表级 `field_defaults.null`，字段继承该默认定义；指标单位和含义仍逐列说明。
 Null 使用 JSON null；非有限浮点使用 `$mars` 类型标记；数值 0 保持 0。
 筛选标量及 `eq`／`in` 的值接受同一受限标签，因此 JSON 往返、保存加载及新进程可直接重放。
-只接受 `{"$mars":"float","value":"nan"}`、`"inf"`、`"-inf"` 三种值且不允许多余字段；
-未知或畸形标签明确报错。普通 `"inf"`、`"-inf"`、`"NaN"` 字符串保持原类型，
+标签格式必须为 `{"$mars":"float","value":"nan"}`，其中 `value` 只允许 `"nan"`、`"inf"` 或 `"-inf"`，
+且不能有多余字段。未知或格式错误的标签会报错。普通 `"inf"`、`"-inf"`、`"NaN"` 字符串保持原类型，
 NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不新增过滤操作符。
 
-人工对话：将 `context_json` 粘贴到另一个对话框，并要求回答引用表与样本口径；摘要范围外的
-问题需补充查询结果。具备工具能力的外部 Agent：在 Python 环境加载完整快照，按目录读取
-所需证据。普通对话模型不会因收到 `.marsreport` 就自动获得 Python 执行环境。
+人工对话时，将 `context_json` 粘贴到另一个对话框，并要求回答引用表名和样本口径。
+问题超出摘要范围时，需补充查询结果。
+外部 Agent 具备工具调用能力时，可以在 Python 环境中加载完整快照，按目录查询所需证据。
+普通对话模型仍须具备 Python 执行环境，才能直接读取 `.marsreport`。
 
 ## 保存与恢复的能力边界
 
 `.marsreport` 是既有 ZIP + manifest + Parquet 格式（版本 1），保留所有公共统计表、
 表／列顺序、报告身份、业务元数据、实际参数、状态、诊断及来源。
-它不是 pickle，不保存任意可执行对象，不用于恢复原分析器或任意重算。
+文件使用结构化数据格式，不保存任意可执行对象，也不恢复原分析器或提供任意重算能力。
 目录与类型必须匹配；当前没有跨格式版本迁移器，跨 Pandas／Polars 版本的 dtype 迁移也不保证。
 
 | 恢复对象／原报告类型 | 可继续使用 | 边界 |
@@ -186,8 +188,8 @@ NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不�
 | 规则报告（Experimental） | 候选审计、验证、解释、按规则/特征/业务来源关联查询及显式高级分析 | 不重建 RuleSet 部署资格，不 transform 新样本；规则指标不按特征展开 |
 | 其他领域对象 | 仅其已实现的公共契约或专用 artifact 能力 | RuleSet／模型 artifact 不等于通用报告快照 |
 
-恢复后的展示使用 `restored.show_table("summary", limit=10)`，导出使用
-`restored.write_html(...)`／`write_excel(...)`；不能假定原对象所有方法都恢复。
+加载后，调用 `restored.show_table("summary", limit=10)` 展示结果，调用
+`restored.write_html(...)` 或 `write_excel(...)` 导出。`ReportSnapshot` 只提供已声明的能力，不恢复原对象的全部方法。
 详细格式、原子保存与非有限数约定见[报告保存与恢复](reports-and-exports.md#portable-analysis-reports)。
 
 ## 相关性与模型分交叉
@@ -205,9 +207,9 @@ NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不�
 
 ## 完整示例 { #完整示例 }
 
-[规则报告与外部 Agent 完整案例](rule-reports-and-agents.md)演示 Home Credit 外部来源分交叉 → 开发候选 →
-验证筛选与固定规则独立评估 → 两类快照 → 新进程分页追问与证据复核，
-提供无 API Key 的确定性验收及可直接交给外部编程 Agent 的任务 Prompt。
+[规则报告与外部 Agent 完整案例](rule-reports-and-agents.md)先交叉分析 Home Credit 外部来源分，再生成候选规则、
+验证筛选结果，并在独立样本上评估固定规则。案例会保存两类快照，随后在新进程分页查询、复核证据。
+你可以直接运行无需 API Key 的确定性验收，也可以将生成的任务提示词交给外部编程 Agent。
 
 - [报告查询源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/report_queries.py)：筛选、投影与上下文。
 - [跨进程报告源码](https://github.com/leeesq/mars-risk/blob/main/docs/snippets/portable_reports.py)：业务字典、重名搜索、新进程恢复与人工导出。
@@ -222,7 +224,7 @@ NaN 沿用查询后端的既有谓词语义，不承诺与自身相等，也不�
 
 ## 可选的内置 Agent
 
-`mars.agent` 是公共报告契约的消费者。`session.register_report(restored)` 可登记已有快照，
+`mars.agent` 同样通过公共报告契约读取结果。`session.register_report(restored)` 可以登记已有快照，
 `get_report_table`、`describe_report`、`get_report_context` 继续查询，不必重新登记原数据。
 运行器的计算预算只约束新计算，读取已有大型报告继续遵守分页与输出预算。
 工具、安装和会话示例见[内置 Agent](agent.md)。开发 MARS 本身的规则在仓库工程 Skill，

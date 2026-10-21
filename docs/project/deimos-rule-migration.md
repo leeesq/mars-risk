@@ -4,11 +4,11 @@ description: deimos-rule e6714c5 到 mars.rule 的逐项功能与回归迁移矩
 
 # Deimos Rule 迁移矩阵
 
-本页固定对照来源提交 `e6714c5e795054e44f0c58ad7097668b4117b4a2`。`Covered` 表示能力已由
-Mars 新契约覆盖；`Replaced` 表示能力保留但调用方式重设计；`Removed by design` 表示发布计划明确
-删除的旧兼容面，不应重新引入 `deimos.*`、旧 artifact 或双后端适配层。
+本页逐项对照来源提交 `e6714c5e795054e44f0c58ad7097668b4117b4a2` 的回归测试。
+`Covered` 表示 MARS 已按新的接口约定覆盖该能力；`Replaced` 表示保留能力，但重新设计了调用方式。
+`Removed by design` 表示发布计划明确删除了对应的旧兼容功能，不应重新引入 `deimos.*`、旧 artifact 或双后端适配层。
 
-| # | Deimos 回归 | Mars 落点 | 状态 |
+| # | Deimos 回归 | MARS 对应实现或回归 | 状态 |
 |---:|---|---|---|
 | 1 | `test_simplifier_contracts` | `test_dsl_normalization_is_deterministic_and_simplifies_duplicates`、`test_dsl_rejects_static_contradictions` | Covered |
 | 2 | `test_translator_quotes_identifiers` | `test_ruleset_sql_matches_reference_database` | Covered |
@@ -28,8 +28,8 @@ Mars 新契约覆盖；`Replaced` 表示能力保留但调用方式重设计；`
 | 16 | `test_mars_feature_selector_returns_top_k` | 组合生成器 `_prefilter_features` 与 100k×1000 性能门禁 | Replaced |
 | 17 | `test_mars_feature_selector_missing_dependency` | Mars 内部直接依赖自身 selector，不再有可选 Mars adapter | Removed by design |
 | 18 | `test_auto_prefilter_falls_back_to_native` | 不允许静默回退第二套实现 | Removed by design |
-| 19 | `test_mars_backend_is_strict_when_missing` | Mars selector 是同 wheel 基础能力 | Removed by design |
-| 20 | `test_evaluator_fills_only_referenced_rule_columns` | `MarsRuleEvaluator` 批量 AST mask 与缺列 fail closed 回归 | Covered |
+| 19 | `test_mars_backend_is_strict_when_missing` | MARS selector 与规则模块包含在同一个 wheel 中 | Removed by design |
+| 20 | `test_evaluator_fills_only_referenced_rule_columns` | `MarsRuleEvaluator` 批量计算 AST mask，并在缺列时拒绝计算的回归 | Covered |
 | 21 | `test_tree_generator_is_reproducible` | `test_tree_generator_has_explicit_missing_paths_and_is_reproducible` | Covered |
 | 22 | `test_rule_filter_sort_and_grade_helpers` | typed filter、稳定排序、RuleSet grade 回归 | Replaced |
 | 23 | `test_rule_query_config_mapping_aliases` | tuple、mapping 和指标 SQL 不再接受 | Removed by design |
@@ -49,18 +49,18 @@ Mars 新契约覆盖；`Replaced` 表示能力保留但调用方式重设计；`
 | 37 | `test_gbdt_lightgbm_missing_dependency` | `test_lightgbm_and_optuna_use_unified_optional_dependency_message` | Covered |
 | 38 | `test_gbdt_lightgbm_optional_backend_if_installed` | `test_lightgbm_optional_backend_generates_rules_when_installed` | Covered |
 | 39 | `test_isolation_forest_generator_is_reproducible_and_evaluable` | `test_ensemble_generators_are_reproducible` | Covered |
-| 40 | `test_model_generators_validation_and_exports` | 五生成器 public API、参数校验和 root 非导出回归 | Covered |
+| 40 | `test_model_generators_validation_and_exports` | 五类生成器的 public API、参数校验，以及根模块不重复导出的回归 | Covered |
 | 41 | `test_rule_mining_session_model_modes` | 显式 `generators=` 组合与默认生成器契约 | Replaced |
 | 42 | `test_rule_set_serialization_and_polars` | `test_ruleset_json_round_trip_and_strict_validation`、同类型 transform 回归 | Replaced |
 | 43 | `test_mars_adapter_missing_dependency` | `integrations.mars` 不再存在 | Removed by design |
-| 44 | `test_mars_adapter_builds_hit_features` | `MarsRuleSet.transform()` 后直接调用 Mars 分析 API | Replaced |
+| 44 | `test_mars_adapter_builds_hit_features` | `MarsRuleSet.transform()` 后直接调用 MARS 分析 API | Replaced |
 
 ## 关键语义差异
 
 - `cascade` 每轮在剩余训练样本重新生成候选，并在剩余验证样本重新筛选；审计记录
   `generation_round` 与 `selection_round`。
-- 树、森林、GBDT 和孤立森林使用“稳定数值填充列 + 显式缺失指示列”训练，模型分支会精确还原为
-  `IS NULL`、`IS NOT NULL` 及受控的 `OR` 条件，不保存不可部署的 sentinel。
-- 高级分析继续覆盖样本口径，并恢复交互、累计和边际的金额与客户口径。
+- 树、森林、GBDT 和孤立森林先填充缺失数值，并增加显式缺失指示列，再训练模型。
+  模型分支会准确还原为 `IS NULL`、`IS NOT NULL` 和受限的 `OR` 条件，不保存无法部署的缺失哨兵值（sentinel）。
+- 高级分析保留按样本计算的指标，并恢复按金额和客户计算的交互、累计与边际指标。
 - 报告中的 `rule_explanations` 是结构化表；benchmark 通过
   `MarsRuleReport.from_benchmark(...).render_html()` 或 `write_html()` 导出。

@@ -30,7 +30,7 @@ description: Reporting stable API：画像、分箱报告和 HTML 渲染结果�
 
 ## 可携带相关性证据
 
-使用方式与保存后的专用操作见[相关性与模型分交叉](../user-guide/correlation-and-score-cross.md)。
+如何查询相关性、保存报告，以及加载后如何恢复子矩阵，见[相关性与模型分交叉](../user-guide/correlation-and-score-cross.md)。
 
 ::: mars.reporting.CorrelationReport
     options:
@@ -44,5 +44,5 @@ description: Reporting stable API：画像、分箱报告和 HTML 渲染结果�
 
 ## 模型分交叉报告
 
-`ScoreCrossReport` 的公开导入位于 `mars.analysis`，签名见[Analysis API](analysis.md)，
-导出和保存后的规则回放见[模型分交叉指南](../user-guide/correlation-and-score-cross.md#固定分段交叉)。
+从 `mars.analysis` 导入 `ScoreCrossReport`，准确签名见 [Analysis API](analysis.md)。
+如何导出报告、保存后回放规则，见[模型分交叉指南](../user-guide/correlation-and-score-cross.md#固定分段交叉)。

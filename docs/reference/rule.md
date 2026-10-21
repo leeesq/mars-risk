@@ -6,8 +6,8 @@ description: mars.rule Experimental 公开 API 的精确签名与 docstring。
 
 !!! warning "Experimental"
 
-    `mars.rule` 的 DSL、筛选策略、结果字段和 artifact 仍可能在 `0.0.x` 调整。不要从根 `mars`
-    导入这些名称；受控流程固定精确版本，并对 JSON 和 SQL 结果增加契约测试。
+    `mars.rule` 的 DSL、筛选策略、结果字段和 artifact 仍可能在 `0.0.x` 调整。请从 `mars.rule`
+    导入这些名称，根 `mars` 不提供这些导出。在受控流程中使用时，固定精确版本，并对 JSON 和 SQL 结果增加契约测试。
 
 ::: mars.rule.mine_rules
 

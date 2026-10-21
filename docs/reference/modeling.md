@@ -6,7 +6,7 @@ description: Experimental Modeling/Pipeline API：切分、调参、replay、评
 
 !!! warning "Experimental"
 
-    参数、结果对象和 artifact 结构仍可能变化。使用前阅读
+    Modeling 和 Pipeline 的参数、结果对象和 artifact 结构仍可能变化。使用前请阅读
     [Modeling / Pipeline 指南](../user-guide/modeling-pipeline.md)和
     [稳定性与兼容性](../project/stability.md)。
 

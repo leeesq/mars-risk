@@ -1,6 +1,7 @@
 # 相关性报告与模型分交叉：验证和性能记录
 
-记录日期：2026-10-01。测量对象为 mars-risk 0.0.28 工作树中的本次未提交实现。完整原始记录在仓库 `benchmarks/results/correlation_score_cross_20261001.json`，可运行脚本为 `benchmarks/benchmark_correlation_score_cross.py`。
+本记录来自 2026-10-01，测量的是 mars-risk 0.0.28 工作树中尚未提交的实现。
+完整原始记录保存在 `benchmarks/results/correlation_score_cross_20261001.json`，复现脚本为 `benchmarks/benchmark_correlation_score_cross.py`。
 
 ## 环境与测量方法
 
@@ -13,15 +14,20 @@ $env:OPENBLAS_NUM_THREADS = '4'
 python benchmarks/benchmark_correlation_score_cross.py
 ```
 
-每阶段使用 perf_counter 计时，每 10ms 采样一次当前进程 RSS，并记录阶段起始 RSS、观察到的峰值及二者差值。这不是精确分配追踪，短暂峰值可能未被采到，内存分配器复用会影响增量；原始记录保留字节数。本记录为单次运行的测量值，不宣称稳定提速比例。
+每个阶段使用 `perf_counter` 计时，每 10 ms 采样一次当前进程 RSS，记录阶段起始 RSS、观察峰值和两者差值。
+采样不能精确追踪每次分配，可能漏掉短暂峰值；内存分配器复用也会影响增量，原始记录因此保留字节数。
+这里记录的是单次运行结果，不能据此得出稳定提速比例。
 
 ## Linear 矩阵计算次数
 
-在同一份 200 行、12 特征的合成输入上，执行参考提交 `4b3c88f5af3145619a35028202356d702e83cfba` 中的原始 Linear 类和本次实现，通过拦截 Pandas DataFrame.corr 计数：原实现调用 **2 次**，本次实现调用 **1 次**；两者最终入选特征及顺序一致。这里统计特征间矩阵，不包含特征与 target 的关系计算。
+使用同一份 200 行、12 个特征的合成输入，分别运行参考提交 `4b3c88f5af3145619a35028202356d702e83cfba` 中的原始 Linear 类和本次实现。
+拦截 `Pandas DataFrame.corr` 后确认：原实现调用 **2 次**，本次实现调用 **1 次**，最终入选特征和顺序一致。
+这里统计的是特征间相关矩阵，不包含特征与 target 之间的关系计算。
 
 ## 相关性结果规模
 
-每项使用 1,500 行合成数据，先测 NumPy 有符号相关矩阵计算，再测已有矩阵转换为完整候选报告；没有为了此基准进行监督分箱拟合。报告构造结束释放 selector 的密集缓存，查询、展示和保存使用 pairs 与实际对角信息。
+每项使用 1,500 行合成数据，先测量 NumPy 计算带正负号的相关矩阵，再测量将已有矩阵转换为完整候选报告的过程。这个基准不拟合监督分箱。
+报告构造完成后，释放 selector 的密集矩阵缓存。后续查询、展示和保存使用 `pairs` 及实际对角信息。
 
 ### 500 特征 / 124,750 对
 
@@ -53,9 +59,12 @@ python benchmarks/benchmark_correlation_score_cross.py
 
 ## 模型分交叉
 
-两个分数、两个标签、TEST/OOT 实际分组，默认 5 段；联合聚合覆盖正常箱、缺失箱和非法值箱。宽表的额外列为 uint8 合成字段。拦截跨引擎转换确认两项测量都只转换 `x, y, bad, late, split` 五列。
+输入包含两个分数、两个标签和 TEST/OOT 分组，默认分为 5 段。联合聚合覆盖正常箱、缺失箱和非法值箱，宽表中的额外列是 uint8 合成字段。
+拦截跨引擎转换后确认，两项测量都只转换 `x, y, bad, late, split` 五列。
 
-总入口计时包含投影、分段拟合、赋箱、联合聚合、边际和报告构造。两个轴拟合及报告构造是该入口中的嵌套计时，包含采样器设置开销，不能把它们再加到总入口时间上。保存后删除原始 DataFrame 与分数数组，再执行加载、查询和规则回放。
+总入口计时包括选择必要列、拟合分段、赋箱、联合聚合、边际计算和报告构造。
+两个轴的拟合和报告构造都在入口内部另行计时，包含采样器的设置开销，不能再加到入口总耗时上。
+保存报告后，先删除原始 DataFrame 和分数数组，再加载报告、查询并回放规则。
 
 ### 200,000 行 / 55 输入列
 
@@ -98,15 +107,19 @@ python benchmarks/benchmark_correlation_score_cross.py
 
 ## 验证边界
 
-本地 HTML 的 file:// 页面被浏览器工具安全策略拒绝，未完成真实浏览器点击验证；未绕过该策略。HTML 包含本地脚本、聚合结果和必要元数据，代码与结构测试覆盖标签/分组切换、格子详情及预计算规则结果展示，但不将这些检查称为浏览器交互验证。
+浏览器工具的安全策略拒绝打开本地 HTML 的 `file://` 页面，因此本轮未完成真实浏览器点击验证，也未绕过策略。
+HTML 包含本地脚本、聚合结果和必要元数据。代码与结构测试覆盖标签和分组切换、格子详情，以及预计算规则结果的展示；这些检查不能代替浏览器交互验证。
 
-未验证超过 1,000 特征、超过 1,000,000 行、超过 55 列的性能，也未在 Python 3.9–3.11 或其他操作系统重复本轮完整验证。相关性报告的完整关系存储仍为 O(p²)。规则回放精度限于完整固定分段；加权二项置信区间不支持，报告明确使用 unweighted 字段表示整数 bad/n 的 Wilson 区间。
+本轮未验证超过 1,000 个特征、1,000,000 行或 55 列的性能，也未在 Python 3.9～3.11 或其他操作系统上重复完整验证。
+相关性报告的完整关系存储仍为 O(p²)。规则只能按完整的固定分段精确回放，不支持加权二项置信区间。
+报告用 unweighted 字段明确标记整数 bad/n 的 Wilson 区间。
 
 本记录生成时 README 未修改，没有 commit、push、发布或部署；后续提交与推送按用户授权单独执行。
 
 ## 2026-10-02 Score Cross 接入复核
 
-本轮复用上述报告体系，接入共享画像分箱器、安全分箱表达式和离线交互。没有重新测量上述性能数字，也没有将附件的合成统计写入计算代码。
+本轮复用上述报告体系，接入共享画像分箱器、受限语法的分箱表达式和离线交互。
+上述性能数字未重新测量，附件中的合成统计也未写入计算代码。
 
 - Windows 现有 `mars312` 环境，Python 3.12.13 / Polars 1.42.0：默认测试 **761 passed、3 skipped、7 deselected**，92.25 秒。命令为 `python -m pytest -q -p no:cacheprovider -m "not docs_ml and not optional_ml"`，另外指定独立 basetemp。设置 `PYTHONUTF8=1` 和 `PYTHONIOENCODING=utf-8`，避免 Windows GBK 父进程解码 UTF-8 子进程输出的环境冲突。
 - Windows 现有 `mars38` 环境，Python 3.8.20 / Polars 1.8.2：五个 Score Cross 测试模块 **102 passed、2 skipped**；两项独立 Agent 测试按既有 Python >=3.10 支持范围跳过。未在此环境重新运行完整仓库测试。
@@ -125,7 +138,7 @@ python benchmarks/benchmark_correlation_score_cross.py
 
 ## 2026-10-02 真实浏览器验收
 
-本节是后续实际浏览器结果，不改写上文历史通过数和浏览器缺口。
+本节记录后续完成的真实浏览器验收结果，上文的历史通过数和当时未完成的浏览器验收保持原样。
 开始时工作树干净；重新通过 GitHub 与 HTTPS fetch 核对：main 为
 `b73491c80617c24767f289921cc7924f71c9737f`，[PR #2](https://github.com/leeesq/mars-risk/pull/2)
 仍为未合并草稿，head 为 `35d2b6eab67124e84220b6ade5693ee7ddfb3ad1`。
@@ -142,21 +155,21 @@ Windows 11（10.0.26200）、Python 3.12.13、Polars 1.42.0、Pandas 3.0.3、Num
 Playwright 1.63.0 驱动本机 **Chrome 154.0.8037.92 / Chromium**，headless、`zh-CN`。
 Score Cross 直接 `file://` 打开，新进程重导出 HTML；主流程 1440×1000，
 另检查 1024/768/390×1000、系统浅色/深色偏好。报告保持已有固定配色，没有增加主题开关。
-200% 使用独立临时 Chrome profile，在浏览器设置中实际选择页面缩放 200%；
-窗口宽 1440，CSS innerWidth 707、devicePixelRatio 2、visualViewport.scale 1。
-这不是 CSS zoom、缩小 viewport 或手工调用页面 render。
+检查 200% 缩放时，使用独立的临时 Chrome profile，在浏览器设置中选择页面缩放 200%。
+窗口宽 1440，CSS innerWidth 为 707，devicePixelRatio 为 2，visualViewport.scale 为 1。
+没有使用 CSS zoom、缩小 viewport 或手工调用页面 render 来模拟浏览器缩放。
 
 入口位于 `tests/browser/fixtures.py`、`score_cross.py`、`representatives.py`、`docs.py`；
-完整命令和 Chrome/Chromium 前提见本分支仓库根 `CONTRIBUTING.md` 的“离线报告的真实浏览器验收”；
-本轮尚未推送，该新节不宣称已经出现在 main 或线上站点。
+完整命令和 Chrome/Chromium 前置条件见本分支仓库根 `CONTRIBUTING.md` 的“离线报告的真实浏览器验收”。
+本记录写入时尚未推送，因此这项新增说明当时还未出现在 main 或线上站点。
 `browser` 是 Python >=3.10 的独立开发 extra，不进入核心 dependencies；不安装其他浏览器引擎，
 没有新增前端框架、验收平台或 CI 发布流。本机有 Firefox 143.0，但本轮未配置其自动化驱动、未做跨引擎验收；
 WebKit 未配置，也未为了浏览器矩阵下载多套引擎。
 
-`fixtures.py --phase generate` 与 `--phase export` 分别在结束后的独立进程运行，PID 为 2748/14136。
-后续纯加载/导出补验 PID 为 37292，manifest 保留 export history；7 份 Score Cross 身份不变。
-代表报告的修复后原生 HTML 另由公共 profile_risk 等入口重新计算/导出，记录在 `representatives-refresh.log`，
-没有手工修改产物 HTML 或注入 CSS 冒充公共导出。
+`fixtures.py --phase generate` 完成后，再在独立进程运行 `--phase export`，两个进程的 PID 为 2748/14136。
+后续只加载和导出的补验进程 PID 为 37292，manifest 保留 export history，7 份 Score Cross 的身份保持不变。
+代表报告在修复后的原生 HTML 由 `profile_risk` 等公共入口重新计算并导出，过程记录在 `representatives-refresh.log`。
+这些产物未经过手工修改，也未通过注入 CSS 模拟公共导出。
 夹具复用原 Score Cross 测试与文档 snippet 的公共入口，生成 7 份紧凑报告：
 standard、weighted、no_labels、one_bin、empty、zero_overall、medium。
 覆盖相反方向、3×4、双目标、不同组不同可用周期、真实零值/低样本/未表现/空格/零权重分母，
@@ -190,21 +203,21 @@ standard、weighted、no_labels、one_bin、empty、zero_overall、medium。
 
 浏览器使用真实点击、select、fill、Enter、Tab/方向键及滚动；只读 DOM 获取实际值。
 期望来自加载报告的公共 `get_score_cell`、`query_page`、`evaluate_score_policy`，不调用前端聚合函数充当期望。
-覆盖 30 个实际 scope、268 次正常格点击（medium 每 scope 抽查 3 格）、主流程 204 次规则数字/状态对照，
-另补 56 次能改变命中组合的优先级/括号对照与 60 次比较符对照，共 **320 次**；snippet 另有 2 个 scope，
-以及 3,780 行嵌入 policy 业务数据。标准/加权的全部正常格均逐个对照，
-其余特殊格保存在特殊箱表并按公共表核对；不是将 884 条全部格子重放误写成 884 次浏览器点击。
+验收覆盖 30 个实际 scope 和 268 次正常格点击（medium 每个 scope 抽查 3 格）。主流程对照规则数字和状态 204 次，
+另补 56 次能改变命中组合的优先级与括号对照，以及 60 次比较符对照，共 **320 次**。snippet 另有 2 个 scope，
+嵌入的 policy 业务数据另有 3,780 行。标准和加权报告的全部正常格均逐个对照，特殊格则按特殊箱表与公共表核对。
+884 条全部格子的证据重放另行检查，不计作 884 次浏览器点击。
 
 人数、已观测人数、坏人数、全量占比、坏率、Lift、Δ、Wilson、真实行列边际及双向图一致。
 加权坏率按保存权重，人数保持整数；90% 未加权 Wilson 与 weighted CI unsupported 明示。
 六种状态分别保留，有效零在图中保留为 0；整体零坏率时 Lift 不可用。
-周期回退保持目标、组和固定分段；规则应用后换范围重算，未提交输入/选格/示例复制不改规则。
+周期回退时，保留目标、组和固定分段。应用规则后切换范围，会重新计算结果；未提交的输入、选格和复制示例都不改变规则。
 合法同轴整数/标签、大小写、优先级/括号、OR 去重、无命中、空格、未观测和零权重均对照 Python。
 错误输入、长度/词元/深度边界保留上一有效规则并标 `aria-invalid=true`；恢复正常视图仅清规则。
-指标切换保留选格；全报告色阶和相同数值颜色跨范围一致，不重新标色。
-键盘边界、activeElement、aria-pressed、live region 和详情同步；折叠控件和已有说明均实际操作。
+切换指标时，保留已选格子。全报告使用一致的色阶，不随范围重新标色，相同数值在不同范围中保持同色。
+键盘边界、activeElement、aria-pressed、live region 和详情均完成同步检查，折叠控件与已有说明也经过实际操作。
 
-证据使用真实 report_id 与五维 target/group/period/x_bin/y_bin 查询，逐格回交 Python 返回当前记录。
+证据使用实际 report_id，并按 target/group/period/x_bin/y_bin 五个字段查询，再逐格与 Python 返回的当前记录核对。
 保存前后全部表/元数据/schema/定义/状态及每份 14 条表达式结果相同，共 884 条公开单元格证据重放一致。
 7 份 Excel 的实际表头与行数一致。另一个新进程实际执行：
 
@@ -212,17 +225,17 @@ standard、weighted、no_labels、one_bin、empty、zero_overall、medium。
 python docs/snippets/correlation_and_score_cross.py --report <tmp>/weighted/report.marsreport --rule "X <= X2 AND Y <= Y3" --output <tmp>/snippet-reexport
 ```
 
-复制覆盖 file 原生 Clipboard、明确拒绝、execCommand fallback 及 localhost 安全上下文，
-成功路径实际读取剪贴板并比对文本；拒绝显示手动复制提示，不声称已复制、不崩溃。
-不可用/拒绝路径由浏览器初始化脚本注入 API 失败，随后用真实按钮触发；成功路径没有替换复制 API。
+复制检查覆盖 file 页面的原生 Clipboard、明确拒绝、execCommand fallback 和 localhost 安全上下文。
+成功时，实际读取剪贴板并比对文本；拒绝时，页面提示手动复制，不显示复制成功，也不崩溃。
+不可用和拒绝场景由浏览器初始化脚本注入 API 失败，再点击真实按钮触发。成功场景没有替换复制 API。
 离线报告 pageerror、console error、CSP 违规、requestfailed 和外部请求均为 0；
 每份报告只有自身 file 加载，没有 CDN、字体、遥测或 API 请求。非本地请求阻断辅助检查。
 HTML 标题/字段中的 `</script>` 为文字，没有新增执行节点；输入继续为受限 AST。
 
 ### 代表 HTML、文档与检查状态
 
-画像/风险、规则快照和相关性快照通过 file 打开，抽查已有表选择/过滤/分页/排序与原风险报告搜索、
-目标切换、导航；规则按真实 evaluation 粒度与业务元数据核对，没有按特征重复计数。
+通过 file 打开画像与风险报告、规则快照和相关性快照，抽查表选择、过滤、分页和排序，以及原风险报告的搜索、目标切换和导航。
+规则按实际 evaluation 粒度与业务元数据核对，没有按特征重复计数。
 相关性 Styler 的数值与保存的同一计算矩阵一致，只检查已有静态展示。
 金额使用公共保存表，没有另建前端算法。详见 `representative-browser/results.json`。
 
@@ -267,18 +280,18 @@ git diff --check
 
 开始时核对的 [PR CI](https://github.com/leeesq/mars-risk/actions/runs/36911712699) 与
 [PR Docs](https://github.com/leeesq/mars-risk/actions/runs/36911712732) 均 success，属于旧 head `35d2b6e`。
-本轮未推送，远端 CI/Docs **未运行**；本地预览通过不代表 GitHub Pages 部署。
-无合并/部署授权，不检查或修改线上页面，本轮提交尚未部署；线上实际 SHA 本轮未核查。
+本记录写入时尚未推送，远端 CI/Docs **未运行**；本地预览通过不能证明 GitHub Pages 已经部署。
+当时没有合并或部署授权，因此未检查、修改线上页面，也未部署本轮提交或核查线上实际 SHA。
 Monitoring、Modeling/Pipeline、Scoring 未新增功能或兼容层，核心 Python 3.8–3.12 与 mars.agent 隔离不变。
 
 ### 产物索引
 
 本机独立目录为 `D:\Desktop\credit-risk\browser-acceptance-20261002`，不提交 HTML、Excel、快照、截图或大日志。
-`manifest.json`、`environment.json` 和 `fixtures-*.log` 记录来源与分进程闭环；
+`manifest.json`、`environment.json` 和 `fixtures-*.log` 记录来源，以及在不同进程中生成、保存、加载和导出的过程；
 `browser/score-cross-browser.json` 记录浏览器动作、范围计数、网络/异常、色阶、特殊箱、剪贴板、缩放和截图位置。
 记录保留运行起点 `35d2b6e` 与 dirty 状态，并验证受测模板归一化 SHA256 与 `8ae6e46` git blob
 一致（`311a495fdb03f3c34f3cd93f1e54ba30446780fa4bccdbd750ef8878109ed131`）；
-不把追加来源信息说成在新 HEAD 无条件重跑。补充剪贴板/状态/snippet/缩放检查实际在 `8ae6e46` 后执行。
+追加来源信息不表示在新 HEAD 上重新运行了全部检查。补充的剪贴板、状态、snippet 和缩放检查实际在 `8ae6e46` 后执行。
 `representative-browser/results.json`、`docs/results.json` 分别记录代表报告与站点。
 Score Cross 截图位于 `browser/`，包含 `standard-1440.png`、`weighted-390-applied.png`、`weighted-error.png`、各 `state-*.png`、
 `empty-390.png`、`score-cross-zoom200.png`；文档为 `docs/home-desktop-default.png` / `docs/home-desktop-slate.png`。

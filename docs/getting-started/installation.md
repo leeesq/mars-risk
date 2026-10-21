@@ -6,7 +6,7 @@ description: MARS 0.0.28 的版本安装、main 开发安装、Python 兼容策�
 
 ## 安装 0.0.28
 
-**MARS 0.0.28 已发布到 PyPI**。使用以下命令安装固定版本。
+MARS 0.0.28 已发布到 PyPI。使用以下命令安装固定版本：
 
 ```bash
 pip install mars-risk==0.0.28
@@ -14,7 +14,7 @@ pip install mars-risk==0.0.28
 
 版本发布情况以 [PyPI](https://pypi.org/project/mars-risk/)和
 [GitHub Releases](https://github.com/leeesq/mars-risk/releases)为准。
-动态版本徽章展示发布来源；不能将仓库版本号或文档更新视为已经上传 PyPI。
+动态版本徽章来自发布服务。仓库中的版本号或文档更新不代表软件包已经上传到 PyPI。
 
 ## 源码安装与 main 开发
 
@@ -32,17 +32,19 @@ cd mars-risk
 python -m pip install -e .
 ```
 
-版本安装固定发布产物；main 可能继续变化。复现分析时记录实际版本或源码提交，
-升级变化见 [Release Notes](../project/release-notes.md)。
+指定版本号会安装对应的发布产物，main 分支则会继续变化。复现分析时，记录实际版本或源码提交。
+升级前查看 [Release Notes](../project/release-notes.md)。
 
 ## Python 兼容策略
 
-基础包的元数据要求 Python >=3.8,<3.13；当前核心 CI 验证 3.8–3.12。
+基础包要求 Python >=3.8,<3.13，当前核心 CI 验证 Python 3.8～3.12。
 Python 3.8 使用冻结依赖栈，Polars 1.8.2 与 scikit-learn 1.3.x；
-Python 3.9–3.12 使用 `polars>=1.33.1,<2`，本版尚未支持 Polars 2.0 的类型规则。
-3.9 使用依赖边界栈。可选模型、调参、Notebook、文档／开发工具及内置 Agent
-以 Python 3.10+ 为支持环境；并非每个 extra 都通过包元数据自动禁止旧解释器安装。
-Agent 的 SDK 带 Python >=3.10 条件，模块导入也会校验版本。
+Python 3.9～3.12 使用 `polars>=1.33.1,<2`，本版尚未支持 Polars 2.0 的类型规则。
+Python 3.9 使用兼容该版本的依赖边界配置。
+
+可选模型、调参、Notebook、文档／开发工具和内置 Agent 支持 Python 3.10+。
+部分 extra 的包元数据未阻止旧解释器安装，安装成功也不代表受支持。
+Agent SDK 的依赖声明要求 Python >=3.10，模块导入时也会校验版本。
 
 Python 3.8 已停止官方安全维护，运行兼容不等于解释器继续获得维护。
 需要复现 Python 3.8 的冻结源码验证栈时，在克隆目录内使用仓库约束：
@@ -53,7 +55,8 @@ python -m pip install -c constraints/python38.txt -e .
 
 ## 可选依赖
 
-以下版本命令安装已发布的 **0.0.28**；参与开发时使用右侧的源码命令。可选能力使用 Python 3.10+。
+左侧命令安装已发布的 0.0.28；参与开发时，先克隆仓库，再在根目录执行右侧命令。
+可选能力使用 Python 3.10+。
 
 | 场景 | 0.0.28 版本安装 | main 源码安装 |
 | --- | --- | --- |
@@ -74,21 +77,21 @@ python -m pip install -c constraints/python38.txt -e .
 python -c "import mars; print(mars.__version__)"
 ```
 
-0.0.28 版本安装应输出 0.0.28；main 安装输出当前源码版本。随后运行[Quickstart](quickstart.md)；
+安装 0.0.28 后应输出 `0.0.28`；从 main 安装则输出当前源码版本。随后运行 [Quickstart](quickstart.md)；
 公共报告交接见[外部 Agent 指南](../user-guide/external-agents.md)。
 
 ## 常见问题
 
 ### Modeling 导入失败
 
-确认安装 ml,tuning extra，并检查模型库对当前 Python／系统的支持。
+确认已安装 `ml,tuning` extra，再检查模型库是否支持当前 Python 版本和操作系统。
 
 ### Excel 或绘图依赖缺失
 
-基础包包含 openpyxl、xlsxwriter、xlwings、matplotlib 和 seaborn；
-按实际错误检查依赖，不在已有环境中盲目覆盖全部依赖。
+基础包包含 openpyxl、xlsxwriter、xlwings、matplotlib 和 seaborn。
+先按报错检查对应依赖，避免在已有环境中覆盖全部依赖。
 
 ### Pandas 与 Polars 怎么选
 
-MARS 接收两种宽表，以 Polars 为计算基础。已有 Pandas 流程可直接传入，
-在返回对象与展示边界核对表类型。
+MARS 接受两种宽表，使用 Polars 计算。已有 Pandas 流程可以直接传入 DataFrame；
+继续处理返回值或展示表格时，先确认结果是 Pandas 还是 Polars 表。

@@ -48,11 +48,11 @@ def _hero(english: bool) -> str:
         "数据画像 · 分箱评估 · 特征筛选 · 相关性分析 · 模型分交叉 · 规则挖掘"
     )
     description = (
-        "Turn Pandas or Polars data into risk evidence you can inspect, query, deliver and reuse.<br>"
-        "Native charts for analysts. Structured reports for your modeling, monitoring and analysis agents."
+        "Analyze credit risk from Pandas or Polars tables, inspect charts, query statistics and export reports.<br>"
+        "Analysts use native charts to assess risk. AI agents query evidence from the same reports."
         if english else
-        "从 Pandas 或 Polars 宽表，得到可查看、可查询、可交付、可复用的风控分析结果。<br>"
-        "用原生图表支持人工判断，用结构化报告连接你的建模、监控归因与分析 Agent。"
+        "用 Pandas 或 Polars 宽表分析信贷风险，查看图表、查询统计并导出报告。<br>"
+        "分析人员用原生图表判断风险，AI Agent 从同一份报告中查询证据。"
     )
     links = (
         [("Start analyzing", "getting-started/quickstart/"), ("Practical cases", "demos/"),
@@ -114,33 +114,33 @@ context_json = report.to_ai_context(tables=["summary"], max_chars=16000)"""
 
 ## What MARS brings to your workflow
 
-MARS uses Polars for calculation and accepts Pandas or Polars wide tables. It brings data profiling, binning, risk evaluation, feature selection, correlation and rule analysis into a shared set of reports. Inspect distributions, compare populations and periods, understand selection decisions, then deliver the results as charts, HTML or Excel.
+MARS uses Polars for computation and accepts Pandas or Polars wide tables. Check data quality, evaluate risk across bins, select features, analyze correlations and mine rules. Reports retain the results so you can compare distributions and risk across populations and periods, inspect selection decisions, and export charts, HTML or Excel.
 
-The same results are available to **external AI agents** through public report APIs. Tables, metric semantics, feature metadata, calculation states and replayable evidence remain queryable after saving and loading. Your agent can use MARS as its analysis layer and combine it with the model libraries, experiment tools and business workflow you choose.
+External AI agents query the same results through public report APIs. Reports preserve the table catalog, metric definitions, feature metadata and calculation states. Queries return replayable evidence references. Your agent can use these results to continue an analysis and call the model libraries and experiment tools you choose.
 
 | Capability | What you can inspect | Practical example |
 | --- | --- | --- |
 | Data profiling | Missing and special values, sample and label coverage, distributions | [Check whether the data is ready]({SITE}demos/data-quality/) |
 | Binning and risk evaluation | Native trend charts, fixed bins, multi-target IV / KS / PSI, count and amount risk | [Compare discrimination and stability]({SITE}demos/binning-stability/) |
 | Feature selection | Candidate decisions and reasons across screening stages | [Understand retained and removed features]({SITE}demos/selection-correlation/) |
-| Correlation analysis | Signed redundancy and separate raw / WOE evidence | [Inspect related features]({SITE}demos/selection-correlation/#correlation) |
-| Score cross analysis | Risk separation between two external-source scores and combination evidence | [Compare external-source scores]({SITE}demos/score-cross/) |
+| Correlation analysis | Positive and negative correlations, with separate raw-value and WOE results | [Inspect related features]({SITE}demos/selection-correlation/#correlation) |
+| Score cross analysis | Risk across joint segments of two external-source scores and their combination conditions | [Compare external-source scores]({SITE}demos/score-cross/) |
 | Rule mining · Experimental | Candidate origins, screening, coverage and independent validation | [Review rules with evidence]({SITE}demos/rule-evidence/) |
 
 [All seven cases]({SITE}demos/) share all 356,255 Home Credit application records. Original features and TARGET come from the competition; APPLY_DATE is simulated. Four labeled partitions precede the 48,744 unlabeled competition-test records. [Inputs and five partitions]({SITE}user-guide/home-credit-data/) explain their uses.
 
 ## Build your agents on MARS
 
-MARS provides the calculation and evidence layer. You supply orchestration, model training and business decisions.
+MARS performs calculations and provides analysis evidence. You define the agent's steps, choose training tools and set the business decision process.
 
 | Your external agent | MARS building blocks | Useful output |
 | --- | --- | --- |
-| Modeling agent | Data quality, binning, feature selection, correlation and risk evaluation | Feature candidates, removal reasons and evaluation evidence for your chosen training tools |
+| Modeling agent | Data quality, binning, feature selection, correlation and risk evaluation | Select candidate features, inspect removal reasons and pass evaluation results to your chosen training tools |
 | Monitoring and diagnosis agent | Grouped profiles, missing and distribution changes, fixed-bin risk trends and stability | Locate changing populations or features, gather evidence and propose hypotheses to validate |
-| Rule analysis agent | Candidate rules, hit evaluation, discovery audit and independent validation | Reviewable candidates with risk, coverage and validation results |
-| Report analysis agent | Report catalog, business metadata, bounded queries, snapshots and evidence references | Continue an analysis across sessions and deliver traceable answers |
+| Rule analysis agent | Candidate rules, hit evaluation, discovery audit and independent validation | Review each candidate's risk, coverage and independent validation results |
+| Report analysis agent | Report catalog, business metadata, paginated queries, snapshots and evidence references | Continue querying in a new session and check answers against evidence references |
 
-These are workflows you can build with MARS; complete agents are composed by the user. The optional <code>mars.agent</code> integration also consumes the public report interface. [External Agent guide · 中文]({SITE}user-guide/external-agents/) · [Rule evidence guide · 中文]({SITE}user-guide/rule-reports-and-agents/).
+You implement these agent workflows. MARS also offers an optional <code>mars.agent</code> integration that uses the same public report interface. [External Agent guide · 中文]({SITE}user-guide/external-agents/) · [Rule evidence guide · 中文]({SITE}user-guide/rule-reports-and-agents/).
 
 ## Install
 
@@ -156,17 +156,25 @@ For the current development branch, install from source:
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-The base package supports Python **3.8-3.12**; Python 3.8 uses a frozen dependency stack. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
+The base package supports Python **3.8-3.12**, with pinned dependencies for Python 3.8. Use **Python 3.10+** for optional modeling, tuning, notebooks, documentation development and the built-in Agent SDK. [Installation and extras · 中文]({SITE}getting-started/installation/).
 
 ## Start with one report
 
-From the repository root, download the three official CSV files into the documented data directory, then run the shared example. If copying the code elsewhere, download [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) beside it. [Data preparation]({SITE}user-guide/home-credit-data/) covers Kaggle access and explicit paths:
+Follow the [data preparation guide]({SITE}user-guide/home-credit-data/) to download the three official CSV files into `examples/home-credit-2018/data/raw_data/`. From the repository root, run:
+
+{FENCE}bash
+python docs/snippets/readme_quickstart.py
+{FENCE}
+
+The script runs the code below. If copying it elsewhere, place [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) beside your script and prepare the data paths as described in the guide.
 
 {FENCE}python
 {code}
 {FENCE}
 
-[Shared runnable source]({SOURCE}docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/). The helper prepares both application files once. For full trend charts and downloadable results, use the [binning case]({SITE}demos/binning-stability/). Native figures can be saved directly as SVG or high-resolution PNG with <code>report.save_risk_trend_images()</code>.
+The script creates `risk_charts/`, `risk_report.html` and `risk_report.marsreport` in the current directory, then prints one summary row. The preparation function reads both application files and adds field descriptions, simulated dates and partitions. You can also use <code>report.save_risk_trend_images()</code> to save native figures as SVG or high-resolution PNG.
+
+[Shared runnable source]({SOURCE}docs/snippets/readme_quickstart.py) · [Full quickstart · 中文]({SITE}getting-started/quickstart/) · [Full trend charts and downloads]({SITE}demos/binning-stability/).
 
 ## Give the same result to an AI agent
 
@@ -176,15 +184,17 @@ In a new process, load the saved report and query only the evidence you need:
 {agent}
 {FENCE}
 
-<code>describe()</code> exposes the real table catalog, semantics, parameters and states. <code>query_page()</code> returns rows, pagination and a replayable evidence reference. <code>to_ai_context()</code> produces bounded JSON; **<code>max_chars</code> counts characters, not tokens**. The consumer does not need an LLM, API key, <code>MarsAgentSession</code>, original table or analyzer merely to query the saved results.
+Start with <code>describe()</code> to inspect the table catalog, metric definitions, parameters and states, then use <code>query_page()</code> to read pages of results. Each page includes data and a replayable evidence reference. <code>to_ai_context()</code> produces JSON from the selected tables with a length limit; **<code>max_chars</code> counts characters, not tokens**. Querying saved results requires no LLM, API key, <code>MarsAgentSession</code>, original table or analyzer.
 
-Loading returns a **ReportSnapshot** with saved statistics and metadata. <code>report.write_excel("risk_report.xlsx")</code> exports static tables, and <code>report.show_table("summary", limit=10)</code> displays them. Questions requiring new dimensions or original records need a new calculation. [Save and query results]({SITE}demos/saved-reports/) · [Deliver HTML, Excel, snapshots and Agent materials]({SITE}demos/report-delivery/).
+Loading returns a ReportSnapshot containing saved statistics and metadata. Use <code>report.write_excel("risk_report.xlsx")</code> to export static tables or <code>report.show_table("summary", limit=10)</code> to display the summary. A snapshot can answer only questions supported by its saved statistics. New analysis dimensions or questions about original records require the source data and a new calculation. [Save and query results]({SITE}demos/saved-reports/) · [Deliver HTML, Excel, snapshots and Agent materials]({SITE}demos/report-delivery/).
 
 ## Development focus
 
 **Analysis, Feature and Reporting are Stable. Rule, Monitoring, Modeling, Pipeline, Scoring and Agent are Experimental.** These labels describe interface maturity.
 
-Current development focuses on core analysis performance, memory efficiency, human use and external Agent consumption. **Monitoring, Modeling (including Pipeline) and Scoring are paused for feature development.** Existing functionality and documentation remain, with necessary fixes and direct adaptation to upstream changes. Combine AI, MARS analysis and your own model tools to build tailored workflows. These downstream modules adapt to the core; upstream code does not retain compatibility aliases or redundant computation for them.
+Current development focuses on faster core analysis, lower memory use, and better report viewing and querying for people and external agents. **Monitoring, Modeling (including Pipeline) and Scoring are paused for feature development.** We retain existing functionality and documentation, make necessary fixes, and update these downstream modules directly when core interfaces change. Core code does not retain compatibility aliases or redundant computation for them.
+
+Combine AI, MARS analysis reports and your chosen model tools to build workflows for your business.
 
 [Stability policy · 中文]({SITE}project/stability/) · [Retained LightGBM example · 中文]({SITE}demos/history/).
 
@@ -207,33 +217,33 @@ python docs/snippets/task_cases.py --case all --data-dir examples/home-credit-20
 
 ## MARS 能帮你做什么
 
-MARS 以 Polars 为计算基础，接受 Pandas 或 Polars 宽表，将数据画像、分箱风险评估、特征筛选、相关性和规则分析组织为统一的分析报告。你可以查看分布与风险趋势，比较客群和时间，追溯特征保留与删除的原因，再将结果交付为图表、HTML 或 Excel。
+MARS 使用 Polars 计算，接受 Pandas 或 Polars 宽表。你可以检查数据质量，评估分箱后的风险，筛选特征，分析相关性并挖掘规则。分析结果保存在报告中，供你比较不同客群和时间的分布与风险，查看特征保留和删除的原因，并导出图表、HTML 或 Excel。
 
-同一份结果也能交给 **外部 AI Agent**。公共报告接口保留表目录、指标口径、特征业务元数据、计算状态和可重放证据，保存后仍能按需查询。Agent 可以把 MARS 作为分析计算层，结合你选择的模型库、实验工具和业务流程，持续提出问题、读取证据和完成分析。
+外部 AI Agent 通过公共报告接口查询同一份结果。报告会保存表目录、指标口径、特征业务元数据和计算状态，查询会返回可重放的证据引用。Agent 可以据此继续分析，也可以调用你选择的模型库和实验工具。
 
 | 核心能力 | 可以看到什么 | 实战入口 |
 | --- | --- | --- |
 | 数据画像 | 缺失与特殊值、样本与标签覆盖、分布变化 | [判断数据是否可以使用]({SITE}demos/data-quality/) |
 | 分箱与风险评估 | 原生趋势图、固定分箱、多目标 IV / KS / PSI、件数与金额风险 | [比较区分度与稳定性]({SITE}demos/binning-stability/) |
 | 特征筛选 | 候选特征、筛选步骤、保留与删除理由 | [理解特征取舍]({SITE}demos/selection-correlation/) |
-| 相关性分析 | 带符号的冗余关系，分别查看 raw / WOE 证据 | [检查特征之间的关系]({SITE}demos/selection-correlation/#correlation) |
-| 模型分交叉 | 两项外部来源分之间的风险分离与组合证据 | [比较外部来源分]({SITE}demos/score-cross/) |
+| 相关性分析 | 查看相关系数的正负，分别比较原始值（raw）和 WOE 结果 | [检查特征之间的关系]({SITE}demos/selection-correlation/#correlation) |
+| 模型分交叉 | 将两项外部来源分交叉分组，比较各组风险和组合条件 | [比较外部来源分]({SITE}demos/score-cross/) |
 | 规则挖掘 · Experimental | 候选来源、筛选、覆盖与独立验证 | [用证据审查规则]({SITE}demos/rule-evidence/) |
 
 [七个实战案例]({SITE}demos/)共用 Home Credit 的全部 356,255 条申请。原始特征与 TARGET 来自比赛，APPLY_DATE 为模拟日期；四个有标签分区之后，保留原比赛 test 的 48,744 条无标签记录。[输入与五分区说明]({SITE}user-guide/home-credit-data/)解释样本用途与日期边界。
 
 ## 基于 MARS，构建你的 Agent
 
-MARS 提供计算与证据能力，你可以自由组合 Agent 编排、模型训练工具和业务决策流程。
+MARS 负责计算并提供分析证据。你负责组织 Agent 的操作步骤，选择训练工具，并制定业务决策流程。
 
 | 外部 Agent 场景 | 可复用的 MARS 能力 | 可以形成的结果 |
 | --- | --- | --- |
-| 建模 Agent | 数据质量、分箱评估、特征筛选、相关性、风险评估 | 特征候选与淘汰理由，交给自选训练工具的评估证据 |
+| 建模 Agent | 数据质量、分箱评估、特征筛选、相关性、风险评估 | 选出候选特征，查看淘汰理由，将评估结果交给自选训练工具 |
 | 监控与归因 Agent | 分组画像、缺失和分布变化、固定分箱风险趋势、稳定性 | 定位变化人群与特征，汇总证据，提出待验证的归因假设 |
-| 规则分析 Agent | 候选规则、命中评估、发现审计与独立验证 | 带风险、覆盖与验证结果的可审查候选 |
-| 报告分析 Agent | 表目录、业务元数据、有限查询、快照与证据引用 | 跨会话继续分析，交付可追溯的回答 |
+| 规则分析 Agent | 候选规则、命中评估、发现审计与独立验证 | 审查候选规则的风险、覆盖范围和独立验证结果 |
+| 报告分析 Agent | 表目录、业务元数据、分页查询、快照与证据引用 | 在新会话继续查询，通过证据引用核对回答 |
 
-这些是可以基于 MARS 构建的工作流，完整 Agent 由使用者组合实现。可选 <code>mars.agent</code> 也复用公共报告接口。[外部 Agent 使用指南]({SITE}user-guide/external-agents/) · [规则证据与 Agent]({SITE}user-guide/rule-reports-and-agents/)。
+你需要自行实现这些 Agent 工作流。MARS 也提供可选的 <code>mars.agent</code>，它同样使用公共报告接口。[外部 Agent 使用指南]({SITE}user-guide/external-agents/) · [规则证据与 Agent]({SITE}user-guide/rule-reports-and-agents/)。
 
 ## 安装
 
@@ -249,17 +259,25 @@ pip install mars-risk==0.0.28
 pip install "git+https://github.com/leeesq/mars-risk.git"
 {FENCE}
 
-基础包支持 Python **3.8-3.12**，3.8 使用冻结依赖栈；可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
+基础包支持 Python **3.8～3.12**，其中 Python 3.8 使用固定版本的依赖。可选建模、调参、Notebook、文档开发与内置 Agent SDK 使用 **Python 3.10+**。[安装与可选依赖]({SITE}getting-started/installation/)。
 
 ## 先得到一份报告
 
-在仓库根目录准备三个官方 CSV，再运行共享示例。单独复制代码时，将 [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) 放在脚本旁；下载和路径参数见[数据准备指南]({SITE}user-guide/home-credit-data/)：
+先按[数据准备指南]({SITE}user-guide/home-credit-data/)下载三个官方 CSV，放到仓库的 `examples/home-credit-2018/data/raw_data/`。在仓库根目录运行：
+
+{FENCE}bash
+python docs/snippets/readme_quickstart.py
+{FENCE}
+
+脚本执行以下代码。单独复制代码时，将 [home_credit_data.py]({SOURCE}docs/snippets/home_credit_data.py) 放在脚本旁，并按指南准备数据路径。
 
 {FENCE}python
 {code}
 {FENCE}
 
-[共享可运行源码]({SOURCE}docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/)。helper 一次准备两个 application 文件；完整趋势图和可下载结果见[分箱实战]({SITE}demos/binning-stability/)。原生图可以直接通过 <code>report.save_risk_trend_images()</code> 保存为 SVG 或高清 PNG。
+运行后，当前目录会生成 `risk_charts/`、`risk_report.html` 和 `risk_report.marsreport`，终端会打印一行汇总数据。准备函数统一读取两个 application 文件，并补充字段说明、模拟日期和分区。你也可以用 <code>report.save_risk_trend_images()</code> 将原生图保存为 SVG 或高清 PNG。
+
+[共享可运行源码]({SOURCE}docs/snippets/readme_quickstart.py) · [完整 Quickstart]({SITE}getting-started/quickstart/) · [完整趋势图与下载结果]({SITE}demos/binning-stability/)。
 
 ## 将同一份结果交给 AI Agent
 
@@ -269,15 +287,17 @@ pip install "git+https://github.com/leeesq/mars-risk.git"
 {agent}
 {FENCE}
 
-<code>describe()</code> 提供真实表目录、口径、参数与状态；<code>query_page()</code> 返回结果、分页和可重放证据引用；<code>to_ai_context()</code> 生成有限 JSON，**<code>max_chars</code> 是字符预算，不是 token 数**。查询已有结果无需 LLM、API Key、<code>MarsAgentSession</code>、原始宽表或分析器。
+先用 <code>describe()</code> 查看表目录、指标口径、参数和状态，再用 <code>query_page()</code> 分页查询。每页包含数据和可重放的证据引用。<code>to_ai_context()</code> 将指定表整理为 JSON，并限制输出长度；**<code>max_chars</code> 按字符计数，不按 token 计数**。查询已有结果无需 LLM、API Key、<code>MarsAgentSession</code>、原始宽表或分析器。
 
-加载得到 **ReportSnapshot**，包含已保存统计和元数据。<code>report.write_excel("risk_report.xlsx")</code> 导出静态表，<code>report.show_table("summary", limit=10)</code> 用于展示。需要新维度或原始记录的问题，应发起新的计算。[保存后继续查询]({SITE}demos/saved-reports/) · [交付 HTML、Excel、快照与 Agent 材料]({SITE}demos/report-delivery/)。
+加载后得到 ReportSnapshot，其中包含已保存的统计结果和元数据。调用 <code>report.write_excel("risk_report.xlsx")</code> 可导出静态表，调用 <code>report.show_table("summary", limit=10)</code> 可查看汇总表。快照只能回答已有统计支持的问题；需要新增分析维度或查看原始记录时，必须读取原数据重新计算。[保存后继续查询]({SITE}demos/saved-reports/) · [交付 HTML、Excel、快照与 Agent 材料]({SITE}demos/report-delivery/)。
 
 ## 当前迭代方向
 
 **Analysis、Feature、Reporting 为 Stable；Rule、Monitoring、Modeling、Pipeline、Scoring、Agent 为 Experimental。** 这些标记说明接口成熟度。
 
-当前重点改进核心分析性能、内存效率、人工体验与外部 Agent 消费能力。**监控、建模（含 Pipeline）、评分卡暂时停止功能迭代**，现有功能和文档保留，处理必要修复与上游适配。你可以借助 AI、MARS 分析能力和自选模型工具构建更定制的流程。三个下游直接适配核心代码，上游不为它们保留兼容别名或冗余计算。
+当前重点是提高核心分析的计算速度、减少内存占用，并改进人工查看和外部 Agent 查询报告的体验。**监控、建模（含 Pipeline）、评分卡暂时停止功能迭代**。我们保留现有功能和文档，处理必要修复，并在核心接口变化时直接修改这三个下游模块的调用代码。核心代码不为它们保留兼容别名或冗余计算。
+
+你可以结合 AI、MARS 分析报告和自选模型工具，构建适合业务的流程。
 
 [稳定性与适配原则]({SITE}project/stability/) · [保留的 LightGBM 示例]({SITE}demos/history/)。
 

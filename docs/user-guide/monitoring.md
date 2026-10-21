@@ -5,8 +5,8 @@ description: 使用固定或基准期分箱规则监控特征分布、模型分�
 # 特征与模型监控
 
 监控暂时停止功能迭代，现有入口与使用文档保留。只处理必要的正确性、运行修复和上游适配。
-Experimental 说明接口成熟度，与暂停独立。可借助编程型 AI、MARS 分析与报告能力及自己的模型工具构建定制流程。
-本模块直接适配上游，规则见[稳定性](../project/stability.md#暂停模块的下游适配)。
+Experimental 说明接口成熟度，暂停说明开发投入。你可以结合编程型 AI、MARS 分析报告和自己的模型工具构建定制流程。
+核心接口变化时，本模块直接修改调用代码，适配规则见[稳定性](../project/stability.md#暂停模块的下游适配)。
 
 !!! warning "Experimental"
 
@@ -31,8 +31,9 @@ Experimental 说明接口成熟度，与暂停独立。可借助编程型 AI、M
 
 ## Target 规则
 
-target 的有效非空值只能是 `0`、`1`、`True` 或 `False`；空值表示尚未表现。字符串、`-1`、`2`
-或其他非空类别会抛出 `ValueError`，调用方应在监控前完成清洗。
+target 接受 `0`、`1`、`True` 和 `False`，也接受字符串 `"0"`、`"1"`、`"true"`、`"false"`、
+`"True"` 和 `"False"`，并将它们转换为二分类标签。Null、浮点 NaN 和空字符串表示尚未表现。
+`-1`、`2`、`0.5` 及其他非空值会抛出 `ValueError`；调用方应在监控前完成清洗。
 
 `target=None` 时只输出无标签分布监控。传入 target 时，PSI、缺失率和分箱占比使用全量样本；
 坏账率、IV、KS、AUC 和 Lift 只使用已表现样本。
@@ -56,11 +57,11 @@ target 的有效非空值只能是 `0`、`1`、`True` 或 `False`；空值表示
 
 `trend_column_order="asc"` 从早到晚排列趋势列，`"desc"` 让最新分组靠前；`Total` 始终位于最后。
 
-内置 Agent 的 `monitor_data` 消费 `register_dataset(feature_metadata=...)` 登记的特征来源，
-保留本次特征的来源快照。`get_report_table(sources=..., features=...)` 复用公共查询的交集语义，
-证据引用只记录已执行条件；未知来源报 `INVALID_ARGUMENTS`。没有可靠来源信息的旧监控报告
-明确拒绝来源筛选，仍可不带 `sources` 查询。该适配不扩展监控分析能力，也不把旧 Monitoring
-报告变成通用可保存报告；现有保存边界见[报告与评分卡](reports-and-exports.md)。
+内置 Agent 的 `monitor_data` 读取 `register_dataset(feature_metadata=...)` 登记的特征来源，
+并保留本次特征的来源快照。`get_report_table(sources=..., features=...)` 返回同时满足来源和特征条件的结果，
+证据引用只记录实际执行的条件；未知来源会报 `INVALID_ARGUMENTS`。
+旧监控报告缺少可靠来源信息时，接口会拒绝来源筛选，仍允许省略 `sources` 查询。
+旧 Monitoring 报告的分析和保存能力保持原有范围，见[报告与评分卡](reports-and-exports.md)。
 
 ## 报警摘要
 
