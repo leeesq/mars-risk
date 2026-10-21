@@ -842,7 +842,8 @@ class MarsIsolationRuleGenerator(MarsRuleGenerator):
         Returns
         -------
         list[MarsRule]
-            返回符合路径深度、叶子样本数和异常比例条件的去重规则。
+            返回满足路径深度、叶子样本数和异常比例条件的叶子路径规则，并补充显式缺失规则。
+            合并去重后按 ``max_candidates`` 截断。
             没有候选特征或样本不足时返回空列表。
         """
         original: pl.DataFrame = to_polars_frame(df)
