@@ -158,15 +158,15 @@ def test_stats_fit_captures_real_woe_rows_and_threshold(
     target: list[int | None] = (rng.random(150) < 1 / (1 + np.exp(-x))).astype(int).tolist()
     target[-12:] = [None] * 12
     data = pl.DataFrame({"a": x, "b": x, "c": rng.normal(size=150), "bad": target})
-    captures: list[pl.DataFrame] = []
-    original = pl.DataFrame.corr
+    captures: list[np.ndarray] = []
+    original = MarsStatsSelector._woe_row_blocks
 
-    def capture(frame: pl.DataFrame, **kwargs: Any) -> pl.DataFrame:
-        if all(c.endswith("_woe") for c in frame.columns):
-            captures.append(frame.clone())
-        return original(frame, **kwargs)
+    def capture(selector: MarsStatsSelector, *args: Any, **kwargs: Any) -> Any:
+        for block in original(selector, *args, **kwargs):
+            captures.append(block.copy())
+            yield block
 
-    monkeypatch.setattr(pl.DataFrame, "corr", capture)
+    monkeypatch.setattr(MarsStatsSelector, "_woe_row_blocks", capture)
     selector = MarsStatsSelector(
         skip_fine_scan=True,
         psi_thr=None,
@@ -179,8 +179,8 @@ def test_stats_fit_captures_real_woe_rows_and_threshold(
     )
     selector.fit(data, target="bad", features=["a", "b", "c"], white_list=["c"])
     report = selector.get_correlation_report()
-    assert len(captures) == 1 and captures[0].height == 138
-    expected = np.corrcoef(captures[0].to_numpy(), rowvar=False)
+    assert len(captures) == 1 and captures[0].shape[0] == 138
+    expected = np.corrcoef(captures[0], rowvar=False)
     np.testing.assert_allclose(report.get_matrix().to_numpy(), expected, equal_nan=True)
     parameters = report.describe()["parameters"]
     assert parameters["representation"] == "woe" and parameters["operator"] == ">"

@@ -69,7 +69,48 @@ ANALYSIS_CASES = (
     "score_cross_wide500",
     "optimal_binning",
 )
-EXTRA_CASES = ("profile_columns", "profile_rows", "binning_columns", "binning_rows", "rule_bridge")
+EXTRA_CASES = (
+    "profile_columns", "profile_rows", "binning_columns", "binning_rows", "rule_bridge",
+    "selection_survivors", "selection_attrition", "frozen_profile", "frozen_risk", "frozen_selection",
+)
+
+
+def _process_observation() -> dict[str, Any]:
+    """记录生命周期高水位及系统 swap；高水位不代表当前阶段增量。"""
+    process = psutil.Process()
+    memory = process.memory_info()
+    peak = getattr(memory, "peak_wset", None)
+    origin = "Windows peak_wset bytes"
+    if os.name != "nt":
+        # Windows 类型桩没有 POSIX resource 接口；仅在运行平台支持时加载。
+        resource_api: Any = __import__("resource")
+        usage = resource_api.getrusage(resource_api.RUSAGE_SELF)
+        raw = usage.ru_maxrss
+        peak = int(raw if sys.platform == "darwin" else raw * 1024)
+        origin = "Darwin ru_maxrss bytes" if sys.platform == "darwin" else "ru_maxrss KiB * 1024"
+    result: dict[str, Any] = {
+        "pid": process.pid,
+        "parent_pid": process.ppid(),
+        "child_pids": [child.pid for child in process.children(recursive=True)],
+        "lifetime_peak_rss_bytes": peak,
+        "lifetime_peak_origin": origin,
+        "system_available_bytes": psutil.virtual_memory().available,
+    }
+    try:
+        result["system_swap_used_bytes"] = psutil.swap_memory().used
+    except (psutil.Error, OSError, RuntimeError) as exc:
+        result["system_swap_observation"] = f"unavailable: {type(exc).__name__}: {exc}"
+    if sys.platform == "darwin":
+        # psutil 的可用字段随 Darwin 版本变化；未提供的 footprint 不用 RSS 冒充。
+        try:
+            full = process.memory_full_info()._asdict()
+            result["darwin_process_memory_bytes"] = {
+                key: full[key] for key in ("rss", "uss", "compressed") if key in full
+            }
+        except (psutil.Error, OSError) as exc:
+            result["darwin_process_memory_observation"] = f"unavailable: {type(exc).__name__}: {exc}"
+        result["darwin_footprint"] = "not exposed by psutil; RSS/USS are separate observations"
+    return result
 
 
 def _write(path: Path, value: Any) -> None:
@@ -88,8 +129,16 @@ class Measurement:
         self.destination = destination
         self.result: dict[str, Any] = {"status": "running", "stages": {}, "stage": "import"}
 
-    def run(self, name: str, call: Callable[[], Any]) -> Any:
+    def run(
+        self, name: str, call: Callable[[], Any], context: dict[str, Any] | None = None
+    ) -> Any:
         """测量一个真实调用，嵌套阶段不会相加成为总时间。"""
+        # 同一公开调用中的重复阶段逐项保留，不能由末次小批覆盖前面峰值。
+        base_name, occurrence = name, 1
+        while name in self.result["stages"]:
+            occurrence += 1
+            name = f"{base_name}.{occurrence}"
+        previous_stage = self.result["stage"]
         self.result["stage"] = name
         _write(self.destination, self.result)
         process = psutil.Process()
@@ -119,8 +168,11 @@ class Measurement:
         monitor = threading.Thread(target=sample, daemon=True)
         monitor.start()
         start = time.perf_counter()
+        status = "exception"
         try:
-            return call()
+            result = call()
+            status = "passed"
+            return result
         finally:
             elapsed = time.perf_counter() - start
             after = process.memory_info().rss
@@ -128,6 +180,8 @@ class Measurement:
             done.set()
             monitor.join()
             self.result["stages"][name] = {
+                "status": status,
+                "context": context or {},
                 "seconds": elapsed,
                 "rss_start_bytes": before,
                 "rss_end_bytes": after,
@@ -137,7 +191,10 @@ class Measurement:
                 "rss_tree_end_bytes": after_tree,
                 "rss_tree_observed_peak_bytes": max(peak[1], after_tree),
                 "rss_tree_observed_increment_bytes": max(peak[1], after_tree) - before_tree,
+                "process_observation": _process_observation(),
             }
+            if status == "passed":
+                self.result["stage"] = previous_stage
             _write(self.destination, self.result)
 
 
@@ -556,10 +613,10 @@ def _launch(command: list[str], result_path: Path, timeout: float, budget: int) 
         result = {"status": "failed", "stage": "result_decode", "reason": str(exc)}
         record_error(f"result diagnostics: {type(exc).__name__}: {exc}")
     try:
-        with log_path.open("rb") as log:
-            log.seek(0, os.SEEK_END)
-            log.seek(max(0, log.tell() - 10000))
-            log_tail = log.read().decode("utf-8", errors="replace")[-2500:]
+        with log_path.open("rb") as binary_log:
+            binary_log.seek(0, os.SEEK_END)
+            binary_log.seek(max(0, binary_log.tell() - 10000))
+            log_tail = binary_log.read().decode("utf-8", errors="replace")[-2500:]
     except OSError as exc:
         log_tail = ""
         record_error(f"log diagnostics: {type(exc).__name__}: {exc}")
@@ -614,6 +671,12 @@ def _parser() -> argparse.ArgumentParser:
         help="每进程数值库线程及 selector.n_jobs；独立分箱入口保留并记录默认 n_jobs",
     )
     parser.add_argument("--seed", type=int, default=20261001)
+    parser.add_argument("--batch-size", type=int, default=16,
+                        help="阶段化 selection/frozen case 的特征列批宽；不表示行块或线程数")
+    parser.add_argument("--n-jobs", type=int, default=1,
+                        help="阶段化 case 的 Binner 并行任务数，与 --threads 独立")
+    parser.add_argument("--input-config", type=Path,
+                        help="frozen case 的只读 JSON：input_path/benchmark_path/features/target及角色和参数")
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--memory-budget-mib", type=float, default=8192)
     parser.add_argument("--diagnostic-loops", type=int, default=10)
@@ -660,6 +723,7 @@ def _worker(args: argparse.Namespace) -> int:
             traceback=traceback.format_exc()[-4000:],
         )
     meter.result["worker_seconds"] = time.perf_counter() - start
+    meter.result["worker_process_observation"] = _process_observation()
     if "numpy" in sys.modules:
         from threadpoolctl import threadpool_info
 
@@ -683,15 +747,23 @@ def _worker(args: argparse.Namespace) -> int:
 def _summary(rounds: list[dict[str, Any]]) -> dict[str, Any]:
     """汇总完整执行轮次；消费语义失败仍保留已完成阶段，不估算 P95。"""
     passed = [r for r in rounds if r.get("stage") == "complete"]
-    phases = sorted({name for r in passed for name in r.get("stages", {})})
+    phases = sorted({name.split(".")[0] for r in passed for name in r.get("stages", {})})
+
+    def phase_entries(round_: dict[str, Any], phase: str) -> list[dict[str, Any]]:
+        """重复阶段在逐轮汇总中累加计时并取 RSS 最大值，原始事件继续保留。"""
+        return [entry for name, entry in round_.get("stages", {}).items()
+                if name.split(".")[0] == phase]
     return {
         "successful_rounds": sum(r["status"] == "passed" for r in rounds),
         "completed_rounds_including_semantic_failures": len(passed),
         "stages": {
             name: {
-                "median_seconds": statistics.median(r["stages"][name]["seconds"] for r in passed),
+                "median_seconds": statistics.median(
+                    sum(entry["seconds"] for entry in phase_entries(r, name)) for r in passed
+                ),
                 "highest_observed_rss_bytes": max(
-                    r["stages"][name]["rss_observed_peak_bytes"] for r in passed
+                    entry["rss_observed_peak_bytes"] for r in passed
+                    for entry in phase_entries(r, name)
                 ),
             }
             for name in phases
@@ -847,6 +919,8 @@ def main() -> int:
         return _worker(args)
     if min(args.repeats, args.threads, args.timeout, args.memory_budget_mib) <= 0:
         raise ValueError("repeats, threads, timeout and memory budget must be positive")
+    if args.batch_size <= 0 or args.n_jobs == 0:
+        raise ValueError("batch-size must be positive and n-jobs must not be zero")
     if args.diagnostic_loops < 10:
         raise ValueError("diagnostic-loops must be >=10")
     destination = args.output or ROOT / "benchmarks" / "results" / (
@@ -954,6 +1028,9 @@ def main() -> int:
                     ]
                     if args.consumer_source:
                         command.extend(["--consumer-source", str(args.consumer_source.resolve())])
+                    command.extend(["--batch-size", str(args.batch_size), "--n-jobs", str(args.n_jobs)])
+                    if args.input_config:
+                        command.extend(["--input-config", str(args.input_config.resolve())])
                     raw = _launch(command, out, args.timeout, budget)
                     if index == -1:
                         raw["completed"] = raw.get("stage") == "complete"

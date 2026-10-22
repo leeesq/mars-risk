@@ -10,7 +10,7 @@
   },
   "cases": {
     "1": {
-      "report_id": "5d00f397-1768-44b0-9306-cd2531e7e9a6",
+      "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
       "input_row_count": 356255,
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
@@ -338,7 +338,7 @@
       }
     },
     "2": {
-      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
       "summary_rows": [
         {
           "feature": "EXT_SOURCE_3",
@@ -870,7 +870,7 @@
         "CNT_FAM_MEMBERS"
       ],
       "primary_feature": "EXT_SOURCE_2",
-      "time_report_id": "8b0d3d92-5d51-4afe-b8ae-69e7245f85c9",
+      "time_report_id": "fded52f2-3dba-4a15-a565-7216c5bcd1ab",
       "units": {
         "ks": "0-100 percentage points",
         "bad_rate": "fraction",
@@ -879,7 +879,7 @@
       }
     },
     "3": {
-      "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+      "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
         "CODE_GENDER",
@@ -1036,7 +1036,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-          "value": 0.8823213171880566,
+          "value": 0.8823213171880598,
           "description": ""
         },
         {
@@ -1045,7 +1045,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-          "value": 0.8823213171880566,
+          "value": 0.8823213171880598,
           "description": ""
         },
         {
@@ -1054,7 +1054,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-          "value": 0.8823213171880566,
+          "value": 0.8823213171880598,
           "description": ""
         },
         {
@@ -1063,7 +1063,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-          "value": 0.8823213171880566,
+          "value": 0.8823213171880598,
           "description": ""
         },
         {
@@ -1072,7 +1072,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-          "value": 0.8823213171880566,
+          "value": 0.8823213171880598,
           "description": ""
         },
         {
@@ -1081,7 +1081,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8996703591987445,
+          "value": 0.8996703591987438,
           "description": ""
         },
         {
@@ -1090,7 +1090,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.898623651600919,
+          "value": 0.8986236516009168,
           "description": ""
         },
         {
@@ -1099,7 +1099,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8668261346602236,
+          "value": 0.8668261346602254,
           "description": ""
         },
         {
@@ -1108,7 +1108,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8670772483855902,
+          "value": 0.8670772483855897,
           "description": ""
         },
         {
@@ -1117,7 +1117,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8639356117853597,
+          "value": 0.8639356117853605,
           "description": ""
         },
         {
@@ -1126,7 +1126,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'ORGANIZATION_TYPE'",
-          "value": 0.8918696913005881,
+          "value": 0.8918696913005899,
           "description": ""
         },
         {
@@ -1135,7 +1135,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.9974113326395556,
+          "value": 0.9974113326395563,
           "description": ""
         },
         {
@@ -1144,7 +1144,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.99772194202038,
+          "value": 0.9977219420203798,
           "description": ""
         },
         {
@@ -1153,7 +1153,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMIN_MEDI'",
-          "value": 0.99542102278168,
+          "value": 0.9954210227816792,
           "description": ""
         },
         {
@@ -1162,7 +1162,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMIN_MEDI'",
-          "value": 0.9963738199389397,
+          "value": 0.9963738199389401,
           "description": ""
         },
         {
@@ -1171,7 +1171,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'REG_CITY_NOT_WORK_CITY'",
-          "value": 0.8256627212152168,
+          "value": 0.825662721215215,
           "description": ""
         },
         {
@@ -1180,7 +1180,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8903995782307512,
+          "value": 0.8903995782307523,
           "description": ""
         },
         {
@@ -1189,7 +1189,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8902689780398235,
+          "value": 0.8902689780398243,
           "description": ""
         },
         {
@@ -1198,7 +1198,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8883308083486459,
+          "value": 0.8883308083486474,
           "description": ""
         },
         {
@@ -1207,7 +1207,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
-          "value": 0.8348519297868345,
+          "value": 0.8348519297868343,
           "description": ""
         },
         {
@@ -1216,7 +1216,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
-          "value": 0.8362414060327832,
+          "value": 0.8362414060327835,
           "description": ""
         },
         {
@@ -1225,7 +1225,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'REGION_RATING_CLIENT_W_CITY'",
-          "value": 0.9552335183895004,
+          "value": 0.955233518389501,
           "description": ""
         },
         {
@@ -1234,7 +1234,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8964505934136027,
+          "value": 0.8964505934136034,
           "description": ""
         },
         {
@@ -1243,7 +1243,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8456077943952434,
+          "value": 0.8456077943952428,
           "description": ""
         },
         {
@@ -1252,7 +1252,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.8452747151623707,
+          "value": 0.8452747151623704,
           "description": ""
         },
         {
@@ -1261,7 +1261,7 @@
           "status": "Dropped",
           "stage": "Corr_Filter",
           "reason": "Correlated with 'FLOORSMAX_MEDI'",
-          "value": 0.843009917350579,
+          "value": 0.8430099173505775,
           "description": ""
         },
         {
@@ -4771,7 +4771,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.0001832998315302324,
+          "value": 0.00018329983153023258,
           "description": ""
         },
         {
@@ -4836,7 +4836,7 @@
         "REGION_RATING_CLIENT_W_CITY",
         "OBS_60_CNT_SOCIAL_CIRCLE"
       ],
-      "woe_report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
+      "woe_report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
       "raw_pairs": [
         {
           "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",
@@ -5010,6 +5010,10 @@
           "min_bin_size": 0.02,
           "merge_small_bins": true
         },
+        "algorithm": "anchored Chan block central moments Float64",
+        "row_block_size": 4096,
+        "feature_batch_size": 100,
+        "threshold_refined_pairs": 0,
         "candidate_scope": [
           "AMT_ANNUITY",
           "AMT_GOODS_PRICE",
@@ -5074,7 +5078,7 @@
       "selection_scope": "0train only; 1val/2test/3oot not used for selection"
     },
     "4": {
-      "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+      "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
       "scope": {
         "group": "0train",
         "target": "TARGET"
@@ -5321,10 +5325,10 @@
           }
         }
       },
-      "policy_report_id": "b6617a0c-3926-44f1-b63b-c9902615ec25"
+      "policy_report_id": "aa5395b5-e6d0-4e41-a8ef-c04468cf0510"
     },
     "5": {
-      "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+      "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
       "summary_rows": [
         {
           "status": "success",
@@ -5641,8 +5645,8 @@
           "q_value": null
         }
       ],
-      "cross_report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
-      "independent_report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+      "cross_report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+      "independent_report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
       "candidate_origins": {
         "mr_d07e3095ba389c1a01c8": {
           "kind": "development_cell",
@@ -5683,7 +5687,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5737,7 +5741,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5791,7 +5795,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5845,7 +5849,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5864,9 +5868,9 @@
       "raw_data_saved": false,
       "rule_status": "Experimental",
       "automatic_generation": {
-        "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
         "description": {
-          "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+          "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
           "report_type": "rule",
           "format_version": 1,
           "tables": {
@@ -6594,7 +6598,7 @@
             "generators": [
               "MarsCombinationRuleGenerator"
             ],
-            "elapsed_seconds": 0.08245650000026217,
+            "elapsed_seconds": 0.03689790004864335,
             "resolved_spec": {
               "profile": "production",
               "direction": "high_risk",
@@ -6842,7 +6846,7 @@
           {
             "question": "实际生成及保留多少自动候选",
             "reference": {
-              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
               "table": "summary",
               "query": {
                 "offset": 0,
@@ -6867,7 +6871,7 @@
           {
             "question": "生成来源与拒绝原因",
             "reference": {
-              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
               "table": "candidates",
               "query": {
                 "offset": 0,
@@ -7484,7 +7488,7 @@
           {
             "question": "Val 参与筛选的证据",
             "reference": {
-              "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
               "table": "evaluation",
               "query": {
                 "offset": 0,
@@ -7769,10 +7773,10 @@
           }
         ]
       },
-      "auto_report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69"
+      "auto_report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0"
     },
     "6": {
-      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
       "snapshot_type": "ReportSnapshot",
       "identity_preserved": true,
       "separate_process": true,
@@ -7821,7 +7825,7 @@
       ]
     },
     "7": {
-      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
       "formats": [
         {
           "format": "HTML",

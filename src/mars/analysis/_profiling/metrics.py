@@ -92,7 +92,7 @@ def excluded_values(context: ProfileRunContext, col: str, options: ProfileComput
 
 
 def metric_expr(context: ProfileRunContext, options: ProfileComputeOptions, col: str, metric: str) -> pl.Expr:
-    """生成单字段单指标表达式。"""
+    """生成单字段单指标的标量聚合表达式，空表和多 chunk 均只产生一个值。"""
     raw_col = pl.col(col)
     is_num = is_numeric_feature(context, col)
     col_dtype = context.dtype_map.get(col)
@@ -100,14 +100,15 @@ def metric_expr(context: ProfileRunContext, options: ProfileComputeOptions, col:
     if metric == "missing":
         return missing_rate_expr(raw_col, dtype=col_dtype, missing_values=options.missing_values)
     if metric == "zeros":
-        return (raw_col == 0).sum() / pl.len() if is_num else pl.lit(0, dtype=pl.UInt32)
+        return (raw_col == 0).sum() / pl.len() if is_num else pl.len() * pl.lit(0, dtype=pl.UInt32)
     if metric == "unique":
         return raw_col.n_unique() / pl.len()
     if metric == "mode":
         return raw_col.value_counts(sort=True).first().struct.field("count") / pl.len()
 
     if not is_num:
-        return pl.lit(None, dtype=pl.Float64)
+        # 纯 literal 在旧 Polars 多 chunk select 中逐 chunk 输出；len 聚合固定标量形状。
+        return pl.len() * pl.lit(None, dtype=pl.Float64)
 
     # 数据质量比例保留全量分母；连续统计才排除缺失码和特殊值。
     keep_mask = raw_col.is_not_null()
@@ -131,7 +132,7 @@ def metric_expr(context: ProfileRunContext, options: ProfileComputeOptions, col:
         "skew": clean_col.skew(),
         "kurtosis": clean_col.kurtosis(),
     }
-    return mapper.get(metric, pl.lit(None, dtype=pl.Float64))
+    return mapper.get(metric, pl.len() * pl.lit(None, dtype=pl.Float64))
 
 
 def overview_exprs(
@@ -153,7 +154,7 @@ def overview_exprs(
             ).alias("missing_rate")
         )
     if "zeros" in selection.dq_metrics:
-        zeros_expr = (pl.col(col) == 0).sum() if is_numeric_feature(context, col) else pl.lit(0, dtype=pl.UInt32)
+        zeros_expr = (pl.col(col) == 0).sum() if is_numeric_feature(context, col) else pl.len() * pl.lit(0, dtype=pl.UInt32)
         exprs.append((zeros_expr / total_len).alias("zeros_rate"))
     if "unique" in selection.dq_metrics:
         # 超过百万行时仅 overview 改用近似去重，分组趋势仍使用精确去重。
@@ -169,7 +170,7 @@ def overview_exprs(
             if metric != "psi":
                 exprs.append(metric_expr(context, options, col, metric).alias(metric))
     else:
-        null_value = pl.lit(None, dtype=pl.Float64)
+        null_value = pl.len() * pl.lit(None, dtype=pl.Float64)
         for metric in selection.stat_metrics:
             if metric != "psi":
                 exprs.append(null_value.alias(metric))
@@ -194,6 +195,10 @@ def analyze_columns(
                 metric_name = expr.meta.output_name()
                 all_exprs.append(expr.alias(f"{col}:::{metric_name}"))
 
+        # PSI 和 schema/unseen 没有通用 overview 数值，仍须保留每个请求特征的身份。
+        if not all_exprs:
+            all_batches.append(pl.DataFrame({"feature": batch_cols}, schema={"feature": pl.String}))
+            continue
         batch_raw = context.df.select(all_exprs)
         batch_long = batch_raw.unpivot(variable_name="temp_id", value_name="value")
         batch_pivoted = (
@@ -208,7 +213,8 @@ def analyze_columns(
         )
         all_batches.append(batch_pivoted)
 
-    pivoted = pl.concat(all_batches)
+    # 各批 unpivot 的公共 value dtype 可不同；overview 数值列仍统一为既有 Float64。
+    pivoted = pl.concat(all_batches, how="vertical_relaxed")
     cols_to_cast = [col for col in pivoted.columns if col not in ["feature", "mode_value"]]
     if cols_to_cast:
         pivoted = pivoted.with_columns([pl.col(col).cast(pl.Float64, strict=False) for col in cols_to_cast])

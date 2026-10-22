@@ -50,6 +50,15 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 `features=[...]`；确实需要宽松处理时才使用 `on_missing="warn"` 或 `"ignore"`。
 `update_bins()` 对未知特征默认报错，`prune()` 和 `get_bin_mapping()` 遇到未知名称时也会报错。
 
+`transform(..., lazy=True)` 在样本的数值表达式、类别 replace 和高基数 join 之前建立
+LazyFrame。构建计划和 `collect_schema()` 不执行全行样本转换；fit 后的映射和规则诊断仍会生成。
+最终 `collect()` 才执行该样本计划。eager 输出继续保留原始列、追加派生列，并保持原行序。
+
+首次 WOE 转换若缺少请求特征的映射，仍需使用拟合缓存计算必要的监督统计。
+这项准备只针对缺少映射的请求特征，按 `woe_batch_size` 分批，已准备映射可复用。
+因此 `lazy=True` 不保证首次 WOE 统计也不执行。拟合缓存支持后续 `update_bins(X=None, y=None)`；
+用户确定无需重新计算时可调用 `clear_cache()`，规则、现成 WOE 和报告查询继续可用。
+
 ### 重复拟合与失败恢复
 
 每次 `fit()` 都重新学习本次特征的规则、WOE、映射和诊断。连续拟合相同数据与新实例等价；

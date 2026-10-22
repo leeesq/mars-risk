@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "source_commit": "422261baf74bfd022c5cbbb80972dae67d678967",
+  "source_commit": "625de258deb75d8d95a7e2bd36e9ae1774b8c6a2",
   "source_status": "known git checkout baseline; code fingerprints describe the generating working tree",
   "command": "python task_cases.py --case all --data-dir examples/home-credit-2018/data/raw_data --output-dir current-cases",
   "data_config": {
@@ -1327,10 +1327,10 @@
     "docs/snippets/home_credit_data.py": "386b8074d6ead289fe85e6f43696d813da1f3eec0f5ea547c2ec019402bccb6d",
     "src/mars/analysis/score_cross.py": "d5eecb5f1253e5aa152483e959f1cc6689067276e93ea1b3676f156dc6060de7",
     "src/mars/analysis/score_cross_view.py": "1a15e7b754bc593f8ec769dac3cbce863c4ef9e79abe37d3f8c4647544885c96",
-    "src/mars/analysis/profiler.py": "d5ff53de93c0094eb1303c98a0d74b3fe201627c2393374e940a36e9056da5b1",
+    "src/mars/analysis/profiler.py": "885a976871601ded2233d57a559ff5ec1fdec9185a442572f1de59b43bce8b6a",
     "src/mars/analysis/evaluator.py": "08cf57981ba83c13631d99127453be1e0338ffebd87d24eaa9a9acf572d20d6d",
     "src/mars/analysis/_risk_profile.py": "535b2ddb70ca4109619b653df3ac4f119417d9489981574e6307385f56301f5a",
-    "src/mars/feature/selection/stats.py": "543fce55d5de219b951056e01a38cf93702e9797ecbf232fd8f02011ae678228",
+    "src/mars/feature/selection/stats.py": "8eaed727dc2078768b129f9302c745d16c5fcf3446b0bf033beb5f49cc5bbd9f",
     "src/mars/analysis/_evaluation/report_parts.py": "0a78f176ccf785741bb5f59bbaebc3d0c50cd8216cf6c46cdf6a7fb2f1e6fd3b",
     "src/mars/analysis/_evaluation/metrics.py": "ec4d6bf482e12d8b696ca68614b2ab28cf0fb6cc39273c77f058cda2fa0b2835",
     "src/mars/compute/binning.py": "67d8acbf4a2ac229923b7d47bc27d7a031e6a2bc30eafec0931e75f6f489fed9",
@@ -1357,13 +1357,13 @@
     "src/mars/rule/_report_semantics.py": "db6dd84b2e8255a428244555f85abd83be63d08ff3d3dfc45ab8967380c326a5"
   },
   "reports": {
-    "1": "5d00f397-1768-44b0-9306-cd2531e7e9a6",
-    "2": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
-    "3": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
-    "4": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
-    "5": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
-    "6": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
-    "7": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6"
+    "1": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+    "2": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+    "3": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+    "4": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+    "5": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
+    "6": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+    "7": "dcb2b19e-3346-4829-80e9-d686ec46ca38"
   },
   "artifacts": [
     {
@@ -1374,27 +1374,27 @@
     {
       "path": "agent-context.json",
       "size_bytes": 8439,
-      "sha256": "d386ed83303d1dad9f71a9ae8dca8cc00f4bc8a598c922367ce3ebb31cfd0169"
+      "sha256": "f2ee8e8f253841a0c57ab9540a7a7728b89f6f62658c8f0992f20453a6a2f89b"
     },
     {
       "path": "auto-rules.html",
       "size_bytes": 137407,
-      "sha256": "13dc018d5be0fda3c94ea6f1443624ff87b5b36e5c726b8030deb4aec6a66f0e"
+      "sha256": "eaaa5560c71e4618d889455fd8b8b38210899e85ab8a65508efe76f616ba8e2a"
     },
     {
       "path": "auto-rules.marsreport",
       "size_bytes": 78853,
-      "sha256": "c850b3b9f5852e27198beaa058bce1767d686e60fc7db4b1a5164f21214840bc"
+      "sha256": "6ad5986b87327d4cc78e2b161b1e37b3992cf805c1f00076d207916ef0df6de2"
     },
     {
       "path": "auto-rules.xlsx",
-      "size_bytes": 33993,
-      "sha256": "a5069e6a81afa734da1b7eb69e9912700eef52306e8e7d0b980a54d95565a8ee"
+      "size_bytes": 33992,
+      "sha256": "535886a684d46f0348c3f8a378a21ad732f7c334449619b0e52281d83b7b7434"
     },
     {
       "path": "binning-native-evidence.json",
       "size_bytes": 40769,
-      "sha256": "7985d744f6e5033ac44e27bad1cdea941023860e16c350cf1ee9b3c86bd03c72"
+      "sha256": "82eae43b8b1a1b1955c2b63b7b5f8f9194cc27208c94645cd9e244b4a4230040"
     },
     {
       "path": "binning-native-home-credit.png",
@@ -1404,7 +1404,7 @@
     {
       "path": "binning-native-home-credit.svg",
       "size_bytes": 252649,
-      "sha256": "29e931bcabfd55193231369bb3acc6a7564c98d92366728f02a3fda0595d2936"
+      "sha256": "e41b18571121a3a9417effb381e48f2a2357ba02170ad770bc78004481033dbe"
     },
     {
       "path": "binning-native-time-home-credit.png",
@@ -1414,107 +1414,107 @@
     {
       "path": "binning-native-time-home-credit.svg",
       "size_bytes": 308239,
-      "sha256": "42c34fee2807faaf5bf642a87b05c466d0d6c7250f5df1f1f2c37125da3925f9"
+      "sha256": "ea672fcb2c4ef5be19c8972e12211c49830f2114ca8851994b3389f69b3dcacf"
     },
     {
       "path": "binning-time.html",
-      "size_bytes": 4248088,
-      "sha256": "b0a03309a06de123c27d49b620d54227a5fe106b51fed4b8f12039ae23538ac0"
+      "size_bytes": 4248090,
+      "sha256": "748feecb762d0e4dbe7c19a0cf67e8a34ed24e34e8dc9b4f8a34660e6e4f1e46"
     },
     {
       "path": "binning-time.marsreport",
       "size_bytes": 326827,
-      "sha256": "9c336940318de3097aa065acb4e344f1040779e24f1638746e41e0efa91d9470"
+      "sha256": "042267c7e38c1677327668cfe36bf4ee7ddf0f8107de3d0a3292e020657f4fef"
     },
     {
       "path": "binning-time.xlsx",
-      "size_bytes": 274587,
-      "sha256": "cdbb85860b0fb95e51fa793de3cea51e9dd4cc98a3412a7cc1293e645278dfdb"
+      "size_bytes": 274586,
+      "sha256": "51838a1c554ed6baf0ae04b36e932a6e864e7f0b8562e4002f0cf32680da0953"
     },
     {
       "path": "binning.html",
-      "size_bytes": 18454088,
-      "sha256": "7f4c6c2b0aeb98b74cac36897f4281fbeeda8e4562cc002a78b32e6e2196e397"
+      "size_bytes": 18454086,
+      "sha256": "08f813281a233628d8dcf77fb684de3a0a8b2c937febd7c5db4711e843219c5e"
     },
     {
       "path": "binning.marsreport",
-      "size_bytes": 625704,
-      "sha256": "44331283b7ea93231fdf56eac284728647f6d8b55d1d7dffc26acb6001bd20dd"
+      "size_bytes": 625703,
+      "sha256": "7eea5ab979a26c2009b64d0011eefed3389a0b9a50da206864e98f9da7981d2b"
     },
     {
       "path": "binning.xlsx",
       "size_bytes": 1092702,
-      "sha256": "2fe1cd8885b6468b47218708bd314db886c91b3479f216119b2dffd49877977c"
+      "sha256": "f8150af6e76caa12f11a977988a2e26812c80445cf25ec9a7a0a434742d574cd"
     },
     {
       "path": "case-1.json",
       "size_bytes": 86285,
-      "sha256": "d09e186b429d0e09a756871114c4657d3f10a38d9b7fe7d2ada29d3be0efb358"
+      "sha256": "1f4b32c334f8f6b753d797e089dc70f9116b705e72cb619837e8b9f5b8333570"
     },
     {
       "path": "case-2.json",
       "size_bytes": 261481,
-      "sha256": "85e1b36aaf4087f6c7ccac79504e7b501fb64bd03c05e824aee77df1c9c23f41"
+      "sha256": "872b2f03cd579cdb15e739d3a232a4e030a786b518a35cd95f2486ccb331594a"
     },
     {
       "path": "case-3.json",
-      "size_bytes": 168529,
-      "sha256": "af956d716e5ed50d0c7963d3b678238b658d27548e4bddc751f1dc5ce2ac817b"
+      "size_bytes": 168701,
+      "sha256": "833fa02a0a912c60ee44dfa457ac27f615f9c15cb9c8e0e74795be01ccc4db9f"
     },
     {
       "path": "case-4.json",
       "size_bytes": 89589,
-      "sha256": "492d9dafbd7f401e14dd9bbadbf9949d1c9491d3f49c52f630fdf2a8418f9221"
+      "sha256": "690f28655a05cf9347fe18db26ae22a86cd5f80f1a7c69f14ef42971f848b2e3"
     },
     {
       "path": "case-5.json",
       "size_bytes": 166042,
-      "sha256": "68ec19ef66b6991cf7823a1e615fe5868b21e043659ca335126c2150d02da386"
+      "sha256": "8630e0ddf1d02226b5f971bc174480a410765763c880fdb7ac9e978c1f898282"
     },
     {
       "path": "case-6.json",
       "size_bytes": 191938,
-      "sha256": "234af58da3b9629457584b3db51f532c4a9158ffc7028f30b92a3630796eff7a"
+      "sha256": "2aa5eb423b1319b3fa2f3ee3ad8502867b591aca0a5c6f2624e68af9079280ef"
     },
     {
       "path": "case-7.json",
       "size_bytes": 187313,
-      "sha256": "5b469ac47daff17711f254711547ea022d7e235b24c1194578c414bab3008da1"
+      "sha256": "f82e3d63f8325dd01293b75444ad48b98710512f45f69f61b2901523efe83904"
     },
     {
       "path": "case-notes.json",
       "size_bytes": 2330,
-      "sha256": "8210dc18ffbc7317c4b25e853c4dae561a4c1995e9d7b2beae16d46e7d15c374"
+      "sha256": "e73e7228af4b0bdac75a0e8fca2abea26e403e356a6f6aebfd185d2a5c960486"
     },
     {
       "path": "correlation.html",
       "size_bytes": 17585,
-      "sha256": "47abc35c583fd7370158e67f3ec968f8d9439d28210c3a5e76db42c051074b2a"
+      "sha256": "5f6319a5aaa384e52b865babd8903967886f2ddf3608bb717b0b229ccda02ea7"
     },
     {
       "path": "correlation.xlsx",
       "size_bytes": 7452,
-      "sha256": "680ad3a07774fc96ca2e9f681c677a7f885d8e4c53886ea7c028e4fac8ddc6f4"
+      "sha256": "2e3a71a070dedfbb60a76d6dbe66c578b6a472d63163dc1aa18ae42561b99f1c"
     },
     {
       "path": "days-employed-special.html",
       "size_bytes": 692191,
-      "sha256": "ecb761a65fa33ff7e92a74f1243500f76e108cf8d5ed0512c8c92672fdbdb893"
+      "sha256": "6e026f9b8a64fa8bd50129dea65209ad518792709f510863b65f3b24ab5b4124"
     },
     {
       "path": "days-employed-special.marsreport",
       "size_bytes": 208665,
-      "sha256": "48b8240846cfab6820064761404b90a0c071416cc3ee860e9851d481207e31f2"
+      "sha256": "026e8ad5bfb27df3168cacd45d53894388dff981cd2496250f2312962b40af3b"
     },
     {
       "path": "days-employed-special.xlsx",
-      "size_bytes": 33954,
-      "sha256": "52f0a4b66544dbee21891247017b21112d768582052e3f6205aa1051e8200081"
+      "size_bytes": 33953,
+      "sha256": "036d1a40f31e2631ca8ad4474bcbb3f1270ef00e59d3613e2417aa55ab78bcb6"
     },
     {
       "path": "evidence-review.json",
       "size_bytes": 16941,
-      "sha256": "3f4a84146bc33bd49a09d28d2a36b21174d28b13b97ac7a626a6c36140db8213"
+      "sha256": "541c226f9d62b01ceb789f7ed3a08a92b5e705d1e681b6ca686dc4868183c851"
     },
     {
       "path": "external-agent-rule-task.txt",
@@ -1548,8 +1548,8 @@
     },
     {
       "path": "generation-timings.json",
-      "size_bytes": 361,
-      "sha256": "708b5056abbffda10a6942f8cc31652f811c08bee71a36b5685a2e5033b0b35c"
+      "size_bytes": 196,
+      "sha256": "5b4cba929e251fc6cfb2e6a66edff632a949c6aa744c0d05c5629096fe9b8b7b"
     },
     {
       "path": "home_credit_data.py",
@@ -1559,12 +1559,12 @@
     {
       "path": "policy.marsreport",
       "size_bytes": 74456,
-      "sha256": "5a5e7e7fcc68f5d3ab1a39326e98c97a1f2e1da2b876b1a2d0196f881ff678b5"
+      "sha256": "d26e6806d287056f9b6bc2a4d290a3f3cc555bf09a90da58cd633b1612fdbc27"
     },
     {
       "path": "policy.xlsx",
-      "size_bytes": 30818,
-      "sha256": "263c860183bc8bcb43cecc888632cad1c3802f79e14357ff12d9facc09946380"
+      "size_bytes": 30813,
+      "sha256": "d02b5da1058affb17da61c03e5ac5b9cbaaf86c9f7ed256ecaa2075b7207b29f"
     },
     {
       "path": "preparation-summary.json",
@@ -1578,63 +1578,63 @@
     },
     {
       "path": "profile.html",
-      "size_bytes": 1185579,
-      "sha256": "7047d09f59101f8364dba5bded4dd6ccee9a96419d9fd8a9b7ee47d52e656413"
+      "size_bytes": 1185565,
+      "sha256": "8e94bac6928f76d40f3621ed3d0c3397f0285b2f7777449d5fc065b75b0f4da4"
     },
     {
       "path": "profile.marsreport",
-      "size_bytes": 110852,
-      "sha256": "1521e3e120a11e43603a3999f3a53934046b8915450907cd1f8976fb0e5edfee"
+      "size_bytes": 110857,
+      "sha256": "5780d7950ad28a1c626830c36175954f31c9c70299ef8e0856a4d8c577123cd4"
     },
     {
       "path": "profile.xlsx",
-      "size_bytes": 69487,
-      "sha256": "76e68c5c955b5a075e901d503e4e7488354296defe3dc6b231cdd83a5f10d893"
+      "size_bytes": 69471,
+      "sha256": "b23b2837f8ab07950b20ec9b0e3a761e906d8a3bed8224c8861ee54cccb273d8"
     },
     {
       "path": "query-1.json",
       "size_bytes": 1423,
-      "sha256": "cab4316d175466053dd22ae653fb5d93d227fd1ce8ae4b56ea34be834c411643"
+      "sha256": "4aa6bb19ba1c4c5f63edee67da54c0ecb2381aa338183073bc1678cb7ef75a7e"
     },
     {
       "path": "query-2.json",
       "size_bytes": 2035,
-      "sha256": "38134c8688c9277340bac67befd32a091086f9707e4eb0d645cb3ca480ae1396"
+      "sha256": "1e8efb4dc764722861d12442203eadfc6e14caa2fd71e3a010dd3363b016ae6c"
     },
     {
       "path": "query-3.json",
       "size_bytes": 6874,
-      "sha256": "2174333bca4d381859160589aea06ccc8ab343b25db0b087980bea495d671244"
+      "sha256": "2516612653ac0449baff2b9cd2e089bb2677e77ae4a04da5b96b90bd13c114ab"
     },
     {
       "path": "query-4.json",
       "size_bytes": 8115,
-      "sha256": "8386a12c683de8dcf488f7be6452b2bb90ecb75e0da6208f1c41e42f5106c45d"
+      "sha256": "2c3a72f9bd3aa41f1b517ca6d6c956a8ac7783e2df8a20bc805365c5547a5ee1"
     },
     {
       "path": "query-5.json",
       "size_bytes": 939,
-      "sha256": "09b3a5d8260890ec15031a9d773fd50cd4eccf90972b11df71136872f076bccc"
+      "sha256": "96fee112b86e6c5cd6eb3c9ba020cd82a25faf1ba368cf05c820828e0718c6ec"
     },
     {
       "path": "query-6.json",
       "size_bytes": 1809,
-      "sha256": "eff1e5b94adb65ce260066d210fe85e6649e66ef16ee4eb5f72412eebe8f86f6"
+      "sha256": "698845478e1cf8bbfdac6ff82aff2e38c687b4e724c4983de35c74d1b93d7a27"
     },
     {
       "path": "query-7.json",
       "size_bytes": 1840,
-      "sha256": "1681da8810c5f4bba8976f2b2bd9ae5057fb460ce532c45a06f911f887e9077a"
+      "sha256": "dc5e4db4a1a077773444c8380acac0f0b856faa9ac010128628a4519b332fb5c"
     },
     {
       "path": "query-trace.json",
       "size_bytes": 18637,
-      "sha256": "6afdf7344d124bf066b31798e2e280107e9c261bb73e0f16556794e581baa524"
+      "sha256": "a66720e2c3c171272529838cc93b4d58fb5ef0f9badf9f46766523b08eb7a04b"
     },
     {
       "path": "raw-correlation.marsreport",
       "size_bytes": 32213,
-      "sha256": "dd8db816f5ad8b270f1ea1601e67eb99abf1c86aab019340ae15d55be7d6f0d2"
+      "sha256": "55db129125952e57f9aadafe819460a22ff9e80c21f90993f51ab51d4a1876a4"
     },
     {
       "path": "review.md",
@@ -1644,42 +1644,42 @@
     {
       "path": "rule-agent-context.json",
       "size_bytes": 12543,
-      "sha256": "b8c3dbf34bfd3df27635ade30c8608ca067692fd5e5d2728a58b6aa97977f617"
+      "sha256": "9a6b5dbd6b77e468ca1f97ba2882e00d2a09c34edd9e99c434c5fb2016c4e23b"
     },
     {
       "path": "rule-generation.json",
       "size_bytes": 76843,
-      "sha256": "0042e0e6b97aa0cf433812017dc199d9b7486e4d8a1647ecac778de0ba6a80f2"
+      "sha256": "db42df3a480411c9abcabf297cd3f243e6eb8b11063284097e807c8ec313b300"
     },
     {
       "path": "rules-independent.html",
       "size_bytes": 47974,
-      "sha256": "e92f66a35efe47b268305312bd71ee9b1d1de1a9ffd42a1ad8ab84570b0273f7"
+      "sha256": "1f389fa06493869407911c31ebec90191fc7a46a461dd89c7918286bf3c68c4f"
     },
     {
       "path": "rules-independent.marsreport",
       "size_bytes": 53675,
-      "sha256": "6dc28d39c5deb32560cb4be71570699c55640c1963a33ba4d8d8fac9cc72e364"
+      "sha256": "2f26af448d962a2d259c3dec763fa976983a1f029978efd65f593bfa9151193b"
     },
     {
       "path": "rules-independent.xlsx",
-      "size_bytes": 18084,
-      "sha256": "e2b2647949cbbbcf89b20b094cfdd79fb78c2145935a365ec732d439b83756a8"
+      "size_bytes": 18082,
+      "sha256": "64156828dd662ecaf26ad0af5099b728a77d800839adacda335d06b90734ca10"
     },
     {
       "path": "rules.html",
       "size_bytes": 72665,
-      "sha256": "2ea3acbd065a4aa4e7e47e340ebd6bb39782cf5bda85c083e84b3ac6856032fc"
+      "sha256": "1b719f58988d8fa8e7ea1e2e7391fd99a512777ed58f241ebd29e225607b8ba6"
     },
     {
       "path": "rules.marsreport",
       "size_bytes": 76244,
-      "sha256": "e3410142583f654425c57c86033011b9aa112d54e4b25ab57d3aaa11c9fb9b10"
+      "sha256": "f2547986747f5dcd5dfc2ba5f65f27d897b59c8a3c2cf1636f98cbefed103dd6"
     },
     {
       "path": "rules.xlsx",
-      "size_bytes": 23028,
-      "sha256": "2a2c6388306c8657d3f1c4bdb8646b9b031ab33ff8c7ce8025826012f90daa40"
+      "size_bytes": 23029,
+      "sha256": "74f9956d651998b7c1f82eaf0ea283cac7ed1d7f548e6c1d61d53ebf9fe6fe7a"
     },
     {
       "path": "ruleset.json",
@@ -1689,32 +1689,32 @@
     {
       "path": "score-cross.html",
       "size_bytes": 376434,
-      "sha256": "92874ea4f9aadfc0cf8e965ec57b9444c4c545a36230cf8e8c72c08dacf65946"
+      "sha256": "c689ca02d5808f05ce44251dbd69757fc852a6b88504aa1dd944c4c6ff331e73"
     },
     {
       "path": "score-cross.marsreport",
       "size_bytes": 100809,
-      "sha256": "bd722c0c266151e3d167881964618f946bc05b1d0e54061e5d268623c9153f20"
+      "sha256": "9e6372d9359a0e58789df947ef5a1c941f5e5bf1e033bcb57ab67aa089d0a527"
     },
     {
       "path": "score-cross.xlsx",
-      "size_bytes": 59179,
-      "sha256": "a45e4d368cff88c210eed48bd4a8662949ea18c04359d76851b2c30e274476d5"
+      "size_bytes": 59175,
+      "sha256": "2161653feb01d698d4632fc8a1a739f8b5c9c4cfb9fb44ce614fa526f7b5a1c4"
     },
     {
       "path": "selection.json",
-      "size_bytes": 107858,
-      "sha256": "806bb3e9603a27914395450bb7fd7f007847cd479812d0729a8fb26bac6f9a4f"
+      "size_bytes": 107863,
+      "sha256": "0c92100cad90a81fb1a9e14d21db60ed35643f224e6a5780ff2f9dd576d0b55b"
     },
     {
       "path": "selection.xlsx",
-      "size_bytes": 19450,
-      "sha256": "eec3d5e1f27ce7d716f8f15e1be642cbbadfa3f56af84b1ae36810342559fdb0"
+      "size_bytes": 19453,
+      "sha256": "fc3c0a1f094c97d77c0599014ed9e5cc5944387e36c873d9eac64d371757378e"
     },
     {
       "path": "summary.json",
-      "size_bytes": 293067,
-      "sha256": "21a57682399514aee6d27780ba4e172bac5b534335b4516bea2fb710e6fe1250"
+      "size_bytes": 293249,
+      "sha256": "728ec0bc3331180997b940ae253aa14b7f1d958c7692ffe8c22e99e03dc03670"
     },
     {
       "path": "task_cases.py",
@@ -1723,8 +1723,8 @@
     },
     {
       "path": "woe-correlation.marsreport",
-      "size_bytes": 100591,
-      "sha256": "58f2b84e19f2a0cc7f1556548e9e34edd8f755fd478f4c6b9458d8d2a950cf0e"
+      "size_bytes": 100718,
+      "sha256": "97bbefd1baac20d90ecb4bd940c8015a5fed0c2cf72fe9f09ad5d2bfc3039dac"
     }
   ],
   "zip_allowlist": [

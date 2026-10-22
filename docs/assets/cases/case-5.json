@@ -1,10 +1,10 @@
 {
   "case": 5,
-  "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+  "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
   "question": "从 Train 发现、Val 选择，走到固定规则的独立复核",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+    "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
     "report_type": "rule",
     "format_version": 1,
     "tables": {
@@ -730,7 +730,7 @@
       "generation_errors": [],
       "generator_diagnostics": [],
       "generators": [],
-      "elapsed_seconds": 0.031558400005451404,
+      "elapsed_seconds": 0.016896900022402406,
       "resolved_spec": {
         "profile": "production",
         "direction": "high_risk",
@@ -960,7 +960,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1014,7 +1014,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1068,7 +1068,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1122,7 +1122,7 @@
             ]
           },
           "reference": {
-            "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -1196,7 +1196,7 @@
     {
       "question": "种子候选最终保留多少",
       "reference": {
-        "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+        "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
         "table": "summary",
         "query": {
           "offset": 0,
@@ -1221,7 +1221,7 @@
     {
       "question": "实际入选/拒绝阶段及原因",
       "reference": {
-        "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+        "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
         "table": "candidates",
         "query": {
           "offset": 0,
@@ -1338,7 +1338,7 @@
     {
       "question": "Val 参与选择的风险与覆盖",
       "reference": {
-        "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+        "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
         "table": "evaluation",
         "query": {
           "offset": 0,
@@ -1459,7 +1459,7 @@
     {
       "question": "固定规则在独立 test/oot 的表现",
       "reference": {
-        "report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+        "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
         "table": "slices",
         "query": {
           "offset": 0,
@@ -1552,7 +1552,7 @@
     {
       "question": "无标签组的全部人数与未观测状态",
       "reference": {
-        "report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+        "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
         "table": "slices",
         "query": {
           "offset": 0,
@@ -1921,8 +1921,8 @@
         "q_value": null
       }
     ],
-    "cross_report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
-    "independent_report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+    "cross_report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+    "independent_report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
     "candidate_origins": {
       "mr_d07e3095ba389c1a01c8": {
         "kind": "development_cell",
@@ -1963,7 +1963,7 @@
           ]
         },
         "reference": {
-          "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+          "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
           "table": "cells",
           "query": {
             "offset": 0,
@@ -2017,7 +2017,7 @@
           ]
         },
         "reference": {
-          "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+          "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
           "table": "cells",
           "query": {
             "offset": 0,
@@ -2071,7 +2071,7 @@
           ]
         },
         "reference": {
-          "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+          "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
           "table": "cells",
           "query": {
             "offset": 0,
@@ -2125,7 +2125,7 @@
           ]
         },
         "reference": {
-          "report_id": "4178f2f6-3d7c-4583-b1da-9d4c0bce24ec",
+          "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
           "table": "cells",
           "query": {
             "offset": 0,
@@ -2144,9 +2144,9 @@
     "raw_data_saved": false,
     "rule_status": "Experimental",
     "automatic_generation": {
-      "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+      "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
       "description": {
-        "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
         "report_type": "rule",
         "format_version": 1,
         "tables": {
@@ -2874,7 +2874,7 @@
           "generators": [
             "MarsCombinationRuleGenerator"
           ],
-          "elapsed_seconds": 0.08245650000026217,
+          "elapsed_seconds": 0.03689790004864335,
           "resolved_spec": {
             "profile": "production",
             "direction": "high_risk",
@@ -3122,7 +3122,7 @@
         {
           "question": "实际生成及保留多少自动候选",
           "reference": {
-            "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+            "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
             "table": "summary",
             "query": {
               "offset": 0,
@@ -3147,7 +3147,7 @@
         {
           "question": "生成来源与拒绝原因",
           "reference": {
-            "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+            "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
             "table": "candidates",
             "query": {
               "offset": 0,
@@ -3764,7 +3764,7 @@
         {
           "question": "Val 参与筛选的证据",
           "reference": {
-            "report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69",
+            "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
             "table": "evaluation",
             "query": {
               "offset": 0,
@@ -4049,7 +4049,7 @@
         }
       ]
     },
-    "auto_report_id": "56bb67a8-af4b-470b-bf3c-00cb151dca69"
+    "auto_report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0"
   },
   "unavailable": "Val 被用于选择；3oot 仅为模拟时间外样本。报告不授予生产策略部署许可。"
 }

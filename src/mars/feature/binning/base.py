@@ -372,11 +372,12 @@ class MarsBinnerBase(MarsTransformer):
             输出形式。``"index"`` 返回分箱索引，``"label"`` 返回分箱标签，
             ``"woe"`` 返回对应分箱的 WOE 值。
         woe_batch_size : int
-            当 ``return_type="woe"`` 且当前实例尚未物化 WOE 映射时，
-            计算 WOE 的批处理特征数。
+            当 ``return_type="woe"`` 且请求特征尚未物化 WOE 映射时，
+            计算必要训练统计的特征列批宽；已有映射复用，不准备未请求特征。
         lazy : bool
             是否强制返回 ``pl.LazyFrame``。默认 ``False`` 沿用输入的执行模式；
-            输入本身为 LazyFrame 时，结果仍为 LazyFrame。
+            输入本身为 LazyFrame 时，结果仍为 LazyFrame。样本转换保持延迟，
+            但首次请求 WOE 时仍须先计算缺失的训练统计。
 
         Returns
         -------
@@ -397,12 +398,41 @@ class MarsBinnerBase(MarsTransformer):
         ['age_bin']
         """
         self._check_is_fitted()
-        if on_missing not in {"error", "warn", "ignore"}:
-            raise ValueError("on_missing must be one of {'error', 'warn', 'ignore'}.")
-
         X_pl = self._ensure_polars_dataframe(X)
         schema = X_pl.collect_schema() if isinstance(X_pl, pl.LazyFrame) else X_pl.schema
-        current_columns = schema.names()
+        active_features = self._resolve_transform_features(schema.names(), features, on_missing)
+
+        if return_type == "woe":
+            missing_woe = [feature for feature in active_features if feature not in self.bin_woes_]
+            if missing_woe:
+                self._materialize_woe(woe_batch_size, features=missing_woe)
+                missing_woe = [
+                    feature for feature in active_features if feature not in self.bin_woes_
+                ]
+            if missing_woe:
+                raise ValueError(
+                    "WOE transform requires fitted WOE mappings for every requested feature; "
+                    f"missing mappings: {missing_woe}. Fit with a binary target first."
+                )
+
+        X_new = self._transform_impl(
+            X_pl,
+            features=active_features,
+            return_type=return_type,
+            woe_batch_size=woe_batch_size,
+            lazy=lazy,
+        )
+        return self._format_output(X_new)
+
+    def _resolve_transform_features(
+        self,
+        current_columns: list[str],
+        features: list[str] | None,
+        on_missing: Literal["error", "warn", "ignore"],
+    ) -> list[str]:
+        """只用列身份校验规则和缺列策略，供转换与逐批评估共用。"""
+        if on_missing not in {"error", "warn", "ignore"}:
+            raise ValueError("on_missing must be one of {'error', 'warn', 'ignore'}.")
         fitted_features = self._usable_rule_features()
         requested_features = list(features) if features is not None else fitted_features
         unknown_features = [
@@ -428,31 +458,9 @@ class MarsBinnerBase(MarsTransformer):
                 "Binner transform skipped missing requested features: %s",
                 missing_features,
             )
-        active_features = [
+        return [
             feature for feature in requested_features if feature in current_columns
         ]
-
-        if return_type == "woe":
-            missing_woe = [feature for feature in active_features if feature not in self.bin_woes_]
-            if missing_woe:
-                self._materialize_woe(woe_batch_size)
-                missing_woe = [
-                    feature for feature in active_features if feature not in self.bin_woes_
-                ]
-            if missing_woe:
-                raise ValueError(
-                    "WOE transform requires fitted WOE mappings for every requested feature; "
-                    f"missing mappings: {missing_woe}. Fit with a binary target first."
-                )
-
-        X_new = self._transform_impl(
-            X_pl,
-            features=active_features,
-            return_type=return_type,
-            woe_batch_size=woe_batch_size,
-            lazy=lazy,
-        )
-        return self._format_output(X_new)
 
     def fit_transform(
         self,
@@ -960,7 +968,9 @@ class MarsBinnerBase(MarsTransformer):
             return "b:"
         return "s:"
 
-    def _materialize_woe(self, batch_size: int = 200) -> None:
+    def _materialize_woe(
+        self, batch_size: int = 200, *, features: list[str] | None = None,
+    ) -> None:
         """
         将分箱统计分布转化为 WOE 映射表。
 
@@ -971,6 +981,8 @@ class MarsBinnerBase(MarsTransformer):
         ----------
         batch_size : int
             分批处理的特征数量。
+        features : list[str] | None
+            仅准备请求且缺失映射的规则特征；不传时评估全部可用规则。
         """
         if self._cache_X is None or self._cache_y is None:
             raise ValueError(
@@ -985,6 +997,7 @@ class MarsBinnerBase(MarsTransformer):
             update_woe=True,
             batch_size=batch_size,
             include_bin_index=True,
+            features=features,
         )
 
     def _transform_impl(
@@ -1027,7 +1040,10 @@ class MarsBinnerBase(MarsTransformer):
         类别映射条目数超过 ``join_threshold`` 时使用 Hash Join，否则使用 ``replace``。
         临时列名会避开已有列，转换结束后移除临时列。
         """
-        exprs = []
+        # 执行模式必须在任何样本派生列和类别 join 之前确定；schema 解析不执行样本计划。
+        if lazy and isinstance(X, pl.DataFrame):
+            X = X.lazy()
+        exprs: list[pl.Expr] = []
         temp_join_cols: list[str] = []
 
         # 索引协议常量: 与下游 Profiler 对齐
@@ -1079,6 +1095,11 @@ class MarsBinnerBase(MarsTransformer):
 
                 # 正常分箱逻辑: Cut
                 raw_breaks = cuts[1:-1] if len(cuts) > 2 else []
+                # cut 的 schema 推导不校验切点取值；显式拒绝非法规则，不能延迟为样本执行错误。
+                if any(not np.isfinite(value) for value in raw_breaks):
+                    raise ValueError(
+                        f"Binner numeric rule for {col!r} contains non-finite internal cuts."
+                    )
                 # `pl.cut` 要求切点严格递增；高偏态数据可能产生重复分位点，这里统一去重并排序。
                 breaks = sorted(list(set(raw_breaks)))
 
@@ -1241,7 +1262,7 @@ class MarsBinnerBase(MarsTransformer):
                     .alias(f"{col}_bin")
                 )
 
-        return X.with_columns(exprs).drop(temp_join_cols).lazy() if lazy else X.with_columns(exprs).drop(temp_join_cols)
+        return X.with_columns(exprs).drop(temp_join_cols)
 
     @staticmethod
     def _detect_trend_scientific(woes: List[float]) -> str:
@@ -1307,7 +1328,8 @@ class MarsBinnerBase(MarsTransformer):
             是否用本次已表现样本计算的 WOE 更新 ``bin_woes_``，默认为 ``True``。
             设为 ``False`` 时只返回统计结果，保留已有 WOE 映射。
         batch_size : int
-            特征分批处理大小。减小该值可进一步降低内存峰值。
+            特征列批宽，必须为正整数。每批先投影必要原始列，再过滤已表现样本、
+            转换和聚合；不限制原始表、训练缓存或最终分箱统计表的总内存。
         include_bin_index : bool
             是否在返回明细中保留内部 ``bin_index`` 列。默认不保留，保持既有
             报告展示顺序；轻量最优分箱等内部算法可开启该参数以稳定回溯预分箱顺序。
@@ -1345,7 +1367,10 @@ class MarsBinnerBase(MarsTransformer):
         True
         """
         self._check_is_fitted()
-        X = self._ensure_polars_dataframe(X)
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer.")
+        X = cast(pl.DataFrame, self._ensure_polars_dataframe(X))
+        active_features = self._resolve_transform_features(X.columns, features, "error")
         effective_ordered_metric_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
 
         raw_name = getattr(y, "name", None)
@@ -1371,26 +1396,26 @@ class MarsBinnerBase(MarsTransformer):
                 "Target 'y' must contain at least one observed value after excluding null / NaN."
             )
         if observed_count < X.height:
-            X = X.filter(observed_mask)
             y = y.filter(observed_mask)
 
-        X_bin_lazy: pl.LazyFrame = self.transform(
-            X,
-            features=features,
-            return_type="index",
-            lazy=True,
-        )
-        X_bin_lazy = X_bin_lazy.with_columns(pl.lit(np.array(y)).alias(y_name))
-
-        # 获取全局统计量
-        current_cols = X_bin_lazy.collect_schema().names()
-        fitted_features = list(self.bin_cuts_.keys()) + list(getattr(self, "cat_cuts_", {}).keys())
-        expected_bin_cols = {f"{feature}_bin" for feature in fitted_features}
-        bin_cols = [c for c in current_cols if c in expected_bin_cols]
-
         agg_results: List[pl.DataFrame] = []
-        for i in range(0, len(bin_cols), batch_size):
-            batch_cols = bin_cols[i : i + batch_size]
+        for i in range(0, len(active_features), batch_size):
+            batch_features = active_features[i : i + batch_size]
+            batch_cols = [f"{feature}_bin" for feature in batch_features]
+
+            # 原表投影共享现有 buffer；过滤和分箱只分配本批的数组，不复制全宽已表现人口。
+            batch_input: pl.LazyFrame = X.select(batch_features).lazy()
+            if observed_count < X.height:
+                batch_input = batch_input.filter(observed_mask)
+            X_bin_lazy = cast(
+                pl.LazyFrame,
+                self.transform(
+                    batch_input,
+                    features=batch_features,
+                    return_type="index",
+                    lazy=True,
+                ),
+            ).with_columns(pl.lit(y).alias(y_name))
 
             # 构建仅针对当前批次的查询计划，并在聚合后立即 collect() 物化为极小的表
             batch_query = (
@@ -1418,7 +1443,6 @@ class MarsBinnerBase(MarsTransformer):
 
         stats_df = pl.concat(agg_results)
         del agg_results
-        gc.collect()
 
         # 基础计算
         stats_df = (

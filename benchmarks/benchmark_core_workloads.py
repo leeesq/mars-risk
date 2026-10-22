@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import sys
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -55,6 +57,13 @@ def workload(case: str, scale: str) -> dict[str, Any]:
     elif case == "optimal_binning":
         rows, features = ((1000, 4), (5000, 10), (10000, 20))[index]
         dimensions.update(rows=rows, features=features, algorithm="optimal")
+    elif case in ("selection_survivors", "selection_attrition"):
+        dimensions.update(
+            batch_size=16, fixture=case, name_style="long", chunks=3,
+            benchmark_fraction=0.6, supervision="Train non-null labels only",
+        )
+    elif case.startswith("frozen_"):
+        dimensions = {"fixture": "explicit read-only local frozen inputs; no normalization"}
     elif case.endswith("_columns") and index:
         dimensions.update(rows=50000, features=3000)
     elif case.endswith("_rows") and index:
@@ -62,6 +71,293 @@ def workload(case: str, scale: str) -> dict[str, Any]:
     if "batch100" in case:
         dimensions["batch_size"] = 100
     return dimensions
+
+
+def _selection_fixture(
+    rows: int, width: int, seed: int, attrition: bool
+) -> tuple[Any, Any, list[str]]:
+    """生成完整人口与独立 Train 基准；跨列批重复/反向信号保持既定监督范围。"""
+    import numpy as np
+    import polars as pl
+
+    rng = np.random.default_rng(seed)
+    latent = rng.normal(size=rows)
+    group = np.array(["Train", "Train", "Train", "Val", "Test"])[np.arange(rows) % 5]
+    target = (latent + rng.normal(scale=0.7, size=rows) > 0.35).astype(float)
+    target[(group != "Train") | (np.arange(rows) % 29 == 0)] = np.nan
+    names = [f"application_bureau_behavior_monthly_risk_feature_{i:04d}" for i in range(width)]
+    columns: dict[str, Any] = {}
+    for index, name in enumerate(names):
+        values = latent + rng.normal(scale=0.9, size=rows)
+        if attrition and index % 8 == 0:
+            values[:] = 0.0
+        elif attrition and index % 8 == 1:
+            # 已观察两类各自均匀轮转八个值，避免小样本随机 Lift 偶然召回。
+            values = (np.arange(rows) % 8).astype(float)
+            for label in (0, 1):
+                positions = np.flatnonzero(target == label)
+                values[positions] = np.arange(len(positions)) % 8
+        elif attrition and index % 8 == 2:
+            values[group != "Train"] += 4.0
+        values = values.astype("float64" if index % 5 == 0 else "float32")
+        values[::101] = np.nan
+        values[17::211] = -999.0
+        columns[name] = values
+    # 两端跨越任意常见列批，源字段相同，反向关系由同一 Train 映射参与全局判断。
+    if width >= 4:
+        columns[names[-2]] = columns[names[3]].copy()
+        columns[names[-1]] = -columns[names[3]].copy()
+    frame = pl.DataFrame({**columns, "bad": target, "group": group}).with_columns(
+        pl.col("bad").fill_nan(None)
+    )
+    cuts = (0, rows // 7, rows * 3 // 5, rows)
+    frame = pl.concat(
+        [frame.slice(left, right - left) for left, right in zip(cuts, cuts[1:])], rechunk=False
+    )
+    assert frame[names[0]].n_chunks() > 1
+    return frame, frame.filter(pl.col("group") == "Train"), names
+
+
+def _read_frozen_inputs(config_path: Path) -> tuple[Any, Any, list[str], dict[str, Any]]:
+    """仅读取明确指定的 Arrow/Parquet；不推断候选、不重写值、dtype或监督标签。"""
+    import polars as pl
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    def read(key: str) -> Any:
+        """以配置文件为相对路径基准，不复制业务数据至仓库。"""
+        location = config.get(key)
+        if location is None:
+            return None
+        path = Path(location)
+        path = path if path.is_absolute() else config_path.parent / path
+        if path.suffix.lower() == ".parquet":
+            return pl.read_parquet(path, rechunk=False)
+        if path.suffix.lower() in (".arrow", ".ipc", ".feather"):
+            return pl.read_ipc(path, rechunk=False)
+        raise ValueError(f"{key} must identify a .parquet/.arrow/.ipc/.feather frozen table")
+
+    features = config.get("features")
+    if not isinstance(features, list) or not features or not all(isinstance(f, str) for f in features):
+        raise ValueError("input-config requires a nonempty explicit features list")
+    frame, benchmark = read("input_path"), read("benchmark_path")
+    if frame is None:
+        raise ValueError("input-config requires input_path")
+    for candidate in features:
+        if candidate not in frame.columns:
+            raise ValueError(f"frozen input is missing feature {candidate!r}")
+    target, group_col = config.get("target"), config.get("group_col")
+    if config.get("supervision_group") is not None:
+        if not target or not group_col:
+            raise ValueError("supervision_group requires target and group_col")
+        invalid = frame.select(
+            ((pl.col(group_col) != config["supervision_group"]).fill_null(True)
+             & pl.col(target).is_not_null()).sum()
+        ).item()
+        if invalid:
+            raise ValueError("non-supervision population has non-null target; frozen input rejected")
+    return frame, benchmark, features, config
+
+
+def _frame_observation(frame: Any, features: list[str], target: str | None) -> dict[str, Any]:
+    """记录引用输入的形状和分块；不为测量重新拼接或复制宽表。"""
+    return {
+        "rows": frame.height,
+        "features": len(features),
+        "columns": frame.width,
+        "estimated_storage_bytes": frame.estimated_size(),
+        "feature_dtypes": {str(dtype): sum(frame.schema[f] == dtype for f in features)
+                           for dtype in set(frame.schema[f] for f in features)},
+        "feature_chunks_min": min(frame[f].n_chunks() for f in features),
+        "feature_chunks_max": max(frame[f].n_chunks() for f in features),
+        "observed_supervision_rows": frame[target].is_not_null().sum() if target else None,
+    }
+
+
+def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
+    """在一个 worker 连续测量真实公开调用；观察包装不改变任何生产计算。"""
+    import polars as pl
+    from benchmark_core_capacity import _execution_parameters, _signature
+
+    from mars.analysis import MarsBinEvaluator, MarsDataProfiler
+    from mars.feature import MarsStatsSelector
+    from mars.feature.binning.base import MarsBinnerBase
+
+    config: dict[str, Any] = {}
+    dimensions = workload(args.case, args.scale)
+    if args.case.startswith("frozen_"):
+        if args.input_config is None:
+            raise ValueError("frozen cases require --input-config")
+        frame, benchmark, features, config = meter.run(
+            "input_read", lambda: _read_frozen_inputs(args.input_config)
+        )
+    else:
+        frame, benchmark, features = meter.run(
+            "input_prepare",
+            lambda: _selection_fixture(
+                dimensions["rows"], dimensions["features"], args.seed,
+                args.case == "selection_attrition",
+            ),
+        )
+    if args.backend != "polars":
+        raise ValueError("staged/frozen cases require --backend polars to retain frozen dtypes/chunks")
+    target = config.get("target", "bad")
+    roles = {key: config[key] for key in ("group_col", "time_col", "time_grain")
+             if key in config}
+    if not config:
+        roles["group_col"] = "group"
+    meter.result["workload"] = {
+        **dimensions, "seed": args.seed, "input_backend": args.backend,
+        "input": _frame_observation(frame, features, target if target in frame.columns else None),
+        "benchmark": _frame_observation(benchmark, features, target if target in benchmark.columns else None)
+        if benchmark is not None else None,
+    }
+    transformations: dict[str, dict[str, Any]] = {}
+    stages: list[dict[str, Any]] = []
+    active_stages: list[str] = []
+    selector = None
+    is_profile = args.case == "frozen_profile"
+    is_risk = args.case == "frozen_risk"
+    parameter_key = "profile_parameters" if is_profile else "risk_parameters" if is_risk else "selector_parameters"
+    parameters = config.get(parameter_key, {})
+    if is_profile:
+        parameters = {"overview_batch_size": args.batch_size, **parameters}
+        tool = MarsDataProfiler(**parameters)
+    elif is_risk:
+        parameters = {**parameters, "binner_params": {
+            "n_jobs": args.n_jobs, **parameters.get("binner_params", {})
+        }}
+        tool = MarsBinEvaluator(**parameters)
+    else:
+        # 冻结输入仅继承显式资源参数；业务口径由冻结配置和库默认共同决定。
+        defaults: dict[str, Any] = {"batch_size": args.batch_size, "n_jobs": args.n_jobs}
+        if args.case != "frozen_selection":
+            defaults.update(
+                skip_fine_scan=True, psi_thr=0.25, rc_thr=None, corr_thr=0.95,
+                special_values=[-999], rough_binning_params={"n_bins": 8},
+            )
+        parameters = {**defaults, **parameters}
+        selector = MarsStatsSelector(**parameters)
+        tool = selector
+
+    def observe_method(original: Any, name: str) -> Any:
+        """记录真实阶段的候选进出，不按阶段重建对象或另启进程。"""
+        def observed(*values: Any, **kwargs: Any) -> Any:
+            candidates = kwargs.get("features")
+            if candidates is None:
+                candidates = next((value for value in values if isinstance(value, list)), None)
+            context = {"candidate_count_in": len(candidates) if candidates is not None else None,
+                       "batch_size": getattr(tool, "batch_size", getattr(tool, "overview_batch_size", None)),
+                       "n_jobs": getattr(values[0], "n_jobs", getattr(tool, "n_jobs", None))
+                       if values else getattr(tool, "n_jobs", None)}
+            active_stages.append(name)
+            try:
+                result = meter.run(name, lambda: original(*values, **kwargs), context)
+            finally:
+                active_stages.pop()
+            if isinstance(result, list):
+                context["candidate_count_out"] = len(result)
+            stages.append({"stage": name, **context})
+            return result
+        return observed
+
+    original_transform = MarsBinnerBase._transform_impl
+    original_schema = pl.LazyFrame.collect_schema
+
+    def observe_schema(plan: Any, *values: Any, **kwargs: Any) -> Any:
+        """单独量测 fit 后规则/schema 验证，不 collect 样本计划。"""
+        if active_stages and active_stages[-1] == "binner_fit":
+            return meter.run("binner_fit_schema_validation", lambda: original_schema(plan, *values, **kwargs))
+        return original_schema(plan, *values, **kwargs)
+
+    def observe_transform(binner: Any, data: Any, *values: Any, **kwargs: Any) -> Any:
+        """只累积有限边界统计，不保留样本或每批宽列名列表。"""
+        requested = kwargs.get("features")
+        key = f"{meter.result['stage']}:{kwargs.get('return_type')}:{kwargs.get('lazy', False)}"
+        record = transformations.setdefault(key, {"calls": 0, "max_rows": 0, "max_features": 0})
+        record["calls"] += 1
+        record["max_rows"] = max(record["max_rows"], data.height if isinstance(data, pl.DataFrame) else 0)
+        record["max_features"] = max(record["max_features"], len(requested or []))
+        return original_transform(binner, data, *values, **kwargs)
+
+    # 阶段计时保持对象共存；小型计划/schema观察不会替换 Polars 的执行或结果。
+    with ExitStack() as stack:
+        import mars.analysis.profiler as profiler_module
+
+        for method, stage in (("calculate_overview", "profile_overview"),
+                              ("generate_pivot_reports", "profile_pivot"),
+                              ("get_psi_trend", "profile_psi")):
+            stack.enter_context(patch.object(
+                profiler_module, method, observe_method(getattr(profiler_module, method), stage)
+            ))
+        if selector is not None:
+            for method, stage in (
+                ("_filter_quality", "quality"), ("_filter_rough", "rough"),
+                ("_filter_fine", "fine"), ("_get_stability_report", "stability_psi_rc"),
+                ("_filter_corr", "woe_global_correlation"),
+                ("_validate_benchmark_bins", "benchmark_schema_validation"),
+                ("_finish_correlation", "report_freeze"),
+            ):
+                stack.enter_context(patch.object(
+                    selector, method, observe_method(getattr(selector, method), stage)
+                ))
+        for method, stage in (("fit", "binner_fit"),
+                              ("profile_bin_performance", "bin_performance")):
+            original = getattr(MarsBinnerBase, method)
+            stack.enter_context(patch.object(MarsBinnerBase, method, observe_method(original, stage)))
+        stack.enter_context(patch.object(MarsBinnerBase, "_transform_impl", observe_transform))
+        stack.enter_context(patch.object(pl.LazyFrame, "collect_schema", observe_schema))
+        if is_profile:
+            report = meter.run("public_compute", lambda: tool.generate_profile(
+                frame, features=features, benchmark_df=benchmark, **roles,
+                **config.get("profile_call_parameters", {}),
+            ))
+        elif is_risk:
+            run = meter.run("public_compute", lambda: tool.evaluate(
+                frame, target=target, features=features, benchmark_df=benchmark, **roles,
+                **{"batch_size": args.batch_size, **config.get("risk_call_parameters", {})},
+            ))
+            report = run.report
+        else:
+            meter.run("public_compute", lambda: tool.fit(
+                frame, target=target, features=features, benchmark_df=benchmark, **roles,
+                **config.get("selector_call_parameters", {}),
+            ))
+            report = meter.run("correlation_report_materialization", tool.get_correlation_report)
+    meter.result["stage_candidates"] = stages
+    meter.result["transform_boundaries"] = transformations
+    if selector is not None:
+        meter.result["selection"] = {
+            "funnel": selector._funnel_stats, "candidate_count": len(selector._corr_candidates),
+            "selected_order": selector.selected_features_, "correlation_status": selector._corr_status,
+            "correlation_parameters": selector._corr_parameters,
+        }
+        if args.case == "selection_survivors":
+            assert len(selector._corr_candidates) >= len(features) * 0.8
+        assert report.get_table("features").filter(pl.col("selected"))["feature"].to_list() == selector.selected_features_
+    meter.result["tables"] = meter.run("report_table_signatures", lambda: {
+        name: _signature(report.get_table(name)) for name in report.describe()["tables"]
+    })
+    with TemporaryDirectory(prefix="mars-staged-capacity-") as temporary:
+        snapshot = Path(temporary) / "analysis.marsreport"
+        meter.run("report_save", lambda: report.save(snapshot, overwrite=True))
+        meter.result["snapshot_bytes"] = snapshot.stat().st_size
+    # 明确测量既定 clear_cache 入口；不在每批 gc，不删可复用规则和报告。
+    if selector is not None:
+        meter.run("cache_release", selector.clear_cache)
+    algorithms, resources = _execution_parameters(parameters)
+    call_key = "profile_call_parameters" if is_profile else "risk_call_parameters" if is_risk else "selector_call_parameters"
+    call_algorithms, call_resources = _execution_parameters(config.get(call_key, {}))
+    resources.update({f"call.{key}": value for key, value in call_resources.items()})
+    if is_risk:
+        resources.setdefault("call.batch_size", args.batch_size)
+    meter.result["execution_contract"] = {
+        "workload_id": "staged-native-analysis-v1", "workload": meter.result["workload"],
+        "algorithm_parameters": {"estimator": algorithms, "roles": roles, "target": target,
+                                 "call": call_algorithms},
+        "resource_strategy": resources, "diagnostics": {"continuous_single_public_call": True},
+    }
+    meter.result.update(status="passed", stage="complete")
 
 
 def _linear_diagnostics(selector: Any) -> dict[str, Any]:
@@ -430,6 +726,11 @@ def _real_rules(
 
 def run_case(args: argparse.Namespace, meter: Any) -> None:
     """先完整公共调用，再只消费已有报告；临时宽表和快照自动清理。"""
+    if args.case in (
+        "selection_survivors", "selection_attrition", "frozen_profile", "frozen_risk", "frozen_selection"
+    ):
+        _run_staged_analysis(args, meter)
+        return
     import numpy as np
     import pandas as pd
     import polars as pl
@@ -840,7 +1141,8 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
                     "evidence_calls": evidence_calls,
                     "funnel": selector._funnel_stats,
                 }
-                assert len(evidence_calls["matrix"]) == 1
+                # 旧版 dense 与新版分块全局计算都只观察，不以旧调用次数限制实现。
+                assert len(evidence_calls["matrix"]) <= 1
                 assert (
                     report.get_table("features").filter(pl.col("selected"))["feature"].to_list()
                     == selector.selected_features_

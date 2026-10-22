@@ -22,7 +22,7 @@ from mars.analysis._profiling.metrics import (
     calculate_overview,
     normalize_profile_metrics,
 )
-from mars.analysis._profiling.pivot import generate_pivot_reports
+from mars.analysis._profiling.pivot import generate_pivot_reports, unavailable_pivot_report
 from mars.analysis._profiling.psi import get_psi_trend
 from mars.analysis._profiling.sparkline import compute_sparklines
 from mars.analysis._profiling.types import ProfileBinMethod, ProfileComputeOptions
@@ -127,6 +127,9 @@ def profile_stats(
     缺失率、零值率、唯一值率和众数占比均以当前样本总数为分母。
     均值、分位数等连续统计排除 null、NaN、自定义缺失值和特殊值。
     PSI 的缺失值箱、特殊值箱是否参与计算由对应开关控制。
+    多 chunk 输入无需先 rechunk；不适用的连续统计保留 typed null。
+    无分组、时间和 benchmark 的 PSI 保留表与特征身份，并在 calculation_status
+    中标记 ``not_computed/no_group_or_benchmark``。
 
     Examples
     --------
@@ -325,6 +328,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         当前数据的统计指标使用全部样本，字符分布图可按 ``sparkline_sample_size`` 抽样。
         缺失率等数据质量指标以样本总数为分母；均值、分位数等连续统计排除
         null、NaN、自定义缺失值和特殊值。
+        多 chunk 输入保持原值和 chunk 结构，无需预先 rechunk；不适用的统计
+        保留 typed null。PSI 独立计算，无参考时保留表和特征身份，并记录未计算状态。
 
         Examples
         --------
@@ -441,20 +446,25 @@ class MarsDataProfiler(MarsBaseEstimator):
         overview_df = calculate_overview(context, selection, options, sparkline_df)
 
         pivots = generate_pivot_reports(
-            context, options, [*selection.dq_metrics, *selection.stat_metrics], overview_df,
+            context, options,
+            [*selection.dq_metrics, *[m for m in selection.stat_metrics if m != "psi"]],
+            overview_df,
         )
         dq_tables = {metric: pivots[metric] for metric in selection.dq_metrics}
-        stat_tables = {metric: pivots[metric] for metric in selection.stat_metrics}
+        stat_tables = {metric: pivots[metric] for metric in selection.stat_metrics if metric != "psi"}
 
-        if (context.group_col or benchmark_pl is not None) and "psi" in selection.stat_metrics:
-            psi_df = get_psi_trend(
-                context,
-                options,
-                features=psi_features,
-                benchmark_df=benchmark_pl,
-            )
-            if not psi_df.is_empty():
-                stat_tables["psi"] = psi_df
+        if "psi" in selection.stat_metrics:
+            # 无参考或无当前样本时显式保留 typed null；PSI 不经过通用聚合占位表。
+            if (context.group_col or benchmark_pl is not None) and context.working_df.height:
+                stat_tables["psi"] = get_psi_trend(
+                    context,
+                    options,
+                    features=psi_features,
+                    benchmark_df=benchmark_pl,
+                )
+            else:
+                stat_tables["psi"] = unavailable_pivot_report(context)
+            stat_tables = {metric: stat_tables[metric] for metric in selection.stat_metrics}
 
         comparison_tables: dict[str, pl.DataFrame] = {}
         if "schema" in selection.comparison_metrics:

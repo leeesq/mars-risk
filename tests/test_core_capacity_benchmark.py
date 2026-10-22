@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import subprocess
@@ -636,3 +637,123 @@ def test_incomplete_worker_diagnostics_are_failure_not_normal_empty(tmp_path: Pa
     assert result["status"] == "failed"
     assert result["stage"] == "result_decode"
     assert result["exit_code"] == 0
+
+
+def test_staged_fixture_preserves_chunks_supervision_and_cross_batch_identity() -> None:
+    """容量样本保留真实多块和 Train 标签范围，重复信号跨列批存在。"""
+    fixtures = _module("benchmark_core_workloads")
+    frame, benchmark, names = fixtures._selection_fixture(801, 35, 42, False)
+    assert frame.height == 801 and benchmark.height == 481
+    assert all(frame[name].n_chunks() > 1 for name in names)
+    assert {frame[name].dtype for name in names} == {pl.Float32, pl.Float64}
+    assert frame.filter(pl.col("group") != "Train")["bad"].null_count() == 320
+    np.testing.assert_equal(frame[names[3]].to_numpy(), frame[names[-2]].to_numpy())
+    np.testing.assert_equal(-frame[names[3]].to_numpy(), frame[names[-1]].to_numpy())
+
+
+def test_frozen_input_reader_rejects_unmasked_supervision_without_rewriting(tmp_path: Path) -> None:
+    """真实复现入口只读冻结文件，错误人口被明确拒绝，不自动补标签掩码。"""
+    fixtures = _module("benchmark_core_workloads")
+    data = pl.DataFrame({"x": [1.0, 2.0], "bad": [0, 1], "group": ["Train", "Test"]})
+    path = tmp_path / "frozen.parquet"
+    data.write_parquet(path)
+    before = path.read_bytes()
+    config = tmp_path / "input.json"
+    config.write_text(json.dumps({
+        "input_path": path.name, "features": ["x"], "target": "bad", "group_col": "group",
+        "supervision_group": "Train",
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="non-supervision population"):
+        fixtures._read_frozen_inputs(config)
+    assert path.read_bytes() == before
+
+
+def test_measurement_preserves_repeated_stages_and_nested_failure(tmp_path: Path) -> None:
+    """重复小批不覆盖峰值，异常继续定位到真实最内层。"""
+    runner = _module("benchmark_core_capacity")
+    meter = runner.Measurement(tmp_path / "meter.json")
+    for _ in range(2):
+        meter.run("batch", lambda: 1)
+    assert list(meter.result["stages"]) == ["batch", "batch.2"]
+    assert meter.result["stages"]["batch"]["process_observation"]["lifetime_peak_rss_bytes"] > 0
+
+    def fail() -> None:
+        raise ValueError("controlled")
+
+    with pytest.raises(ValueError, match="controlled"):
+        meter.run("public_compute", lambda: meter.run("stability", fail))
+    assert meter.result["stage"] == "stability"
+    assert meter.result["stages"]["stability"]["status"] == "exception"
+
+
+@pytest.mark.parametrize("configured", [{}, {"rc_thr": 0.7, "special_values": [-1], "batch_size": 100}])
+def test_frozen_selector_does_not_inherit_synthetic_business_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: dict[str, Any],
+) -> None:
+    """观察真实构造边界，冻结数据省略的业务参数仍使用库默认。"""
+    import mars.feature as feature_module
+
+    fixtures = _module("benchmark_core_workloads")
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "benchmarks"))
+    runner = _module("benchmark_core_capacity")
+    frame, benchmark, names = fixtures._selection_fixture(101, 5, 42, False)
+    captured: list[dict[str, Any]] = []
+
+    class ConstructionObserved(Exception):
+        """在拟合前结束观察，测试不依赖任何数据筛选结果。"""
+
+    def construct(**kwargs: Any) -> None:
+        captured.append(kwargs)
+        raise ConstructionObserved
+
+    monkeypatch.setattr(feature_module, "MarsStatsSelector", construct)
+    monkeypatch.setattr(fixtures, "_read_frozen_inputs", lambda path: (
+        frame, benchmark, names, {"selector_parameters": configured}
+    ))
+    args = argparse.Namespace(
+        case="frozen_selection", scale="smoke", seed=42, backend="polars",
+        batch_size=16, n_jobs=1, input_config=tmp_path / "unused.json",
+    )
+    with pytest.raises(ConstructionObserved):
+        fixtures._run_staged_analysis(args, runner.Measurement(tmp_path / "frozen.json"))
+    assert captured[-1] == {"batch_size": 16, "n_jobs": 1, **configured}
+    args.case = "selection_survivors"
+    with pytest.raises(ConstructionObserved):
+        fixtures._run_staged_analysis(args, runner.Measurement(tmp_path / "synthetic.json"))
+    assert captured[-1]["special_values"] == [-999]
+    assert captured[-1]["rough_binning_params"] == {"n_bins": 8}
+    assert captured[-1]["rc_thr"] is None and captured[-1]["skip_fine_scan"] is True
+
+
+@pytest.mark.parametrize("case", ["frozen_profile", "frozen_risk", "frozen_selection"])
+def test_frozen_cases_execute_one_public_call_in_fresh_worker(tmp_path: Path, case: str) -> None:
+    """三个明确入口分别验收统计、风险画像和原生池，不拼接外层分批结果。"""
+    fixtures = _module("benchmark_core_workloads")
+    frame, benchmark, names = fixtures._selection_fixture(101, 5, 42, False)
+    input_path, benchmark_path = tmp_path / "input.parquet", tmp_path / "train.parquet"
+    frame.write_parquet(input_path)
+    benchmark.write_parquet(benchmark_path)
+    input_bytes = input_path.read_bytes()
+    config = tmp_path / "input.json"
+    config.write_text(json.dumps({
+        "input_path": input_path.name, "benchmark_path": benchmark_path.name,
+        "features": names, "target": "bad", "group_col": "group", "supervision_group": "Train",
+        "profile_call_parameters": {"metrics": ["mean", "psi"], "enable_sparkline": False},
+        "risk_parameters": {"binner_params": {"n_bins": 3}},
+        "selector_parameters": {"skip_fine_scan": True, "psi_thr": None, "rc_thr": None},
+    }), encoding="utf-8")
+    runner = Path(__file__).resolve().parents[1] / "benchmarks" / "benchmark_core_capacity.py"
+    output = tmp_path / "result.json"
+    completed = subprocess.run([
+        sys.executable, str(runner), "--worker", "--case", case,
+        "--backend", "polars", "--threads", "1", "--n-jobs", "1", "--batch-size", "2",
+        "--input-config", str(config), "--output", str(output),
+    ], capture_output=True, text=True, check=False)
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert completed.returncode == 0, result.get("traceback", completed.stderr)
+    assert result["status"] == "passed" and result["stage"] == "complete"
+    assert result["workload"]["input"]["rows"] == 101
+    assert result["workload"]["benchmark"]["rows"] == 61
+    assert "public_compute" in result["stages"] and "report_save" in result["stages"]
+    assert result["environment"]["polars_threads"] == 1
+    assert input_path.read_bytes() == input_bytes

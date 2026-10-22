@@ -6,7 +6,7 @@
   "selection": {
     "question": "实际选择/拒绝阶段与原因",
     "reference": {
-      "report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
+      "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
       "table": "candidates",
       "query": {
         "offset": 0,
@@ -123,7 +123,7 @@
   "independent_validation": {
     "question": "固定规则的独立 test/oot 复核",
     "reference": {
-      "report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+      "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
       "table": "slices",
       "query": {
         "offset": 0,
@@ -216,7 +216,7 @@
   "unobserved": {
     "question": "无标签组保留全部分布并显示未观测状态",
     "reference": {
-      "report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+      "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
       "table": "slices",
       "query": {
         "offset": 0,

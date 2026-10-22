@@ -121,8 +121,10 @@ def get_benchmark_dist(
             idx_cols = []
             agg_expr = pl.len().cast(pl.Float64).alias("expected_count")
 
-        return (
+        # benchmark 长表只进入聚合计划，避免 eager unpivot 和字符串派生同时驻留。
+        expected_query: pl.LazyFrame = (
             benchmark_binned
+            .lazy()
             .select(bin_cols + idx_cols)
             .unpivot(index=idx_cols, on=bin_cols, variable_name="feat_bin", value_name="bin_index")
             .with_columns(pl.col("feat_bin").str.replace(r"_bin$", "").alias("feature"))
@@ -133,6 +135,7 @@ def get_benchmark_dist(
             )
             .select(["feature", "bin_index", "expected_dist"])
         )
+        return collect_streaming(expected_query)
 
     min_group = group_stats_raw.select(pl.col(group_col).min()).item()
     logger.debug("[BASELINE] Using earliest group '%s' as baseline (from stats cache).", min_group)

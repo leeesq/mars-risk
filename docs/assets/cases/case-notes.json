@@ -71,7 +71,7 @@
       "label_status": "unobserved"
     }
   ],
-  "selection_report_id": "408b6056-e5a0-4558-88d4-98cbbc56b0ea",
-  "independent_report_id": "050120ae-8498-4d2f-b5b8-c32c27da38c7",
+  "selection_report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
+  "independent_report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
   "agent_execution": "deterministic acceptance; no LLM"
 }

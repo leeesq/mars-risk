@@ -1,12 +1,12 @@
 {
   "case": 2,
-  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+  "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
   "consumer": "deterministic public API queries; no LLM",
   "question": "固定分箱怎样比较五分区与无标签分布？",
   "query": {
     "question": "外部来源分 2 与 3 的已观测区分度",
     "reference": {
-      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
       "table": "summary",
       "query": {
         "offset": 0,

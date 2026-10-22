@@ -1,10 +1,10 @@
 {
   "case": 3,
-  "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+  "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
   "question": "为什么删除一个真实字段，保留另一个？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+    "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
     "report_type": "correlation",
     "format_version": 1,
     "tables": {
@@ -465,7 +465,7 @@
     {
       "question": "真实数值相关性是否触发淘汰",
       "reference": {
-        "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+        "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -647,7 +647,7 @@
     {
       "question": "实际最强原始字段关系",
       "reference": {
-        "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+        "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
         "table": "pairs",
         "query": {
           "offset": 0,
@@ -708,7 +708,7 @@
     {
       "question": "目标感知 WOE 空间的实际决策",
       "reference": {
-        "report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
+        "report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -830,8 +830,8 @@
           "feature": "REGION_RATING_CLIENT",
           "trigger_feature": "REGION_RATING_CLIENT_W_CITY",
           "action": "drop",
-          "correlation": 0.9552335183895004,
-          "abs_correlation": 0.9552335183895004,
+          "correlation": 0.955233518389501,
+          "abs_correlation": 0.955233518389501,
           "threshold": 0.8,
           "operator": ">",
           "priority_metric": "IV",
@@ -1000,7 +1000,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-        "value": 0.8823213171880566,
+        "value": 0.8823213171880598,
         "description": ""
       },
       {
@@ -1009,7 +1009,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-        "value": 0.8823213171880566,
+        "value": 0.8823213171880598,
         "description": ""
       },
       {
@@ -1018,7 +1018,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-        "value": 0.8823213171880566,
+        "value": 0.8823213171880598,
         "description": ""
       },
       {
@@ -1027,7 +1027,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-        "value": 0.8823213171880566,
+        "value": 0.8823213171880598,
         "description": ""
       },
       {
@@ -1036,7 +1036,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'AMT_REQ_CREDIT_BUREAU_YEAR'",
-        "value": 0.8823213171880566,
+        "value": 0.8823213171880598,
         "description": ""
       },
       {
@@ -1045,7 +1045,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8996703591987445,
+        "value": 0.8996703591987438,
         "description": ""
       },
       {
@@ -1054,7 +1054,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.898623651600919,
+        "value": 0.8986236516009168,
         "description": ""
       },
       {
@@ -1063,7 +1063,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8668261346602236,
+        "value": 0.8668261346602254,
         "description": ""
       },
       {
@@ -1072,7 +1072,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8670772483855902,
+        "value": 0.8670772483855897,
         "description": ""
       },
       {
@@ -1081,7 +1081,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8639356117853597,
+        "value": 0.8639356117853605,
         "description": ""
       },
       {
@@ -1090,7 +1090,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'ORGANIZATION_TYPE'",
-        "value": 0.8918696913005881,
+        "value": 0.8918696913005899,
         "description": ""
       },
       {
@@ -1099,7 +1099,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.9974113326395556,
+        "value": 0.9974113326395563,
         "description": ""
       },
       {
@@ -1108,7 +1108,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.99772194202038,
+        "value": 0.9977219420203798,
         "description": ""
       },
       {
@@ -1117,7 +1117,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMIN_MEDI'",
-        "value": 0.99542102278168,
+        "value": 0.9954210227816792,
         "description": ""
       },
       {
@@ -1126,7 +1126,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMIN_MEDI'",
-        "value": 0.9963738199389397,
+        "value": 0.9963738199389401,
         "description": ""
       },
       {
@@ -1135,7 +1135,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'REG_CITY_NOT_WORK_CITY'",
-        "value": 0.8256627212152168,
+        "value": 0.825662721215215,
         "description": ""
       },
       {
@@ -1144,7 +1144,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8903995782307512,
+        "value": 0.8903995782307523,
         "description": ""
       },
       {
@@ -1153,7 +1153,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8902689780398235,
+        "value": 0.8902689780398243,
         "description": ""
       },
       {
@@ -1162,7 +1162,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8883308083486459,
+        "value": 0.8883308083486474,
         "description": ""
       },
       {
@@ -1171,7 +1171,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
-        "value": 0.8348519297868345,
+        "value": 0.8348519297868343,
         "description": ""
       },
       {
@@ -1180,7 +1180,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'EMERGENCYSTATE_MODE'",
-        "value": 0.8362414060327832,
+        "value": 0.8362414060327835,
         "description": ""
       },
       {
@@ -1189,7 +1189,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'REGION_RATING_CLIENT_W_CITY'",
-        "value": 0.9552335183895004,
+        "value": 0.955233518389501,
         "description": ""
       },
       {
@@ -1198,7 +1198,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8964505934136027,
+        "value": 0.8964505934136034,
         "description": ""
       },
       {
@@ -1207,7 +1207,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8456077943952434,
+        "value": 0.8456077943952428,
         "description": ""
       },
       {
@@ -1216,7 +1216,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.8452747151623707,
+        "value": 0.8452747151623704,
         "description": ""
       },
       {
@@ -1225,7 +1225,7 @@
         "status": "Dropped",
         "stage": "Corr_Filter",
         "reason": "Correlated with 'FLOORSMAX_MEDI'",
-        "value": 0.843009917350579,
+        "value": 0.8430099173505775,
         "description": ""
       },
       {
@@ -4735,7 +4735,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.0001832998315302324,
+        "value": 0.00018329983153023258,
         "description": ""
       },
       {
@@ -4800,7 +4800,7 @@
       "REGION_RATING_CLIENT_W_CITY",
       "OBS_60_CNT_SOCIAL_CIRCLE"
     ],
-    "woe_report_id": "a0a8a272-2ac5-4c34-b4f9-a6e5b08ef486",
+    "woe_report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
     "raw_pairs": [
       {
         "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",
@@ -4974,6 +4974,10 @@
         "min_bin_size": 0.02,
         "merge_small_bins": true
       },
+      "algorithm": "anchored Chan block central moments Float64",
+      "row_block_size": 4096,
+      "feature_batch_size": 100,
+      "threshold_refined_pairs": 0,
       "candidate_scope": [
         "AMT_ANNUITY",
         "AMT_GOODS_PRICE",

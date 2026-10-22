@@ -43,6 +43,33 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时，需要再次传入同一
 `benchmark_df` 才能复现基准口径。
 
+## 宽表执行与批宽
+
+`batch_size` 是特征列批宽，默认和 `None` 都取 100，必须为正整数。
+Quality 将它传给画像的 `overview_batch_size`；Rough Performance、Fine 和 Stability
+PSI/RC 使用同一批宽。Rough Fit 和 Fine Fit 仍按算法学习规则，不能将拟合总体误认为行批样本。
+已表现标签掩码只决定监督统计人口。无监督分箱和分布统计继续使用完整拟合人口。
+
+表现统计先投影本批特征，再过滤已表现标签、转换分箱并聚合。benchmark 的规则校验只读取 lazy
+计划的 schema；expected distribution 在当前批内聚合。原始列的投影和 lazy 计划可以共享输入
+buffer，不等于另复制一份宽表。输入表、拟合所需缓存、规则及保留的报告仍有成本。
+`n_jobs` 继续控制分箱任务，Polars 和 BLAS 线程由各自环境配置控制。
+
+全局 WOE Pearson 使用 Stage 3 已拟合映射，只将 WOE null 填为零。每个内部行块最多 4,096 行，
+且按特征数缩小，使一份 Float64 行块通常不超过 8 MiB（至少一行）。内部行块独立于列批宽。
+行块内再按 `batch_size` 转换，使用 Float64 中心矩累计完整候选矩阵，不保存完整人口的 WOE 表。
+时间复杂度为 O(NP²)，中心矩及完整报告仍为 O(P²)。内存另包含当前块、列批、规则、原始数据和报告。
+批宽既不是内存硬上限，也不是行数或并发数。
+
+累计使用首行平移和 Chan 中心矩合并，避免大均值小方差下的平方和相减。结果按 NumPy 实数
+Pearson 的方式限制在 [-1, 1]，常量及不可用对角线保留不可用。浮点舍入范围内接近阈值的 pair
+使用两列、完整监督人口的 NumPy `corrcoef` 复核。该复核可能增加时间及 O(N×2) 工作内存，
+两列复核独立于列批宽，因此 `batch_size=1` 时也会生成这一对列。
+复核不会改阈值或严格 `abs(corr) > corr_thr` 的规则。IV 降序、特征 ID 升序、白名单和最终原候选顺序不变。
+完整低相关 pair、signed 值、实际决策和快照查询均保留。
+
+容量记录及显式本地冻结输入入口见 [M12 上游验收](../performance/m12-upstream.md)。
+
 ## 输出
 
 | 字段 | 用途 |

@@ -1,11 +1,11 @@
 {
   "case": 2,
-  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+  "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
   "question": "固定分箱怎样比较五分区与无标签分布？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
     "report_type": "MarsBinningReport",
-    "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+    "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
     "format_version": 1,
     "feature_metadata": {
       "NAME_CONTRACT_TYPE": {
@@ -4212,7 +4212,7 @@
     {
       "question": "外部来源分 2 与 3 的已观测区分度",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "summary",
         "query": {
           "offset": 0,
@@ -4267,7 +4267,7 @@
     {
       "question": "主图五组固定箱人数和已观测坏率",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "detail",
         "query": {
           "offset": 0,
@@ -5305,7 +5305,7 @@
     {
       "question": "无标签组监督指标真实状态",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "calculation_status",
         "query": {
           "offset": 0,
@@ -5351,7 +5351,7 @@
     {
       "question": "收入与年龄天数原始分析入口",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "detail",
         "query": {
           "offset": 0,
@@ -5644,7 +5644,7 @@
     {
       "question": "五分区 iv 固定分箱比较",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "trend.iv",
         "query": {
           "offset": 0,
@@ -5715,7 +5715,7 @@
     {
       "question": "五分区 ks 固定分箱比较",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "trend.ks",
         "query": {
           "offset": 0,
@@ -5786,7 +5786,7 @@
     {
       "question": "五分区 auc 固定分箱比较",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "trend.auc",
         "query": {
           "offset": 0,
@@ -5857,7 +5857,7 @@
     {
       "question": "五分区 psi 固定分箱比较",
       "reference": {
-        "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
         "table": "trend.psi",
         "query": {
           "offset": 0,
@@ -6458,7 +6458,7 @@
       "CNT_FAM_MEMBERS"
     ],
     "primary_feature": "EXT_SOURCE_2",
-    "time_report_id": "8b0d3d92-5d51-4afe-b8ae-69e7245f85c9",
+    "time_report_id": "fded52f2-3dba-4a15-a565-7216c5bcd1ab",
     "units": {
       "ks": "0-100 percentage points",
       "bad_rate": "fraction",

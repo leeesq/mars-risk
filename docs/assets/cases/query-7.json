@@ -1,12 +1,12 @@
 {
   "case": 7,
-  "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+  "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
   "consumer": "deterministic public API queries; no LLM",
   "question": "同一次分箱分析怎样交付给不同使用者？",
   "query": {
     "question": "Excel 首行实际值与快照对齐",
     "reference": {
-      "report_id": "d73396cc-4ad6-493e-a69a-0cd2a0a435e6",
+      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
       "table": "detail",
       "query": {
         "offset": 0,

@@ -1,12 +1,12 @@
 {
   "case": 3,
-  "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+  "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
   "consumer": "deterministic public API queries; no LLM",
   "question": "为什么删除一个真实字段，保留另一个？",
   "query": {
     "question": "真实数值相关性是否触发淘汰",
     "reference": {
-      "report_id": "9c0d63d9-bd1c-401d-92bb-0b27e51afa45",
+      "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
       "table": "correlation_decisions",
       "query": {
         "offset": 0,

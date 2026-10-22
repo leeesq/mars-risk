@@ -1,11 +1,7 @@
 {
-  "preparation_seconds": 25.004517100001976,
+  "preparation_seconds": 4.290438099997118,
   "rows": 356255,
   "full_dataset": true,
   "measurement": "wall time; no peak memory measurement",
-  "score_cross_seconds": 6.92809799999668,
-  "profile_seconds": 23.41160359999776,
-  "binning_seconds": 154.8415851000027,
-  "selection_seconds": 8.082453000002715,
-  "rules_seconds": 1.00765870000032
+  "selection_seconds": 11.20855850004591
 }

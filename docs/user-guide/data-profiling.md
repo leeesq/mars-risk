@@ -27,6 +27,12 @@ description: 使用 MarsDataProfiler 检查宽表的数据质量、分布和分�
 传入本次数据、特征、分组、指标，以及可选的 PSI 基准样本。
 画像器不会随机抽样；数据量较大、需要抽样时，由调用方在传入前完成。
 
+多 chunk Polars 输入可直接调用，无需预先全表 `rechunk()`。不适用的字符串 mean/std 等指标
+返回 typed null，并通过 `calculation_status` 说明跳过原因；非数值 zeros 保留原有零值语义。
+PSI 使用独立的分布计算流程。既无分组/时间参考、也无 benchmark 时，仍保留 PSI 表和特征身份，
+值为 Float64 null，状态为 `not_computed/no_group_or_benchmark`，不会填为零。
+真实空分组与文字 `null` 使用不同显示身份。纯 PSI 请求的 overview 仍包含输入特征身份。
+
 ## 输出
 
 | 字段 | 用途 |

@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import math
 import os
-from typing import Any, Dict, List, Literal, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Union, cast
 
+import numpy as np
 import pandas as pd
 import polars as pl
+from numpy.typing import NDArray
 
 from mars._compat import pandas_styler_map, remove_suffix
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
+from mars.compute._correlation import _blocked_pearson
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.selection.base import MarsBaseSelector
@@ -147,10 +150,18 @@ class MarsStatsSelector(MarsBaseSelector):
             粗筛分箱参数，与默认配置合并；未指定的项保留默认值。
             默认配置为：`{"method": "quantile", "n_bins": 20, "min_bin_size": 0.02, "merge_small_bins": True}`。
         batch_size : int | None
-            每批评估的特征数，默认 100；``None`` 也按 100 处理。
+            特征列批宽，默认 100；``None`` 也按 100 处理，必须为正整数。
+            贯穿质量 overview、粗筛表现、精筛、稳定性和 WOE 转换；相关性另按私有
+            行块合并完整 Pearson。原始表、规则、报告和全局 P² 结果仍占内存，
+            此参数不表示行数、总内存上限或线程/进程并发数。
         n_jobs : int
             分箱器的并行任务数；``-1`` 使用 CPU 核心数减 1，至少为 1。
             精筛分箱默认继承该值，显式 ``binning_params['n_jobs']`` 优先。
+
+        Raises
+        ------
+        ValueError
+            ``batch_size`` 不是正整数或 None，或参考口径参数无效时抛出。
         """
         super().__init__()
 
@@ -206,6 +217,10 @@ class MarsStatsSelector(MarsBaseSelector):
         self.psi_include_missing = psi_include_missing
         self.psi_include_special = psi_include_special
 
+        if batch_size is not None and (
+            isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0
+        ):
+            raise ValueError("batch_size must be a positive integer or None.")
         self.batch_size = 100 if batch_size is None else batch_size
         self.n_jobs = n_jobs
 
@@ -754,10 +769,11 @@ class MarsStatsSelector(MarsBaseSelector):
             benchmark_df,
             features=features,
             return_type="index",
+            lazy=True,
         )
-        benchmark_binned = transformed.collect() if isinstance(transformed, pl.LazyFrame) else transformed
+        benchmark_schema = transformed.collect_schema()
         expected_cols = {f"{feature}_bin" for feature in features}
-        missing_cols = sorted(expected_cols - set(benchmark_binned.columns))
+        missing_cols = sorted(expected_cols - set(benchmark_schema.names()))
         if not missing_cols:
             return
 
@@ -1018,7 +1034,8 @@ class MarsStatsSelector(MarsBaseSelector):
         from mars.analysis.profiler import MarsDataProfiler
         profiler = MarsDataProfiler(
             missing_values=self.missing_values,
-            special_values=self.special_values
+            special_values=self.special_values,
+            overview_batch_size=self.batch_size,
         )
         report = profiler.generate_profile(
             df,
@@ -1073,7 +1090,9 @@ class MarsStatsSelector(MarsBaseSelector):
             if self.target is None:
                 raise ValueError("Selector target is unavailable for supervised rough binning.")
             # CART 的切点只能由已表现样本拟合；无监督分箱仍保留全量分布口径。
-            fit_df = fit_df.filter(pl.col(self.target).is_not_null())
+            fit_df = fit_df.select(list(dict.fromkeys([*features, self.target]))).filter(
+                pl.col(self.target).is_not_null()
+            )
         cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
         cat_features = [c for c in features if fit_df.schema[c] in cat_types]
 
@@ -1116,7 +1135,9 @@ class MarsStatsSelector(MarsBaseSelector):
             raise ValueError("Selector target is unavailable after input validation.")
         target = df.get_column(self.target)
         # 分箱边界来自 fit_df，但 WOE 和筛选指标必须基于当前 df 物化。
-        stats_df = binner.profile_bin_performance(df, target, update_woe=True)
+        stats_df = binner.profile_bin_performance(
+            df, target, features=features, update_woe=True, batch_size=self.batch_size,
+        )
 
         lift_recall_cond = (pl.col("Lift") > self.rough_lift_thr) & (pl.col("count_dist") > self.rough_min_sample_rate)
         feat_stats = (
@@ -1425,6 +1446,70 @@ class MarsStatsSelector(MarsBaseSelector):
 
         return kept_features
 
+    def _woe_row_blocks(
+        self, df: pl.DataFrame, features: list[str], row_block_size: int,
+    ) -> Iterator[NDArray[np.float64]]:
+        """按行块和列批转换既定已表现人口；只保留当前块的私有 Float64 数组。"""
+        if self.target is None or self._stage3_binner is None:
+            raise ValueError("WOE correlation requires a fitted binner and target.")
+        for offset in range(0, df.height, row_block_size):
+            raw_block = df.slice(offset, row_block_size)
+            observed = raw_block.get_column(self.target).is_not_null()
+            count = int(observed.sum())
+            if not count:
+                continue
+            values: NDArray[np.float64] = np.empty((count, len(features)), dtype=np.float64)
+            for start in range(0, len(features), self.batch_size):
+                batch = features[start:start + self.batch_size]
+                # 投影只引用原列；过滤只为本批分配，派生列也只在本批物化。
+                source = raw_block.select(batch).filter(observed)
+                plan = self._stage3_binner.transform(
+                    source, features=batch, return_type="woe", lazy=True,
+                    woe_batch_size=self.batch_size,
+                )
+                derived = plan.select([
+                    pl.col(f"{feature}_woe").fill_null(0.0).cast(pl.Float64)
+                    for feature in batch
+                ]).collect()
+                values[:, start:start + len(batch)] = derived.to_numpy()
+            yield values
+
+    def _refine_threshold_pairs(
+        self, df: pl.DataFrame, features: list[str], matrix: NDArray[np.float64], count: int,
+    ) -> int:
+        """仅复核落入累计舍入误差范围的窄列 pair，保持原 NumPy 严格阈值分支。"""
+        if self.target is None or self._stage3_binner is None or self.corr_thr is None:
+            return 0
+        # 矩阵已按 NumPy 截限；严格大于 >=1 的阈值永不触发，无需平方级窄列复核。
+        if self.corr_thr >= 1:
+            return 0
+        # 此界只决定是否用旧参考复核，不改变阈值、比较符或最终系数。
+        rounding_bound = np.finfo(np.float64).eps * max(32, count) * 8
+        refined = 0
+        for left in range(len(features)):
+            near = np.flatnonzero(
+                np.abs(np.abs(matrix[left, left + 1:]) - self.corr_thr) <= rounding_bound
+            )
+            for relative in near:
+                right = left + 1 + int(relative)
+                pair = [features[left], features[right]]
+                source = df.select([*pair, self.target]).filter(
+                    pl.col(self.target).is_not_null()
+                )
+                plan = self._stage3_binner.transform(
+                    source.select(pair), features=pair, return_type="woe", lazy=True,
+                    woe_batch_size=self.batch_size,
+                )
+                narrow = plan.select([
+                    pl.col(f"{feature}_woe").fill_null(0.0).cast(pl.Float64)
+                    for feature in pair
+                ]).collect().to_numpy()
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    value = float(np.corrcoef(narrow, rowvar=False)[0, 1])
+                matrix[left, right] = matrix[right, left] = value
+                refined += 1
+        return refined
+
     def _filter_corr(self, df: pl.DataFrame, features: List[str]) -> List[str]:
         """仅在已表现样本上执行目标感知的 WOE 共线性惩罚计算。"""
         self._corr_candidates = list(features)
@@ -1435,25 +1520,23 @@ class MarsStatsSelector(MarsBaseSelector):
             raise ValueError("Selector target is unavailable for WOE correlation filtering.")
         if self._stage3_binner is None:
             raise ValueError("Selector binner is unavailable for WOE correlation filtering.")
+        if self.corr_thr is None:
+            return features
 
-        woe_cols = [f"{c}_woe" for c in features]
-        observed_df = df.filter(pl.col(self.target).is_not_null()).select(features)
-        df_woe = self._stage3_binner.transform(
-            observed_df,
-            features=features,
-            return_type="woe",
+        # 行块独立于特征批宽；限制当前块大小，完整 P² 中心矩和报告仍然保留。
+        row_block_size = min(4096, max(1, (8 * 1024 * 1024) // (8 * len(features))))
+        self._corr_matrix, observed_count = _blocked_pearson(
+            self._woe_row_blocks(df, features, row_block_size), len(features),
         )
-        corr_matrix_df = df_woe.select(woe_cols).fill_null(0.0).corr()
-        self._corr_matrix = corr_matrix_df.to_numpy()
+        refined = self._refine_threshold_pairs(df, features, self._corr_matrix, observed_count)
         self._corr_status = "computed"
         self._corr_parameters.update(
-            correlation_row_count=observed_df.height, cleaning_field_pool=list(features),
+            correlation_row_count=observed_count, cleaning_field_pool=list(features),
             woe_source="Stage 3 fitted binner", binning_fit_source=self._binning_fit_source,
             binning_params=self.binning_params if not self.skip_fine_scan else self.rough_binning_params,
-        )
-
-        corr_matrix_with_names = corr_matrix_df.with_columns(
-            feature_name=pl.Series(woe_cols)
+            algorithm="anchored Chan block central moments Float64",
+            row_block_size=row_block_size, feature_batch_size=self.batch_size,
+            threshold_refined_pairs=refined,
         )
 
         sorted_feats = sorted(
@@ -1479,20 +1562,18 @@ class MarsStatsSelector(MarsBaseSelector):
                                      self._feature_iv_dict.get(feat, 0.0), None)
             self._register_feature_decision(feat, "Selected", "Corr_Filter", "Independent", self._feature_iv_dict.get(feat, 0))
 
-            target_woe_name = f"{feat}_woe"
-            high_corr_row = corr_matrix_with_names.filter(pl.col("feature_name") == target_woe_name)
-
-            for other_feat_woe in woe_cols:
-                if other_feat_woe == target_woe_name:
+            row_index = features.index(feat)
+            for other_index, orig_f in enumerate(features):
+                if orig_f == feat:
                     continue
 
-                corr_val = abs(high_corr_row.get_column(other_feat_woe)[0])
+                signed = float(self._corr_matrix[row_index, other_index])
+                corr_val = abs(signed)
                 if corr_val > self.corr_thr:
-                    orig_f = other_feat_woe[:-4]
                     if orig_f not in dropped_features and not self._should_bypass_filter(orig_f):
                         dropped_features.add(orig_f)
                         self._record_correlation(orig_f, feat, "drop",
-                                                 float(high_corr_row.get_column(other_feat_woe)[0]),
+                                                 signed,
                                                  self._feature_iv_dict.get(orig_f, 0.0),
                                                  self._feature_iv_dict.get(feat, 0.0))
                         self._register_feature_decision(orig_f, "Dropped", "Corr_Filter", f"Correlated with '{feat}'", corr_val)

@@ -6,6 +6,14 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 修复旧 Polars 多 chunk 画像的 null/常量指标形状错误。PSI 直接使用专门统计流程，
+  不再先构造占位透视表；无分组或参考时继续保留 typed null、表目录和未计算状态。
+- 分箱 lazy 转换从执行计划开始，覆盖数值、类别 replace 和高基数 join。
+  fit 后及 selector benchmark 的 schema 校验不再物化整张样本分箱表；首次 WOE 仅准备请求特征。
+- selector 的既有列批宽贯通 Quality 和 Rough Performance。表现统计先投影再过滤和转换，
+  benchmark 分布在批内聚合。全局 WOE Pearson 按行块合并 Float64 中心矩，保留完整候选关系和决策。
+  完整 P² 报告仍有成本，真实 M12 容量尚未验收；详见 [验收记录](../performance/m12-upstream.md)。
+
 - 修复原生风险图在切换 DPI、重复保存和直接使用 SVG 后端时的摘要布局。
   新增的中文名和日期按本次 renderer 测得的文字边界排布，保留原字体、业务标题、统计和绘图区尺寸。
   特征名和目标名中的 `$`、反斜杠及公式片段按字面文字显示，测量时不再触发数学解析。

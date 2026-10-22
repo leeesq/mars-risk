@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, cast
 
 import polars as pl
@@ -17,6 +18,7 @@ from mars.compute import (
 )
 from mars.core.constants import METRIC_EPSILON
 from mars.feature import MarsNativeBinner
+from mars.reporting._metadata import _null_group_label
 
 MAX_PSI_GROUPS = 1000
 INTERNAL_PSI_GROUP_COL = "_mars_profile_psi_group"
@@ -65,6 +67,16 @@ def get_psi_trend(
             raise ValueError(
                 f"PSI baseline selection failed for group_col='{context.group_col}'."
             ) from exc
+
+    # null 组须先获得不与真实文字冲突的身份，避免统计 join 将 null 当作未匹配行。
+    # 基准组先按原始 dtype 选取，再转换标签，数值分组的最小值口径不变。
+    if context.group_col is not None:
+        null_label = _null_group_label(context.working_df[context.group_col].unique().to_list())
+        context = replace(context, working_df=context.working_df.with_columns(
+            pl.col(context.group_col).cast(pl.String).fill_null(null_label),
+        ))
+        if benchmark_df is None:
+            baseline_group = null_label if baseline_group is None else str(baseline_group)
 
     result_parts = _binned_psi_parts(
         context,
