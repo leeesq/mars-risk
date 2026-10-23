@@ -381,6 +381,60 @@ def test_baseline_accepts_same_contract_and_source_provenance_changes(tmp_path: 
     assert current["comparison"][0]["time_ratio"] == 1.0
 
 
+@pytest.mark.parametrize("change", [
+    "order", "threads", "architecture", "library", "api", "missing_threads",
+    "missing_architecture", "added", "removed", "duplicate",
+])
+def test_native_threadpool_enumeration_order_preserves_resource_contract(
+    tmp_path: Path, change: str,
+) -> None:
+    """重放 Linux 枚举换序；仅顺序可忽略，真实资源及重复库数量继续严格核验。"""
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture(tmp_path)
+    pools: list[dict[str, Any]] = [
+        {"internal_api": "openblas", "prefix": "libopenblas", "num_threads": 4,
+         "architecture": "SkylakeX"},
+        {"internal_api": "openmp", "prefix": "libgomp", "num_threads": 4,
+         "architecture": None},
+        {"internal_api": "openblas", "prefix": "libopenblas", "num_threads": 1,
+         "architecture": "Prescott"},
+        {"internal_api": "openblas", "prefix": "libscipy_openblas", "num_threads": 4,
+         "architecture": "SkylakeX"},
+        # 两条相同投影不能由 set/dict 去重，否则会隐藏已加载库的数量变化。
+        {"internal_api": "openblas", "prefix": "libopenblas", "num_threads": 4,
+         "architecture": "SkylakeX"},
+    ]
+    for round_ in [baseline["cases"][0]["warmup"], *baseline["cases"][0]["rounds"]]:
+        round_["effective_native_threadpools"] = deepcopy(pools)
+    current = deepcopy(baseline)
+    current["cases"][0]["warmup"]["effective_native_threadpools"] = pools[2:] + pools[:2]
+    changed = deepcopy(pools[::-1])
+    if change in {"threads", "architecture", "library", "api"}:
+        key = {"threads": "num_threads", "architecture": "architecture", "library": "prefix",
+               "api": "internal_api"}[change]
+        changed[0][key] = 8 if change == "threads" else "different"
+    elif change in {"missing_threads", "missing_architecture"}:
+        changed[0].pop("num_threads" if change == "missing_threads" else "architecture")
+    elif change in {"removed", "duplicate"}:
+        changed.pop(0 if change == "duplicate" else 1)
+    elif change == "added":
+        changed.append({"internal_api": "openmp", "prefix": "libomp", "num_threads": 4})
+    current["cases"][0]["rounds"][0]["effective_native_threadpools"] = changed
+    before = deepcopy(baseline)
+    runner._compare_baseline(baseline, current)
+    assert baseline == before
+    assert baseline["cases"][0]["rounds"][0]["effective_native_threadpools"] == pools
+    entries = current["comparison"]
+    assert all(entry["status"] == ("comparable" if change == "order" else "incomparable")
+               for entry in entries), entries
+    assert all(("time_ratio" in entry) == (change == "order") for entry in entries)
+    if change != "order":
+        current["parameters"]["comparison_purpose"] = "intentional native resource change"
+        runner._compare_baseline(baseline, current)
+        assert all(entry["status"] == "resource_strategy_comparison"
+                   for entry in current["comparison"])
+
+
 @pytest.mark.parametrize("change", ["diagnostics", "algorithm", "workload", "measurement", "dependency"])
 def test_baseline_rejects_different_effective_work_without_performance_ratios(change: str, tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")

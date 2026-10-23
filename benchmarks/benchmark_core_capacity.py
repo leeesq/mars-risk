@@ -825,9 +825,13 @@ def _comparison_state(round_: dict[str, Any]) -> dict[str, Any]:
         "resources": {
             "polars_threads": environment.get("polars_threads"),
             "threads_environment": environment.get("threads_environment"),
-            "native_threadpools": [{key: pool.get(key) for key in (
-                "internal_api", "prefix", "num_threads", "architecture",
-            )} for pool in round_.get("effective_native_threadpools", [])],
+            # 动态库枚举次序不是资源策略；按内容规范化，保留重复库及真实线程/架构差异。
+            "native_threadpools": sorted(
+                ({key: pool.get(key) for key in (
+                    "internal_api", "prefix", "num_threads", "architecture",
+                )} for pool in round_.get("effective_native_threadpools", [])),
+                key=lambda pool: json.dumps(pool, sort_keys=True),
+            ),
         },
         "consumer": consumer,
     }

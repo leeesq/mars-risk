@@ -472,3 +472,25 @@ CI 矩阵、constraints、包版本、原生图字体/布局、raw/binned KS 和
 
 验收完成后，用户另行授权提交并推送本轮修复。上文未提交、未推送的说明以验收截止时点为准；
 新提交的远端 CI 和 Docs 结果须另行核对，不沿用本机或旧提交的通过记录。
+
+### 推送后的 Linux CI 修正
+
+提交 `4068c7a` 的 [CI](https://github.com/leeesq/mars-risk/actions/runs/39883091497)
+在 Python 3.9 和 3.12 各失败两项容量闭环，Docs 成功。
+增加完整拒比诊断后的 [CI](https://github.com/leeesq/mars-risk/actions/runs/39885615864)
+确认失败来自 `native_threadpools` 枚举顺序，库集合、线程数与架构实际相同。
+Linux 的库加载枚举次序在不同 fresh worker 间变化，原比较误将列表位置当作资源策略。
+例如同一组 `libopenblas/SkylakeX/4`、`libgomp/4`、`libopenblas/Prescott/1` 和
+`libscipy_openblas/SkylakeX/4` 在各轮换序，导致拒比；这不是计算结果差异。
+
+现在仅对比较用的既有线程池字段投影按稳定内容排序，保留全部记录及重复次数，
+原始 `effective_native_threadpools` 仍原样保存。
+线程数、库身份/API、架构、库增减和重复数量变化继续触发原资源策略门，
+有明确对照目的时仍标为 `resource_strategy_comparison`。
+输入身份、实际工作量、表顺序、sidecar 完整性及数值容差均未改变。
+本次仅修改 benchmark、回归和说明，案例计算源码指纹未改变，无需重生成业务报告。
+
+修后完整容量回归在 Python 3.8 / Polars 1.8.2、Python 3.9 / Polars 1.36.1 和
+Python 3.12 / 隔离 Polars 1.44.2 各为 94 passed，均退出 0，无 skipped/deselected。
+其中新增 10 项锁定换序、线程数、库身份/API、架构、字段缺失、增减及重复库数量的边界。
+Ruff、diff check 和严格 MkDocs 构建通过；本机结果不代替后续新提交的远端结果。
