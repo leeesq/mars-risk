@@ -130,6 +130,8 @@ def profile_stats(
     多 chunk 输入无需先 rechunk；不适用的连续统计保留 typed null。
     无分组、时间和 benchmark 的 PSI 保留表与特征身份，并在 calculation_status
     中标记 ``not_computed/no_group_or_benchmark``。
+    有参考但当前样本为空时，PSI 仍校验 benchmark 结构，并标记
+    ``not_computed/empty_current_population``，不拟合分箱。
 
     Examples
     --------
@@ -329,7 +331,8 @@ class MarsDataProfiler(MarsBaseEstimator):
         缺失率等数据质量指标以样本总数为分母；均值、分位数等连续统计排除
         null、NaN、自定义缺失值和特殊值。
         多 chunk 输入保持原值和 chunk 结构，无需预先 rechunk；不适用的统计
-        保留 typed null。PSI 独立计算，无参考时保留表和特征身份，并记录未计算状态。
+        保留 typed null。PSI 独立计算，无参考或当前人口为空时保留表和特征身份，
+        并记录未计算原因；空当前人口仍校验 benchmark 结构，不拟合分箱。
 
         Examples
         --------
@@ -455,7 +458,7 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         if "psi" in selection.stat_metrics:
             # 无参考或无当前样本时显式保留 typed null；PSI 不经过通用聚合占位表。
-            if (context.group_col or benchmark_pl is not None) and context.working_df.height:
+            if context.group_col or benchmark_pl is not None:
                 stat_tables["psi"] = get_psi_trend(
                     context,
                     options,
@@ -536,6 +539,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         status = build_profile_status(
             context, overview_df, selection.stat_metrics, options.diagnostics,
             has_psi_reference=context.group_col is not None or benchmark_pl is not None,
+            psi_features=psi_features,
         )
         if status.height:
             report._calculation_status = self._format_output(status)

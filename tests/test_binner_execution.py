@@ -195,7 +195,8 @@ def test_performance_projects_before_filter_and_only_transforms_batch(
     def transform_guard(X: Any, **kwargs: Any) -> Any:
         active = kwargs.get("features")
         assert active is not None and len(active) <= batch_size
-        assert len(X.collect_schema()) <= batch_size
+        # 当前批只额外携带一列内部标签，标签必须在 Join 前绑定。
+        assert len(X.collect_schema()) <= batch_size + 1
         calls.append(active)
         return original_transform(X, **kwargs)
 

@@ -1,11 +1,11 @@
 {
   "case": 1,
-  "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+  "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
   "question": "全量数据与无标签组有哪些质量差异？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
     "report_type": "MarsProfileReport",
-    "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+    "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
     "format_version": 1,
     "feature_metadata": {
       "NAME_CONTRACT_TYPE": {
@@ -1080,7 +1080,7 @@
     "parameters": {
       "mars_version": "0.0.28",
       "polars_version": "1.42.0",
-      "generated_at_utc": "2026-10-22T15:04:08.748771+00:00",
+      "generated_at_utc": "2026-10-22T16:20:02.583139+00:00",
       "input_type": "polars",
       "row_count": 356255,
       "column_count": 124,
@@ -1455,7 +1455,7 @@
     {
       "question": "真实外部来源分覆盖率及字段单位",
       "reference": {
-        "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+        "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
         "table": "overview",
         "query": {
           "offset": 0,
@@ -1494,7 +1494,7 @@
     {
       "question": "五分区外部来源分缺失率",
       "reference": {
-        "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+        "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
         "table": "dq.missing",
         "query": {
           "offset": 0,
@@ -1539,7 +1539,7 @@
     {
       "question": "收入与原始就业天数的质量",
       "reference": {
-        "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+        "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
         "table": "overview",
         "query": {
           "offset": 0,

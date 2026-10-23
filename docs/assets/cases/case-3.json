@@ -1,10 +1,10 @@
 {
   "case": 3,
-  "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+  "report_id": "75f25023-6b2b-4bce-8e90-79853bd358c7",
   "question": "为什么删除一个真实字段，保留另一个？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+    "report_id": "75f25023-6b2b-4bce-8e90-79853bd358c7",
     "report_type": "correlation",
     "format_version": 1,
     "tables": {
@@ -465,7 +465,7 @@
     {
       "question": "真实数值相关性是否触发淘汰",
       "reference": {
-        "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+        "report_id": "75f25023-6b2b-4bce-8e90-79853bd358c7",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -647,7 +647,7 @@
     {
       "question": "实际最强原始字段关系",
       "reference": {
-        "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+        "report_id": "75f25023-6b2b-4bce-8e90-79853bd358c7",
         "table": "pairs",
         "query": {
           "offset": 0,
@@ -708,7 +708,7 @@
     {
       "question": "目标感知 WOE 空间的实际决策",
       "reference": {
-        "report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
+        "report_id": "f00949ab-116f-45d1-929a-0a4e9f01aefc",
         "table": "correlation_decisions",
         "query": {
           "offset": 0,
@@ -4330,7 +4330,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.0009341831341698193,
+        "value": 0.0009341831341698172,
         "description": ""
       },
       {
@@ -4717,7 +4717,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.0011068296145800734,
+        "value": 0.0011068296145800725,
         "description": ""
       },
       {
@@ -4726,7 +4726,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.00017072027669673347,
+        "value": 0.000170720276696734,
         "description": ""
       },
       {
@@ -4735,7 +4735,7 @@
         "status": "Selected",
         "stage": "Stability",
         "reason": "Stable PSI",
-        "value": 0.00018329983153023258,
+        "value": 0.0001832998315302324,
         "description": ""
       },
       {
@@ -4800,7 +4800,7 @@
       "REGION_RATING_CLIENT_W_CITY",
       "OBS_60_CNT_SOCIAL_CIRCLE"
     ],
-    "woe_report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
+    "woe_report_id": "f00949ab-116f-45d1-929a-0a4e9f01aefc",
     "raw_pairs": [
       {
         "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",

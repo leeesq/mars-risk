@@ -1,10 +1,10 @@
 {
   "case": 4,
-  "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+  "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
   "question": "两个外部来源分联合后，哪些区间有风险差异？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
-    "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+    "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
     "report_type": "score_cross",
     "format_version": 1,
     "tables": {
@@ -1165,7 +1165,7 @@
     {
       "question": "同一来源分 2 箱内的来源分 3 风险梯度",
       "reference": {
-        "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+        "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
         "table": "cells",
         "query": {
           "offset": 0,
@@ -1392,7 +1392,7 @@
     {
       "question": "来源分 2 边际风险包含缺失箱",
       "reference": {
-        "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+        "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
         "table": "row_summary",
         "query": {
           "offset": 0,
@@ -1588,7 +1588,7 @@
     {
       "question": "来源分 3 的边际风险",
       "reference": {
-        "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+        "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
         "table": "column_summary",
         "query": {
           "offset": 0,
@@ -1784,7 +1784,7 @@
     {
       "question": "无标签比赛测试的分布和未观测状态",
       "reference": {
-        "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+        "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
         "table": "cells",
         "query": {
           "offset": 0,
@@ -2009,7 +2009,7 @@
     {
       "question": "固定表达式与单来源分基线的聚合回放",
       "reference": {
-        "report_id": "aa5395b5-e6d0-4e41-a8ef-c04468cf0510",
+        "report_id": "57b305fa-d158-473e-9ccc-405fa9cbac53",
         "table": "changes",
         "query": {
           "offset": 0,
@@ -2341,7 +2341,7 @@
         }
       }
     },
-    "policy_report_id": "aa5395b5-e6d0-4e41-a8ef-c04468cf0510"
+    "policy_report_id": "57b305fa-d158-473e-9ccc-405fa9cbac53"
   },
   "unavailable": "外部来源分不是本例训练模型或校准违约概率；关联与历史留存回放不证明因果或利润。"
 }

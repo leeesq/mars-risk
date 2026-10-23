@@ -6,6 +6,7 @@ import argparse
 import gc
 import json
 import sys
+import time
 from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
@@ -121,21 +122,39 @@ def _selection_fixture(
 def _read_frozen_inputs(config_path: Path) -> tuple[Any, Any, list[str], dict[str, Any]]:
     """仅读取明确指定的 Arrow/Parquet；不推断候选、不重写值、dtype或监督标签。"""
     import polars as pl
+    from _capacity_evidence import _file_identity
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    identities: dict[str, Any] = {}
+    locations: dict[str, str] = {}
+    hash_seconds = 0.0
 
     def read(key: str) -> Any:
         """以配置文件为相对路径基准，不复制业务数据至仓库。"""
+        nonlocal hash_seconds
         location = config.get(key)
         if location is None:
             return None
         path = Path(location)
         path = path if path.is_absolute() else config_path.parent / path
-        if path.suffix.lower() == ".parquet":
-            return pl.read_parquet(path, rechunk=False)
-        if path.suffix.lower() in (".arrow", ".ipc", ".feather"):
-            return pl.read_ipc(path, rechunk=False)
-        raise ValueError(f"{key} must identify a .parquet/.arrow/.ipc/.feather frozen table")
+        reader = "read_parquet" if path.suffix.lower() == ".parquet" else "read_ipc"
+        if path.suffix.lower() not in (".parquet", ".arrow", ".ipc", ".feather"):
+            raise ValueError(f"{key} must identify a .parquet/.arrow/.ipc/.feather frozen table")
+        before_stat = path.stat()
+        start = time.perf_counter()
+        before = _file_identity(path)
+        hash_seconds += time.perf_counter() - start
+        result = getattr(pl, reader)(path, rechunk=False)
+        start = time.perf_counter()
+        after = _file_identity(path)
+        hash_seconds += time.perf_counter() - start
+        after_stat = path.stat()
+        if before != after or any(getattr(before_stat, field) != getattr(after_stat, field)
+                                  for field in ("st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")):
+            raise ValueError(f"Frozen file changed while being read: {path}")
+        identities[key] = {**after, "reader": reader, "rechunk": False}
+        locations[key] = str(path.resolve())
+        return result
 
     features = config.get("features")
     if not isinstance(features, list) or not features or not all(isinstance(f, str) for f in features):
@@ -156,6 +175,9 @@ def _read_frozen_inputs(config_path: Path) -> tuple[Any, Any, list[str], dict[st
         ).item()
         if invalid:
             raise ValueError("non-supervision population has non-null target; frozen input rejected")
+    config["_input_files"] = locations
+    config["_input_hash_seconds"] = hash_seconds
+    config["_input_identity"] = {"kind": "frozen-file-content-v1", "files": identities}
     return frame, benchmark, features, config
 
 
@@ -177,7 +199,8 @@ def _frame_observation(frame: Any, features: list[str], target: str | None) -> d
 def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
     """在一个 worker 连续测量真实公开调用；观察包装不改变任何生产计算。"""
     import polars as pl
-    from benchmark_core_capacity import _execution_parameters, _signature
+    from _capacity_evidence import _save_evidence
+    from benchmark_core_capacity import ROOT, _execution_parameters, _signature
 
     from mars.analysis import MarsBinEvaluator, MarsDataProfiler
     from mars.feature import MarsStatsSelector
@@ -212,6 +235,18 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
         "benchmark": _frame_observation(benchmark, features, target if target in benchmark.columns else None)
         if benchmark is not None else None,
     }
+    meter.result["input_files"] = config.get("_input_files", {})
+    meter.result["input_identity_seconds"] = config.get("_input_hash_seconds", 0.0)
+    input_identity = config.get("_input_identity", {
+        "kind": "synthetic-fixture", "fixture_version": WORKLOAD_CONTRACT,
+        "seed": args.seed, "generation": _execution_parameters(dimensions)[0],
+    })
+    input_identity = {**input_identity, "feature_order": features, "backend": args.backend,
+                      "roles": roles, "target": target,
+                      "supervision_group": config.get("supervision_group", "Train" if not config else None)}
+    feature_positions = {feature: index for index, feature in enumerate(features)}
+    business_stages = {"quality", "rough", "fine", "stability_psi_rc", "psi", "rc", "woe_global_correlation"}
+    candidate_events: list[dict[str, Any]] = []
     transformations: dict[str, dict[str, Any]] = {}
     stages: list[dict[str, Any]] = []
     active_stages: list[str] = []
@@ -258,6 +293,12 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
             if isinstance(result, list):
                 context["candidate_count_out"] = len(result)
             stages.append({"stage": name, **context})
+            if name in business_stages:
+                candidate_events.append({
+                    "stage": name,
+                    "input": [feature_positions[f] for f in candidates] if candidates is not None else None,
+                    "output": [feature_positions[f] for f in result] if isinstance(result, list) else None,
+                })
             return result
         return observed
 
@@ -294,6 +335,7 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
             for method, stage in (
                 ("_filter_quality", "quality"), ("_filter_rough", "rough"),
                 ("_filter_fine", "fine"), ("_get_stability_report", "stability_psi_rc"),
+                ("_filter_psi", "psi"), ("_filter_rc", "rc"),
                 ("_filter_corr", "woe_global_correlation"),
                 ("_validate_benchmark_bins", "benchmark_schema_validation"),
                 ("_finish_correlation", "report_freeze"),
@@ -331,6 +373,7 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
             "funnel": selector._funnel_stats, "candidate_count": len(selector._corr_candidates),
             "selected_order": selector.selected_features_, "correlation_status": selector._corr_status,
             "correlation_parameters": selector._corr_parameters,
+            "candidate_order": selector._corr_candidates,
         }
         if args.case == "selection_survivors":
             assert len(selector._corr_candidates) >= len(features) * 0.8
@@ -338,14 +381,15 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
     meter.result["tables"] = meter.run("report_table_signatures", lambda: {
         name: _signature(report.get_table(name)) for name in report.describe()["tables"]
     })
-    with TemporaryDirectory(prefix="mars-staged-capacity-") as temporary:
-        snapshot = Path(temporary) / "analysis.marsreport"
-        meter.run("report_save", lambda: report.save(snapshot, overwrite=True))
-        meter.result["snapshot_bytes"] = snapshot.stat().st_size
+    meter.result["semantic_evidence"] = _save_evidence(
+        report, getattr(args, "evidence_dir", ROOT / ".artifacts"), meter, "report_save",
+    )
+    meter.result["snapshot_bytes"] = meter.result["semantic_evidence"]["bytes"]
     # 明确测量既定 clear_cache 入口；不在每批 gc，不删可复用规则和报告。
     if selector is not None:
         meter.run("cache_release", selector.clear_cache)
-    algorithms, resources = _execution_parameters(parameters)
+    effective_parameters = tool.get_params(deep=False) if hasattr(tool, "get_params") else parameters
+    algorithms, resources = _execution_parameters(effective_parameters)
     call_key = "profile_call_parameters" if is_profile else "risk_call_parameters" if is_risk else "selector_call_parameters"
     call_algorithms, call_resources = _execution_parameters(config.get(call_key, {}))
     resources.update({f"call.{key}": value for key, value in call_resources.items()})
@@ -356,6 +400,13 @@ def _run_staged_analysis(args: argparse.Namespace, meter: Any) -> None:
         "algorithm_parameters": {"estimator": algorithms, "roles": roles, "target": target,
                                  "call": call_algorithms},
         "resource_strategy": resources, "diagnostics": {"continuous_single_public_call": True},
+        "input_identity": input_identity,
+        "actual_work": {"stage_candidates": candidate_events,
+                        "correlation_candidates": [feature_positions[f] for f in selector._corr_candidates]
+                        if selector is not None else [],
+                        "selected": [feature_positions[f] for f in selector.selected_features_]
+                        if selector is not None else [],
+                        "correlation_status": selector._corr_status if selector is not None else "not_applicable"},
     }
     meter.result.update(status="passed", stage="complete")
 
@@ -734,7 +785,9 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
     import numpy as np
     import pandas as pd
     import polars as pl
+    from _capacity_evidence import _save_evidence, _semantic_description
     from benchmark_core_capacity import (
+        ROOT,
         _execution_parameters,
         _launch,
         _signature,
@@ -1244,7 +1297,23 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
             "algorithm_parameters": algorithm,
             "diagnostics": diagnostics,
             "resource_strategy": {**resources, **workload_resources},
+            "input_identity": {
+                "kind": "synthetic-fixture", "fixture_version": WORKLOAD_CONTRACT,
+                "case": case, "seed": args.seed, "generation": effective_workload,
+                "feature_order": features,
+            },
+            "actual_work": {
+                "feature_order": features,
+                "correlation_candidates": description["parameters"].get("candidate_scope", []),
+                "selected": meter.result.get("selection", {}).get("selected_order", []),
+                "calculation_status": description["parameters"].get("status"),
+                "funnel": meter.result.get("selection", {}).get("funnel", []),
+            },
         }
+        # 报告实现说明不能把相同业务合同误判成不同算法；仅应用有限白名单。
+        meter.result["execution_contract"]["algorithm_parameters"]["report"] = (
+            _semantic_description(description)["parameters"]
+        )
         signatures = meter.run(
             "table_correctness",
             lambda: {name: _signature(report.get_table(name)) for name in description["tables"]},
@@ -1261,8 +1330,10 @@ def run_case(args: argparse.Namespace, meter: Any) -> None:
         }
         page = meter.run("query_page", lambda: report.query_page(table, **query))
         assert page["returned_rows"] > 0
-        path = folder / "report.marsreport"
-        meter.run("save", lambda: report.save(path))
+        meter.result["semantic_evidence"] = _save_evidence(
+            report, getattr(args, "evidence_dir", ROOT / ".artifacts"), meter, "save",
+        )
+        path = Path(meter.result["semantic_evidence"]["path"])
         meter.result["file_bytes"] = path.stat().st_size
         ai_query = {**query, "offset": 0, "limit": 20}
         config: dict[str, Any] = {

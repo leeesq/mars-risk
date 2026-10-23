@@ -4,6 +4,9 @@ description: M12 宽表暴露的上游缺陷、旧环境回归、连续阶段容
 
 # M12 宽表上游修复验收
 
+本页保留上一轮内存改造的原始测量和限制。
+2026 年 10 月 23 日独立验收后的修补与复测另记在文末；历史计数和容量数字不代表本轮结果。
+
 本轮在 Windows 当前工作区修改 MARS，未运行 M12 Agent、预测模型训练或 Runtime 恢复流程。
 真实 M12 的 257,997 行风险画像和 297,440 行 selector 容量均未运行。
 仓库中的 Home Credit 公开案例为另一份 119 候选输入，不能替代 1,111 候选验收。
@@ -293,3 +296,179 @@ peak footprint 为 34,313,599,264 bytes，两个口径不同。最近失败位�
 真实 1,111 特征完整风险画像和 selector 尚未跑通本轮独立验收，70 批外层拼报告及 Runtime 适配的
 整体撤除仍需另行验证。Runtime Snapshot/Registry/审批/预算/身份/恢复策略、冷恢复 IPC hash 和
 准备报告未持久化造成的重算均未修改，不能列为 MARS 已修复。
+
+## 2026 年 10 月 23 日独立验收修补
+
+本次起点为 `main` 的 `ff0a0fd2251215bfd8e788b58dcde052ed866a2a`，工作树干净。
+未发现适用的 `AGENTS.md`。本节记录当前未提交修改，包版本仍为 0.0.28。
+以上历史容量与回归记录保持原样，不能自动升级为本次新比较合同的验收证据。
+
+已只读核对该提交的[远端 CI](https://github.com/leeesq/mars-risk/actions/runs/39807098259)：
+3.9 和 3.11 的 WOE 用例失败，3.10 和 3.12 取消；
+[Docs](https://github.com/leeesq/mars-risk/actions/runs/39807098257) 构建、部署成功。
+用户提供的 1235 passed、1234 passed / 1 failed、1333 passed / 1 failed 只属于该次远端任务。
+本次未推送，不能宣称修后远端 CI 全绿。
+
+### Join 行序和监督标签
+
+现代 Polars streaming Hash Join 可以重排左表。原表现统计在 Join 后按外部 Series 的位置挂标签，
+同时改变了数值特征和类别特征的逐箱坏样本数。普通 collect 或单线程可能掩盖错误。
+`mars._compat._left_join_preserving_order` 按实际 Join 签名使用 `maintain_order="left"`；
+没有该参数的旧 Polars 使用内部行身份恢复左表行序。数值、Replace 和多个 Join 路径均保序。
+无需唯一业务 ID，完全重复行仍保留原位置和行数。
+
+`MarsBinnerBase.profile_bin_performance` 先投影本批特征，再绑定已规范化标签，
+随后按该标签过滤已观测人口、转换并聚合。新增成本为本批一列标签，不复制全宽已观测表。
+临时列名统一避让原字段、请求特征、派生列和已有内部列，并在输出前清理。
+`MarsStatsSelector._woe_row_blocks` 和临界 pair 复核使用项目真实 streaming 入口；
+各列批在同一已观测行序上写入 NumPy 行块。全局 Float64 Pearson、严格 `>` 阈值、IV/ID 优先级、
+白名单、事件顺序及最终候选原序保持原合同。
+
+Python 3.12.13 / Polars 1.42.0、导入前线程 4 的独立修前重放中，
+Join 重排 68/70 个已观测位置，按位置挂载外部标签有 38/70 个错配；标签随样本携带时为 0。
+修后重排和错配均为 0。下表按 bin_index 展示同一数值特征；修后 Join 与 Replace 完全一致。
+
+| bin_index | count（两版相同） | 修前 Join bad | 修后 bad | 修前 Join WOE | 修后 WOE |
+| --- | --- | --- | --- | --- | --- |
+| -3 | 10 | 6 | 10 | 0.117782 | 12.429220 |
+| -1 | 10 | 5 | 0 | -0.287680 | -12.716901 |
+| 0 | 10 | 6 | 0 | 0.117782 | -12.716901 |
+| 1 | 10 | 5 | 10 | -0.287680 | 12.429220 |
+| 2 | 10 | 5 | 0 | -0.287680 | -12.716901 |
+| 3 | 20 | 13 | 20 | 0.331356 | 13.122365 |
+
+IV 从错误的约 0.070260 恢复为 Replace 参考的约 25.492693。
+Hash Join 的错误排列不保证每次相同，这些数字只描述已保存的这一轮重放。
+原远端失败用例保留；未改变期望 WOE、数值容差或最终统计表排序来消除失败。
+详细修前/后记录为本机 `.artifacts/p01-streaming-evidence.json`。
+
+### 空 PSI 的校验和状态
+
+原画像入口按当前表 height 跳过整个 PSI 流程，也跳过了 benchmark 结构校验。
+现在由 `get_psi_trend` 在空人口早返之前校验既有 active feature 范围；缺特征、类型不兼容和
+空 benchmark 均保留原 `ValueError` 与说明，不要求基准携带当前 group/time 角色。
+空当前人口不拟合分箱；结构合法的全 null 基准也不会触发无用拟合。
+
+有 group、time 或合法 benchmark 的空人口返回 Float64 typed null，具体 PSI 状态行为
+`not_computed / empty_current_population`。没有任何参考时继续使用
+`not_computed / no_group_or_benchmark`。零候选不生成虚构特征。
+身份、原 dtype、中文名、来源、单位和列序保持；其他指标状态和诊断继续保留。
+状态可经目录、查询、AI 上下文、Notebook、HTML 以及保存后新进程加载读取。
+修前/后小证据为 `.artifacts/p02-empty-psi-{before,after}.json`。
+
+### 容量比较的自动门
+
+`benchmark_core_workloads.py` 为 frozen current 和 benchmark 各做读前/读后 1 MiB 分块 SHA256，
+并检查读入期间文件属性是否改变。记录算法、大小、实际路径和 reader/rechunk 配置；
+路径只作本机溯源，相同字节复制到其他目录仍可比较。
+合同绑定完整特征顺序、角色、业务参数、监督范围；合成场景绑定 fixture 版本、seed 与有效生成参数。
+源码 SHA 仅作溯源，不作为同业务实现的拒比依据。
+
+候选用完整特征表中的整数位置记录，覆盖 Quality、Rough、Fine、Stability、PSI、RC 和全局 Corr
+的实际去向、corr 候选原序、最终名单原序及计算状态。至少 80% 进入 corr 仍只是规模 guard。
+200→161、最终 198→159，同数量但字段或顺序不同，以及任一预热/正式轮漂移，均不得输出普通比例。
+
+新增单个私有 `_capacity_evidence.py`，复用既有 ReportSnapshot 保存聚合语义证据。
+每个预热和正式轮保留一个有大小边界的私有 `.marsreport`，先校验完整性、报告身份及本轮表签名，
+再对照完整目录、逻辑 schema、行序、null、非浮点值、名单、动作、触发特征、保护状态与事件顺序。
+有限浮点指标和决策系数采用 `atol=rtol=1e-12`；null、NaN、正负无穷分别核验。
+阈值严格相等，容差不重做业务判定。约 `1e-15` 的相关系数差可以通过，WOE 12→0.1 必须拒绝。
+仅排除已登记的报告身份和实现参数，以及画像报告自身的生成时间；未知元数据差异继续拒绝。
+
+sidecar 默认位于已有忽略目录 `.artifacts`，可用 `--evidence-dir` 指定本机位置。
+独占创建唯一文件名，失败清理本轮文件，重复执行不覆盖旧结果。后续比较必须保留 JSON 引用的快照；
+缺身份、缺文件、损坏或语义证据不足的旧 JSON 明确为 incomparable，不补造历史身份或验收结论。
+真实业务报告只留本机忽略目录，不提交或上传。
+
+整个公开调用、生产必要的完整报告构造仍在一个 fresh worker 连续计量。
+输入身份、报告签名/保存/完整性与 baseline 语义校验分别记录时间，不计入 public_compute。
+资源策略有目的的比较保留既有规则，业务工作变化仍然拒比。
+历史 39.7% / 30.6% 是上一轮人工复核的中型观察，没有被新门追认或推翻。
+如需新的实现 A/B，必须用同一修正 harness 在两侧重新生成 baseline/current。
+
+### 本次验证范围
+
+`tests/test_binner_streaming.py` 每项启动新解释器，并在首次导入 Polars 前设置线程 1 或 4，
+断言真实线程池大小。每组覆盖 eager、普通 collect、项目 collect_streaming、两个类别 Join、
+19 特征和列批 1/16/100、非等长多 chunk、重复行、未表现标签、Missing/Special/Other、未知类别、
+独立逐行计数和 Replace 数值参考、完整 dense WOE 矩阵、pairs、decisions、名单、cache/refit，
+以及正式规则和报告保存后新进程加载查询。五组各 2 passed，均退出 0，无跳过：
+
+| Python | Polars | Pandas | 新线程/引擎测试 |
+| --- | --- | --- | --- |
+| 3.8.20 | 1.8.2 | 2.0.3 | 2 passed |
+| 3.9.20 | 1.36.1 | 2.3.3 | 2 passed |
+| 3.10.19 | 1.37.1 | 2.3.3 | 2 passed |
+| 3.11.15 | 1.42.0 | 3.0.3 | 2 passed |
+| 3.12.13 | 1.42.0 | 3.0.3 | 2 passed |
+
+这些均为本机 Windows 实测；未运行 Polars 1.44.2 或 Linux/macOS 矩阵。
+既有 Python 3.8～3.12 CI 和 frozen constraints 未改变，未把 CI 全部任务改为单线程。
+空 PSI 新增 83 项在 Python 3.8 / Polars 1.8.2 通过；现代画像关联组共 151 passed，均正常退出 0。
+早期测试曾因旧 Categorical dtype 显示和子进程误导入旧安装包失败，最终测试显式使用当前 src。
+沙箱内报告 hardlink 保存另曾触发 WinError 5；首次失败未计为通过，受影响检查随后在获准的限制外执行。
+
+公开 Home Credit 三份原始 CSV 可用，已用正式生成器重算 all，随后 consume、finalize。
+11 份快照的 80 张表、10,138 行通过正式语义对照，最大浮点绝对差为 `2.7755575615628914e-17`。
+两张原生 PNG 逐字节相同；SVG 为正式重新导出，图形布局和字体代码未修改。
+这份公开输入是 356,255 行、119 候选，不能替代真实 M12 的 1,111 候选容量验收。
+本次没有取得 M12 冻结 Prepared/manifest，未运行真实 257,997 风险画像或 297,440 selector，
+未启动 Runtime/Agent、训练预测模型、改业务输入、改包版本、提交、推送、发布或部署。
+
+本次 fresh-worker smoke 包含 survivors 与 frozen_profile 各自的 baseline/current、预热/正式轮，
+验证保存 JSON 后的下一次命令能读取保留 sidecar。另用同一个新 harness 在 `c937fbf` 旧 dense
+源码和当前源码各生成一个独立 survivors smoke worker，二者均 passed、退出 0；
+输入、执行、资源合同和阶段集合一致，完整 Report 内容核验通过。
+这些 smoke 只证明比较门可用，没有重新测量或替代前文中型容量比例。
+
+正式命令使用各环境的实际解释器，并在启动前设置当前源码路径及 UTF-8。
+完整基础套件的 `--ignore` 只排除本机历史生成的 benchmark 产物，没有跳过正式 tests：
+
+```powershell
+$env:PYTHONPATH = (Join-Path $PWD 'src')
+$env:PYTHONUTF8 = '1'
+$env:POLARS_MAX_THREADS = '4'
+python -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/acceptance-full
+python -m pytest -q tests/test_binner_streaming.py tests/test_binner_execution.py tests/test_analysis_batching.py tests/test_stats_blocked_correlation.py tests/test_profile_empty_psi.py tests/test_core_capacity_benchmark.py
+python -m ruff check src tests scripts benchmarks docs/snippets
+python -m mypy src/mars
+pydoclint src/mars
+python scripts/check_private_docstrings.py src/mars
+python -m mkdocs build --strict --site-dir .artifacts/acceptance-site
+python scripts/check_case_assets.py --mode public --site-dir .artifacts/acceptance-site
+git diff --check
+```
+
+独立线程测试仍在其子进程内分别覆盖 1 和 4，不以父进程的线程值冒充两个环境。
+案例正式流程为 `task_cases.py --phase compute --case all`、`--phase consume` 和 `--phase finalize`；
+先在忽略目录完整生成并对照，再同步正式报告、manifest、ZIP 和下载资源，共更新 59 份生成文件。
+公开 checker 通过 72 files、11 snapshots、seven cases；文档/案例回归为 100 passed、2 deselected，退出 0。
+Ruff、Mypy（159 source files）、公共/私有 docstring 检查和 diff check 均通过。
+私有 checker 的简单 helper 提示、外部依赖弃用及既有字体 warning 未屏蔽。
+
+源码与测试冻结后，完整基础套件结果如下，failed 均为 0，进程退出码均为 0：
+
+| 环境 | passed | skipped | deselected | 秒 |
+| --- | --- | --- | --- | --- |
+| Python 3.8.20 / Polars 1.8.2 / Pandas 2.0.3 | 1361 | 13 | 7 | 436.48 |
+| Python 3.12.13 / Polars 1.42.0 / Pandas 3.0.3 | 1460 | 3 | 7 | 503.14 |
+
+日志分别为 `.artifacts/acceptance-full38-frozen.txt` 和 `.artifacts/acceptance-full312-final.txt`。
+7 deselected 来自既定 `not docs_ml and not optional_ml` 范围；skipped 保留实际报告，未计作通过。
+最初旧环境整套为 1306 passed、12 failed、13 skipped、7 deselected，退出 1，
+12 项均为新增测试对旧 Categorical 字符串的错误假设。该日志仍保留在
+`.artifacts/acceptance-full38.txt`，不与最终结果合并计数。
+
+最终容量文件在 Python 3.8 / Polars 1.8.2 和 Python 3.9 / Polars 1.36.1 各 84 passed，
+无 skipped/deselected，退出 0；包含两个真实多 worker A/B 闭环及本轮自身表签名校验。
+Python 3.11.15 / Polars 1.42.0 / Pandas 3.0.3 的分箱、列批、全局相关性、空 PSI 和容量
+关联组为 241 passed，退出 0，日志 `.artifacts/acceptance-target311-final.txt`。
+Python 3.9 和 3.10 的原分箱/列批/相关性/兼容定向组各 80 passed，退出 0。
+本次未在 3.9、3.10、3.11 重跑完整基础套件，不以这些定向结果冒充整套或远端 CI。
+
+交付时仍为 `main`，HEAD 未变化。工作区共有 75 个变更文件，
+其中 59 个为正式生成的案例资源，16 个为实现、测试和文档；3 个新文件尚未跟踪。
+CI 矩阵、constraints、包版本、原生图字体/布局、raw/binned KS 和 Excel 模板均未修改。
+
+验收完成后，用户另行授权提交并推送本轮修复。上文未提交、未推送的说明以验收截止时点为准；
+新提交的远端 CI 和 Docs 结果须另行核对，不沿用本机或旧提交的通过记录。

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from copy import deepcopy
@@ -20,6 +21,8 @@ import pytest
 
 def _module(name: str) -> Any:
     path = Path(__file__).resolve().parents[1] / "benchmarks" / f"{name}.py"
+    if str(path.parent) not in sys.path:
+        sys.path.insert(0, str(path.parent))
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -263,7 +266,7 @@ def test_dependency_state_distinguishes_missing_broken_and_imported(
 
 
 def test_linear_diagnostics_record_actual_work_and_reject_optional_branch_change(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     import mars.feature.selection.linear as linear
 
@@ -285,7 +288,7 @@ def test_linear_diagnostics_record_actual_work_and_reject_optional_branch_change
     assert skipped["vif"]["rows"] == skipped["logit"]["rows"] == 0
     if selector._linear_diagnostics_available:
         runner = _module("benchmark_core_capacity")
-        baseline, current = _comparison_fixture(), _comparison_fixture()
+        baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
         for payload, diagnostics in ((baseline, actual), (current, skipped)):
             for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
                 round_["execution_contract"]["diagnostics"] = diagnostics
@@ -294,19 +297,51 @@ def test_linear_diagnostics_record_actual_work_and_reject_optional_branch_change
         assert "time_ratio" not in current["comparison"][0]
 
 
-def _comparison_fixture() -> dict[str, Any]:
+def _test_evidence(
+    tmp_path: Path, frame: pl.DataFrame | None = None,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """使用真实 Report 文件支持容量门单测，证据始终由临时目录清理。"""
+    from mars.reporting._result import _result_report
+
+    evidence = _module("_capacity_evidence")
+    runner = _module("benchmark_core_capacity")
+    if frame is None:
+        frame = pl.DataFrame({"feature": ["a", "b"], "correlation": [0.7, -0.3],
+                              "woe": [12.0, -13.0], "status": ["computed"] * 2})
+    report = _result_report("capacity-test", {"overview": frame},
+                            parameters or {"corr_thr": 0.8}, ["a", "b"], None, None)
+    saved = evidence._save_evidence(
+        report, tmp_path, runner.Measurement(tmp_path / "evidence-meter.json"), "save",
+    )
+    saved["table_signatures"] = {"overview": runner._signature(report.get_table("overview"))}
+    return saved
+
+
+def _set_test_evidence(round_: dict[str, Any], evidence: dict[str, Any]) -> None:
+    """同步真实单轮签名；跨轮仍允许真实浮点舍入差异。"""
+    round_["semantic_evidence"] = evidence
+    round_["tables"] = evidence["table_signatures"]
+
+
+def _comparison_fixture(tmp_path: Path) -> dict[str, Any]:
     """构造含真实比较合同的有限轮次，不改动系统可选依赖。"""
     contract = {
         "workload_id": "linear-selection-v1",
+        "input_identity": {"kind": "synthetic-fixture", "fixture_version": "test-v1", "seed": 42, "generation": {"rows": 400}, "feature_order": ["a", "b"]},
+        "actual_work": {"stage_candidates": [{"stage": "quality", "input": [0, 1], "output": [0, 1]}], "correlation_candidates": [0, 1], "selected": [0, 1], "correlation_status": "computed"},
         "workload": {"rows": 400, "features": 8, "seed": 42},
         "algorithm_parameters": {"corr_method": "spearman", "corr_thr": 0.8},
         "diagnostics": {"vif": {"status": "executed", "rows": 8}},
         "resource_strategy": {"batch_size": 50, "n_jobs": 4},
     }
+    evidence = _test_evidence(tmp_path)
     round_ = {
         "status": "passed",
         "stage": "complete",
         "execution_contract": contract,
+        "semantic_evidence": evidence,
+        "tables": evidence["table_signatures"],
         "environment": {
             "python": "controlled interpreter",
             "platform": "controlled platform",
@@ -335,9 +370,9 @@ def _comparison_fixture() -> dict[str, Any]:
     }
 
 
-def test_baseline_accepts_same_contract_and_source_provenance_changes() -> None:
+def test_baseline_accepts_same_contract_and_source_provenance_changes(tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")
-    baseline = _comparison_fixture()
+    baseline = _comparison_fixture(tmp_path)
     current = deepcopy(baseline)
     for round_ in [current["cases"][0]["warmup"], *current["cases"][0]["rounds"]]:
         round_["environment"]["source_python_sha256"] = "after"
@@ -347,9 +382,9 @@ def test_baseline_accepts_same_contract_and_source_provenance_changes() -> None:
 
 
 @pytest.mark.parametrize("change", ["diagnostics", "algorithm", "workload", "measurement", "dependency"])
-def test_baseline_rejects_different_effective_work_without_performance_ratios(change: str) -> None:
+def test_baseline_rejects_different_effective_work_without_performance_ratios(change: str, tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")
-    baseline = _comparison_fixture()
+    baseline = _comparison_fixture(tmp_path)
     current = deepcopy(baseline)
     for round_ in [current["cases"][0]["warmup"], *current["cases"][0]["rounds"]]:
         contract = round_["execution_contract"]
@@ -370,34 +405,34 @@ def test_baseline_rejects_different_effective_work_without_performance_ratios(ch
     assert "time_ratio" not in comparison and "review_trigger" not in comparison
 
 
-def test_baseline_missing_historical_contract_is_explicitly_incomparable() -> None:
+def test_baseline_missing_historical_contract_is_explicitly_incomparable(tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")
-    baseline = _comparison_fixture()
+    baseline = _comparison_fixture(tmp_path)
     del baseline["measurement_contract"]
-    current = _comparison_fixture()
+    current = _comparison_fixture(tmp_path)
     runner._compare_baseline(baseline, current)
     assert current["comparison"][0]["status"] == "incomparable"
     assert "measurement" in " ".join(current["comparison"][0]["reasons"])
 
 
-def test_baseline_refuses_incomplete_cold_consumer_contract_and_changed_dimensions() -> None:
+def test_baseline_refuses_incomplete_cold_consumer_contract_and_changed_dimensions(tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")
-    baseline, current = _comparison_fixture(), _comparison_fixture()
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
     for payload in (baseline, current):
         for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
             round_["consumer"] = {"status": "passed"}
     runner._compare_baseline(baseline, current)
     assert current["comparison"][0]["status"] == "incomparable"
-    baseline, current = _comparison_fixture(), _comparison_fixture()
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
     current["cases"][0]["workload"]["rows"] = 800
     runner._compare_baseline(baseline, current)
     assert current["comparison"][0]["status"] == "incomparable"
     assert "case.workload.rows" in " ".join(current["comparison"][0]["reasons"])
 
 
-def test_baseline_distinguishes_execution_failure_and_resource_strategy_comparison() -> None:
+def test_baseline_distinguishes_execution_failure_and_resource_strategy_comparison(tmp_path: Path) -> None:
     runner = _module("benchmark_core_capacity")
-    baseline = _comparison_fixture()
+    baseline = _comparison_fixture(tmp_path)
     failed = deepcopy(baseline)
     failed["cases"][0]["status"] = "failed"
     runner._compare_baseline(baseline, failed)
@@ -748,6 +783,7 @@ def test_frozen_cases_execute_one_public_call_in_fresh_worker(tmp_path: Path, ca
         sys.executable, str(runner), "--worker", "--case", case,
         "--backend", "polars", "--threads", "1", "--n-jobs", "1", "--batch-size", "2",
         "--input-config", str(config), "--output", str(output),
+        "--evidence-dir", str(tmp_path),
     ], capture_output=True, text=True, check=False)
     result = json.loads(output.read_text(encoding="utf-8"))
     assert completed.returncode == 0, result.get("traceback", completed.stderr)
@@ -757,3 +793,296 @@ def test_frozen_cases_execute_one_public_call_in_fresh_worker(tmp_path: Path, ca
     assert "public_compute" in result["stages"] and "report_save" in result["stages"]
     assert result["environment"]["polars_threads"] == 1
     assert input_path.read_bytes() == input_bytes
+
+
+@pytest.mark.parametrize("change", ["input", "benchmark", "feature_order"])
+def test_frozen_content_and_full_feature_order_are_comparison_identity(
+    tmp_path: Path, change: str,
+) -> None:
+    """形状/dtype/监督人数不变时，当前数据、基准或完整列序变化仍拒比。"""
+    fixtures, runner = _module("benchmark_core_workloads"), _module("benchmark_core_capacity")
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
+    frame = pl.DataFrame({"a": [1.0, 2.0], "b": [3.0, 4.0], "bad": [0, 1]})
+    identities: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
+    for side in ("before", "after"):
+        folder = tmp_path / side
+        folder.mkdir()
+        data = frame.with_columns(pl.col("a") + 1) if side == "after" and change == "input" else frame
+        reference = frame.with_columns(pl.col("b") - 1) if side == "after" and change == "benchmark" else frame
+        data.write_parquet(folder / "input.parquet")
+        reference.write_parquet(folder / "benchmark.parquet")
+        config = {"input_path": "input.parquet", "benchmark_path": "benchmark.parquet",
+                  "features": ["b", "a"] if side == "after" and change == "feature_order" else ["a", "b"]}
+        config_path = folder / "input.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        actual, _, features, read = fixtures._read_frozen_inputs(config_path)
+        observations.append(fixtures._frame_observation(actual, features, "bad"))
+        identities.append({**read["_input_identity"], "feature_order": features})
+    assert observations[0] == observations[1]
+    for payload, identity in zip((baseline, current), identities):
+        for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
+            round_["execution_contract"]["input_identity"] = identity
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    assert "input_identity" in " ".join(current["comparison"][0]["reasons"])
+    assert "time_ratio" not in current["comparison"][0]
+
+
+def test_frozen_reader_rejects_file_change_during_decode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """读前后重新流式哈希，不复用路径或缓存来掩盖文件真实变化。"""
+    fixtures = _module("benchmark_core_workloads")
+    path = tmp_path / "input.parquet"
+    frame = pl.DataFrame({"a": [1.0, 2.0]})
+    frame.write_parquet(path)
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"input_path": path.name, "features": ["a"]}), encoding="utf-8")
+    original = pl.read_parquet
+
+    def changed(*args: Any, **kwargs: Any) -> pl.DataFrame:
+        result = original(*args, **kwargs)
+        frame.with_columns(pl.col("a") + 1).write_parquet(path)
+        return result
+
+    monkeypatch.setattr(pl, "read_parquet", changed)
+    with pytest.raises(ValueError, match="changed while being read"):
+        fixtures._read_frozen_inputs(config)
+
+
+def test_identical_frozen_bytes_at_different_paths_remain_comparable(tmp_path: Path) -> None:
+    """实际文件路径仅溯源；同一冻结内容的本机副本不被错误拒比。"""
+    fixtures, runner = _module("benchmark_core_workloads"), _module("benchmark_core_capacity")
+    original, copied = tmp_path / "original", tmp_path / "copied"
+    original.mkdir()
+    copied.mkdir()
+    frame = pl.DataFrame({"a": [1.0, 2.0], "b": [4.0, 3.0]})
+    frame.write_parquet(original / "data.parquet")
+    shutil.copyfile(original / "data.parquet", copied / "data.parquet")
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
+    for payload, folder in ((baseline, original), (current, copied)):
+        config = folder / "config.json"
+        config.write_text(json.dumps({"input_path": "data.parquet", "features": ["a", "b"]}), encoding="utf-8")
+        _, _, features, read = fixtures._read_frozen_inputs(config)
+        for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
+            round_["input_files"] = read["_input_files"]
+            round_["execution_contract"]["input_identity"] = {
+                **read["_input_identity"], "feature_order": features,
+            }
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "comparable"
+    assert current["comparison"][0]["time_ratio"] == 1.0
+
+
+@pytest.mark.parametrize("change", ["attrition", "same_count_identity", "same_count_order", "selected", "status", "warmup", "second_round"])
+def test_actual_candidate_routes_and_all_rounds_gate_performance_ratios(
+    tmp_path: Path, change: str,
+) -> None:
+    """80% guard不能替代实际候选去向；预热或任一正式轮漂移都拒比。"""
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture(tmp_path)
+    for round_ in [baseline["cases"][0]["warmup"], *baseline["cases"][0]["rounds"]]:
+        round_["execution_contract"]["actual_work"] = {
+            "stage_candidates": [{"stage": "quality", "input": list(range(200)), "output": list(range(200))}],
+            "correlation_candidates": list(range(200)), "selected": list(range(198)), "status": "computed",
+        }
+    baseline["cases"][0]["rounds"].append(deepcopy(baseline["cases"][0]["rounds"][0]))
+    current = deepcopy(baseline)
+    item = current["cases"][0]
+    target = item["warmup"] if change == "warmup" else item["rounds"][1 if change == "second_round" else 0]
+    work = target["execution_contract"]["actual_work"]
+    if change == "attrition":
+        work.update(correlation_candidates=list(range(161)), selected=list(range(159)))
+    elif change == "same_count_identity":
+        work["correlation_candidates"][-1] = 201
+    elif change == "same_count_order":
+        work["correlation_candidates"].reverse()
+    elif change == "status":
+        work["status"] = "not_computed"
+    elif change == "selected":
+        work["selected"].reverse()
+    else:
+        work["stage_candidates"][0]["output"].pop()
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "incomparable"
+    assert "actual_work" in " ".join(current["comparison"][0]["reasons"])
+    assert "time_ratio" not in current["comparison"][0]
+
+
+@pytest.mark.parametrize("change", ["tiny", "woe", "null", "nan", "inf_sign", "identity", "order", "state", "dtype", "column_order", "metadata"])
+def test_semantic_sidecar_compares_actual_values_and_special_float_states(
+    tmp_path: Path, change: str,
+) -> None:
+    """允许已知舍入误差，WOE大错、状态及各种特殊值绝不由SHA或容差吞掉。"""
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture(tmp_path)
+    data = pl.DataFrame({"feature": ["a", "b", "c", "d", "e", "f"],
+                         "coefficient": [0.7, None, float("nan"), float("inf"), -float("inf"), 12.0],
+                         "status": ["computed"] * 6})
+    evidence = _test_evidence(tmp_path, data)
+    for round_ in [baseline["cases"][0]["warmup"], *baseline["cases"][0]["rounds"]]:
+        _set_test_evidence(round_, evidence)
+    current = deepcopy(baseline)
+    values = data["coefficient"].to_list()
+    params = None
+    if change == "tiny":
+        values[0] += 1e-15
+    elif change == "woe":
+        values[-1] = 0.1
+    elif change == "null":
+        values[1] = float("nan")
+    elif change == "nan":
+        values[2] = float("inf")
+    elif change == "inf_sign":
+        values[3] = -float("inf")
+    data = data.with_columns(pl.Series("coefficient", values))
+    if change == "identity":
+        data = data.with_columns(pl.lit("different").alias("feature"))
+    elif change == "order":
+        data = data.reverse()
+    elif change == "state":
+        data = data.with_columns(pl.lit("not_computed").alias("status"))
+    elif change == "dtype":
+        data = data.with_columns(pl.col("coefficient").cast(pl.Float32))
+    elif change == "column_order":
+        data = data.select(data.columns[::-1])
+    elif change == "metadata":
+        params = {"corr_thr": 0.81}
+    replacement = _test_evidence(tmp_path, data, params)
+    _set_test_evidence(current["cases"][0]["rounds"][0], replacement)
+    runner._compare_baseline(baseline, current)
+    comparison = current["comparison"][0]
+    assert comparison["status"] == ("comparable" if change == "tiny" else "semantic_mismatch")
+    assert ("time_ratio" in comparison) == (change == "tiny")
+
+
+@pytest.mark.parametrize("missing", ["input_identity", "sidecar", "corrupt", "round_evidence", "signature"])
+def test_missing_or_corrupt_historical_evidence_never_receives_ratios(
+    tmp_path: Path, missing: str,
+) -> None:
+    runner = _module("benchmark_core_capacity")
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
+    round_ = baseline["cases"][0]["warmup"]
+    if missing == "input_identity":
+        del round_["execution_contract"]["input_identity"]
+    elif missing == "round_evidence":
+        del baseline["cases"][0]["rounds"][0]["semantic_evidence"]
+    elif missing == "signature":
+        round_["tables"]["overview"]["sha256"] = "changed-json-only"
+    else:
+        path = Path(round_["semantic_evidence"]["path"])
+        if missing == "sidecar":
+            path.unlink()
+        else:
+            with path.open("ab") as stream:
+                stream.write(b"corrupt")
+    runner._compare_baseline(baseline, current)
+    comparison = current["comparison"][0]
+    assert comparison["status"] == "incomparable" and comparison["reasons"]
+    assert "time_ratio" not in comparison and "rss_ratio" not in comparison
+
+
+@pytest.mark.parametrize("side,index", [("baseline", 0), ("baseline", 2), ("current", 0), ("current", 2)])
+def test_semantic_validation_checks_each_warmup_and_measured_round(
+    tmp_path: Path, side: str, index: int,
+) -> None:
+    """每一侧的预热和后续正式轮都能触发真实表数值不一致的拒绝。"""
+    runner = _module("benchmark_core_capacity")
+    baseline = _comparison_fixture(tmp_path)
+    baseline["cases"][0]["rounds"].append(deepcopy(baseline["cases"][0]["rounds"][0]))
+    current = deepcopy(baseline)
+    payload = baseline if side == "baseline" else current
+    rounds = [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]
+    changed = pl.DataFrame({"feature": ["a", "b"], "correlation": [0.7, -0.3],
+                            "woe": [0.1, -13.0], "status": ["computed"] * 2})
+    _set_test_evidence(rounds[index], _test_evidence(tmp_path, changed))
+    runner._compare_baseline(baseline, current)
+    assert current["comparison"][0]["status"] == "semantic_mismatch"
+    assert "time_ratio" not in current["comparison"][0]
+
+
+@pytest.mark.parametrize("change", ["tiny_coefficient", "threshold", "action", "trigger", "order", "protection", "implementation"])
+def test_decision_events_are_strict_while_coefficients_and_known_implementation_can_vary(
+    tmp_path: Path, change: str,
+) -> None:
+    """系数容差不重做业务判定；动作/事件顺序/阈值/保护必须精确相同。"""
+    from mars.reporting._result import _result_report
+
+    runner, evidence_module = _module("benchmark_core_capacity"), _module("_capacity_evidence")
+    baseline, current = _comparison_fixture(tmp_path), _comparison_fixture(tmp_path)
+    base = pl.DataFrame({"event_order": [0, 1], "feature": ["a", "b"],
+                         "trigger_feature": ["b", "a"], "action": ["keep", "drop"],
+                         "correlation": [0.9, 0.9], "threshold": [0.8, 0.8],
+                         "white_list_protected": [True, False]})
+    modified = base
+    parameters: dict[str, Any] = {"corr_thr": 0.8, "status": "computed"}
+    if change == "tiny_coefficient":
+        modified = base.with_columns(pl.col("correlation") + 1e-15)
+    elif change == "threshold":
+        modified = base.with_columns(pl.col("threshold") + 1e-15)
+    elif change == "action":
+        modified = base.with_columns(pl.lit("keep").alias("action"))
+    elif change == "trigger":
+        modified = base.with_columns(pl.lit("c").alias("trigger_feature"))
+    elif change == "order":
+        modified = base.reverse()
+    elif change == "protection":
+        modified = base.with_columns(~pl.col("white_list_protected"))
+    elif change == "implementation":
+        parameters.update(algorithm="anchored Chan block central moments Float64",
+                          row_block_size=4096, feature_batch_size=3, threshold_refined_pairs=0)
+    for payload, frame, params in ((baseline, base, {"corr_thr": 0.8, "status": "computed"}),
+                                   (current, modified, parameters)):
+        report = _result_report("correlation", {"correlation_decisions": frame}, params, ["a", "b"], None, None)
+        saved = evidence_module._save_evidence(report, tmp_path, runner.Measurement(tmp_path / "decisions.json"), "save")
+        saved["table_signatures"] = {"correlation_decisions": runner._signature(frame)}
+        for round_ in [payload["cases"][0]["warmup"], *payload["cases"][0]["rounds"]]:
+            _set_test_evidence(round_, saved)
+    runner._compare_baseline(baseline, current)
+    allowed = change in {"tiny_coefficient", "implementation"}
+    assert current["comparison"][0]["status"] == ("comparable" if allowed else "semantic_mismatch")
+    assert ("time_ratio" in current["comparison"][0]) == allowed
+
+
+@pytest.mark.parametrize("case", ["selection_survivors", "frozen_profile"])
+def test_fresh_worker_staged_baseline_has_retained_evidence_and_real_roundtrip(
+    tmp_path: Path, case: str,
+) -> None:
+    """实际调度预热和正式轮，保存JSON后由下一次命令读取sidecar完成比较。"""
+    runner = Path(__file__).resolve().parents[1] / "benchmarks" / "benchmark_core_capacity.py"
+    baseline_path, current_path = tmp_path / "baseline.json", tmp_path / "current.json"
+    command = [sys.executable, str(runner), "--case", case, "--scale", "smoke",
+               "--backend", "polars", "--threads", "4", "--repeats", "1", "--n-jobs", "1",
+               "--batch-size", "3", "--evidence-dir", str(tmp_path), "--timeout", "90"]
+    if case == "frozen_profile":
+        frame, _, features = _module("benchmark_core_workloads")._selection_fixture(101, 5, 42, False)
+        frame.write_parquet(tmp_path / "input.parquet")
+        config = tmp_path / "input.json"
+        config.write_text(json.dumps({
+            "input_path": "input.parquet", "features": features,
+            "profile_call_parameters": {"metrics": ["mean", "zeros"], "enable_sparkline": False},
+        }), encoding="utf-8")
+        command.extend(["--input-config", str(config)])
+    for output, extra in ((baseline_path, []), (current_path, ["--baseline-json", str(baseline_path)])):
+        completed = subprocess.run([*command, "--output", str(output), *extra],
+                                   capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    current = json.loads(current_path.read_text(encoding="utf-8"))
+    assert current["comparison"] and all(item["status"] == "comparable" for item in current["comparison"])
+    paths: set[str] = set()
+    for payload in (baseline, current):
+        item = payload["cases"][0]
+        rounds = [item["warmup"], *item["rounds"]]
+        assert len({round_["worker_process_observation"]["pid"] for round_ in rounds}) == len(rounds)
+        for round_ in rounds:
+            assert round_["exit_code"] == 0 and round_["exit_status"] == "known"
+            assert round_["environment"]["polars_threads"] == 4
+            if case == "selection_survivors":
+                assert round_["execution_contract"]["actual_work"]["correlation_candidates"]
+            assert Path(round_["semantic_evidence"]["path"]).is_file()
+            assert round_["semantic_evidence"]["path"] not in paths
+            paths.add(round_["semantic_evidence"]["path"])
+            stages = round_["stages"]
+            assert {"public_compute", "report_save", "report_integrity_identity"}.issubset(stages)

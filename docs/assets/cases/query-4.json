@@ -1,12 +1,12 @@
 {
   "case": 4,
-  "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+  "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
   "consumer": "deterministic public API queries; no LLM",
   "question": "两个外部来源分联合后，哪些区间有风险差异？",
   "query": {
     "question": "同一来源分 2 箱内的来源分 3 风险梯度",
     "reference": {
-      "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+      "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
       "table": "cells",
       "query": {
         "offset": 0,

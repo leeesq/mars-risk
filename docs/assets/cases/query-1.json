@@ -1,12 +1,12 @@
 {
   "case": 1,
-  "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+  "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
   "consumer": "deterministic public API queries; no LLM",
   "question": "全量数据与无标签组有哪些质量差异？",
   "query": {
     "question": "真实外部来源分覆盖率及字段单位",
     "reference": {
-      "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+      "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
       "table": "overview",
       "query": {
         "offset": 0,

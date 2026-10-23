@@ -24,14 +24,18 @@ from typing import Any, Callable
 import psutil
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "1"
+VERSION = "2"
 MEASUREMENT_CONTRACT = {
-    "id": "independent-process-stages-rss-v1",
+    "id": "independent-process-stages-rss-v2-content-evidence",
     "rss_interval_seconds": 0.01,
     "timers": "perf_counter; nested stages are not additive; imports excluded from stage timers",
     "aggregation": "one excluded warmup; independent-process median seconds and maximum sampled RSS",
     "tree_rss": "sum including descendants; shared memory may be counted more than once",
     "table_signature": "Polars hash_rows(seed=42), 50000-row batches, schema/order/value check",
+    "identity_boundary": "streaming file SHA256 before/after read; separately timed; outside public_compute",
+    "semantic_boundary": "signatures/save/integrity outside public_compute; comparison timed in scheduler",
+    "public_compute": "entire public call including production report construction; fresh continuous worker",
+    "semantic_tolerance": {"atol": 1e-12, "rtol": 1e-12},
 }
 DEPENDENCY_MODULES = {
     "numpy": "numpy", "pandas": "pandas", "polars": "polars", "pyarrow": "pyarrow",
@@ -462,6 +466,9 @@ def _environment(source: Path) -> dict[str, Any]:
         "workloads_sha256": hashlib.sha256(
             Path(__file__).with_name("benchmark_core_workloads.py").read_bytes()
         ).hexdigest(),
+        "evidence_harness_sha256": hashlib.sha256(
+            Path(__file__).with_name("_capacity_evidence.py").read_bytes()
+        ).hexdigest(),
         "source_python_sha256": source_digest.hexdigest(),
         "date_utc": datetime.now(timezone.utc).isoformat(),
     }
@@ -685,6 +692,8 @@ def _parser() -> argparse.ArgumentParser:
         "--consumer-source", type=Path, help="可选：用另一份源码消费快照，验证旧快照恢复"
     )
     parser.add_argument("--baseline-json", type=Path)
+    parser.add_argument("--evidence-dir", type=Path, default=ROOT / ".artifacts",
+                        help="本机忽略目录中的唯一 Report 语义 sidecar；比较时必须保留")
     parser.add_argument(
         "--comparison-purpose", help="资源策略刻意改变时说明对照目的；工作量/测量合同仍须相同"
     )
@@ -782,9 +791,27 @@ def _comparison_state(round_: dict[str, Any]) -> dict[str, Any]:
     contract = round_.get("execution_contract")
     environment = round_.get("environment", {})
     required = {"workload_id", "workload", "algorithm_parameters", "diagnostics", "resource_strategy"}
+    is_consumer = isinstance(contract, dict) and contract.get("workload_id") == "core-capacity-snapshot-consumer-v1"
+    if not is_consumer:
+        required.update(("input_identity", "actual_work"))
+    identity = contract.get("input_identity", {}) if isinstance(contract, dict) else {}
+    valid_identity = isinstance(identity, dict) and isinstance(identity.get("feature_order"), list)
+    if valid_identity and identity.get("kind") == "synthetic-fixture":
+        valid_identity = {"fixture_version", "seed", "generation"}.issubset(identity)
+    elif valid_identity and identity.get("kind") == "frozen-file-content-v1":
+        files = identity.get("files", {})
+        valid_identity = isinstance(files, dict) and "input_path" in files and all(
+            isinstance(value, dict)
+            and {"algorithm", "bytes", "sha256", "reader", "rechunk"}.issubset(value)
+            and value["algorithm"] == "sha256-stream-1MiB"
+            for value in files.values()
+        )
+    else:
+        valid_identity = False
     consumer = _comparison_state(round_["consumer"]) if "consumer" in round_ else None
     if (
         not isinstance(contract, dict) or not required.issubset(contract)
+        or not is_consumer and (not valid_identity or not contract.get("actual_work"))
         or "participating_dependencies" not in environment
         or consumer is not None and consumer.get("missing_contract")
     ):
@@ -823,6 +850,8 @@ def _compare_execution_state(
 
 def _compare_baseline(baseline: dict[str, Any], result: dict[str, Any]) -> None:
     """保留历史轮次；只有实际工作、测量和环境可比时才计算普通性能比例。"""
+    from _capacity_evidence import _verify_rounds
+
     comparisons: list[dict[str, Any]] = []
     for item in result["cases"]:
         before = next((old for old in baseline["cases"] if (
@@ -856,12 +885,14 @@ def _compare_baseline(baseline: dict[str, Any], result: dict[str, Any]) -> None:
         reference = _comparison_state(old_rounds[0])
 
         if reference.get("missing_contract"):
-            reasons.append("baseline execution/dependency contract absent")
+            reasons.append("baseline execution/dependency/input identity/actual work contract absent")
         for side, rounds in (("baseline", old_rounds), ("current", new_rounds)):
             for index, round_ in enumerate(rounds):
+                if round_.get("status") != "passed" or round_.get("stage") != "complete":
+                    reasons.append(f"{side} round {index}: execution incomplete")
                 state = _comparison_state(round_)
                 if state.get("missing_contract"):
-                    reasons.append(f"{side} round {index}: execution/dependency contract absent")
+                    reasons.append(f"{side} round {index}: execution/dependency/input identity/actual work contract absent")
                 else:
                     _compare_execution_state(reference, state, f"{side}.round[{index}]", reasons, resources)
         old_stages = before.get("summary", {}).get("stages", {})
@@ -877,20 +908,19 @@ def _compare_baseline(baseline: dict[str, Any], result: dict[str, Any]) -> None:
                 entry["resource_differences"] = resources
             comparisons.append(entry)
             continue
-        # 有意义的完整表验收保持原有口径，错误结果不被包装成性能退化。
-        digest_check = item["case"].startswith("correlation") or item["case"] in ("rule_report", "rule_bridge")
-        if digest_check:
-            old_tables = before["rounds"][0]["tables"]
-            if any(round_["tables"].keys() != old_tables.keys() or any(
-                round_["tables"][name][key] != table[key]
-                for name, table in old_tables.items() for key in ("sha256", "schema", "rows", "columns")
-            ) for round_ in item["rounds"]):
-                entry.update(status="semantic_mismatch", reasons=["baseline table/schema/order/value signatures differ"])
-                comparisons.append(entry)
-                continue
-        item["baseline_semantic_check"] = (
-            "full table/schema/order digests" if digest_check else "independent numeric references and focused regressions"
-        )
+        # 每个预热和正式轮的真实统计快照均参与，哈希不同不会跳过数值核验。
+        start = time.perf_counter()
+        reason, status = _verify_rounds([
+            (f"{side} round {index}", round_)
+            for side, rounds in (("baseline", old_rounds), ("current", new_rounds))
+            for index, round_ in enumerate(rounds)
+        ])
+        item["baseline_semantic_validation_seconds"] = time.perf_counter() - start
+        if reason:
+            entry.update(status=status, reasons=[reason])
+            comparisons.append(entry)
+            continue
+        item["baseline_semantic_check"] = "automatic: all warmup/measured Report contents; atol=rtol=1e-12; identities/decisions strict"
         for name, current in new_stages.items():
             old = old_stages[name]
             if old["median_seconds"] <= 0 or old["highest_observed_rss_bytes"] <= 0:
@@ -965,7 +995,7 @@ def main() -> int:
     }
     with destination.open("x", encoding="utf-8") as reserved:
         json.dump(result, reserved, ensure_ascii=False)
-    with TemporaryDirectory(prefix="mars-capacity-") as temporary:
+    with TemporaryDirectory(prefix="mars-capacity-", dir=destination.parent) as temporary:
         folder = Path(temporary)
         for case in cases:
             for backend in backends:
@@ -1029,6 +1059,7 @@ def main() -> int:
                     if args.consumer_source:
                         command.extend(["--consumer-source", str(args.consumer_source.resolve())])
                     command.extend(["--batch-size", str(args.batch_size), "--n-jobs", str(args.n_jobs)])
+                    command.extend(["--evidence-dir", str(args.evidence_dir.resolve())])
                     if args.input_config:
                         command.extend(["--input-config", str(args.input_config.resolve())])
                     raw = _launch(command, out, args.timeout, budget)
@@ -1064,6 +1095,8 @@ def main() -> int:
                     item["status"] = raw["status"]
                 _write(destination, result)
     if args.baseline_json:
+        # 调度器此时才导入数值解码依赖，始终使用本轮修正 harness 配套的报告读取器。
+        sys.path.insert(0, str(ROOT / "src"))
         baseline = json.loads(args.baseline_json.read_text(encoding="utf-8"))
         _compare_baseline(baseline, result)
         _write(destination, result)

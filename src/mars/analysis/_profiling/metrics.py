@@ -263,16 +263,24 @@ def build_profile_status(
     diagnostics: list[dict[str, Any]],
     *,
     has_psi_reference: bool,
+    psi_features: list[str] | None = None,
 ) -> pl.DataFrame:
     """记录画像全量统计的未计算例外；趋势仍保留原值和既有诊断，不重复计算。"""
     rows: list[dict[str, Any]] = []
+    active_psi_features = set(context.features if psi_features is None else psi_features)
+    if context.group_col is not None:
+        active_psi_features.discard(context.group_col)
     for entry in overview.to_dicts():
         feature = entry["feature"]
         for metric in metrics:
             status, reason = None, None
             if metric == "psi":
+                if feature not in active_psi_features:
+                    continue
                 if not has_psi_reference:
                     status, reason = "not_computed", "no_group_or_benchmark"
+                elif context.working_df.is_empty():
+                    status, reason = "not_computed", "empty_current_population"
             elif not is_numeric_feature(context, feature):
                 status, reason = "skipped", "non_numeric_feature"
             else:

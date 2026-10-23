@@ -12,7 +12,7 @@ import pandas as pd
 import polars as pl
 from numpy.typing import NDArray
 
-from mars._compat import pandas_styler_map, remove_suffix
+from mars._compat import collect_streaming, pandas_styler_map, remove_suffix
 from mars.compute import RiskCorrBaseline, normalize_risk_corr_baseline
 from mars.compute._correlation import _blocked_pearson
 from mars.feature.binning.base import MarsBinnerBase
@@ -1467,10 +1467,11 @@ class MarsStatsSelector(MarsBaseSelector):
                     source, features=batch, return_type="woe", lazy=True,
                     woe_batch_size=self.batch_size,
                 )
-                derived = plan.select([
+                # 公共转换保证左表行序，各列批可安全写入同一行块。
+                derived = collect_streaming(plan.select([
                     pl.col(f"{feature}_woe").fill_null(0.0).cast(pl.Float64)
                     for feature in batch
-                ]).collect()
+                ]))
                 values[:, start:start + len(batch)] = derived.to_numpy()
             yield values
 
@@ -1500,10 +1501,10 @@ class MarsStatsSelector(MarsBaseSelector):
                     source.select(pair), features=pair, return_type="woe", lazy=True,
                     woe_batch_size=self.batch_size,
                 )
-                narrow = plan.select([
+                narrow = collect_streaming(plan.select([
                     pl.col(f"{feature}_woe").fill_null(0.0).cast(pl.Float64)
                     for feature in pair
-                ]).collect().to_numpy()
+                ])).to_numpy()
                 with np.errstate(invalid="ignore", divide="ignore"):
                     value = float(np.corrcoef(narrow, rowvar=False)[0, 1])
                 matrix[left, right] = matrix[right, left] = value

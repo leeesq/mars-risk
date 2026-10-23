@@ -177,6 +177,16 @@ class MarsProfileReport(_ReportQuery):
 
         dq_keys = list(self.dq_tables.keys())
         stat_keys = list(self.stats_tables.keys())
+        status_html = ""
+        if self._calculation_status is not None:
+            # 摘要显示有界状态证据；完整行仍由同一公共状态表查询。
+            state: pd.DataFrame = self._display_frame(self.get_table("calculation_status", limit=10))
+            status_html = (
+                '<div style="margin-top:12px"><b>Calculation status</b>'
+                '<div style="overflow:auto">'
+                f'{state.to_html(index=False, escape=True)}</div>'
+                '<code>get_table("calculation_status")</code></div>'
+            )
 
         # 内嵌 CSS，使 Notebook 摘要无需加载外部样式。
         # 胶囊样式，用于包裹指标名
@@ -248,6 +258,7 @@ class MarsProfileReport(_ReportQuery):
                         </div>
                     </div>
                 </div>
+                {status_html}
 
             </div>
 
@@ -468,6 +479,7 @@ class MarsProfileReport(_ReportQuery):
         -------
         pd.io.formats.style.Styler
             样式化表；文本类型与计算状态保留原值，空查询结果仍可渲染。
+            对存在未计算状态的展示特征，在标题中列出状态与原因；原值仍在状态表中。
             业务分组名称不影响单位；比例展示百分比，AUC、PSI、IV、Lift、WOE
             保持数值口径，KS 展示 0–100 点。
 
@@ -524,9 +536,27 @@ class MarsProfileReport(_ReportQuery):
         if columns is None:
             df = self._reorder_trend_cols(df, group_ascending=group_ascending)
 
+        title = f"Trend Analysis: {metric}"
+        if self._calculation_status is not None and not df.empty:
+            # 状态只随本次展示的特征出现，不改变趋势表的 schema 或 null 值。
+            displayed_features: list[str] = (
+                df["feature"].tolist() if "feature" in df.columns else
+                to_pandas_frame(self.get_table(
+                    table_name, features=features, columns=["feature"],
+                    sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
+                ))["feature"].tolist()
+            )
+            state: pd.DataFrame = to_pandas_frame(self.get_table(
+                "calculation_status", features=displayed_features,
+                filters={"metric": metric}, columns=["status", "reason"],
+            ))
+            statuses = state.drop_duplicates().itertuples(index=False, name=None)
+            details = "; ".join(escape(f"{status}/{reason}") for status, reason in statuses)
+            if details:
+                title += f" — {details}"
         return self._get_styler(
             df,
-            title=f"Trend Analysis: {metric}",
+            title=title,
             cmap=cmap,
             table_name=table_name,
             vmin=vmin,

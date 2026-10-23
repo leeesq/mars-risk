@@ -10,7 +10,7 @@
   },
   "cases": {
     "1": {
-      "report_id": "39fae55f-e3a7-4d88-86b2-edcdb1d533dd",
+      "report_id": "fef9a614-488e-424e-b644-a0c54aa1432f",
       "input_row_count": 356255,
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
@@ -338,7 +338,7 @@
       }
     },
     "2": {
-      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+      "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
       "summary_rows": [
         {
           "feature": "EXT_SOURCE_3",
@@ -870,7 +870,7 @@
         "CNT_FAM_MEMBERS"
       ],
       "primary_feature": "EXT_SOURCE_2",
-      "time_report_id": "fded52f2-3dba-4a15-a565-7216c5bcd1ab",
+      "time_report_id": "2908ba20-0677-4a7f-a821-94ba5c9d480a",
       "units": {
         "ks": "0-100 percentage points",
         "bad_rate": "fraction",
@@ -879,7 +879,7 @@
       }
     },
     "3": {
-      "report_id": "e2addcc3-454d-4a2f-bd17-d5e2316b550d",
+      "report_id": "75f25023-6b2b-4bce-8e90-79853bd358c7",
       "candidate_features": [
         "NAME_CONTRACT_TYPE",
         "CODE_GENDER",
@@ -4366,7 +4366,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.0009341831341698193,
+          "value": 0.0009341831341698172,
           "description": ""
         },
         {
@@ -4753,7 +4753,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.0011068296145800734,
+          "value": 0.0011068296145800725,
           "description": ""
         },
         {
@@ -4762,7 +4762,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.00017072027669673347,
+          "value": 0.000170720276696734,
           "description": ""
         },
         {
@@ -4771,7 +4771,7 @@
           "status": "Selected",
           "stage": "Stability",
           "reason": "Stable PSI",
-          "value": 0.00018329983153023258,
+          "value": 0.0001832998315302324,
           "description": ""
         },
         {
@@ -4836,7 +4836,7 @@
         "REGION_RATING_CLIENT_W_CITY",
         "OBS_60_CNT_SOCIAL_CIRCLE"
       ],
-      "woe_report_id": "71ea5136-9680-4f88-a4fe-3854316b888c",
+      "woe_report_id": "f00949ab-116f-45d1-929a-0a4e9f01aefc",
       "raw_pairs": [
         {
           "feature_a": "OBS_30_CNT_SOCIAL_CIRCLE",
@@ -5078,7 +5078,7 @@
       "selection_scope": "0train only; 1val/2test/3oot not used for selection"
     },
     "4": {
-      "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+      "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
       "scope": {
         "group": "0train",
         "target": "TARGET"
@@ -5325,10 +5325,10 @@
           }
         }
       },
-      "policy_report_id": "aa5395b5-e6d0-4e41-a8ef-c04468cf0510"
+      "policy_report_id": "57b305fa-d158-473e-9ccc-405fa9cbac53"
     },
     "5": {
-      "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
+      "report_id": "dc3aa22f-37ad-4b2e-8872-9fbda42bcb4b",
       "summary_rows": [
         {
           "status": "success",
@@ -5645,8 +5645,8 @@
           "q_value": null
         }
       ],
-      "cross_report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
-      "independent_report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
+      "cross_report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
+      "independent_report_id": "9abc0b71-fd5c-4528-b643-1aa44655b9ee",
       "candidate_origins": {
         "mr_d07e3095ba389c1a01c8": {
           "kind": "development_cell",
@@ -5687,7 +5687,7 @@
             ]
           },
           "reference": {
-            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+            "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5741,7 +5741,7 @@
             ]
           },
           "reference": {
-            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+            "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5795,7 +5795,7 @@
             ]
           },
           "reference": {
-            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+            "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5849,7 +5849,7 @@
             ]
           },
           "reference": {
-            "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+            "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
             "table": "cells",
             "query": {
               "offset": 0,
@@ -5868,9 +5868,9 @@
       "raw_data_saved": false,
       "rule_status": "Experimental",
       "automatic_generation": {
-        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+        "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
         "description": {
-          "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+          "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
           "report_type": "rule",
           "format_version": 1,
           "tables": {
@@ -6598,7 +6598,7 @@
             "generators": [
               "MarsCombinationRuleGenerator"
             ],
-            "elapsed_seconds": 0.03689790004864335,
+            "elapsed_seconds": 0.03716130007524043,
             "resolved_spec": {
               "profile": "production",
               "direction": "high_risk",
@@ -6846,7 +6846,7 @@
           {
             "question": "实际生成及保留多少自动候选",
             "reference": {
-              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+              "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
               "table": "summary",
               "query": {
                 "offset": 0,
@@ -6871,7 +6871,7 @@
           {
             "question": "生成来源与拒绝原因",
             "reference": {
-              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+              "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
               "table": "candidates",
               "query": {
                 "offset": 0,
@@ -7488,7 +7488,7 @@
           {
             "question": "Val 参与筛选的证据",
             "reference": {
-              "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+              "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
               "table": "evaluation",
               "query": {
                 "offset": 0,
@@ -7773,10 +7773,10 @@
           }
         ]
       },
-      "auto_report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0"
+      "auto_report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5"
     },
     "6": {
-      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+      "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
       "snapshot_type": "ReportSnapshot",
       "identity_preserved": true,
       "separate_process": true,
@@ -7825,7 +7825,7 @@
       ]
     },
     "7": {
-      "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+      "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
       "formats": [
         {
           "format": "HTML",

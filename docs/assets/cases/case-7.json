@@ -1,11 +1,11 @@
 {
   "case": 7,
-  "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+  "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
   "question": "同一次分箱分析怎样交付给不同使用者？",
   "consumer": "deterministic public API queries; no LLM",
   "description": {
     "report_type": "MarsBinningReport",
-    "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+    "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
     "format_version": 1,
     "feature_metadata": {
       "NAME_CONTRACT_TYPE": {
@@ -4212,7 +4212,7 @@
     {
       "question": "Excel 首行实际值与快照对齐",
       "reference": {
-        "report_id": "dcb2b19e-3346-4829-80e9-d686ec46ca38",
+        "report_id": "ae13f1c7-a9a1-440d-8219-972a83403689",
         "table": "detail",
         "query": {
           "offset": 0,

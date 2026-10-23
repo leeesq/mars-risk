@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from inspect import signature
 from typing import Any, Callable, cast
 
 import polars as pl
@@ -29,6 +30,28 @@ def collect_streaming(frame: pl.LazyFrame) -> pl.DataFrame:
     if _polars_version() < (1, 25):
         return collect(streaming=True)
     return collect(engine="streaming")
+
+
+def _left_join_preserving_order(
+    left: pl.DataFrame | pl.LazyFrame,
+    right: pl.DataFrame | pl.LazyFrame,
+    *,
+    left_on: str,
+    right_on: str,
+    order_column: str,
+) -> Any:
+    """保留左表样本顺序；旧 Polars 用调用方已避让的内部行身份恢复顺序。"""
+    # 按实际能力分流，不能向 1.8.2 传入不存在的 maintain_order 参数。
+    if "maintain_order" in signature(type(left).join).parameters:
+        return left.join(
+            right, left_on=left_on, right_on=right_on, how="left", maintain_order="left",
+        )
+    return (
+        left.with_row_index(order_column)
+        .join(right, left_on=left_on, right_on=right_on, how="left")
+        .sort(order_column)
+        .drop(order_column)
+    )
 
 
 def remove_suffix(value: str, suffix: str) -> str:

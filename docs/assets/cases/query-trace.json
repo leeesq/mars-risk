@@ -4,7 +4,7 @@
     {
       "question": "Train 同一来源分 2 箱内的来源分 3 风险与人数",
       "reference": {
-        "report_id": "5ba145f2-6fd0-44ab-85fa-de9dee9a690c",
+        "report_id": "77208fb5-bb0e-424b-9ddb-3b5b24790fbd",
         "table": "cells",
         "query": {
           "offset": 0,
@@ -231,7 +231,7 @@
     {
       "question": "实际选择/拒绝阶段与原因",
       "reference": {
-        "report_id": "57f3678d-f9b3-4d5c-86f8-9c36843f32d3",
+        "report_id": "dc3aa22f-37ad-4b2e-8872-9fbda42bcb4b",
         "table": "candidates",
         "query": {
           "offset": 0,
@@ -348,7 +348,7 @@
     {
       "question": "固定规则的独立 test/oot 复核",
       "reference": {
-        "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
+        "report_id": "9abc0b71-fd5c-4528-b643-1aa44655b9ee",
         "table": "slices",
         "query": {
           "offset": 0,
@@ -441,7 +441,7 @@
     {
       "question": "无标签组保留全部分布并显示未观测状态",
       "reference": {
-        "report_id": "3a407860-8766-4e2b-a51d-09856f2483a9",
+        "report_id": "9abc0b71-fd5c-4528-b643-1aa44655b9ee",
         "table": "slices",
         "query": {
           "offset": 0,

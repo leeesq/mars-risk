@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from mars._compat import collect_streaming
+from mars._compat import _left_join_preserving_order, collect_streaming
 from mars.compute import (
     OrderedMetricSortBy,
     binary_distribution_exprs,
@@ -34,6 +34,15 @@ from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
 _MarsBinnerT = TypeVar("_MarsBinnerT", bound="MarsBinnerBase")
+
+
+def _temporary_column(base_name: str, reserved_columns: set[str]) -> str:
+    """分配内部列名并登记，避让原字段、派生字段和已有临时列。"""
+    candidate = base_name
+    while candidate in reserved_columns:
+        candidate += "_"
+    reserved_columns.add(candidate)
+    return candidate
 
 
 class MarsBinnerBase(MarsTransformer):
@@ -1038,7 +1047,8 @@ class MarsBinnerBase(MarsTransformer):
         数值列用 ``pl.cut`` 切分，缺失值优先于特殊值，特殊值优先于正常区间。
         类别匹配键保留布尔类型标记，文本保持原始大小写和编号。
         类别映射条目数超过 ``join_threshold`` 时使用 Hash Join，否则使用 ``replace``。
-        临时列名会避开已有列，转换结束后移除临时列。
+        两条路径均保留样本行数和左表行序，包括 streaming 执行。
+        临时列名会避开已有列及派生列，转换结束后移除临时列。
         """
         # 执行模式必须在任何样本派生列和类别 join 之前确定；schema 解析不执行样本计划。
         if lazy and isinstance(X, pl.DataFrame):
@@ -1056,19 +1066,13 @@ class MarsBinnerBase(MarsTransformer):
         current_columns = schema_map.names()
         reserved_columns = set(current_columns)
 
-        def _temporary_column(base_name: str) -> str:
-            """为本次转换分配不覆盖用户输入或其他转换结果的临时列。"""
-            candidate = base_name
-            while candidate in reserved_columns:
-                candidate += "_"
-            reserved_columns.add(candidate)
-            return candidate
-
         all_train_cols = (
             list(features)
             if features is not None
             else self._usable_rule_features()
         )
+        reserved_columns.update(f"{col}_bin" for col in all_train_cols)
+        reserved_columns.update(f"{col}_woe" for col in all_train_cols)
 
         for col in all_train_cols:
             if col not in current_columns:
@@ -1193,8 +1197,9 @@ class MarsBinnerBase(MarsTransformer):
 
                 # 路由: Join (高基数) vs Replace (低基数)
                 if len(cat_to_idx) > self.join_threshold:
-                    target_col_name = _temporary_column(f"_{col}_utf8_tmp")
-                    index_col_name = _temporary_column(f"_idx_{col}")
+                    target_col_name = _temporary_column(f"_{col}_utf8_tmp", reserved_columns)
+                    index_col_name = _temporary_column(f"_idx_{col}", reserved_columns)
+                    order_col_name = _temporary_column("_mars_join_order", reserved_columns)
                     X = X.with_columns(target_col.alias(target_col_name))
                     map_df = pl.DataFrame({
                         "_k": list(cat_to_idx.keys()),
@@ -1203,7 +1208,10 @@ class MarsBinnerBase(MarsTransformer):
 
                     # 跟随输入数据的 eager/lazy 形态，避免额外的执行模式切换。
                     join_tbl = map_df.lazy() if isinstance(X, pl.LazyFrame) else map_df
-                    X = X.join(join_tbl, left_on=target_col_name, right_on="_k", how="left")
+                    X = _left_join_preserving_order(
+                        X, join_tbl, left_on=target_col_name, right_on="_k",
+                        order_column=order_col_name,
+                    )
                     temp_join_cols.extend([index_col_name, target_col_name])
 
                     layer_normal = pl.col(index_col_name)
@@ -1395,8 +1403,10 @@ class MarsBinnerBase(MarsTransformer):
             raise ValueError(
                 "Target 'y' must contain at least one observed value after excluding null / NaN."
             )
-        if observed_count < X.height:
-            y = y.filter(observed_mask)
+        reserved_columns = set(X.columns) | set(active_features)
+        reserved_columns.update(f"{feature}_bin" for feature in active_features)
+        reserved_columns.update(f"{feature}_woe" for feature in active_features)
+        y_name = _temporary_column("_mars_target", reserved_columns)
 
         agg_results: List[pl.DataFrame] = []
         for i in range(0, len(active_features), batch_size):
@@ -1404,9 +1414,11 @@ class MarsBinnerBase(MarsTransformer):
             batch_cols = [f"{feature}_bin" for feature in batch_features]
 
             # 原表投影共享现有 buffer；过滤和分箱只分配本批的数组，不复制全宽已表现人口。
-            batch_input: pl.LazyFrame = X.select(batch_features).lazy()
+            batch_input: pl.LazyFrame = (
+                X.select(batch_features).lazy().with_columns(pl.lit(y).alias(y_name))
+            )
             if observed_count < X.height:
-                batch_input = batch_input.filter(observed_mask)
+                batch_input = batch_input.filter(pl.col(y_name).is_not_null())
             X_bin_lazy = cast(
                 pl.LazyFrame,
                 self.transform(
@@ -1415,7 +1427,7 @@ class MarsBinnerBase(MarsTransformer):
                     return_type="index",
                     lazy=True,
                 ),
-            ).with_columns(pl.lit(y).alias(y_name))
+            )
 
             # 构建仅针对当前批次的查询计划，并在聚合后立即 collect() 物化为极小的表
             batch_query = (

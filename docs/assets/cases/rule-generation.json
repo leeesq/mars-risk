@@ -1,7 +1,7 @@
 {
-  "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+  "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
   "description": {
-    "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+    "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
     "report_type": "rule",
     "format_version": 1,
     "tables": {
@@ -729,7 +729,7 @@
       "generators": [
         "MarsCombinationRuleGenerator"
       ],
-      "elapsed_seconds": 0.03689790004864335,
+      "elapsed_seconds": 0.03716130007524043,
       "resolved_spec": {
         "profile": "production",
         "direction": "high_risk",
@@ -977,7 +977,7 @@
     {
       "question": "实际生成及保留多少自动候选",
       "reference": {
-        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+        "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
         "table": "summary",
         "query": {
           "offset": 0,
@@ -1002,7 +1002,7 @@
     {
       "question": "生成来源与拒绝原因",
       "reference": {
-        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+        "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
         "table": "candidates",
         "query": {
           "offset": 0,
@@ -1619,7 +1619,7 @@
     {
       "question": "Val 参与筛选的证据",
       "reference": {
-        "report_id": "8fd0d348-dea5-40e5-841e-0832f4b9eba0",
+        "report_id": "4da17b8e-8213-4cf5-8018-102ace5b41e5",
         "table": "evaluation",
         "query": {
           "offset": 0,

@@ -9,6 +9,7 @@ import polars as pl
 
 from mars._compat import collect_streaming
 from mars.analysis._profiling.metrics import feature_dtypes
+from mars.analysis._profiling.pivot import unavailable_pivot_report
 from mars.analysis._profiling.types import ProfileComputeOptions, ProfileRunContext
 from mars.compute import (
     missing_condition_expr,
@@ -49,9 +50,6 @@ def get_psi_trend(
 
     selected_features = context.features if features is None else features
     candidates = [col for col in selected_features if col != context.group_col]
-    if not candidates:
-        raise ValueError("PSI requires at least one active feature.")
-
     baseline_group: Any = None
     if benchmark_df is not None:
         _validate_benchmark_frame(
@@ -59,7 +57,14 @@ def get_psi_trend(
             current_df=context.working_df,
             candidates=candidates,
         )
-    else:
+
+    # 空当前人口仍执行同一结构校验，但不构造分箱或虚拟分组值。
+    if context.working_df.is_empty():
+        return unavailable_pivot_report(replace(context, features=selected_features))
+    if not candidates:
+        raise ValueError("PSI requires at least one active feature.")
+
+    if benchmark_df is None:
         assert context.group_col is not None
         try:
             baseline_group = context.working_df.select(pl.col(context.group_col).min()).item()
