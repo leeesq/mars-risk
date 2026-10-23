@@ -1070,7 +1070,9 @@ def test_fresh_worker_staged_baseline_has_retained_evidence_and_real_roundtrip(
         assert completed.returncode == 0, completed.stdout + completed.stderr
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     current = json.loads(current_path.read_text(encoding="utf-8"))
-    assert current["comparison"] and all(item["status"] == "comparable" for item in current["comparison"])
+    assert current["comparison"] and all(
+        item["status"] == "comparable" for item in current["comparison"]
+    ), json.dumps(current["comparison"], ensure_ascii=False, indent=2)
     paths: set[str] = set()
     for payload in (baseline, current):
         item = payload["cases"][0]
