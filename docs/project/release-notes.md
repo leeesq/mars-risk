@@ -6,6 +6,13 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 风险画像、数据画像和 StatsSelector 新增分客群分析。运行方法接收 `segment_col`，
+  规则策略区分 shared/per_segment，筛选策略区分 global/per_segment。
+  未传客群列保留原 schema。开启客群的事实表增加 `scope_id`，跨人口数值投影保留身份；
+  默认人工摘要和 AI context 为整体，完整公共表仍可查询所有人口。
+  原生 Excel 一次导出一个 scope，快照 Excel 保留静态长表能力。
+  规则 JSON 与统计快照分别保存；详情和限制见[分客群分析](../user-guide/segmented-analysis.md)。
+
 - 修复现代 Polars streaming 高基数类别 Join 重排样本的问题。公共分箱转换保留左表行序，
   表现统计在本批窄计划中绑定标签，WOE 相关性各列批保持同一行序；兼容 Polars 1.8.2。
 - 空当前人口的 PSI 仍校验参考表必需特征及类型。合法参考返回 typed null，并记录

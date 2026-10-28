@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,7 @@ from mars.reporting._binning_html import _BinningHtmlRenderer
 from mars.reporting._binning_plot import _BinningPlotRenderer
 from mars.reporting._metadata import FeatureMetadata
 from mars.reporting._query import ReportFrame, _ReportQuery
+from mars.reporting._scope_view import scope_views
 from mars.reporting._types import MarsHtmlRenderResult
 
 if TYPE_CHECKING:
@@ -247,6 +248,8 @@ class MarsBinningReport(_ReportQuery):
     def _query_tables(self) -> dict[str, ReportFrame]:
         """按公共目录命名分箱表，仅加入已生成的可选附表。"""
         tables: dict[str, ReportFrame] = {"summary": self.summary_table, "detail": self.detail_table}
+        if getattr(self, "_scopes", None) is not None:
+            tables["scopes"] = self._scopes
         tables.update({f"trend.{k}": v for k, v in self.trend_tables.items()})
         if getattr(self, "_calculation_status", None) is not None:
             tables["calculation_status"] = self._calculation_status
@@ -287,12 +290,20 @@ class MarsBinningReport(_ReportQuery):
 
     def _repr_html_(self) -> str:
         """返回 Jupyter 环境下的报告摘要 HTML。"""
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import scope_views
+
+            return str(scope_views(self)[0][1]._repr_html_())
+
         return _BinningHtmlRenderer(self)._repr_html_()
 
     def write_excel(
         self,
         path: str = "mars_bin_report.xlsx",
         engine: str = "openpyxl",
+        *,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> None:
         """
         导出分箱评估 Excel 报告。
@@ -311,6 +322,11 @@ class MarsBinningReport(_ReportQuery):
             输出 Excel 文件路径。
         engine : str
             Excel 写入引擎，默认使用 ``"openpyxl"``，也支持 ``"auto"`` 和 ``"xlwings"``。
+
+        segments : list[Any] | None
+            指定原始客群值；一次导出只允许一个人口。
+        include_all : bool
+            是否导出整体，默认 True；导出子客群时设为 False。
 
         Returns
         -------
@@ -339,8 +355,11 @@ class MarsBinningReport(_ReportQuery):
         ...     report.write_excel(str(Path(tmp) / "report.xlsx"), engine="openpyxl") is None
         True
         """
+        views = scope_views(self, segments, include_all)
+        if len(views) != 1:
+            raise ValueError("Native Excel requires exactly one scope; export each scope separately.")
         try:
-            _BinningExcelWriter(self).write_excel(path=path, engine=engine)
+            _BinningExcelWriter(views[0][1]).write_excel(path=path, engine=engine)
         except (ValueError, RuntimeError):
             raise
 
@@ -348,6 +367,8 @@ class MarsBinningReport(_ReportQuery):
         self,
         path: str = "mars_bin_report.html",
         *,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         report_name: str = "MARS Evaluation Report",
         max_plots: int = 500,
         chart_embed_mode: Literal["auto", "inline", "asset"] = "auto",
@@ -366,10 +387,14 @@ class MarsBinningReport(_ReportQuery):
         ----------
         path : str
             输出 HTML 文件路径。
+        segments : list[Any] | None
+            按原始值选择客群，各人口独立复用原生页面。
+        include_all : bool
+            是否包含整体，默认 True。
         report_name : str
             HTML 页面标题和报告名称。
         max_plots : int
-            每个 target 的图表区域最多展示的特征数量，默认 500。
+            未开启客群时，每个目标最多展示的特征数；开启客群后为实际图总数上限，默认 500。
         chart_embed_mode : Literal["auto", "inline", "asset"]
             图表图片嵌入模式。默认 ``auto`` 在图表数量超过 50 张时写入同级图片目录并懒加载；
             ``inline`` 强制内嵌；``asset`` 强制写入资产目录。
@@ -407,6 +432,13 @@ class MarsBinningReport(_ReportQuery):
         ...     path.exists()
         True
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import write_scoped_html
+
+            options = {key: value for key, value in locals().items()
+                       if key not in {"self", "path", "segments", "include_all", "write_scoped_html"}}
+            write_scoped_html(self, path, segments, include_all, options)
+            return
         _BinningHtmlRenderer(self).write_html(
             path=path,
             report_name=report_name,
@@ -426,6 +458,8 @@ class MarsBinningReport(_ReportQuery):
         features: str | List[str] | None = None,
         *,
         target: str | List[str] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         include_total: bool = True,
@@ -441,9 +475,14 @@ class MarsBinningReport(_ReportQuery):
         ----------
         features : str | List[str] | None
             需要绘图的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
-            显式指定时按传入顺序去重，只保留明细中的特征，不受 ``max_plots`` 限制。
+            显式指定时按传入顺序去重，只保留明细中的特征。
+            开启客群后，全部 scope/target 的实际图数共同受 ``max_plots`` 限制；未开启时沿用原合同。
         target : str | List[str] | None
             多目标报告下需要生成的目标列名。传入 ``None`` 时生成全部目标。
+        segments : list[Any] | None
+            按原始业务值选择客群；默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         risk_corr_baseline : RiskCorrBaseline | None
             绘图使用的 RC 基准。默认沿用报告保存的口径，未保存时使用 ``"total"``。
             ``"benchmark"`` 要求报告含已保存的参考表；显式传入时只影响图中 RC。
@@ -456,7 +495,7 @@ class MarsBinningReport(_ReportQuery):
         ascending : bool
             是否按 ``sort_by`` 升序选择特征。
         max_plots : int
-            未显式指定 ``features`` 时，每个目标最多选择的特征数，默认 20。
+            未开启客群时，为每个目标自动选择的特征数；开启客群后为实际图总数上限，默认 20。
         dpi : int
             设置到返回 figure 上的图像分辨率。
 
@@ -477,6 +516,11 @@ class MarsBinningReport(_ReportQuery):
         >>> callable(report.build_risk_trend_figures)
         True
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import render_scopes
+
+            options = {key: value for key, value in locals().items() if key not in {"self", "render_scopes"}}
+            return cast("list[Figure]", render_scopes(self, "build_risk_trend_figures", options))
         try:
             return _BinningPlotRenderer(self).build_risk_trend_figures(
                 features=features,
@@ -502,6 +546,8 @@ class MarsBinningReport(_ReportQuery):
         filename_prefix: str = "risk_trend",
         overwrite: bool = True,
         dpi: int = 150,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         include_total: bool = True,
@@ -518,7 +564,8 @@ class MarsBinningReport(_ReportQuery):
             图片输出目录；目录不存在时会自动创建。
         features : str | List[str] | None
             需要绘图的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
-            显式指定时按传入顺序去重，只保留明细中的特征，不受 ``max_plots`` 限制。
+            显式指定时按传入顺序去重，只保留明细中的特征。
+            开启客群后，全部 scope/target 的实际图数共同受 ``max_plots`` 限制；未开启时沿用原合同。
         target : str | List[str] | None
             多目标报告下需要保存的目标列名。传入 ``None`` 时保存全部目标。
         image_format : Literal["svg", "png"]
@@ -529,6 +576,10 @@ class MarsBinningReport(_ReportQuery):
             当目标文件已存在时是否覆盖。为 ``False`` 时抛出 ``FileExistsError``。
         dpi : int
             PNG 输出分辨率。
+        segments : list[Any] | None
+            按原始业务值选择客群；默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         risk_corr_baseline : RiskCorrBaseline | None
             绘图使用的 RC 基准。默认沿用报告保存的口径，未保存时使用 ``"total"``。
             ``"benchmark"`` 要求报告含已保存的参考表；显式传入时只影响图中 RC。
@@ -541,7 +592,7 @@ class MarsBinningReport(_ReportQuery):
         ascending : bool
             是否按 ``sort_by`` 升序选择特征。
         max_plots : int
-            未显式指定 ``features`` 时，每个目标最多选择的特征数，默认 20。
+            未开启客群时，为每个目标自动选择的特征数；开启客群后为实际图总数上限，默认 20。
 
         Returns
         -------
@@ -562,6 +613,11 @@ class MarsBinningReport(_ReportQuery):
         >>> callable(report.save_risk_trend_images)
         True
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import render_scopes
+
+            options = {key: value for key, value in locals().items() if key not in {"self", "render_scopes"}}
+            return cast("list[Path]", render_scopes(self, "save_risk_trend_images", options))
         try:
             return _BinningPlotRenderer(self).save_risk_trend_images(
                 output_dir=output_dir,
@@ -596,6 +652,8 @@ class MarsBinningReport(_ReportQuery):
         dpi: int = 150,
         filename_prefix: str = "risk_trend",
         overwrite: bool = True,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         include_total: bool = True,
@@ -610,7 +668,8 @@ class MarsBinningReport(_ReportQuery):
         ----------
         features : str | List[str] | None
             需要渲染的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
-            显式指定时按传入顺序去重，只保留明细中的特征，不受 ``max_plots`` 限制。
+            显式指定时按传入顺序去重，只保留明细中的特征。
+            开启客群后，全部 scope/target 的实际图数共同受 ``max_plots`` 限制；未开启时沿用原合同。
         target : str | List[str] | None
             多目标报告下需要渲染的目标列名。传入 ``None`` 时渲染全部目标。
         image_format : Literal["svg", "png"]
@@ -633,6 +692,10 @@ class MarsBinningReport(_ReportQuery):
             asset 模式下的输出文件名前缀。
         overwrite : bool
             asset 模式下目标文件已存在时是否覆盖。
+        segments : list[Any] | None
+            按原始业务值选择客群；默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         risk_corr_baseline : RiskCorrBaseline | None
             绘图使用的 RC 基准。默认沿用报告保存的口径，未保存时使用 ``"total"``。
             ``"benchmark"`` 要求报告含已保存的参考表；显式传入时只影响图中 RC。
@@ -645,7 +708,7 @@ class MarsBinningReport(_ReportQuery):
         ascending : bool
             是否按 ``sort_by`` 升序选择特征。
         max_plots : int
-            未显式指定 ``features`` 时，每个目标最多选择的特征数，默认 20。
+            未开启客群时，为每个目标自动选择的特征数；开启客群后为实际图总数上限，默认 20。
 
         Returns
         -------
@@ -666,6 +729,11 @@ class MarsBinningReport(_ReportQuery):
         >>> callable(report.render_risk_trends_html)
         True
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import render_scopes
+
+            options = {key: value for key, value in locals().items() if key not in {"self", "render_scopes"}}
+            return cast(MarsHtmlRenderResult, render_scopes(self, "render_risk_trends_html", options))
         try:
             return _BinningPlotRenderer(self).render_risk_trends_html(
                 features=features,
@@ -695,6 +763,8 @@ class MarsBinningReport(_ReportQuery):
         features: str | List[str] | None = None,
         *,
         target: str | List[str] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         risk_corr_baseline: RiskCorrBaseline | None = None,
         show_risk: Literal["count", "amt", "both"] = "both",
         include_total: bool = True,
@@ -711,9 +781,14 @@ class MarsBinningReport(_ReportQuery):
         ----------
         features : str | List[str] | None
             需要绘图的特征名称。传入 ``None`` 时，按 ``sort_by`` 和 ``max_plots`` 自动选择。
-            显式指定时按传入顺序去重，只保留明细中的特征，不受 ``max_plots`` 限制。
+            显式指定时按传入顺序去重，只保留明细中的特征。
+            开启客群后，全部 scope/target 的实际图数共同受 ``max_plots`` 限制；未开启时沿用原合同。
         target : str | List[str] | None
             多目标报告下需要展示的目标列名。传入 ``None`` 时展示全部目标。
+        segments : list[Any] | None
+            按原始业务值选择客群；默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         risk_corr_baseline : RiskCorrBaseline | None
             绘图使用的 RC 基准。默认沿用报告保存的口径，未保存时使用 ``"total"``。
             ``"benchmark"`` 要求报告含已保存的参考表；显式传入时只影响图中 RC。
@@ -726,7 +801,7 @@ class MarsBinningReport(_ReportQuery):
         ascending : bool
             是否按 ``sort_by`` 升序选择特征。
         max_plots : int
-            未显式指定 ``features`` 时，每个目标最多选择的特征数，默认 20。
+            未开启客群时，为每个目标自动选择的特征数；开启客群后为实际图总数上限，默认 20。
         dpi : int
             图像显示分辨率。
         return_figures : bool
@@ -749,6 +824,18 @@ class MarsBinningReport(_ReportQuery):
         >>> callable(report.plot_risk_trends)
         True
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import render_scopes
+
+            options = {key: value for key, value in locals().items() if key not in {"self", "render_scopes"}}
+            options.pop("return_figures")
+            figures = render_scopes(self, "build_risk_trend_figures", options)
+            from IPython.display import display
+            for figure in figures:
+                display(figure)
+                if not return_figures:
+                    _BinningPlotRenderer._close_figure(figure)
+            return figures if return_figures else None
         try:
             return _BinningPlotRenderer(self).plot_risk_trends(
                 features=features,
@@ -771,6 +858,8 @@ class MarsBinningReport(_ReportQuery):
                      sort_ascending: bool = False,
                      columns: list[str] | None = None,
                      limit: int | None = None,
+                     segments: list[Any] | None = None,
+                     include_all: bool = True,
                      sources: str | list[str] | None = None,
                      ) -> pd.io.formats.style.Styler:
         """
@@ -788,6 +877,10 @@ class MarsBinningReport(_ReportQuery):
             展示字段。默认保留全部列；显式指定时只返回所列字段，并保持指定顺序。
         limit : int | None
             排序后的最大展示行数，默认不限制；筛选后或截取后为空时抛出 ``ValueError``。
+        segments : list[Any] | None
+            按原始值选择客群，默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         sources : str | list[str] | None
             按已登记来源筛选特征，默认不限制；与 ``features`` 取交集，未知来源报错。
 
@@ -811,7 +904,7 @@ class MarsBinningReport(_ReportQuery):
         """
         df: pd.DataFrame = to_pandas_frame(self.get_table(
             "summary", features=features, columns=columns, sort_by=sort_by,
-            descending=not sort_ascending, limit=limit, sources=sources,
+            descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
         ))
 
         df = self._display_frame(df)
@@ -855,7 +948,9 @@ class MarsBinningReport(_ReportQuery):
                    sort_ascending: bool = False,
                    *, columns: list[str] | None = None,
                    limit: int | None = None,
-                   sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
+                   segments: list[Any] | None = None,
+                     include_all: bool = True,
+                     sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示指定指标在时间切片或客群分组中的变化。
 
@@ -881,6 +976,10 @@ class MarsBinningReport(_ReportQuery):
             展示字段。默认保留全部列并排列分组列；显式指定时保持所列字段及其顺序。
         limit : int | None
             排序后的最大展示行数，默认不限制；筛选后或截取后为空时抛出 ``ValueError``。
+        segments : list[Any] | None
+            按原始值选择客群，默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         sources : str | list[str] | None
             按已登记来源筛选特征，默认不限制；与 ``features`` 取交集，未知来源报错。
 
@@ -909,7 +1008,7 @@ class MarsBinningReport(_ReportQuery):
         effective_sort = ordering
         df: pd.DataFrame = to_pandas_frame(self.get_table(
             f"trend.{metric}", features=features, columns=columns, sort_by=effective_sort,
-            descending=not sort_ascending, limit=limit, sources=sources,
+            descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
         ))
 
         df = self._display_frame(df)

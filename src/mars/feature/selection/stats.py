@@ -20,6 +20,7 @@ from mars.feature.binning.native import MarsNativeBinner
 from mars.feature.selection.base import MarsBaseSelector
 from mars.reporting import MarsBinningReport
 from mars.reporting._metadata import FeatureMetadata, normalize_business_context, normalize_metadata
+from mars.reporting.correlation import CorrelationReport
 from mars.utils.decorators import time_it
 from mars.utils.logger import logger
 
@@ -36,6 +37,18 @@ class MarsStatsSelector(MarsBaseSelector):
 
     可以先用粗分箱减少候选特征，再用精细分箱和稳定性阈值筛选。
     `white_list` 中的特征会尽量绕过自动剔除规则，`black_list` 中的特征会被强制排除。
+
+    Attributes
+    ----------
+    selected_features_ : list[str]
+        整体最终名单，默认转换使用这份名单。
+    selected_features_by_segment_ : dict[str, list[str] | None]
+        以 ``scopes_`` 的稳定 scope ID 索引的名单。空列表为合法空名单，
+        ``None`` 表示该客群未计算或失败，目录保留具体原因。
+    scopes_ : pl.DataFrame | None
+        独立客群筛选的原值身份、顺序及状态目录，整体筛选时为 ``None``。
+    selectors_by_scope_ : dict[str, MarsStatsSelector]
+        成功 scope 的独立规则、漏斗和相关性证据，不持有原始宽表。
 
     Examples
     --------
@@ -79,6 +92,8 @@ class MarsStatsSelector(MarsBaseSelector):
 
         batch_size: int | None = 100,
         n_jobs: int = -1,
+        selection_scope: Literal["global", "per_segment"] = "global",
+        binning_scope: Literal["shared", "per_segment"] = "shared",
     ) -> None:
         """
         初始化统计筛选策略。
@@ -157,6 +172,10 @@ class MarsStatsSelector(MarsBaseSelector):
         n_jobs : int
             分箱器的并行任务数；``-1`` 使用 CPU 核心数减 1，至少为 1。
             精筛分箱默认继承该值，显式 ``binning_params['n_jobs']`` 优先。
+        selection_scope : Literal["global", "per_segment"]
+            默认只筛选整体；``per_segment`` 同时保留整体和各客群的独立名单。
+        binning_scope : Literal["shared", "per_segment"]
+            客群筛选共享整体固定规则，或分别拟合。整体筛选只允许 ``shared``。
 
         Raises
         ------
@@ -223,8 +242,25 @@ class MarsStatsSelector(MarsBaseSelector):
             raise ValueError("batch_size must be a positive integer or None.")
         self.batch_size = 100 if batch_size is None else batch_size
         self.n_jobs = n_jobs
+        if selection_scope not in {"global", "per_segment"}:
+            raise ValueError("selection_scope must be 'global' or 'per_segment'.")
+        if binning_scope not in {"shared", "per_segment"}:
+            raise ValueError("binning_scope must be 'shared' or 'per_segment'.")
+        if selection_scope == "global" and binning_scope == "per_segment":
+            raise ValueError("global selection requires shared binning_scope.")
+        self.selection_scope = selection_scope
+        self.binning_scope = binning_scope
+        self.segment_col: str | None = None
+        self.scopes_: pl.DataFrame | None = None
+        self.selectors_by_scope_: dict[str, MarsStatsSelector] = {}
+        self.selected_features_by_segment_: dict[str, list[str] | None] = {}
+        self._fixed_rough_binner: MarsBinnerBase | None = None
+        self._fixed_fine_binner: MarsBinnerBase | None = None
+        self._pause_after_quality = False
+        self._scope_context = False
+        self._reference_group: Any = None
 
-        self._rough_binner: MarsNativeBinner | None = None
+        self._rough_binner: MarsBinnerBase | None = None
         self._stage3_binner: MarsBinnerBase | None = None
         self._feature_iv_dict: Dict[str, float] = {}
         self._feature_source_map: Dict[str, str] = {}
@@ -246,6 +282,7 @@ class MarsStatsSelector(MarsBaseSelector):
         feature_data_source: dict[str, list[str]] | None = None,
         feature_metadata: FeatureMetadata | None = None,
         business_context: dict[str, Any] | None = None,
+        segment_col: str | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
@@ -276,6 +313,8 @@ class MarsStatsSelector(MarsBaseSelector):
             本次候选特征的业务字典或含 feature 列的 Pandas/Polars 表。
         business_context : dict[str, Any] | None
             可选 JSON 业务上下文，会传递给下游评估报告。
+        segment_col : str | None
+            本次客群列，从默认候选特征中排除；独立筛选时保留原始业务身份。
         group_col : str | None
             已存在的分组列名，用于趋势和稳定性筛选。
         time_col : str | None
@@ -308,13 +347,9 @@ class MarsStatsSelector(MarsBaseSelector):
         MarsStatsSelector
             拟合后的筛选器，`selected_features_` 中保存最终特征列表。
 
-        Raises
-        ------
-        ValueError
-            当标签、稳定性分组、benchmark schema 或分箱结果不满足要求时抛出。
-
         Notes
         -----
+        输入契约无效时由底层验证抛出 ``ValueError``，合法客群的局部失败保留在目录。
         ``psi_thr`` 或 ``rc_thr`` 任一非 ``None`` 时，必须提供 ``group_col`` 或
         ``time_col``。传入 benchmark 后不会把其行合并进 ``df`` 的趋势分组或 Total。
         start-aware 的实际状态、识别特征和上线日期可通过分箱报告 `report_meta` 中的
@@ -374,7 +409,41 @@ class MarsStatsSelector(MarsBaseSelector):
         ... ]
         ['score']
         """
+        from mars.feature.selection._segmented import fit_selector
+
+        return fit_selector(
+            self, df, target=target, benchmark_df=benchmark_df, features=features,
+            segment_col=segment_col, feature_data_source=feature_data_source,
+            feature_metadata=feature_metadata, business_context=business_context,
+            group_col=group_col, time_col=time_col, time_grain=time_grain,
+            white_list=white_list, black_list=black_list,
+            feature_start_aware_reference=feature_start_aware_reference,
+            risk_corr_baseline=risk_corr_baseline,
+        )
+
+    def _fit_single(
+        self,
+        df: pl.DataFrame | pd.DataFrame,
+        *,
+        target: str,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        features: list[str] | None = None,
+        feature_data_source: dict[str, list[str]] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
+        group_col: str | None = None,
+        time_col: str | None = None,
+        time_grain: str | None = None,
+        white_list: list[str] | None = None,
+        black_list: list[str] | None = None,
+        feature_start_aware_reference: bool | None = None,
+        risk_corr_baseline: RiskCorrBaseline | None = None,
+    ) -> MarsStatsSelector:
+        """准备单一人口并执行既有漏斗；内部暂停仅用于共享阶段候选并集。"""
         self._reset_correlation()
+        self.selected_features_ = []
+        self._rough_binner = None
+        self._stage3_binner = None
         # 拦截互斥的配置项
         if self.skip_rough_scan and self.skip_fine_scan:
             raise ValueError("Cannot skip both rough scan and fine scan. At least one binning stage is required.")
@@ -473,6 +542,20 @@ class MarsStatsSelector(MarsBaseSelector):
                 count_after=len(current_features)
             )
 
+        if self._pause_after_quality:
+            self._pending_candidates = candidate_features
+            self._pending_features = current_features
+            self._pending_white = valid_white_list
+            return self
+        return self._resume_selection(
+            X, candidate_features, current_features, valid_white_list, benchmark_pl,
+        )
+
+    def _resume_selection(
+        self, X: pl.DataFrame, candidate_features: list[str], current_features: list[str],
+        valid_white_list: list[str], benchmark_pl: pl.DataFrame | None,
+    ) -> MarsStatsSelector:
+        """在质量筛选之后执行既有漏斗，固定规则只读取本次独立副本。"""
         # 执行轻量级分布区间探查
         if not self.skip_rough_scan and current_features:
             prev_count = len(current_features)
@@ -591,6 +674,7 @@ class MarsStatsSelector(MarsBaseSelector):
         feature_data_source: dict[str, list[str]] | None = None,
         feature_metadata: FeatureMetadata | None = None,
         business_context: dict[str, Any] | None = None,
+        segment_col: str | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
@@ -598,6 +682,8 @@ class MarsStatsSelector(MarsBaseSelector):
         black_list: list[str] | None = None,
         feature_start_aware_reference: bool | None = None,
         risk_corr_baseline: RiskCorrBaseline | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """使用与 :meth:`fit` 相同的参数拟合，并转换当前数据。
 
@@ -618,6 +704,8 @@ class MarsStatsSelector(MarsBaseSelector):
             本次候选特征的业务字典或含 feature 列的 Pandas/Polars 表。
         business_context : dict[str, Any] | None
             可选 JSON 业务上下文，会传递给下游评估报告。
+        segment_col : str | None
+            本次客群列。
         group_col : str | None
             已存在的趋势分组列。
         time_col : str | None
@@ -643,6 +731,11 @@ class MarsStatsSelector(MarsBaseSelector):
         risk_corr_baseline : RiskCorrBaseline | None
             本次筛选使用的 RC 基准；传入 `None` 时沿用构造函数配置。
 
+        segments : list[Any] | None
+            转换指定业务客群；一次只允许一个 scope，默认转换整体。
+        include_all : bool
+            是否选择整体。选择业务客群时应传 ``False``。
+
         Returns
         -------
         pl.DataFrame | pd.DataFrame
@@ -661,6 +754,7 @@ class MarsStatsSelector(MarsBaseSelector):
             feature_data_source=feature_data_source,
             feature_metadata=feature_metadata,
             business_context=business_context,
+            segment_col=segment_col,
             group_col=group_col,
             time_col=time_col,
             time_grain=time_grain,
@@ -669,7 +763,7 @@ class MarsStatsSelector(MarsBaseSelector):
             feature_start_aware_reference=feature_start_aware_reference,
             risk_corr_baseline=risk_corr_baseline,
         )
-        return self.transform(df)
+        return self.transform(df, segments=segments, include_all=include_all)
 
     def _prepare_evaluation_frame(self, df: pl.DataFrame) -> pl.DataFrame:
         """校验并归一化当前筛选样本的二分类标签。"""
@@ -685,7 +779,7 @@ class MarsStatsSelector(MarsBaseSelector):
 
         normalized_df = normalize_binary_target_column(df, self.target)
         observed_classes = count_observed_target_classes(normalized_df, self.target)
-        if observed_classes < 2:
+        if observed_classes < 2 and not self._scope_context:
             raise ValueError(
                 f"Target column {self.target!r} in `df` must have at least 2 observed "
                 "classes after excluding null / NaN values."
@@ -730,6 +824,14 @@ class MarsStatsSelector(MarsBaseSelector):
             or rough_requires_target
             or self.risk_corr_baseline == "benchmark"
         )
+        if self._scope_context:
+            from mars.compute.binning import normalize_binary_target_column
+
+            return (
+                normalize_binary_target_column(benchmark_pl, self.target)
+                if self.target is not None and self.target in benchmark_pl.columns
+                else benchmark_pl
+            )
         return prepare_benchmark_frame(
             benchmark_pl,
             features=features,
@@ -819,11 +921,97 @@ class MarsStatsSelector(MarsBaseSelector):
             data_source=self._feature_source_for(feature),
         )
 
+    def get_report(
+        self, *, segments: list[Any] | None = None, include_all: bool = True,
+    ) -> Union[pl.DataFrame, pd.DataFrame]:
+        """读取单个 scope 的筛选决策，默认返回整体。
+
+        Parameters
+        ----------
+        segments : list[Any] | None
+            单个业务客群原值；缺失客群使用 ``[None]``。
+        include_all : bool
+            是否选择整体。指定客群时传 ``False``，多个 scope 明确拒绝。
+
+        Returns
+        -------
+        pl.DataFrame | pd.DataFrame
+            决策表；开启独立客群筛选时携带 ``scope_id``。
+
+        Notes
+        -----
+        未拟合、scope 不唯一、客群失败或没有决策记录时，底层验证抛出 ``ValueError``。
+
+        Examples
+        --------
+        >>> selector.get_report(segments=["seg2"], include_all=False)  # doctest: +SKIP
+        """
+        from mars.feature.selection._segmented import select_scope
+
+        selected, identity = select_scope(self, segments, include_all)
+        if identity is None:
+            return super().get_report()
+        result = selected.get_report()
+        frame = pl.from_pandas(result) if isinstance(result, pd.DataFrame) else result
+        return self._format_output(frame.with_columns(pl.lit(identity).alias("scope_id")))
+
+    def get_correlation_report(
+        self, *, segments: list[Any] | None = None, include_all: bool = True,
+    ) -> CorrelationReport:
+        """返回一个 scope 的完整相关性证据，复用筛选时的矩阵和事件。
+
+        Parameters
+        ----------
+        segments : list[Any] | None
+            要查询的单个业务客群，默认整体。
+        include_all : bool
+            是否选择整体；指定客群时传 ``False``。
+
+        Returns
+        -------
+        CorrelationReport
+            可保存恢复的单 scope 相关性报告，不重新计算相关系数。
+
+        Raises
+        ------
+        ValueError
+            未拟合、scope 不唯一、客群失败或没有相关性证据时抛出。
+
+        Examples
+        --------
+        >>> selector.get_correlation_report(segments=["seg2"], include_all=False)  # doctest: +SKIP
+        """
+        from mars.feature.selection._segmented import select_scope
+        from mars.reporting._result import _result_report
+
+        selected, identity = select_scope(self, segments, include_all)
+        if identity is None:
+            return super().get_correlation_report()
+        if self.scopes_ is None:
+            raise ValueError("Scope directory is unavailable.")
+        report = selected.get_correlation_report()
+        tables = {
+            name: frame.with_columns(pl.lit(identity).alias("scope_id"))
+            for name, frame in report._tables.items()
+        }
+        tables["scopes"] = self.scopes_
+        snapshot = _result_report(
+            "correlation", tables,
+            {**report.describe()["parameters"], "default_scope_id": identity,
+             "segment_col": self.segment_col, "selection_scope": self.selection_scope,
+             "binning_scope": self.binning_scope},
+            self._corr_input_features, self.feature_metadata, self.business_context,
+            roles={"pairs": {"feature_a": "left endpoint", "feature_b": "right endpoint"}},
+        )
+        return CorrelationReport(snapshot._tables, snapshot.describe())
+
     def transform(
         self,
         df: Union[pl.DataFrame, pd.DataFrame],
         *,
         keep_target: bool = True,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         on_missing: Literal["error", "warn", "ignore"] = "error",
     ) -> Union[pl.DataFrame, pd.DataFrame]:
         """按筛选结果保留特征，并按需附加目标列。
@@ -834,6 +1022,10 @@ class MarsStatsSelector(MarsBaseSelector):
             待转换的样本表。
         keep_target : bool
             是否附加拟合时指定的目标列，默认为 ``True``。输入未包含目标列时不附加。
+        segments : list[Any] | None
+            单个业务客群原值，默认转换整体。
+        include_all : bool
+            是否选择整体；选择业务客群时传 ``False``。
         on_missing : Literal["error", "warn", "ignore"]
             输入缺少已选特征时的处理策略，默认报错。``warn`` 记录警告后跳过，
             ``ignore`` 直接跳过；两者均只返回实际存在的已选特征。
@@ -844,10 +1036,25 @@ class MarsStatsSelector(MarsBaseSelector):
             按已选特征顺序裁剪的表；保留目标时，目标列放在末尾。
             输出格式由 ``set_output`` 控制。
 
-        Notes
-        -----
-        未拟合、缺少已选特征或 ``on_missing`` 无效时，继承的校验会抛出 ``ValueError``。
+        Raises
+        ------
+        ValueError
+            scope 不唯一、目录缺失、未拟合或转换输入无效时抛出。
         """
+        from mars.feature._scopes import scope_filter
+        from mars.feature.selection._segmented import select_scope
+
+        selected, identity = select_scope(self, segments, include_all)
+        if identity is not None:
+            if self.scopes_ is None:
+                raise ValueError("Scope directory is unavailable.")
+            selected._output_config = self._output_config
+            selected._return_pandas = self._return_pandas
+            current = scope_filter(self._ensure_polars_dataframe(df), self.scopes_, identity)
+            output = selected.transform(current, keep_target=keep_target, on_missing=on_missing)
+            output_frame = pl.from_pandas(output) if isinstance(output, pd.DataFrame) else output
+            self._determine_output_format(input_is_pandas=isinstance(df, pd.DataFrame))
+            return self._format_output(output_frame)
         result = super().transform(df, on_missing=on_missing)
         if not keep_target or self.target is None:
             return result
@@ -886,9 +1093,18 @@ class MarsStatsSelector(MarsBaseSelector):
             "Cumulative %": f"{(count_after / self._initial_feature_count * 100):.1f}%" if self._initial_feature_count > 0 else "0%"
         })
 
-    def show_summary(self) -> None:
+    def show_summary(
+        self, *, segments: list[Any] | None = None, include_all: bool = True,
+    ) -> None:
         """
         展示特征筛选漏斗摘要。
+
+        Parameters
+        ----------
+        segments : list[Any] | None
+            要展示的单个业务客群，默认整体。
+        include_all : bool
+            是否选择整体，客群展示传 ``False``。
 
         Returns
         -------
@@ -911,6 +1127,11 @@ class MarsStatsSelector(MarsBaseSelector):
         >>> selector.show_summary() is None
         True
         """
+        if self.scopes_ is not None or segments is not None or not include_all:
+            from mars.feature.selection._segmented import select_scope
+
+            selected, _ = select_scope(self, segments, include_all)
+            return selected.show_summary()
         if not self._funnel_stats:
             raise ValueError("No funnel stats are available. Fit the selector first.")
 
@@ -1024,6 +1245,8 @@ class MarsStatsSelector(MarsBaseSelector):
         """
         if self._stage3_binner is not None:
             self._stage3_binner.clear_cache()
+        if self._rough_binner is not None and self._rough_binner is not self._stage3_binner:
+            self._rough_binner.clear_cache()
 
         import gc
         gc.collect()
@@ -1084,50 +1307,53 @@ class MarsStatsSelector(MarsBaseSelector):
         if not features:
             return []
 
-        fit_df = benchmark_df if benchmark_df is not None else df
-        rough_method = self.rough_binning_params["method"]
-        if rough_method == "cart":
-            if self.target is None:
-                raise ValueError("Selector target is unavailable for supervised rough binning.")
-            # CART 的切点只能由已表现样本拟合；无监督分箱仍保留全量分布口径。
-            fit_df = fit_df.select(list(dict.fromkeys([*features, self.target]))).filter(
-                pl.col(self.target).is_not_null()
-            )
-        cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
-        cat_features = [c for c in features if fit_df.schema[c] in cat_types]
+        if self._fixed_rough_binner is not None:
+            binner = self._fixed_rough_binner
+        else:
+            fit_df = benchmark_df if benchmark_df is not None else df
+            rough_method = self.rough_binning_params["method"]
+            if rough_method == "cart":
+                if self.target is None:
+                    raise ValueError("Selector target is unavailable for supervised rough binning.")
+                # CART 的切点只能由已表现样本拟合；无监督分箱仍保留全量分布口径。
+                fit_df = fit_df.select(list(dict.fromkeys([*features, self.target]))).filter(
+                    pl.col(self.target).is_not_null()
+                )
+            cat_types = [pl.Utf8, pl.Categorical, pl.Boolean]
+            cat_features = [c for c in features if fit_df.schema[c] in cat_types]
 
-        binner = MarsNativeBinner(
-            method=cast(
-                Literal["cart", "quantile", "uniform"],
-                rough_method,
-            ),
-            n_bins=cast(int, self.rough_binning_params["n_bins"]),
-            missing_values=self.missing_values,
-            special_values=self.special_values,
-            min_bin_size=cast(float, self.rough_binning_params["min_bin_size"]),
-            merge_small_bins=bool(self.rough_binning_params["merge_small_bins"]),
-            cart_params=cast(
-                Union[Dict[str, Any], None],
-                self.rough_binning_params.get("cart_params"),
-            ),
-            remove_empty_bins=bool(
-                self.rough_binning_params.get("remove_empty_bins", False)
-            ),
-            n_jobs=self.n_jobs,
-        )
-        fit_target = (
-            fit_df.get_column(self.target)
-            if rough_method == "cart" and self.target is not None
-            else None
-        )
-        binner.fit(
-            fit_df,
-            fit_target,
-            features=features,
-            cat_features=cat_features,
-        )
-        if benchmark_df is not None:
-            self._validate_benchmark_bins(binner, benchmark_df, features)
+            binner = MarsNativeBinner(
+                method=cast(
+                    Literal["cart", "quantile", "uniform"],
+                    rough_method,
+                ),
+                n_bins=cast(int, self.rough_binning_params["n_bins"]),
+                missing_values=self.missing_values,
+                special_values=self.special_values,
+                min_bin_size=cast(float, self.rough_binning_params["min_bin_size"]),
+                merge_small_bins=bool(self.rough_binning_params["merge_small_bins"]),
+                cart_params=cast(
+                    Union[Dict[str, Any], None],
+                    self.rough_binning_params.get("cart_params"),
+                ),
+                remove_empty_bins=bool(
+                    self.rough_binning_params.get("remove_empty_bins", False)
+                ),
+                n_jobs=self.n_jobs,
+            )
+            fit_target = (
+                fit_df.get_column(self.target)
+                if rough_method == "cart" and self.target is not None
+                else None
+            )
+            binner.fit(
+                fit_df,
+                fit_target,
+                features=features,
+                cat_features=cat_features,
+            )
+            if benchmark_df is not None:
+                self._validate_benchmark_bins(binner, benchmark_df, features)
 
         self._rough_binner = binner
 
@@ -1136,7 +1362,8 @@ class MarsStatsSelector(MarsBaseSelector):
         target = df.get_column(self.target)
         # 分箱边界来自 fit_df，但 WOE 和筛选指标必须基于当前 df 物化。
         stats_df = binner.profile_bin_performance(
-            df, target, features=features, update_woe=True, batch_size=self.batch_size,
+            df, target, features=features, update_woe=self._fixed_rough_binner is None,
+            batch_size=self.batch_size,
         )
 
         lift_recall_cond = (pl.col("Lift") > self.rough_lift_thr) & (pl.col("count_dist") > self.rough_min_sample_rate)
@@ -1227,11 +1454,17 @@ class MarsStatsSelector(MarsBaseSelector):
         }
         evaluator = MarsBinEvaluator(
             binning_type="optimal",
-            binner_params=binner_params,
+            binner_params=binner_params if self._fixed_fine_binner is None else {},
             feature_start_aware_reference=self.feature_start_aware_reference,
             risk_corr_baseline=self.risk_corr_baseline,
         )
 
+        evaluator._scope_context = self._scope_context
+        evaluator._reference_group = self._reference_group
+        fixed_woe = (
+            {feature: dict(mapping) for feature, mapping in self._fixed_fine_binner.bin_woes_.items()}
+            if self._fixed_fine_binner is not None else None
+        )
         run = evaluator.evaluate(
             df=df,
             target=self.target,
@@ -1242,6 +1475,7 @@ class MarsStatsSelector(MarsBaseSelector):
             feature_metadata={f: self.feature_metadata.get(f, {}) for f in features},
             business_context=self.business_context,
             benchmark_df=benchmark_df,
+            binner=self._fixed_fine_binner,
             psi_include_missing=self.psi_include_missing,
             psi_include_special=self.psi_include_special,
             feature_start_aware_reference=self._effective_feature_start_reference(
@@ -1250,6 +1484,8 @@ class MarsStatsSelector(MarsBaseSelector):
             risk_corr_baseline=self.risk_corr_baseline,
             batch_size=self.batch_size,
         )
+        if fixed_woe is not None:
+            run.binner.bin_woes_ = fixed_woe
         report = self._annotate_selector_report(
             run.report,
             benchmark_row_count=(benchmark_df.height if benchmark_df is not None else None),
@@ -1338,10 +1574,13 @@ class MarsStatsSelector(MarsBaseSelector):
 
         from mars.analysis.evaluator import MarsBinEvaluator
 
-        run = MarsBinEvaluator(
+        evaluator = MarsBinEvaluator(
             feature_start_aware_reference=self.feature_start_aware_reference,
             risk_corr_baseline=self.risk_corr_baseline,
-        ).evaluate(
+        )
+        evaluator._scope_context = self._scope_context
+        evaluator._reference_group = self._reference_group
+        run = evaluator.evaluate(
             df=df,
             target=self.target,
             features=features,
@@ -1586,6 +1825,8 @@ class MarsStatsSelector(MarsBaseSelector):
         df: pl.DataFrame | pd.DataFrame,
         *,
         benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> MarsBinningReport:
         """
         为已选中特征生成最终风险评估报告。
@@ -1597,6 +1838,11 @@ class MarsStatsSelector(MarsBaseSelector):
         benchmark_df : pl.DataFrame | pd.DataFrame | None
             PSI expected distribution 和可选 benchmark RC 的基准样本。若 ``fit``
             使用过 benchmark，本方法必须重新传入；固定分箱器不会重新拟合。
+
+        segments : list[Any] | None
+            要重新评估的单个业务客群，默认整体。
+        include_all : bool
+            是否选择整体；客群报告传 ``False``。
 
         Returns
         -------
@@ -1623,6 +1869,29 @@ class MarsStatsSelector(MarsBaseSelector):
         selector 不保存原始 benchmark。重新生成报告时显式重传可避免 PSI 基准静默
         回退到 ``df`` 的最早分组。
         """
+        from mars.feature._scopes import scope_filter
+        from mars.feature.selection._segmented import select_scope, tag_binning_report
+
+        selected, identity = select_scope(self, segments, include_all)
+        if identity is not None:
+            if self.scopes_ is None:
+                raise ValueError("Scope directory is unavailable.")
+            current = scope_filter(self._ensure_polars_dataframe(df), self.scopes_, identity)
+            baseline = (
+                scope_filter(self._ensure_polars_dataframe(benchmark_df), self.scopes_, identity)
+                if benchmark_df is not None else None
+            )
+            previous_config, previous_pandas = selected._output_config, selected._return_pandas
+            output_config = self._output_config
+            if output_config == "default":
+                output_config = "pandas" if isinstance(df, pd.DataFrame) else "polars"
+            selected.set_output(cast(Literal["default", "pandas", "polars"], output_config))
+            try:
+                report = selected.get_binning_report(current, benchmark_df=baseline)
+            finally:
+                selected._output_config, selected._return_pandas = previous_config, previous_pandas
+                self._determine_output_format(input_is_pandas=isinstance(df, pd.DataFrame))
+            return tag_binning_report(report, self.scopes_, identity)
         self._check_is_fitted()
 
         if not self.selected_features_:
@@ -1645,7 +1914,8 @@ class MarsStatsSelector(MarsBaseSelector):
                 features=self.selected_features_,
                 weights_col=None,
                 target=self.target,
-                require_binary_target=self.risk_corr_baseline == "benchmark",
+                require_binary_target=self.risk_corr_baseline == "benchmark" and not self._scope_context,
+                allow_empty=self._scope_context,
             )
 
         from mars.analysis.evaluator import MarsBinEvaluator
@@ -1661,6 +1931,8 @@ class MarsStatsSelector(MarsBaseSelector):
         if self._return_pandas:
             evaluator.set_output("pandas")
 
+        evaluator._scope_context = self._scope_context
+        evaluator._reference_group = self._reference_group
         run = evaluator.evaluate(
             df=X_pl,
             target=self.target,

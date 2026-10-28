@@ -215,7 +215,11 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
             function marsFirstPage() { return marsAvailablePages()[0]?.dataset.marsView||"overview"; }
             function marsNavigateTo(page, replace=false) {
                 const normalized=marsNormalizePage(page)||marsFirstPage();
-                if(location.hash!==`#${normalized}`) {
+                const scopedFrame=typeof window==="undefined" ? null : window.frameElement;
+                if(scopedFrame && scopedFrame.hasAttribute("data-scope-id")) {
+                    if(!scopedFrame.hidden && typeof parent.marsSetScopePage==="function")
+                        parent.marsSetScopePage(scopedFrame, normalized, replace);
+                } else if(location.hash!==`#${normalized}`) {
                     if(replace) history.replaceState(null,"",`#${normalized}`);
                     else history.pushState(null,"",`#${normalized}`);
                 }
@@ -233,7 +237,15 @@ def build_html_runtime_script(summary_filter_columns: Sequence[str]) -> str:
                 marsQueueLayoutSync("all");
                 marsScheduleViewportRefresh();
             }
-            function marsApplyPageFromHash() { marsNavigateTo(location.hash||marsFirstPage(), true); }
+            function marsApplyPageFromHash() {
+                const frame=typeof window==="undefined" ? null : window.frameElement;
+                if(!frame || !frame.hasAttribute("data-scope-id")) {
+                    marsNavigateTo(location.hash||marsFirstPage(),true);return;
+                }
+                const hash=parent.location.hash;
+                const options=new URLSearchParams(hash.replace(/^#/,""));
+                marsNavigateTo(options.get("view")||hash||marsFirstPage(), true);
+            }
             function marsResolveLocalScope(scopeId) { return scopeId==="mars-chart-cards" ? "charts" : `table:${scopeId}`; }
             function marsMergeRefreshToken(scopeToken) {
                 const token=(scopeToken||"all").trim() || "all";

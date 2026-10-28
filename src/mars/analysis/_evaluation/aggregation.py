@@ -103,6 +103,8 @@ def get_benchmark_dist(
     group_col: str,
     features: list[str],
     weights_col: str | None,
+    reference_group: str | None = None,
+    allow_null_reference: bool = False,
 ) -> pl.DataFrame:
     """构造 PSI expected distribution。"""
     if benchmark_binned is not None:
@@ -137,11 +139,11 @@ def get_benchmark_dist(
         )
         return collect_streaming(expected_query)
 
-    min_group = group_stats_raw.select(pl.col(group_col).min()).item()
+    min_group = reference_group if reference_group is not None else group_stats_raw.select(pl.col(group_col).min()).item()
     logger.debug("[BASELINE] Using earliest group '%s' as baseline (from stats cache).", min_group)
     return (
         group_stats_raw
-        .filter(pl.col(group_col) == min_group)
+        .filter(pl.col(group_col).is_null() if allow_null_reference and min_group is None else pl.col(group_col) == min_group)
         .group_by(["feature", "bin_index"])
         .agg(pl.col("count").sum().alias("expected_count"))
         .with_columns(

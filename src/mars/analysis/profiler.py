@@ -56,6 +56,8 @@ def profile_stats(
     psi_remove_empty_bins: bool = True,
     psi_merge_small_bins: bool = True,
     psi_min_bin_size: float = 0.02,
+    segment_col: str | None = None,
+    binning_scope: str = "shared",
 ) -> MarsProfileReport:
     """
     按指定指标生成数据画像，默认不生成字符分布图。
@@ -116,6 +118,11 @@ def profile_stats(
     psi_min_bin_size : float
         PSI 数值分箱合并小箱时的最小样本占比，默认 0.02；
         仅在 ``psi_merge_small_bins=True`` 时生效。
+    segment_col : str | None
+        本次客群列。默认不切分；指定后同时保留完整人口和各客群统计。
+    binning_scope : str
+        PSI 规则拟合范围，``"shared"`` 共享整体切点，``"per_segment"`` 独立拟合。
+        仅影响 PSI，独立拟合必须同时指定客群并请求 PSI。
 
     Returns
     -------
@@ -152,6 +159,7 @@ def profile_stats(
         psi_remove_empty_bins=psi_remove_empty_bins,
         psi_merge_small_bins=psi_merge_small_bins,
         psi_min_bin_size=psi_min_bin_size,
+        binning_scope=binning_scope,
     )
     return profiler.generate_profile(
         df,
@@ -171,6 +179,7 @@ def profile_stats(
         sparkline_sample_size=sparkline_sample_size,
         psi_include_missing=psi_include_missing,
         psi_include_special=psi_include_special,
+        segment_col=segment_col,
     )
 
 
@@ -204,6 +213,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_cv_ignore_threshold: float = 0.05,
         psi_batch_size: int = 50,
         overview_batch_size: int = 500,
+        binning_scope: str = "shared",
     ) -> None:
         """
         初始化画像策略。
@@ -232,6 +242,13 @@ class MarsDataProfiler(MarsBaseEstimator):
             每批计算 PSI 的特征数，默认 50；控制中间表规模，不改变指标口径。
         overview_batch_size : int
             每批计算 overview 的特征数，默认 500；控制中间表规模，不改变指标口径。
+        binning_scope : str
+            PSI 分箱规则范围，``"shared"`` 或 ``"per_segment"``；不改变其他统计。
+
+        Raises
+        ------
+        ValueError
+            分箱范围不是 ``"shared"`` 或 ``"per_segment"`` 时抛出。
         """
         super().__init__()
         self.missing_values: list[Any] = list(missing_values or [])
@@ -244,6 +261,9 @@ class MarsDataProfiler(MarsBaseEstimator):
         self.psi_min_bin_size = psi_min_bin_size
         self.psi_cv_ignore_threshold = psi_cv_ignore_threshold
         self.overview_batch_size = overview_batch_size
+        if binning_scope not in {"shared", "per_segment"}:
+            raise ValueError("`binning_scope` must be 'shared' or 'per_segment'.")
+        self.binning_scope = binning_scope
 
     @time_it
     def generate_profile(
@@ -266,6 +286,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         sparkline_sample_size: int = 200_000,
         psi_include_missing: bool = False,
         psi_include_special: bool = False,
+        segment_col: str | None = None,
     ) -> MarsProfileReport:
         """
         生成一次数据画像报告。
@@ -314,6 +335,8 @@ class MarsDataProfiler(MarsBaseEstimator):
             是否将缺失值箱计入 PSI。默认排除，缺失率仍单独计算。
         psi_include_special : bool
             是否将特殊值箱计入 PSI。默认排除，不影响特殊值识别。
+        segment_col : str | None
+            本次运行的客群列，自动从默认特征中排除。与显式特征、分组和日期角色冲突时报错。
 
         Returns
         -------
@@ -348,6 +371,52 @@ class MarsDataProfiler(MarsBaseEstimator):
         1
 
         """
+        selection = normalize_profile_metrics(metrics, require_metrics=False)
+        if self.binning_scope == "per_segment" and (
+            segment_col is None or "psi" not in selection.stat_metrics
+        ):
+            raise ValueError("`binning_scope='per_segment'` requires `segment_col` and metric 'psi'.")
+        kwargs: dict[str, Any] = {
+            "metrics": metrics, "features": features, "feature_metadata": feature_metadata,
+            "business_context": business_context, "benchmark_df": benchmark_df,
+            "categorical_features": categorical_features, "exclude_features": exclude_features,
+            "include_dtypes": include_dtypes, "group_col": group_col, "time_col": time_col,
+            "time_grain": time_grain, "enable_sparkline": enable_sparkline,
+            "sparkline_bins": sparkline_bins, "sparkline_sample_size": sparkline_sample_size,
+            "psi_include_missing": psi_include_missing, "psi_include_special": psi_include_special,
+        }
+        if segment_col is not None:
+            from mars.analysis._profiling.segmented import generate_segmented_profile
+
+            return generate_segmented_profile(self, df, segment_col, kwargs)
+        return self._generate_profile(df, **kwargs)
+
+    def _generate_profile(
+        self,
+        df: pl.DataFrame | pd.DataFrame,
+        *,
+        metrics: list[str] | None = None,
+        features: list[str] | None = None,
+        feature_metadata: FeatureMetadata | None = None,
+        business_context: dict[str, Any] | None = None,
+        benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
+        categorical_features: list[str] | None = None,
+        exclude_features: list[str] | None = None,
+        include_dtypes: type | pl.DataType | list[type | pl.DataType] | None = None,
+        group_col: str | None = None,
+        time_col: str | None = None,
+        time_grain: str | None = None,
+        enable_sparkline: bool = True,
+        sparkline_bins: int = 8,
+        sparkline_sample_size: int = 200_000,
+        psi_include_missing: bool = False,
+        psi_include_special: bool = False,
+        psi_binner: Any = None,
+        psi_fit_df: pl.DataFrame | None = None,
+        psi_reference_reason: str | None = None,
+        allow_empty_benchmark: bool = False,
+    ) -> MarsProfileReport:
+        """按明确人口计算一份画像，客群编排只传规则和参考，不留存输入宽表。"""
         selection = normalize_profile_metrics(metrics, require_metrics=False)
         comparison_requested = bool(selection.comparison_metrics)
         prepared_df, prepared_features = prepare_profile_data(
@@ -394,7 +463,7 @@ class MarsDataProfiler(MarsBaseEstimator):
             "psi" in selection.stat_metrics or comparison_requested
         ):
             benchmark_pl = prepare_benchmark_data(benchmark_df)
-            if benchmark_pl.is_empty():
+            if benchmark_pl.is_empty() and not allow_empty_benchmark:
                 raise ValueError("`benchmark_df` must contain at least one row.")
             excluded_psi_cols = {column for column in [context.group_col, time_col] if column}
             psi_features = [
@@ -458,12 +527,16 @@ class MarsDataProfiler(MarsBaseEstimator):
 
         if "psi" in selection.stat_metrics:
             # 无参考或无当前样本时显式保留 typed null；PSI 不经过通用聚合占位表。
-            if context.group_col or benchmark_pl is not None:
+            if psi_reference_reason is not None:
+                stat_tables["psi"] = unavailable_pivot_report(context)
+            elif context.group_col or benchmark_pl is not None:
                 stat_tables["psi"] = get_psi_trend(
                     context,
                     options,
                     features=psi_features,
                     benchmark_df=benchmark_pl,
+                    binner=psi_binner,
+                    fit_df=psi_fit_df,
                 )
             else:
                 stat_tables["psi"] = unavailable_pivot_report(context)
@@ -541,6 +614,17 @@ class MarsDataProfiler(MarsBaseEstimator):
             has_psi_reference=context.group_col is not None or benchmark_pl is not None,
             psi_features=psi_features,
         )
+        if psi_reference_reason is not None and "psi" in selection.stat_metrics:
+            missing_status = pl.DataFrame(
+                {
+                    "feature": psi_features if psi_features is not None else context.features,
+                },
+                schema={"feature": pl.String},
+            ).with_columns(
+                pl.lit("*").alias("group"), pl.lit("psi").alias("metric"),
+                pl.lit("not_computed").alias("status"), pl.lit(psi_reference_reason).alias("reason"),
+            )
+            status = pl.concat([status.filter(pl.col("metric") != "psi"), missing_status])
         if status.height:
             report._calculation_status = self._format_output(status)
         report._normalize_feature_tables()

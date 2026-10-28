@@ -7,7 +7,7 @@ from typing import Any
 
 import polars as pl
 
-from mars._compat import polars_is_in
+from mars._compat import _left_join_nulls, polars_is_in
 from mars.analysis._evaluation.references import build_risk_corr_long
 from mars.compute import (
     amount_distribution_exprs,
@@ -487,6 +487,7 @@ def build_binning_report_parts(
     risk_corr_reference_table: pl.DataFrame,
     monitor_metrics_groups: pl.DataFrame | None,
     monitor_metrics_total: pl.DataFrame | None,
+    strict_statistics: bool = False,
 ) -> BinningReportParts:
     """构造分箱报告所需的 summary、detail、trend 和 RC reference 表。"""
     detail_table = build_binning_detail_table(
@@ -508,6 +509,7 @@ def build_binning_report_parts(
         all_metrics_for_corr,
         baseline_df,
         group_col=group_col,
+        strict_statistics=strict_statistics,
     )
     summary_table, monitor_group_level_metrics, monitoring_total = build_binning_summary_table(
         stats_long=stats_long,
@@ -521,6 +523,24 @@ def build_binning_report_parts(
         monitor_metrics_total=monitor_metrics_total,
         missing_bin_index=MarsBinnerBase.IDX_MISSING,
     )
+    if strict_statistics:
+        # 客群报告不把未定义相关性写成 1；仅从本次原分组重算汇总。
+        rc_min = (
+            _left_join_nulls(metrics_groups.select("feature", group_col).unique(), risk_corr_long, on=["feature", group_col])
+            .group_by("feature").agg(pl.col("risk_corr").min().alias("rc_min"))
+        )
+        psi_max = (
+            monitoring_groups.group_by("feature", group_col)
+            .agg(pl.col("psi_bin").sum().alias("psi"))
+            .group_by("feature").agg(pl.col("psi").max().alias("psi_max"))
+        )
+        original_columns = summary_table.columns
+        summary_table = (
+            summary_table.drop("rc_min", "psi_max")
+            .join(rc_min, on="feature", how="left")
+            .join(psi_max, on="feature", how="left")
+            .select(original_columns)
+        )
     trend_tables = build_binning_trend_tables(
         stats_long=stats_long,
         risk_corr_long=risk_corr_long,

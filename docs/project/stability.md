@@ -39,6 +39,11 @@ Scoring 直接修改调用代码，并更新对应的行为测试。
 
 ## 升级规则
 
+分客群分析是新增的显式能力，当前只覆盖风险画像、数据画像和 StatsSelector。
+未提供 `segment_col` 时沿用原始表结构和默认结果。开启后读取事实表时必须保留 `scope_id`，
+不能仅凭 feature 连接不同人口。报告文件继续使用格式 1；新增目录不要求迁移历史无客群文件。
+原生 Excel 的单 scope 限制、独立规则产物和局部失败合同见[分客群分析](../user-guide/segmented-analysis.md)。
+
 - 安装时固定精确版本，例如 `pip install mars-risk==0.0.28`。
   使用 main 源码时，按[安装指南](../getting-started/installation.md)安装，
   并记录实际核验的提交。仓库版本号不代表已经上传 PyPI。

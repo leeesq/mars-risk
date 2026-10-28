@@ -123,6 +123,7 @@ class _BinningPlotRenderer:
             include_total=include_total,
             display_name=display_name,
             group_time_ranges=self._resolve_group_time_ranges(),
+            preserve_undefined=bool(self.report_meta.get("selected_scope")),
         )
 
     @staticmethod
@@ -297,16 +298,26 @@ class _BinningPlotRenderer:
                 if current_target not in {None, "", "dummy_target"}
                 else "Target"
             )
+            caption = self.report_meta.get("scope_caption")
+            if caption:
+                display_target = f"{display_target} / {caption}"
             effective_risk_corr_baseline = self._resolve_plot_risk_corr_baseline(
                 risk_corr_baseline,
             )
-            current_reference = self._build_plot_risk_corr_reference(
-                current_detail,
-                group_col=plot_group_col,
-                baseline=effective_risk_corr_baseline,
-                current_target=current_target,
-                saved_reference=reference_pd,
-            )
+            if self.report_meta.get("selected_scope") and effective_risk_corr_baseline == self.report_meta.get("risk_corr_baseline"):
+                # 当前人口的缺参考也属于保存证据，不能在绘图时改选自身下一期。
+                current_reference = reference_pd.copy() if reference_pd is not None else pd.DataFrame()
+                if "y" in current_reference.columns and current_target is not None:
+                    current_reference = current_reference[current_reference["y"].astype(str) == current_target]
+                current_reference = current_reference.reindex(columns=["feature", "bin_index", "base_br"])
+            else:
+                current_reference = self._build_plot_risk_corr_reference(
+                    current_detail,
+                    group_col=plot_group_col,
+                    baseline=effective_risk_corr_baseline,
+                    current_target=current_target,
+                    saved_reference=reference_pd,
+                )
             contexts.append(
                 _RiskTrendPlotContext(
                     detail=current_detail,
@@ -319,6 +330,13 @@ class _BinningPlotRenderer:
                     time_range=time_range,
                 )
             )
+        if self.report_meta.get("selected_scope"):
+            remaining = max_plots
+            for context in contexts:
+                if len(context.features) > remaining:
+                    logger.warning("max_plots limits rendered figures; full scope statistics remain available.")
+                context.features[:] = context.features[:remaining]
+                remaining -= len(context.features)
         return contexts, normalized_show_risk
 
     def build_risk_trend_figures(

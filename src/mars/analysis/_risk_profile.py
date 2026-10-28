@@ -10,6 +10,8 @@ import polars as pl
 
 from mars.analysis._raw_ks import _apply_raw_ks, _prepare_raw_ks
 from mars.compute import OrderedMetricSortBy, RiskCorrBaseline, to_polars_frame
+from mars.feature._scopes import validate_segment_roles
+from mars.feature.binning.base import MarsBinnerBase
 from mars.reporting import MarsBinningReport
 from mars.reporting._metadata import FeatureMetadata
 from mars.utils.logger import logger
@@ -248,6 +250,7 @@ def profile_risk(
     *,
     target: str | list[str] | None = None,
     features: list[str] | None = None,
+    segment_col: str | None = None,
     feature_data_source: dict[str, list[str]] | None = None,
     feature_metadata: FeatureMetadata | None = None,
     business_context: dict[str, Any] | None = None,
@@ -257,6 +260,9 @@ def profile_risk(
     weights_col: str | None = None,
     amount_col: str | None = None,
     binning_type: Literal["native", "optimal", "lite_opt"] = "native",
+    binning_scope: Literal["shared", "per_segment"] = "shared",
+    binner: MarsBinnerBase | None = None,
+    segment_binners: dict[str, MarsBinnerBase] | None = None,
     method: Literal["quantile", "uniform", "cart"] | None = None,
     n_bins: int | None = None,
     min_bin_size: float | int | None = None,
@@ -299,6 +305,8 @@ def profile_risk(
     features : list[str] | None
         本次参与评估的特征列。传入 `None` 时一次性排除全部目标列以及已声明的
         分组、时间、权重、金额列，再将同一特征集用于所有目标和 raw KS。
+    segment_col : str | None
+        额外客群列；整体与各客群保留原有趋势分组，并从默认特征中排除。
     feature_data_source : dict[str, list[str]] | None
         数据源名称到特征列表的映射，用于在报告中标明特征来源。
     feature_metadata : FeatureMetadata | None
@@ -320,6 +328,12 @@ def profile_risk(
     binning_type : Literal["native", "optimal", "lite_opt"]
         自动拟合使用的分箱引擎，默认 `"native"`。
         无标签时，监督分箱会回退为 native 等频分箱。
+    binning_scope : Literal["shared", "per_segment"]
+        共享整体规则或按客群拟合固定规则；默认 shared。
+    binner : MarsBinnerBase | None
+        显式固定的整体规则，仅适用于 shared，不重新拟合。
+    segment_binners : dict[str, MarsBinnerBase] | None
+        独立模式下以 scope_id 为键的固定规则，须覆盖整体和全部当前客群。
     method : Literal["quantile", "uniform", "cart"] | None
         数值分箱方法。`native` 下映射到底层 `method`，
         `optimal` 和 `lite_opt` 下映射到底层 `prebinning_method`。
@@ -471,6 +485,12 @@ def profile_risk(
 
     # 角色声明不能把标签同时当作分组、权重或金额；避免统计语义发生隐式变化。
     role_columns = {group_col, time_col, weights_col, amount_col} - {None}
+    if segment_col is not None:
+        validate_segment_roles(segment_col, features, {
+            "target": target_list, "group_col": group_col, "time_col": time_col,
+            "weights_col": weights_col, "amount_col": amount_col,
+        })
+        role_columns.add(segment_col)
     conflicting_targets = sorted(set(target_list) & role_columns)
     if conflicting_targets:
         raise ValueError(
@@ -528,11 +548,13 @@ def profile_risk(
             max_features=max_raw_ks_features,
             missing_values=missing_values,
             special_values=special_values,
+            segment_col=segment_col,
         )
 
     primary_evaluator = MarsBinEvaluator(
         binning_type=effective_binning_type,
         binner_params=effective_binner_params,
+        binning_scope=binning_scope,
         feature_start_aware_reference=feature_start_aware_reference,
         risk_corr_baseline=risk_corr_baseline,
         ordered_metric_sort_by=ordered_metric_sort_by,
@@ -541,6 +563,7 @@ def profile_risk(
         df=df,
         target=primary_target,
         features=features,
+        segment_col=segment_col,
         group_col=group_col,
         time_col=time_col,
         time_grain=time_grain,
@@ -549,6 +572,8 @@ def profile_risk(
         business_context=business_context,
         weights_col=weights_col,
         amount_col=amount_col,
+        binner=binner,
+        segment_binners=segment_binners,
         benchmark_df=benchmark_df,
         psi_include_missing=psi_include_missing,
         psi_include_special=psi_include_special,
@@ -575,15 +600,23 @@ def profile_risk(
         all_statuses = [to_polars_frame(primary_report.get_table("calculation_status"))]
 
         for sec_target in target_list[1:]:
-            sec_run = MarsBinEvaluator(
+            secondary_evaluator = MarsBinEvaluator(
                 binning_type=effective_binning_type,
                 feature_start_aware_reference=feature_start_aware_reference,
                 risk_corr_baseline=risk_corr_baseline,
                 ordered_metric_sort_by=ordered_metric_sort_by,
-            ).evaluate(
+                binning_scope=binning_scope,
+            )
+            if primary_run.scopes is not None:
+                secondary_evaluator._scope_fit_failures = {
+                    row["scope_id"]: row["reason"]
+                    for row in primary_run.scopes.filter(pl.col("status") == "failed").to_dicts()
+                }
+            sec_run = secondary_evaluator.evaluate(
                 df=df,
                 target=sec_target,
                 features=features,
+                segment_col=segment_col,
                 group_col=group_col,
                 time_col=time_col,
                 time_grain=time_grain,
@@ -592,7 +625,8 @@ def profile_risk(
                 business_context=business_context,
                 weights_col=weights_col,
                 amount_col=amount_col,
-                binner=trained_binner,
+                binner=trained_binner if binning_scope == "shared" else None,
+                segment_binners=primary_run.binners_by_scope if binning_scope == "per_segment" else None,
                 benchmark_df=benchmark_df,
                 psi_include_missing=psi_include_missing,
                 psi_include_special=psi_include_special,
@@ -625,7 +659,8 @@ def profile_risk(
             final_reference = final_reference.to_pandas()
 
         merged_meta = dict(primary_report.report_meta or {})
-        meta_df = cast(pl.DataFrame, primary_evaluator._ensure_polars_dataframe(df))
+        meta_input = df.loc[:, target_list] if isinstance(df, pd.DataFrame) else df.select(target_list)
+        meta_df = cast(pl.DataFrame, primary_evaluator._ensure_polars_dataframe(meta_input))
         merged_meta["targets"] = [str(t) for t in target_list]
         event_rate_map: dict[str, float | None] = {}
         for target_name in target_list:
@@ -655,6 +690,8 @@ def profile_risk(
         combined_status = pl.concat(all_statuses, how="vertical_relaxed")
         final_report.source = dict(primary_report.source)
         final_report._calculation_status = combined_status.to_pandas() if input_is_pandas else combined_status
+        if segment_col is not None:
+            final_report._scopes = primary_run.scopes
         final_targets = [str(t) for t in target_list]
 
     final_report._normalize_feature_tables()
@@ -670,4 +707,6 @@ def profile_risk(
         binner=trained_binner,
         targets=final_targets,
         metadata=dict(final_report.report_meta or {}),
+        binners_by_scope=primary_run.binners_by_scope,
+        scopes=primary_run.scopes,
     )

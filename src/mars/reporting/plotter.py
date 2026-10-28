@@ -265,14 +265,15 @@ class MarsPlotter:
     def _calculate_panel_risk_corr(
         panel_df: pd.DataFrame,
         reference_df: pd.DataFrame | None,
+        undefined_value: float = 1.0,
     ) -> float:
-        """按正常箱与参考箱坏率计算 Spearman RC；参考不足或无法定义时沿用 1.0。"""
+        """按正常箱与参考箱坏率计算 Spearman RC；参考不足或无法定义时返回调用方指定的缺省值。"""
         if reference_df is None or reference_df.empty:
-            return 1.0
+            return undefined_value
 
         current_df = panel_df[panel_df["bin_index"] >= 0].copy()
         if current_df.empty:
-            return 1.0
+            return undefined_value
 
         merged_df = current_df.merge(
             reference_df[["feature", "bin_index", "base_br"]],
@@ -281,21 +282,21 @@ class MarsPlotter:
         )
         merged_df = merged_df.dropna(subset=["bad_rate", "base_br"])
         if merged_df.empty:
-            return 1.0
+            return undefined_value
 
         current_values = merged_df["bad_rate"].to_numpy(dtype=float)
         baseline_values = merged_df["base_br"].to_numpy(dtype=float)
         if len(current_values) <= 1:
-            return 1.0
+            return undefined_value
         if (
             np.std(current_values) <= DIVISION_EPSILON
             or np.std(baseline_values) <= DIVISION_EPSILON
         ):
-            return 1.0
+            return undefined_value
 
         corr_value = merged_df["bad_rate"].corr(merged_df["base_br"], method="spearman")
         if np.isnan(corr_value):
-            return 1.0
+            return undefined_value
         return float(corr_value)
 
     @staticmethod
@@ -498,6 +499,7 @@ class MarsPlotter:
         include_total: bool = True,
         display_name: str | None = None,
         group_time_ranges: Mapping[str | None, TimeRange | None] | None = None,
+        preserve_undefined: bool = False,
     ) -> plt.Figure | None:
         """构建风险趋势图对象但不直接展示。"""
         normalized_time_range: TimeRange = normalize_time_range(time_range)
@@ -579,6 +581,8 @@ class MarsPlotter:
         if not missing_row.empty and total_count > 0:
             miss_count = missing_row["count"].sum()
             miss_str = f"{miss_count / total_count:.2%}"
+        elif preserve_undefined and total_count > 0:
+            miss_str = "0.00%"
         else:
             miss_str = "nan%"
 
@@ -683,6 +687,7 @@ class MarsPlotter:
             rc_val = MarsPlotter._calculate_panel_risk_corr(
                 df_g,
                 feature_reference_pd,
+                undefined_value=float("nan") if preserve_undefined else 1.0,
             )
 
             has_observed_risk = (
@@ -833,7 +838,8 @@ class MarsPlotter:
                 ax.text(j, max(counts) * 0.05, f"{val:.1%}", color="#333333", ha="center", va="bottom", fontsize=fs_text + 0.5)
 
             total_count_g = df_g["count"].sum() if "count" in df_g.columns else df_g["total_count"].iloc[0]
-            psi_val = df_g["psi_bin"].sum() if "psi_bin" in df_g.columns else 0.0
+            psi_val = df_g["psi_bin"].sum(min_count=1 if preserve_undefined else 0) if "psi_bin" in df_g.columns else float("nan") if preserve_undefined else 0.0
+            psi_text = f"{psi_val:.2f}" if np.isfinite(psi_val) else "n.a."
 
             g_miss_row = df_g[df_g["bin_index"] == -1]
             g_miss_str = f"{g_miss_row['count'].sum() / total_count_g:.0%}" if not g_miss_row.empty and total_count_g > 0 else "0%"
@@ -850,7 +856,7 @@ class MarsPlotter:
                     ha="center",
                 )
                 psi_color = "red" if psi_val > 0.1 else "black"
-                ax.text(0.48, 1.015, f"PSI: {psi_val:.2f}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
+                ax.text(0.48, 1.015, f"PSI: {psi_text}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
                 ax.text(0.52, 1.015, f"Miss: {g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
             elif has_observed_risk:
                 total_bad = df_g["bad"].sum()
@@ -872,7 +878,7 @@ class MarsPlotter:
                 ks_text = f"{ks_val:.1f}" if np.isfinite(ks_val) else "n.a."
                 perf_text = f"IV: {iv_val:.2f},  KS: {ks_text},  AUC: {auc_val:.2f},"
                 ax.text(0.602, 1.015, perf_text, transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color="black")
-                ax.text(0.607, 1.015, f"  PSI: {psi_val:.2f},", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="red" if psi_val > 0.1 else "black")
+                ax.text(0.607, 1.015, f"  PSI: {psi_text},", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="red" if psi_val > 0.1 else "black")
                 ax.text(0.837, 0.945, f" {rc_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.36, color=rc_color)
                 ax.text(0.837, 1.015, f" Miss:{g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
 
@@ -906,7 +912,7 @@ class MarsPlotter:
             else:
                 ax.set_title(f"{group_label}   (Total: {int(total_count_g)})", fontsize=fs_title + 0.85, y=1.05, ha="center")
                 psi_color = "red" if psi_val > 0.1 else "black"
-                ax.text(0.48, 1.015, f"PSI: {psi_val:.2f}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
+                ax.text(0.48, 1.015, f"PSI: {psi_text}   |", transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color=psi_color)
                 ax.text(0.52, 1.015, f"Miss: {g_miss_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="#555555")
 
             if group_time_ranges and group in group_time_ranges:

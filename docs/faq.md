@@ -21,6 +21,11 @@ MARS 的 `MarsOptimalBinner` 使用 optbinning 拟合分箱规则，供其他 MA
 不会。MARS 用 `benchmark_df` 拟合基准分箱规则，并计算 PSI 的参考分布（expected distribution）。
 基准样本不计入当前 `df` 的 Total 或趋势分组。
 
+## 共享分箱是否让所有客群使用整体 PSI 基准？
+
+共享的是固定规则。PSI 的 expected 来自 benchmark 中对应客群；缺客群参考会记录未计算，
+不会借用整体分布。All 与当前 scope 的 Total、独立名单和单 scope Excel 用法见[分客群分析](user-guide/segmented-analysis.md)。
+
 ## 为什么高层 API 用 `target`，底层算法用 `y`？
 
 高层 API 接收完整业务表，用 `target` 指定标签列名。底层 estimator 分别接收特征矩阵 `X` 和标签向量 `y`。

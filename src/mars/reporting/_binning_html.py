@@ -771,6 +771,8 @@ class _BinningHtmlRenderer:
                     (y_val, chart_detail_pd, str(feature), str(data_source))
                 )
 
+        if self.report_meta.get("selected_scope"):
+            chart_candidates = chart_candidates[:max_plots]
         effective_embed_mode = self._resolve_chart_embed_mode(
             chart_embed_mode,
             len(chart_candidates),

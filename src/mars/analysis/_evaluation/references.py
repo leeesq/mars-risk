@@ -150,6 +150,8 @@ def build_risk_corr_reference_table(
     has_target: bool,
     mars_group_col: str,
     benchmark_reference: pl.DataFrame | None = None,
+    reference_group: str | None = None,
+    allow_null_reference: bool = False,
 ) -> tuple[pl.DataFrame, str]:
     """按统一策略选择 RC 参考表。
 
@@ -179,6 +181,10 @@ def build_risk_corr_reference_table(
         evaluator 内部分组列名称。
     benchmark_reference : pl.DataFrame | None
         已按特征批次聚合的显式基准 RC 表，优先复用。
+    reference_group : str | None
+        客群共用的整体首组；未传时沿用当前人口的最小分组。
+    allow_null_reference : bool
+        客群路径中允许真实空值组作为首组，保持与字符串 null 不同的身份。
 
     Returns
     -------
@@ -211,10 +217,10 @@ def build_risk_corr_reference_table(
         )
 
     if risk_corr_baseline == "first_group":
-        first_group: Any = metrics_groups.select(pl.col(group_col).min()).item()
+        first_group: Any = reference_group if reference_group is not None else metrics_groups.select(pl.col(group_col).min()).item()
         reference_df = (
             metrics_groups
-            .filter(pl.col(group_col) == first_group)
+            .filter(pl.col(group_col).is_null() if allow_null_reference and first_group is None else pl.col(group_col) == first_group)
             .select(
                 [
                     "feature",
@@ -268,6 +274,7 @@ def build_risk_corr_long(
     baseline_df: pl.DataFrame,
     *,
     group_col: str,
+    strict_statistics: bool = False,
 ) -> pl.DataFrame:
     """基于参考坏率表计算分组级 RC 长表。
 
@@ -279,16 +286,28 @@ def build_risk_corr_long(
         包含 `feature`、`bin_index` 和 `base_br` 的参考坏率表。
     group_col : str
         分组列名称。
+    strict_statistics : bool
+        客群评估保留不足两对箱值、常量和缺参考时的统计未定义状态。
 
     Returns
     -------
     pl.DataFrame
         包含 `feature`、分组列和 `risk_corr` 的长表。
     """
+    valid = pl.col("bad_rate").is_not_null() & pl.col("base_br").is_not_null()
+    rates = pl.col("bad_rate").filter(valid)
+    references = pl.col("base_br").filter(valid)
+    expression = (
+        pl.when((rates.len() >= 2) & (rates.n_unique() > 1) & (references.n_unique() > 1))
+        .then(pl.corr(rates, references, method="spearman"))
+        .otherwise(pl.lit(None, dtype=pl.Float64))
+        .fill_nan(None)
+        .alias("risk_corr")
+    ) if strict_statistics else risk_corr_expr()
     return (
         metrics_df
         .filter(pl.col("bin_index") >= 0)
         .join(baseline_df, on=["feature", "bin_index"], how="left")
         .group_by(["feature", group_col])
-        .agg(risk_corr_expr())
+        .agg(expression)
     )

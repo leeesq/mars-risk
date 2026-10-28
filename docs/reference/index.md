@@ -19,3 +19,6 @@ description: MARS 公开 Python API 的模块索引和稳定性状态。
 | [Modeling / Pipeline](modeling.md) | Experimental | 切分、调参、replay、评估、预测和编排 |
 
 文档测试会核对公开模块的 `__all__`，确保本节引用了所有公开名称。
+
+风险画像、数据画像与 StatsSelector 的客群参数、规则及查询合同见[分客群分析](../user-guide/segmented-analysis.md)。
+参数精确顺序以各模块生成的签名为准。

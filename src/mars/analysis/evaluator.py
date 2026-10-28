@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Union
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -45,6 +46,7 @@ from mars.compute import (
     global_distribution_expr,
     normalize_ordered_metric_sort_by,
     normalize_risk_corr_baseline,
+    to_polars_frame,
 )
 from mars.core.base import MarsBaseEstimator
 from mars.feature.binning.base import MarsBinnerBase
@@ -79,12 +81,63 @@ class MarsRiskProfile:
         本次画像覆盖的目标列列表；无标签画像时为空列表。
     metadata : dict
         本次运行的列名、特征范围、分箱配置和其他上下文信息。
+    binners_by_scope : dict[str, MarsBinnerBase]
+        启用客群后的固定规则索引，键为 scopes 中的稳定 scope_id；all 为整体。
+        失败客群没有可用规则，不能借用整体规则。
+    scopes : pl.DataFrame | None
+        客群身份与运行状态目录，未启用客群时为 None。
     """
 
     report: MarsBinningReport
     binner: MarsBinnerBase
     targets: list[str]
     metadata: dict[str, Any]
+    binners_by_scope: dict[str, MarsBinnerBase] = field(default_factory=dict)
+    scopes: pl.DataFrame | None = None
+
+    def save_binning_rules(self, path: str | Path) -> None:
+        """保存独立于报告快照的固定规则集合。
+
+        Parameters
+        ----------
+        path : str | Path
+            JSON 规则文件，父目录须存在。
+
+        Examples
+        --------
+        >>> callable(MarsRiskProfile.save_binning_rules)
+        True
+        """
+        from mars.analysis._evaluation.segmented import save_binning_rules
+
+        save_binning_rules(self, path)
+
+    @staticmethod
+    def load_binning_rules(path: str | Path) -> dict[str, MarsBinnerBase]:
+        """加载可显式传给评估器的固定规则索引。
+
+        Parameters
+        ----------
+        path : str | Path
+            由 save_binning_rules 保存的 JSON 文件。
+
+        Returns
+        -------
+        dict[str, MarsBinnerBase]
+            以稳定 scope_id 为键的规则；不包含原始人口或分析器。
+
+        Notes
+        -----
+        底层加载器会拒绝不受支持的规则集合类型或版本。
+
+        Examples
+        --------
+        >>> callable(MarsRiskProfile.load_binning_rules)
+        True
+        """
+        from mars.analysis._evaluation.segmented import load_binning_rules
+
+        return load_binning_rules(path)
 
 
 class MarsBinEvaluator(MarsBaseEstimator):
@@ -130,6 +183,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         feature_start_aware_reference: bool = False,
         risk_corr_baseline: RiskCorrBaseline = "total",
         ordered_metric_sort_by: OrderedMetricSortBy = "woe",
+        binning_scope: Literal["shared", "per_segment"] = "shared",
     ) -> None:
         """
         初始化分箱评估器。
@@ -160,6 +214,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ordered_metric_sort_by : OrderedMetricSortBy
             KS/AUC 的默认排序口径。`"woe"` 适合普通特征预测力评估；
             `"bin_index"` 适合概率、分数和强有序变量。
+        binning_scope : Literal["shared", "per_segment"]
+            客群共享整体规则或在既定拟合人口中分别拟合，默认共享。
 
         Raises
         ------
@@ -177,11 +233,17 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self.target: str | None = None
         self.binner: MarsBinnerBase | None = None
         self.has_target_: bool = False
-        self.binning_type = normalized_binning_type
+        self.binning_type = cast(Literal["native", "optimal", "lite_opt"], normalized_binning_type)
         self.binner_params = dict(binner_params or {})
         self.feature_start_aware_reference = bool(feature_start_aware_reference)
         self.risk_corr_baseline = normalize_risk_corr_baseline(risk_corr_baseline)
         self.ordered_metric_sort_by = normalize_ordered_metric_sort_by(ordered_metric_sort_by)
+        if binning_scope not in {"shared", "per_segment"}:
+            raise ValueError("binning_scope must be 'shared' or 'per_segment'.")
+        self.binning_scope = binning_scope
+        self._scope_context = False
+        self._reference_group: str | None = None
+        self._scope_fit_failures: dict[str, str] = {}
 
     @time_it
     def evaluate(
@@ -190,6 +252,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         *,
         target: str | None = None,
         features: list[str] | None = None,
+        segment_col: str | None = None,
         group_col: str | None = None,
         time_col: str | None = None,
         time_grain: str | None = None,
@@ -199,6 +262,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
         weights_col: str | None = None,
         amount_col: str | None = None,
         binner: MarsBinnerBase | None = None,
+        segment_binners: dict[str, MarsBinnerBase] | None = None,
         benchmark_df: pl.DataFrame | pd.DataFrame | None = None,
         psi_include_missing: bool = False,
         psi_include_special: bool = False,
@@ -220,6 +284,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         features : list[str] | None
             本次评估的特征列，金额列始终排除。默认排除目标、内部分组、权重和金额列；
             建议显式传入业务特征，避免将原始日期或原始分组列纳入评估。
+        segment_col : str | None
+            独立客群列；默认不增加客群维度，不能与其他数据角色重叠。
         group_col : str | None
             已存在的趋势分组列，例如月份、客群或样本切片。与时间列同时提供时，
             优先使用此列分组。
@@ -242,6 +308,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
         binner : MarsBinnerBase | None
             已拟合的分箱器。传入后直接复用固定规则，不重新拟合；
             不能同时设置评估器构造参数 `binner_params`。
+        segment_binners : dict[str, MarsBinnerBase] | None
+            独立模式的固定规则索引，必须覆盖 all 和当前全部客群；禁止隐式重拟合。
         benchmark_df : pl.DataFrame | pd.DataFrame | None
             基准期样本。未传入 ``binner`` 时用其拟合分箱规则，并始终作为 PSI
             expected distribution；已传入 ``binner`` 时只按该固定规则构造基准分布。
@@ -284,6 +352,22 @@ class MarsBinEvaluator(MarsBaseEstimator):
         ValueError
             当必要列缺失、分箱器配置冲突或输入数据无法评估时抛出。
         """
+        if segment_col is not None:
+            from mars.analysis._evaluation.segmented import evaluate_segmented
+
+            return evaluate_segmented(
+                self, df, segment_col=segment_col, target=target, features=features,
+                group_col=group_col, time_col=time_col, time_grain=time_grain,
+                feature_data_source=feature_data_source, feature_metadata=feature_metadata,
+                business_context=business_context, weights_col=weights_col, amount_col=amount_col,
+                binner=binner, segment_binners=segment_binners, benchmark_df=benchmark_df,
+                psi_include_missing=psi_include_missing, psi_include_special=psi_include_special,
+                feature_start_aware_reference=feature_start_aware_reference,
+                risk_corr_baseline=risk_corr_baseline, ordered_metric_sort_by=ordered_metric_sort_by,
+                batch_size=batch_size,
+            )
+        if self.binning_scope != "shared" or segment_binners is not None:
+            raise ValueError("per_segment binning and segment_binners require segment_col.")
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError("batch_size must be a positive integer.")
         # 先把输入统一成内部 Polars 表，并解析本次画像的分组口径。
@@ -293,6 +377,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
             if benchmark_df is not None
             else None
         )
+        if self._scope_context and benchmark_pl is not None and target in benchmark_pl.columns:
+            assert target is not None
+            benchmark_pl = normalize_binary_target_column(benchmark_pl, target)
         original_target = target
         effective_target = target if target else "dummy_target"
         profile_by = resolve_profile_by(
@@ -325,7 +412,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     target,
                 )
                 has_target = False
-            elif observed_classes < 2:
+            elif observed_classes < 2 and not self._scope_context:
                 raise ValueError(
                     f"Target column '{effective_target}' must have at least 2 observed classes "
                     "after excluding null / NaN values."
@@ -386,8 +473,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 target=original_target,
                 require_binary_target=(
                     (binner is None and needs_supervised_fit)
-                    or needs_benchmark_risk_corr
+                    or (needs_benchmark_risk_corr and not self._scope_context)
                 ),
+                allow_empty=self._scope_context,
             )
 
         active_binner = binner
@@ -464,6 +552,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 expected_frames.append(get_benchmark_dist(
                     group_stats_raw=batch_stats, benchmark_binned=benchmark_binned,
                     group_col=group_col, features=batch_features, weights_col=weights_col,
+                    reference_group=self._reference_group,
+                    allow_null_reference=self._scope_context,
                 ))
                 if benchmark_binned is not None and needs_benchmark_risk_corr:
                     reference_frames.append(build_benchmark_risk_corr_reference(
@@ -590,6 +680,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 feature_start_reference=feature_start_reference,
                 has_target=has_target,
                 mars_group_col=self.MARS_GROUP_COL,
+                reference_group=self._reference_group,
+                allow_null_reference=self._scope_context,
             )
         )
 
@@ -835,7 +927,68 @@ class MarsBinEvaluator(MarsBaseEstimator):
                 },
             )
         )
+        if self._scope_context and "risk_corr" in report.trend_tables:
+            from mars.reporting._metadata import is_metadata_column
+
+            rc_trend = to_polars_frame(report.trend_tables["risk_corr"])
+            rc_statuses = [{
+                "feature": row["feature"], "target": original_target, "group": column,
+                "metric": "risk_corr", "status": "undefined", "reason": "insufficient_or_constant_bin_rates",
+            } for row in rc_trend.to_dicts() for column in rc_trend.columns
+                if not is_metadata_column(column) and row[column] is None]
+            if rc_statuses:
+                status = to_polars_frame(report._calculation_status)
+                report._calculation_status = self._format_output(pl.concat([
+                    status, pl.DataFrame(rc_statuses, schema=status.schema),
+                ]))
         report._normalize_feature_tables()
+        if self._scope_context:
+            from mars.analysis._evaluation.segmented import _null_reference_metrics
+            from mars.compute.stability import psi_valid_condition
+
+            reference_reason: str | None = None
+            if benchmark_prepared is not None:
+                if benchmark_prepared.is_empty():
+                    reference_reason = "missing_reference_population"
+                elif weights_col and benchmark_prepared[weights_col].sum() == 0:
+                    reference_reason = "zero_reference_weight"
+            elif self._reference_group is not None:
+                first_rows = working_df.filter(pl.col(group_col) == self._reference_group)
+                if first_rows.is_empty():
+                    reference_reason = "missing_reference_population"
+                elif weights_col and first_rows[weights_col].sum() == 0:
+                    reference_reason = "zero_reference_weight"
+            if reference_reason is not None:
+                _null_reference_metrics(
+                    report, reference_reason, original_target,
+                    include_rc=effective_risk_corr_baseline in {"benchmark", "first_group"},
+                )
+            if weights_col and working_df[weights_col].sum() == 0:
+                _null_reference_metrics(report, "zero_current_weight", original_target, include_rc=True)
+            # 按特征核对适用箱人口；缺失／特殊箱被排除后不能用 epsilon 伪造参考。
+            if reference_reason is None:
+                valid = psi_valid_condition(
+                    pl.col("bin_index"), include_missing=psi_include_missing,
+                    include_special=psi_include_special,
+                )
+                effective_reference = expected_dist.filter(valid).group_by("feature").agg(
+                    pl.col("expected_dist").sum().alias("mass")
+                ).filter(pl.col("mass") > 0)["feature"].to_list()
+                unavailable_reference = [f for f in target_features if f not in effective_reference]
+                if unavailable_reference:
+                    _null_reference_metrics(
+                        report, "no_effective_reference_population", original_target,
+                        features=unavailable_reference,
+                    )
+                effective_current = group_stats_raw.filter(valid).group_by("feature").agg(
+                    pl.col("count").sum().alias("mass")
+                ).filter(pl.col("mass") > 0)["feature"].to_list()
+                unavailable_current = [f for f in target_features if f not in effective_current]
+                if unavailable_current:
+                    _null_reference_metrics(
+                        report, "no_effective_current_population", original_target,
+                        features=unavailable_current,
+                    )
         run = MarsRiskProfile(
             report=report,
             binner=active_binner,
@@ -1299,6 +1452,7 @@ class MarsBinEvaluator(MarsBaseEstimator):
             risk_corr_reference_table=reference_table,
             monitor_metrics_groups=monitor_metrics_groups,
             monitor_metrics_total=monitor_metrics_total,
+            strict_statistics=self._scope_context,
         )
         trend_tables = {
             metric: self._format_output(table)

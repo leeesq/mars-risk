@@ -136,6 +136,7 @@ class MarsProfileReport(_ReportQuery):
     def _query_tables(self) -> dict[str, ReportFrame]:
         """按公共目录命名画像表，保留各表的 Pandas/Polars 类型。"""
         return {"overview": self.overview_table,
+                **({"scopes": self._scopes} if getattr(self, "_scopes", None) is not None else {}),
                 **({"calculation_status": self._calculation_status} if self._calculation_status is not None else {}),
                 **{f"dq.{k}": v for k, v in self.dq_tables.items()},
                 **{f"stats.{k}": v for k, v in self.stats_tables.items()},
@@ -172,6 +173,11 @@ class MarsProfileReport(_ReportQuery):
 
     def _repr_html_(self) -> str:
         """返回 Jupyter 环境下的 HTML 摘要面板。"""
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import scope_views
+
+            return str(scope_views(self)[0][1]._repr_html_())
+
         df_ov = self.overview_table
         n_feats = len(df_ov) if hasattr(df_ov, "__len__") else df_ov.height
 
@@ -274,6 +280,9 @@ class MarsProfileReport(_ReportQuery):
         group_ascending: bool = True,
         sort_by: Union[str, List[str]] = "total",
         sort_ascending: bool = False,
+        *,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> None:
         """
         导出画像 Excel 报告。
@@ -290,10 +299,20 @@ class MarsProfileReport(_ReportQuery):
         sort_ascending : bool
             是否按 ``sort_by`` 升序排列特征行，默认降序。
 
+        segments : list[Any] | None
+            原始客群值，一次导出只允许一个 scope。
+        include_all : bool
+            默认整体，导出子客群时设 False。
+
         Returns
         -------
         None
             写入报告文件，不返回数据。
+
+        Raises
+        ------
+        ValueError
+            同时请求多个 scope 或空选择时抛出。
 
         Notes
         -----
@@ -311,7 +330,12 @@ class MarsProfileReport(_ReportQuery):
         ...     report.write_excel(str(Path(tmp) / "profile.xlsx")) is None
         True
         """
-        _ProfileExcelWriter(self).write_excel(
+        from mars.reporting._scope_view import scope_views
+
+        views = scope_views(self, segments, include_all)
+        if len(views) != 1:
+            raise ValueError("Native Excel requires exactly one scope.")
+        _ProfileExcelWriter(views[0][1]).write_excel(
             path=path,
             group_ascending=group_ascending,
             sort_by=sort_by,
@@ -322,6 +346,8 @@ class MarsProfileReport(_ReportQuery):
         self,
         path: str = "mars_profile_report.html",
         *,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
         report_name: str = "MARS Data Profile",
     ) -> None:
         """导出可离线浏览的单文件画像 HTML 报告。
@@ -333,6 +359,10 @@ class MarsProfileReport(_ReportQuery):
         ----------
         path : str
             输出文件路径，默认写入 ``mars_profile_report.html``；父目录必须存在。
+        segments : list[Any] | None
+            按原始值选择客群，各人口独立复用原生页面。
+        include_all : bool
+            是否包含整体，默认 True。
         report_name : str
             HTML 页头和浏览器标签页的报告标题，默认使用 ``"MARS Data Profile"``。
 
@@ -347,6 +377,13 @@ class MarsProfileReport(_ReportQuery):
         报告渲染或文件写入失败时抛出 ``RuntimeError``。
 
         """
+        if getattr(self, "_scopes", None) is not None:
+            from mars.reporting._scope_view import write_scoped_html
+
+            options = {key: value for key, value in locals().items()
+                       if key not in {"self", "path", "segments", "include_all", "write_scoped_html"}}
+            write_scoped_html(self, path, segments, include_all, options)
+            return
         write_profile_html(self, path=path, report_name=report_name)
 
     def _get_styler(
@@ -382,7 +419,9 @@ class MarsProfileReport(_ReportQuery):
                       sort_ascending: bool = False,
                       *, columns: list[str] | None = None,
                       limit: int | None = None,
-                      sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
+                      segments: list[Any] | None = None,
+                     include_all: bool = True,
+                     sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示特征概览宽表，数值单位按真实指标字段定义格式化。
 
@@ -399,6 +438,10 @@ class MarsProfileReport(_ReportQuery):
             展示字段。默认保留全部列；显式指定时只返回所列字段，并保持指定顺序。
         limit : int | None
             排序后的最大展示行数，默认不限制。设为 0 时返回保留列结构的空视图。
+        segments : list[Any] | None
+            按原始值选择客群，默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         sources : str | list[str] | None
             按已有特征来源筛选；来源未知时明确报错。
 
@@ -429,7 +472,7 @@ class MarsProfileReport(_ReportQuery):
             effective_sort = [c for c in ("dtype", "missing_rate") if c in self.overview_table.columns] or None
         df = to_pandas_frame(self.get_table(
             "overview", features=features, columns=columns, sort_by=effective_sort,
-            descending=not sort_ascending, limit=limit, sources=sources,
+            descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
         ))
         df = self._display_frame(df)
         return self._get_styler(
@@ -449,7 +492,9 @@ class MarsProfileReport(_ReportQuery):
                    sort_ascending: bool = False,
                    *, columns: list[str] | None = None,
                    limit: int | None = None,
-                   sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
+                   segments: list[Any] | None = None,
+                     include_all: bool = True,
+                     sources: str | list[str] | None = None) -> pd.io.formats.style.Styler:
         """
         展示指定指标的分组趋势，数值单位按所属指标定义格式化。
 
@@ -472,6 +517,10 @@ class MarsProfileReport(_ReportQuery):
             展示字段。默认保留全部列并排列分组列；显式指定时保持所列字段及其顺序。
         limit : int | None
             排序后的最大展示行数，默认不限制。设为 0 时返回保留列结构的空视图。
+        segments : list[Any] | None
+            按原始值选择客群，默认不选择子客群。
+        include_all : bool
+            是否包含整体，默认 True。
         sources : str | list[str] | None
             按已登记来源筛选特征，默认不限制；与 ``features`` 取交集，未知来源报错。
 
@@ -530,7 +579,7 @@ class MarsProfileReport(_ReportQuery):
             sort_by = next((column for column in ("total", "feature") if column in table_columns), None)
         df: pd.DataFrame = to_pandas_frame(self.get_table(
             table_name, features=features, columns=columns,
-            sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
+            sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
         ))
         df = self._display_frame(df)
         if columns is None:
@@ -543,7 +592,7 @@ class MarsProfileReport(_ReportQuery):
                 df["feature"].tolist() if "feature" in df.columns else
                 to_pandas_frame(self.get_table(
                     table_name, features=features, columns=["feature"],
-                    sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources,
+                    sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
                 ))["feature"].tolist()
             )
             state: pd.DataFrame = to_pandas_frame(self.get_table(

@@ -45,9 +45,10 @@ def prepare_benchmark_frame(
     weights_col: str | None,
     target: str | None,
     require_binary_target: bool,
+    allow_empty: bool = False,
 ) -> pl.DataFrame:
     """校验 benchmark schema，并按需归一化监督标签。"""
-    if benchmark_df.is_empty():
+    if benchmark_df.is_empty() and not allow_empty:
         raise ValueError("`benchmark_df` must contain at least one row.")
 
     missing_features = sorted(set(features) - set(benchmark_df.columns))

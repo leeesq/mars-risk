@@ -940,16 +940,14 @@ def test_profile_risk_accepts_single_layer_binner_params(sample_credit_df):
     assert run.binner.merge_small_bins is True
 
 
-def test_profile_risk_no_longer_accepts_binner(sample_credit_df):
-    binner = MarsNativeBinner(method="quantile", n_bins=3)
-
-    with pytest.raises(TypeError, match="binner"):
-        profile_risk(
-            sample_credit_df,
-            target="target",
-            features=["income"],
-            binner=binner,
-        )
+def test_profile_risk_accepts_explicit_fixed_binner(sample_credit_df: pl.DataFrame) -> None:
+    binner = MarsNativeBinner(method="quantile", n_bins=3).fit(sample_credit_df, features=["income"])
+    before = binner.to_dict()
+    run = profile_risk(sample_credit_df, target="target", features=["income"], binner=binner)
+    assert run.binner is binner
+    assert before["state"]["bin_cuts_"] == binner.to_dict()["state"]["bin_cuts_"]
+    with pytest.raises(ValueError, match="binner_params"):
+        profile_risk(sample_credit_df, target="target", features=["income"], binner=binner, n_bins=4)
 
 
 def test_ordered_metric_bin_index_excludes_non_normal_bins() -> None:

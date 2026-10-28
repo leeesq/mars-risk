@@ -16,10 +16,11 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 | 目标 | 入口 |
 | --- | --- |
 | 按高层参数自动构建分箱器 | `profile_risk()` |
-| 传入或复用已拟合分箱器 | `MarsBinEvaluator.evaluate()` |
+| 传入或复用已拟合分箱器 | `profile_risk(..., binner=...)`、`MarsBinEvaluator.evaluate()` |
 | 只需要分箱和转换 | `MarsNativeBinner`、`MarsLiteOptBinner`、`MarsOptimalBinner` |
 
-`profile_risk()` 不接受显式 `binner`。需要固定规则时使用 evaluator。
+两个评估入口都接受显式固定规则。`profile_risk()` 还提供多目标和 raw KS 编排；
+`MarsBinEvaluator` 保存稳定策略，每次 `evaluate()` 接收本次人口与数据角色。
 
 ## 基准期规则评估当前期
 
@@ -32,6 +33,114 @@ description: 自动建箱、复用基准期规则并读取 IV、KS、AUC、Lift�
 
 评估器优先使用显式传入的 `binner`，其次用 `benchmark_df` 拟合规则，最后才用当前 `df`。
 基准样本不计入当前期 Total，但会提供 PSI 的参考分布（expected distribution）。
+
+## 分客群风险画像
+
+在原有 `group_col` 或时间分组之外，用 `segment_col` 指定本次客群列。
+All 独立统计完整输入；各客群的 Total 汇总自身全部原分组。
+没有样本的组合不补造零风险。客群身份、公共查询和恢复用法见
+[分客群分析](segmented-analysis.md)。
+
+```python
+import polars as pl
+
+from mars.analysis import MarsBinEvaluator, profile_risk
+
+train_df = df.filter(pl.col("dataset_flag") == "Train")
+shared = profile_risk(
+    df,
+    target="TARGET",
+    features=["income", "utilization"],
+    segment_col="customer_segment",
+    group_col="dataset_flag",
+    time_col="APPLY_DATE",
+    benchmark_df=train_df,
+    binning_scope="shared",
+    method="quantile",
+    n_bins=5,
+)
+independent = MarsBinEvaluator(
+    binning_scope="per_segment",
+    binner_params={"method": "quantile", "n_bins": 5, "n_jobs": 1},
+).evaluate(
+    df,
+    target="TARGET",
+    features=["income", "utilization"],
+    segment_col="customer_segment",
+    group_col="dataset_flag",
+    time_col="APPLY_DATE",
+    benchmark_df=train_df,
+)
+```
+
+`binning_scope="shared"` 在既定整体拟合人口学习一次边界、类别定义和转换映射；
+所有客群复用这套固定规则。`"per_segment"` 为整体和各客群分别学习规则。
+独立模式的箱号和区间属于各自人口，不能只按箱号比较不同客群。
+同一客群跨分组和目标保持规则不变，首目标负责拟合，趋势表仍只覆盖首目标。
+
+提供 `benchmark_df` 时，它既是拟合人口，也是 PSI 参考人口。
+All 匹配整体基准，seg2 匹配基准中的 seg2；共享边界不等于共享 expected distribution。
+基准必须有类型一致的客群列。缺某客群时，共享模式仍可计算其分布和合法风险指标，
+PSI 则保留 null，并在 `calculation_status` 记录 `missing_reference_population`。
+独立模式缺拟合人口时记录规则拟合失败，不借用整体规则。
+
+未传基准时，各客群使用按整体原分组排序确定的同一首组作为 PSI 参考。
+该客群缺整体首组时不自动改用自己的下一期。RC 的 `total`、`benchmark` 和
+`first_group` 也分别限定在当前人口，参考不足或常量导致未定义时保留状态。
+`report.report_meta["scope_metadata"]` 记录各人口的规则身份、参考组、人口数和日期范围。
+
+标签、权重或角色声明非法时，入口拒绝整次调用。监督拟合单类别、缺规则和算法失败
+记录局部原因，其他合法客群继续计算。评估期单类别仍保留可定义的计数和坏率；
+统计未定义、未表现与未计算各有状态。分析不会替客群换目标、换算法或重新拟合评估期。
+
+默认特征推断排除 `segment_col`。显式把它同时声明为特征、目标、分组、时间、
+权重或金额角色会报错。已有 `group_col` 仍优先于时间分组，`time_col` 提供日期附表。
+
+### 客群规则与报告分别保存
+
+`MarsRiskProfile.binner` 保留整体规则；`binners_by_scope` 使用稳定 `scope_id` 索引各人口规则。
+规则产物保存边界、已学映射和索引，不保存原始宽表。下例的输出父目录须已存在。
+
+```python
+from mars.analysis import MarsRiskProfile
+
+independent.save_binning_rules("artifacts/customer_rules.json")
+rules = MarsRiskProfile.load_binning_rules("artifacts/customer_rules.json")
+reused = MarsBinEvaluator(binning_scope="per_segment").evaluate(
+    df,
+    target="TARGET",
+    features=["income", "utilization"],
+    segment_col="customer_segment",
+    group_col="dataset_flag",
+    benchmark_df=train_df,
+    segment_binners=rules,
+)
+```
+
+独立固定规则必须覆盖 `all` 和本次所有客群。缺规则或出现未知客群时明确报错。
+整体 `binner` 只用于 shared，不能和独立模式混用；显式固定规则也不能同时配置自动拟合参数。
+共享模式可以传 `binner=shared.binner`，无需构造客群规则集合。
+
+`.marsreport` 保存可查询的统计证据及规则身份，恢复为 `ReportSnapshot`。
+它不恢复 analyzer、binner 或原始人口；快照绘图只读取已有分箱统计。
+规则转换、统计快照和新人口重新评估的职责见[分客群分析](segmented-analysis.md)。
+
+### 查询、绘图和单人口 Excel
+
+```python
+report = shared.report
+seg2 = report.get_table("summary", segments=["seg2"], include_all=False)
+figures = report.build_risk_trend_figures(
+    ["income"], segments=["seg2"], include_all=False, max_plots=1,
+)
+report.write_excel("artifacts/seg2.xlsx", segments=["seg2"], include_all=False)
+```
+
+完整公共表保留全部 scope，默认人工摘要和原生图展示 All。
+每个特征、目标和人口各生成一张原有风格的趋势图，`include_total` 只控制当前人口的 Total。
+`max_plots` 约束实际图总数，完整计算和保存不因图数限制而裁剪。
+原生 Excel 每次只导出一个人口，保留 22 列模板和对应人口的分箱 KS。
+多个客群需分别写入独立工作簿；通用快照 Excel 保存带 scope 的长表，能力与原生模板不同。
 
 ## 分箱器选择
 
@@ -133,7 +242,7 @@ JSON 顶层包含 `artifact_type`、`schema_version`、`binner_type`、`mars_ver
 | 字段 | 用途 |
 | --- | --- |
 | `summary_table` | 特征级指标汇总和排序 |
-| `detail_table` | 分箱样本数、坏账率、WOE 和 IV 明细 |
+| `detail_table` | 分箱样本数、坏账率和 IV 明细 |
 | `trend_tables` | PSI、缺失率和坏账率等分组趋势 |
 | `missing_by_day_table` | 使用 `time_col` 计算的按日缺失趋势 |
 
@@ -144,7 +253,7 @@ JSON 顶层包含 `artifact_type`、`schema_version`、`binner_type`、`mars_ver
 首目标。没有独立的参考目标选择参数，调整目标列表顺序会改变参考。
 
 省略 `features` 时，高层入口只推断一次，排除全部目标列及声明的 `group_col`、`time_col`、
-`weights_col`、`amount_col`；raw KS 和所有目标评估使用同一特征集。显式 `features` 保留现有
+`weights_col`、`amount_col` 和 `segment_col`；raw KS 和所有目标评估使用同一特征集。显式 `features` 保留现有
 选择优先级和校验。目标不能同时声明为分组、时间、权重或金额角色；排除后没有特征会明确报错。
 
 ```python
@@ -179,7 +288,7 @@ raw 模式按原始数值排序，将相同取值合并，计算好坏两类经�
 仍需清理分箱输入或提供可拟合的 `benchmark_df`。基准样本不会混入当前数据的 KS。
 传入 `weights_col` 时使用加权累计分布，有效样本的权重必须有限且非负；零权重不贡献分布。
 过滤后缺少任一类别的正权重总量时返回空 KS，常数特征且两类有效时返回 0。
-原有全局单类别标签校验仍生效。
+未开启客群时，原有全局单类别标签校验仍生效。客群评估保留局部可计算统计与未定义状态。
 
 默认最多允许 50 个数值特征，类别特征不计入。超过限制在分箱和排序前报错，可通过
 `features` 缩小范围或显式提高上限。上限必须是正整数；关闭 raw 模式时不执行数量限制。
@@ -235,7 +344,7 @@ Polars 使用默认线程数。
 
 - 监督分箱数据只有一个有效 target 类别：改用带完整标签的基准样本，或选择无监督分箱。
 - `benchmark_df` 缺少 active feature 或权重列：基准数据必须包含拟合规则所需的全部列。
-- 复用规则时仍调用 `profile_risk()`：改用 `MarsBinEvaluator.evaluate(..., binner=...)`。
+- 固定规则与自动拟合参数同时提供：保留 `binner` 或 `segment_binners`，移除自动拟合配置。
 - 生成图表时没有 `time_col`：重新评估并提供原始日期列。
 - WOE 转换或 SQL 报缺少映射：使用有两个有效类别的 target 拟合并完成 WOE 统计。
 

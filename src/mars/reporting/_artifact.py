@@ -116,6 +116,8 @@ class Report(Protocol):
         offset: int = 0,
         limit: int | None = None,
         sources: str | list[str] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool | None = None,
     ) -> ReportFrame:
         """筛选、排序、选列并分页，返回与原表后端一致的独立容器。"""
         ...
@@ -148,6 +150,8 @@ class Report(Protocol):
         descending: bool = False,
         offset: int = 0,
         queries: dict[str, dict[str, Any]] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> str:
         """按 Unicode 字符预算生成 JSON 证据；零行查询保留可回放引用。"""
         ...
@@ -277,7 +281,58 @@ class ReportSnapshot(_ReportQuery):
         """
         return self._display_frame(self.get_table(name, **query))
 
-    def write_html(self, path: str, *, report_name: str = "MARS Report Snapshot") -> None:
+    def build_risk_trend_figures(
+        self, features: str | list[str] | None = None, *,
+        segments: list[Any] | None = None, include_all: bool = True,
+        target: str | list[str] | None = None, max_plots: int = 20,
+        include_total: bool = True, dpi: int = 150,
+    ) -> list[Any]:
+        """从已保存的分箱统计绘图，不读取原始人口或恢复分箱器。
+
+        Parameters
+        ----------
+        features : str | list[str] | None
+            特征英文身份，默认按已保存 IV 排序。
+        segments : list[Any] | None
+            客群原始值，默认无子客群。
+        include_all : bool
+            是否包含整体，默认 True。
+        target : str | list[str] | None
+            已保存的评估目标，默认全部。
+        max_plots : int
+            实际生成的图总数上限，默认 20。
+        include_total : bool
+            是否显示当前人口的 Total 面板。
+        dpi : int
+            图像分辨率，默认 150。
+
+        Returns
+        -------
+        list[Any]
+            Matplotlib figure，调用方负责关闭。
+
+        Raises
+        ------
+        ValueError
+            快照不是含 scope 的分箱报告时抛出。
+
+        Examples
+        --------
+        >>> restored.build_risk_trend_figures(segments=["seg2"], include_all=False)  # doctest: +SKIP
+        """
+        if self.report_type != "MarsBinningReport" or "scopes" not in self._tables:
+            raise ValueError("Saved risk plotting requires a segmented MarsBinningReport snapshot.")
+        from ._scope_view import render_scopes
+
+        return cast("list[Any]", render_scopes(self, "build_risk_trend_figures", {
+            "features": features, "segments": segments, "include_all": include_all,
+            "target": target, "max_plots": max_plots, "include_total": include_total, "dpi": dpi,
+        }))
+
+    def write_html(
+        self, path: str, *, report_name: str = "MARS Report Snapshot",
+        segments: list[Any] | None = None, include_all: bool = True,
+    ) -> None:
         """将全部已保存统计与业务元数据导出为离线 HTML。
 
         Parameters
@@ -286,6 +341,10 @@ class ReportSnapshot(_ReportQuery):
             HTML 路径；父目录必须存在。
         report_name : str
             报告标题，默认使用 ``"MARS Report Snapshot"``。
+        segments : list[Any] | None
+            选择原始客群值，默认无子客群。
+        include_all : bool
+            是否包含整体，默认 True。
 
         Notes
         -----
@@ -296,6 +355,14 @@ class ReportSnapshot(_ReportQuery):
         --------
         >>> restored.write_html("restored.html")  # doctest: +SKIP
         """
+        if "scopes" in self._tables:
+            from ._scope_view import write_scoped_html
+
+            options: dict[str, Any] = {"report_name": report_name}
+            if self.report_type == "MarsBinningReport":
+                options["include_charts"] = False
+            write_scoped_html(self, path, segments, include_all, options)
+            return
         if self.report_type == "score_cross":
             from mars.analysis.score_cross_view import write_score_cross_html
 

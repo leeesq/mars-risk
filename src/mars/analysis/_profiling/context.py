@@ -128,7 +128,7 @@ def build_run_context(
     working_df = df
     effective_group_col = profile_by
 
-    if time_col and profile_by is not None and MarsDate.is_time_grain(profile_by):
+    if group_col is None and time_col and profile_by is not None and MarsDate.is_time_grain(profile_by):
         if time_col not in df.columns:
             raise ValueError(f"time_col '{time_col}' not found in DataFrame.")
 

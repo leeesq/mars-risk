@@ -15,6 +15,7 @@ from mars.analysis._evaluation.context import (
 )
 from mars.compute import is_numeric_dtype, to_polars_frame
 from mars.compute._raw_ks import _calculate_raw_ks
+from mars.feature._scopes import build_scopes, scope_filter
 from mars.reporting import MarsBinningReport
 from mars.reporting._metadata import _null_group_label, is_metadata_column
 
@@ -34,12 +35,32 @@ def _prepare_raw_ks(
     max_features: int,
     missing_values: list[Any] | None,
     special_values: list[Any] | None,
+    segment_col: str | None = None,
 ) -> pl.DataFrame:
     """复用评估上下文，先检查数值特征上限，再计算原始值 KS。
 
     数值类型遵循拟合数据 schema；benchmark 只参与类型识别，不进入统计样本。
     无标签模式不向原始样本注入伪标签，计算层会返回明确的空值诊断。
     """
+    if features is not None:
+        selected = list(dict.fromkeys(features + [c for c in [*targets, group_col, time_col, weights_col, amount_col, segment_col] if c in df.columns]))
+        df = df.loc[:, selected] if isinstance(df, pd.DataFrame) else df.select(selected)
+        if benchmark_df is not None:
+            columns = [c for c in selected if c in benchmark_df.columns]
+            benchmark_df = benchmark_df.loc[:, columns] if isinstance(benchmark_df, pd.DataFrame) else benchmark_df.select(columns)
+    if segment_col is not None:
+        original = to_polars_frame(df)
+        scopes = build_scopes(original, segment_col)
+        return pl.concat([
+            _prepare_raw_ks(
+                scope_filter(original, scopes, identity), targets=targets, features=features,
+                group_col=group_col, time_col=time_col, time_grain=time_grain,
+                internal_group_col=internal_group_col, weights_col=weights_col,
+                amount_col=amount_col, benchmark_df=benchmark_df, max_features=max_features,
+                missing_values=missing_values, special_values=special_values,
+            ).with_columns(pl.lit(identity).alias("scope_id"))
+            for identity in scopes["scope_id"].to_list()
+        ], how="vertical_relaxed")
     frame, internal_group_col = prepare_group_context(
         to_polars_frame(df),
         group_col=group_col,
@@ -130,7 +151,8 @@ def _apply_raw_ks(
     detail = to_polars_frame(report.detail_table)
     group_col = report.detail_group_col
     assert group_col is not None
-    keys = ["feature", "y", group_col]
+    scope_keys = ["scope_id"] if "scope_id" in detail.columns else []
+    keys = scope_keys + ["feature", "y", group_col]
     detail = detail.with_columns(pl.col("ks_bin").max().over(keys).alias("ks"))
     detail = _replace_ks_columns(
         detail,
@@ -139,7 +161,7 @@ def _apply_raw_ks(
         columns=["ks"],
     )
     totals = values.filter(pl.col("group") == "Total")
-    summary_keys = ["feature"]
+    summary_keys = scope_keys + ["feature"]
     if "target" in summary.columns:
         totals = totals.rename({"y": "target"})
         summary_keys.append("target")
@@ -155,7 +177,7 @@ def _apply_raw_ks(
         null_label = _null_group_label(detail[group_col].unique().to_list())
         raw_trend = primary_values.with_columns(
             pl.col("group").fill_null(null_label)
-        ).pivot(index="feature", on="group", values="ks")
+        ).pivot(index=scope_keys + ["feature"], on="group", values="ks")
         columns = [col for col in trend.columns if not is_metadata_column(col)]
         raw_trend = raw_trend.with_columns(
             [
@@ -165,7 +187,7 @@ def _apply_raw_ks(
             ]
         )
         updated = _replace_ks_columns(
-            trend, raw_trend, keys=["feature"], columns=columns
+            trend, raw_trend, keys=scope_keys + ["feature"], columns=[c for c in columns if c != "scope_id"]
         )
         trends["ks"] = (
             updated.to_pandas() if isinstance(trends["ks"], pd.DataFrame) else updated
@@ -204,4 +226,6 @@ def _apply_raw_ks(
     updated_report.report_id = report.report_id
     updated_report.source = dict(report.source)
     updated_report._calculation_status = report._calculation_status
+    if hasattr(report, "_scopes"):
+        updated_report._scopes = report._scopes
     return updated_report

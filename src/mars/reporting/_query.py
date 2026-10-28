@@ -13,6 +13,7 @@ import pandas as pd
 import polars as pl
 
 from mars._compat import polars_is_in
+from mars.feature._scopes import resolve_scopes
 from mars.reporting._metadata import (
     FeatureMetadata,
     feature_type_catalog,
@@ -177,6 +178,40 @@ def query_table(
 
 class _ReportQuery:
     """领域报告和快照共用的结果查询，只读取已计算的统计表。"""
+
+    _scopes: pl.DataFrame | None = None
+
+    def _scope_query(self, name: str, query: dict[str, Any]) -> dict[str, Any]:
+        """在分页前解析客群条件，将默认与显式范围固化到引用的 filters。"""
+        options = dict(query)
+        segments = options.pop("segments", None)
+        include_all = options.pop("include_all", None)
+        tables = self._query_tables()
+        if segments is None and include_all is None:
+            return options
+        if "scopes" not in tables:
+            if segments is not None or include_all is False:
+                raise ValueError("This report has no segment scopes.")
+            return options
+        scopes = tables["scopes"]
+        catalog = scopes if isinstance(scopes, pl.DataFrame) else pl.from_pandas(scopes)
+        ids = resolve_scopes(catalog, segments, True if include_all is None else include_all)
+        if segments is None and include_all is True:
+            ids = [self._query_metadata().get("default_scope_id", "all")]
+        if "scope_id" not in tables[name].columns:
+            raise ValueError(f"Table {name!r} has no scope identity.")
+        filters = dict(options.get("filters") or {})
+        existing = filters.pop("scope_id", None)
+        if existing is not None:
+            matched = query_table(catalog, filters={"scope_id": existing})
+            allowed = matched["scope_id"].to_list()
+            ids = allowed if segments is None else [identity for identity in ids if identity in allowed]
+        filters["scope_id"] = {"op": "in", "value": ids}
+        options["filters"] = filters
+        # 跨客群投影仍保留身份，避免相同特征成为不可区分的行。
+        if options.get("columns") is not None and "scope_id" not in options["columns"]:
+            options["columns"] = ["scope_id", *options["columns"]]
+        return options
 
     def _initialize_semantics(
         self,
@@ -508,6 +543,13 @@ class _ReportQuery:
                 tables[name]["grain"] = "target/feature" if "target" in frame.columns else "feature"
             if name == "overview" or name == "comparison.schema":
                 tables[name]["grain"] = "feature"
+            if "scope_id" in frame.columns:
+                tables[name]["grain"] = "scope_id/" + tables[name]["grain"]
+                tables[name]["fields"]["scope_id"].update(
+                    unit="identifier", meaning="scopes 目录的稳定人口身份；all 为完整人口"
+                )
+            if name == "scopes":
+                tables[name]["grain"] = "scope_id"
             if name.startswith("trend."):
                 targets = self._query_metadata().get("targets", [])
                 tables[name]["target"] = targets[0] if targets else "unknown"
@@ -604,6 +646,8 @@ class _ReportQuery:
         offset: int = 0,
         limit: int | None = None,
         sources: str | list[str] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool | None = None,
     ) -> ReportFrame:
         """查询已有结果，返回可继续加工且与原表类型一致的 DataFrame。
 
@@ -639,6 +683,12 @@ class _ReportQuery:
             单特征表要求同一 ``feature`` 同时满足特征与来源条件。
             规则来源指成员特征的业务来源，不是候选生成器来源；可与 features 命中不同成员。
 
+        segments : list[Any] | None
+            按原始值选择客群；默认不限制完整表。
+        include_all : bool | None
+            是否包含整体。None 且未指定 segments 时返回全部 scope；
+            指定 segments 时默认同时包含整体，设 False 可只取客群。
+
         Returns
         -------
         ReportFrame
@@ -656,6 +706,13 @@ class _ReportQuery:
         tables = self._query_tables()
         if name not in tables:
             raise ValueError(f"Unknown table {name!r}. Available: {list(tables)}")
+        options = self._scope_query(name, {
+            "columns": columns, "filters": filters,
+            "segments": segments, "include_all": include_all,
+        })
+        columns, filters = options.get("columns"), options.get("filters")
+        if "scope_id" in tables[name].columns and columns is not None and "scope_id" not in columns:
+            columns = ["scope_id", *columns]
         return query_table(
             self._role_table(name, features, sources),
             columns=columns,
@@ -701,7 +758,7 @@ class _ReportQuery:
 
     def _query_page(self, name: str, **query: Any) -> dict[str, Any]:
         """复用原生查询与匹配计数；内部零行证据不发布停滞的 next_offset。"""
-        options: dict[str, Any] = {"offset": 0, "limit": 10, **query}
+        options: dict[str, Any] = self._scope_query(name, {"offset": 0, "limit": 10, **query})
         page = self.get_table(name, **options)
         # 计数只筛选原生表；Pandas 未筛选整表时不生成副本。
         matched = query_table(
@@ -737,6 +794,8 @@ class _ReportQuery:
         descending: bool = False,
         offset: int = 0,
         queries: dict[str, dict[str, Any]] | None = None,
+        segments: list[Any] | None = None,
+        include_all: bool = True,
     ) -> str:
         """查询已计算结果，并在字符预算内生成可回放的 JSON 摘要。
 
@@ -769,6 +828,11 @@ class _ReportQuery:
         queries : dict[str, dict[str, Any]] | None
             表名到 ``get_table`` 查询参数的映射，同名参数覆盖上述共同参数。
             默认各表共用上述参数；可为列结构不同的表分别指定字段、条件和 ``limit=0``。
+
+        segments : list[Any] | None
+            按原始值选择客群，默认无子客群。
+        include_all : bool
+            是否包含整体，默认 True；与 features、sources 和 filters 取交集。
 
         Returns
         -------
@@ -835,6 +899,8 @@ class _ReportQuery:
                 sort_by=sort_by,
                 descending=descending,
                 offset=offset,
+                segments=segments,
+                include_all=include_all,
             )
             options.update((queries or {}).get(name, {}))
             if type(options["limit"]) is not int or options["limit"] < 0:
@@ -845,6 +911,7 @@ class _ReportQuery:
                 elif options.get(key) is None:
                     options[key] = value
             page = self._query_page(name, **options)
+            options = page["reference"]["query"]
             frame = page["data"]
             entry = table_definitions[name]
             identity_entry: dict[str, Any] = entry
@@ -964,6 +1031,15 @@ class _ReportQuery:
                 if options["limit"] == 0:
                     omission["continue_at"] = {**deepcopy(options), "limit": 10}
                 omitted.append(omission)
+        if "scopes" in available:
+            used = {row.get("scope_id") for item in payload["evidence"] for row in item["rows"]}
+            catalog = query_table(available["scopes"], filters={"scope_id": {"op": "in", "value": sorted(identity for identity in used if identity)}})
+            scope_rows = table_rows(catalog)
+            if len(_encode(scope_rows)) <= max_chars // 8:
+                description["scopes"] = scope_rows
+            else:
+                omitted.append({"reference": "scopes", "reason": "description_budget",
+                                "count": len(scope_rows), "continue_at": {"table": "scopes", "limit": 10}})
         # 大型说明块独立裁剪；每次省略完整参数值并保留 describe 定位。
         for key, value in list(description["parameters"].items()):
             if len(_encode(value)) > max_chars // 8:
@@ -1137,6 +1213,7 @@ class _ReportQuery:
                             "operations",
                             "public_functions",
                             "saved_operations",
+                            "scopes",
                         )
                         if description.get(key)
                     ),

@@ -15,6 +15,8 @@ FeatureFrame = Union[pd.DataFrame, pl.DataFrame]
 _FIELDS = {"display_name", "description", "data_source", "unit"}
 FEATURE_IDENTITY_COLUMNS = ("feature", "display_name", "dtype", "data_source")
 _METADATA_COLUMNS = frozenset({
+    "scope_id", "scope_kind", "segment_col", "segment_dtype", "segment_value",
+    "scope_order",
     *FEATURE_IDENTITY_COLUMNS, "target", "y", "status", "reason", "metric", "group",
     "current_dtype", "benchmark_dtype", "distribution", "mode_value", "is_categorical",
     "bin_index", "bin_index_max", "bin_label", "bin_type", "source", "trend",

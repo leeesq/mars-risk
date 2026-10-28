@@ -31,6 +31,8 @@ def get_psi_trend(
     *,
     features: list[str] | None = None,
     benchmark_df: pl.DataFrame | None = None,
+    binner: MarsNativeBinner | None = None,
+    fit_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """计算各分组及当前整体相对同一基准分布的 PSI。
 
@@ -89,6 +91,8 @@ def get_psi_trend(
         candidates,
         baseline_group,
         benchmark_df=benchmark_df,
+        binner=binner,
+        fit_df=fit_df,
     )
     final_long = pl.concat(result_parts)
     if context.group_col is None:
@@ -304,33 +308,38 @@ def _binned_psi_parts(
     baseline_group: Any,
     *,
     benchmark_df: pl.DataFrame | None,
+    binner: MarsNativeBinner | None = None,
+    fit_df: pl.DataFrame | None = None,
 ) -> list[pl.DataFrame]:
     """基于 NativeBinner 分箱结果分批计算画像 PSI。"""
-    fit_df = benchmark_df if benchmark_df is not None else context.working_df
+    fit_population = fit_df if fit_df is not None else (
+        benchmark_df if benchmark_df is not None else context.working_df
+    )
     benchmark_failures = (
-        _benchmark_degenerate_failures(benchmark_df, candidates, options)
-        if benchmark_df is not None
+        _benchmark_degenerate_failures(fit_population, candidates, options)
+        if benchmark_df is not None and binner is None
         else {}
     )
     try:
-        binner = MarsNativeBinner(
-            method=options.psi_bin_method,
-            n_bins=options.psi_n_bins,
-            min_bin_size=options.psi_min_bin_size,
-            special_values=options.special_values,
-            missing_values=options.missing_values,
-            merge_small_bins=options.psi_merge_small_bins,
-            remove_empty_bins=options.psi_remove_empty_bins,
-        )
-        categorical_candidates = [
-            feature
-            for feature in options.categorical_features
-            if feature in candidates
-        ]
-        fit_kwargs: dict[str, Any] = {"features": candidates}
-        if categorical_candidates:
-            fit_kwargs["cat_features"] = categorical_candidates
-        binner.fit(fit_df, **fit_kwargs)
+        if binner is None:
+            binner = MarsNativeBinner(
+                method=options.psi_bin_method,
+                n_bins=options.psi_n_bins,
+                min_bin_size=options.psi_min_bin_size,
+                special_values=options.special_values,
+                missing_values=options.missing_values,
+                merge_small_bins=options.psi_merge_small_bins,
+                remove_empty_bins=options.psi_remove_empty_bins,
+            )
+            categorical_candidates = [
+                feature
+                for feature in options.categorical_features
+                if feature in candidates
+            ]
+            fit_kwargs: dict[str, Any] = {"features": candidates}
+            if categorical_candidates:
+                fit_kwargs["cat_features"] = categorical_candidates
+            binner.fit(fit_population, **fit_kwargs)
     except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
         if benchmark_df is not None:
             raise ValueError(

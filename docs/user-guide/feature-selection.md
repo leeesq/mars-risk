@@ -43,6 +43,105 @@ description: 使用统计、线性和重要性选择器缩小候选特征范围�
 Selector 不长期保存原始基准样本。调用 `get_binning_report()` 时，需要再次传入同一
 `benchmark_df` 才能复现基准口径。
 
+## 分客群统计筛选
+
+`segment_col` 放在 `fit()` 的本次数据上下文中。它自动排除在默认候选特征之外，
+不能同时声明为特征、目标、分组或时间列。原有 `group_col` 仍优先于时间分组。
+
+| `selection_scope` | `binning_scope` | 行为 |
+| --- | --- | --- |
+| `global` | `shared` | 保留整体筛选；客群列只登记角色，不生成客群名单或报告 |
+| `per_segment` | `shared` | All 和各客群独立筛选，分阶段共享整体拟合规则及转换映射 |
+| `per_segment` | `per_segment` | All 和各客群分别拟合、分别筛选 |
+| `global` | `per_segment` | 入口拒绝，尚未定义多个客群证据如何合成整体名单 |
+
+两个策略参数保存在构造函数中。未提供 `segment_col` 时，只能使用默认的
+`global + shared`，原有表结构和整体名单保持不变。
+
+```python
+import polars as pl
+from mars.feature import MarsStatsSelector
+
+df = pl.DataFrame([
+    {
+        "customer_segment": segment,
+        "dataset": "Train" if i < 40 else "Val",
+        "target": i % 2,
+        "x": float(1 - i % 2 if segment == "seg2" else i % 2),
+        "noise": float(i % 5),
+    }
+    for segment in ("seg1", "seg2", "seg3")
+    for i in range(80)
+])
+benchmark = df.filter(pl.col("dataset") == "Train")
+selector = MarsStatsSelector(
+    selection_scope="per_segment",
+    binning_scope="shared",  # 改为 per_segment 可分别拟合各客群。
+    skip_fine_scan=True,
+    psi_thr=None,
+    rc_thr=None,
+    corr_thr=None,
+    n_jobs=1,
+)
+selector.fit(
+    df,
+    target="target",
+    features=["x", "noise"],
+    segment_col="customer_segment",
+    group_col="dataset",
+    benchmark_df=benchmark,
+)
+
+print(selector.selected_features_)  # 整体名单。
+print(selector.scopes_)  # 原始客群身份、稳定 scope_id 和状态。
+print(selector.selected_features_by_segment_)  # 以 scope_id 索引各份名单。
+decisions = selector.get_report(segments=["seg2"], include_all=False)
+seg2 = selector.transform(df, segments=["seg2"], include_all=False)
+report = selector.get_binning_report(
+    df,
+    benchmark_df=benchmark,
+    segments=["seg2"],
+    include_all=False,
+)
+summary = report.get_table("summary")
+```
+
+All 从完整人口独立计算。Total 表示当前 scope 跨原分组的汇总。
+各客群从同一份原始候选集开始，整体质量或 IV 已淘汰的字段仍可在某个客群入选。
+共享模式按阶段覆盖各客群所需候选并集，整体最终名单的剪枝不会删除其他客群的规则。
+共享切点适合在相同区间比较客群；独立切点描述各自人口，箱号相同不代表区间相同。
+
+`selected_features_`、默认 `transform()`、`get_report()` 和漏斗摘要始终使用 All。
+`selected_features_by_segment_` 通过目录中的 `scope_id` 区分业务原值，包含独立的 All 身份。
+真实字符串 `All`、`Missing`、空字符串和缺失客群不会与整体身份混淆。
+空列表表示合法空名单；`None` 表示客群未计算或失败，具体原因保存在 `scopes_`。
+监督拟合的单类别人口、缺少拟合参考和没有已表现标签分别保留状态，不借用整体名单。
+
+`transform()` 显式选择客群后，仅返回该客群的行，保持原始相对顺序，
+`keep_target=True` 时目标列使用同一批行。`fit_transform()` 使用相同选择规则。
+一次只能选择一个 scope，指定业务客群时须传 `include_all=False`。
+多份名单不会自动拼成并集、交集或按行路由的宽表。
+
+`get_report()`、`show_summary()`、`get_binning_report()` 和 `get_correlation_report()`
+都接受同一组 `segments`、`include_all` 参数。相关报告保留当前 scope 筛选时的完整矩阵和事件，
+`get_correlation_matrix()`、`get_related_features()` 及矩阵展示只消费这份单 scope 证据。
+生成风险报告时仍须重传拟合使用的 benchmark。报告快照保存统计和规则身份；
+固定转换需要另存正式 Binner 规则，两类产物的用途见[保存与恢复](external-agents.md)。
+
+PSI 的 expected 人口独立于切点共享方式。seg2 只使用 benchmark 的 seg2，
+缺少该客群参考时 PSI 保留 null 和未计算原因，不回退整体分布。
+没有显式 benchmark 时，各客群使用整体排序后的同一首组；缺少该组也不改用自己的下一期。
+均值、缺失率等质量统计继续使用当前 scope 的完整人口，标签类指标只使用已表现人口。
+
+共享转换映射在整体拟合人口的已表现标签上学习。粗筛使用无标签的无监督 benchmark 时，
+边界仍由 benchmark 学习，公共 WOE 映射沿粗筛合同在整体 `df` 的已表现人口学习一次。
+实际人口记录在相关报告的 `woe_mapping_population` 参数中。
+报告中的客群统计 WOE 与用于转换的已学映射分别保存，不因某个客群更新或剪枝而串值。
+
+客群按顺序执行并释放样本缓存。当前 shared 粗筛会额外预评估一次，
+用于确定精筛的候选并集；各 scope 的统计转换仍各自执行。
+这会增加计算成本，尚未实现每个特征批只转换一次后联合聚合的优化。
+
 ## 宽表执行与批宽
 
 `batch_size` 是特征列批宽，默认和 `None` 都取 100，必须为正整数。
