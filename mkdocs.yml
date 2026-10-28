@@ -129,6 +129,7 @@ nav:
           - 维护边界与安装: demos/history.md
           - LightGBM 建模与监控: demos/lgb-modeling-monitoring.ipynb
   - 项目:
+      - 分客群分析实施计划（待实施）: project/segmented-analysis-plan.md
       - 稳定性与兼容性: project/stability.md
       - Release Notes: project/release-notes.md
       - 计算、报告与展示验收: project/validation-20261002.md
