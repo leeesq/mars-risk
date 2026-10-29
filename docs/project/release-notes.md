@@ -6,6 +6,13 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 修复分客群分析第一批审查的 F01–F08。单类别或仅一类有效权重的 IV／KS／AUC 保留 null，
+  图表、HTML 和 Excel 不再从全空贡献生成 0／100／1；坏率、分布和已学规则按各自口径保留。
+  PSI 按实际拟合人口诊断退化，按具体分组判断适用人口；PSI 与 RC 分别判断参考有效性。
+  StatsSelector 重复 fit 清理上次参考与运行状态，多目标缺列恢复无标签评估。
+  趋势展示只读取当前范围的状态；显式排除 All 后，身份过滤不能恢复 All，保存后的引用使用相同范围。
+  逐项数值与验证限制见[修复验收记录](segmented-analysis-implementation.md#review-fixes-f01-f08)。
+
 - 风险画像、数据画像和 StatsSelector 新增分客群分析。运行方法接收 `segment_col`，
   规则策略区分 shared/per_segment，筛选策略区分 global/per_segment。
   未传客群列保留原 schema。开启客群的事实表增加 `scope_id`，跨人口数值投影保留身份；

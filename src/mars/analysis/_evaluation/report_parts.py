@@ -191,7 +191,7 @@ def _build_total_detail_rows(
             pl.col("observed_count").sum().alias("observed_count"),
             pl.col("bad").sum().alias("bad"),
             observed_iv_agg_expr(output_col="iv_bin"),
-            pl.col("psi_bin").sum().alias("psi_bin"),
+            _psi_sum_expr().alias("psi_bin"),
             observed_auc_agg_expr(output_col="auc_bin"),
             observed_ks_agg_expr(output_col="ks_bin"),
             observed_lift_max_agg_expr(output_col="lift"),
@@ -376,7 +376,7 @@ def build_binning_summary_table(
     monitor_group_level_metrics = (
         monitoring_groups
         .group_by(["feature", group_col])
-        .agg(pl.col("psi_bin").sum().alias("psi"))
+        .agg(_psi_sum_expr().alias("psi"))
     )
     group_level_metrics = (
         group_level_metrics
@@ -414,7 +414,7 @@ def build_binning_summary_table(
             group_level_metrics
             .group_by("feature")
             .agg([
-                pl.col("psi").max().fill_null(0.0).alias("psi_max"),
+                pl.col("psi").max().alias("psi_max"),
                 pl.col("risk_corr").min().fill_null(1.0).alias("rc_min"),
                 pl.col("missing").min().alias("missing_min"),
                 pl.col("missing").max().alias("missing_max"),
@@ -436,7 +436,6 @@ def build_binning_summary_table(
         .join(total_real_bin_lift_metrics, on="feature", how="left")
         .join(monotonicity_df, on="feature", how="left")
         .with_columns([
-            pl.col("psi_max").fill_null(0.0),
             pl.col("rc_min").fill_null(1.0),
             pl.col("missing").fill_null(0.0),
             pl.col("missing_min").fill_null(0.0),
@@ -531,7 +530,7 @@ def build_binning_report_parts(
         )
         psi_max = (
             monitoring_groups.group_by("feature", group_col)
-            .agg(pl.col("psi_bin").sum().alias("psi"))
+            .agg(_psi_sum_expr().alias("psi"))
             .group_by("feature").agg(pl.col("psi").max().alias("psi_max"))
         )
         original_columns = summary_table.columns
@@ -555,6 +554,11 @@ def build_binning_report_parts(
         trend_tables=trend_tables,
         risk_corr_reference_table=risk_corr_reference_table,
     )
+
+
+def _psi_sum_expr() -> pl.Expr:
+    """保留 PSI 全空分区的未定义状态，避免 sum 将无适用人口变成 0。"""
+    return pl.when(pl.col("psi_bin").count() > 0).then(pl.col("psi_bin").sum()).otherwise(None)
 
 
 def _sort_trend_columns(pivot_df: pl.DataFrame) -> pl.DataFrame:
@@ -612,7 +616,7 @@ def _build_psi_trend_source(
     psi_total_src: pl.DataFrame = (
         monitoring_total
         .group_by(["feature", group_col])
-        .agg(pl.col("psi_bin").sum().alias("psi"))
+        .agg(_psi_sum_expr().alias("psi"))
     )
     return pl.concat(
         [

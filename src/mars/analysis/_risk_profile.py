@@ -659,10 +659,16 @@ def profile_risk(
             final_reference = final_reference.to_pandas()
 
         merged_meta = dict(primary_report.report_meta or {})
-        meta_input = df.loc[:, target_list] if isinstance(df, pd.DataFrame) else df.select(target_list)
+        # 声明目标允许缺列；元数据只投影实际存在的列，沿用次目标的无标签语义。
+        existing_targets: list[str] = [name for name in target_list if name in df.columns]
+        meta_input = (
+            df.loc[:, existing_targets]
+            if isinstance(df, pd.DataFrame)
+            else df.select(existing_targets)
+        )
         meta_df = cast(pl.DataFrame, primary_evaluator._ensure_polars_dataframe(meta_input))
         merged_meta["targets"] = [str(t) for t in target_list]
-        event_rate_map: dict[str, float | None] = {}
+        event_rate_map: dict[str, float | None] = {str(name): None for name in target_list}
         for target_name in target_list:
             if target_name in meta_df.columns:
                 try:

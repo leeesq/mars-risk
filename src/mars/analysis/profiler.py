@@ -413,6 +413,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_include_special: bool = False,
         psi_binner: Any = None,
         psi_fit_df: pl.DataFrame | None = None,
+        psi_fit_population_failures: dict[str, str] | None = None,
         psi_reference_reason: str | None = None,
         allow_empty_benchmark: bool = False,
     ) -> MarsProfileReport:
@@ -537,6 +538,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                     benchmark_df=benchmark_pl,
                     binner=psi_binner,
                     fit_df=psi_fit_df,
+                    fit_population_failures=psi_fit_population_failures,
                 )
             else:
                 stat_tables["psi"] = unavailable_pivot_report(context)

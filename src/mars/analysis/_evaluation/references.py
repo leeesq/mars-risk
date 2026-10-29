@@ -6,6 +6,7 @@ from typing import Any
 
 import polars as pl
 
+from mars._compat import _left_join_nulls
 from mars.analysis._evaluation.aggregation import aggregate_basic_stats
 from mars.compute import RiskCorrBaseline, bad_rate_expr, risk_corr_expr
 
@@ -311,3 +312,50 @@ def build_risk_corr_long(
         .group_by(["feature", group_col])
         .agg(expression)
     )
+
+
+def _risk_corr_status_rows(
+    metrics_df: pl.DataFrame, reference_df: pl.DataFrame, *, group_col: str,
+    target: str | None,
+) -> list[dict[str, Any]]:
+    """从同一箱级证据区分 RC 无表现、常量和有效配对不足的原因。"""
+    valid = pl.col("bad_rate").is_not_null() & pl.col("base_br").is_not_null()
+    evidence: pl.DataFrame = (
+        metrics_df.filter(pl.col("bin_index") >= 0)
+        .join(reference_df.select("feature", "bin_index", "base_br"), on=["feature", "bin_index"], how="left")
+        .group_by("feature", group_col)
+        .agg(
+            pl.len().alias("normal_bins"),
+            pl.col("bad_rate").count().alias("current_count"),
+            pl.col("bad_rate").filter(valid).count().alias("pairs"),
+            pl.col("bad_rate").filter(valid).n_unique().alias("current_unique"),
+            pl.col("base_br").filter(valid).n_unique().alias("reference_unique"),
+        )
+    )
+    # 整期全在 Missing/Special 箱时仍保留该 feature/group 的状态身份。
+    evidence = _left_join_nulls(
+        metrics_df.select("feature", group_col).unique(), evidence,
+        on=["feature", group_col],
+    )
+    # 基准有已表现箱但与当前箱无交集，属于配对不足，不能误报基准无标签。
+    reference_population: pl.DataFrame = reference_df.group_by("feature").agg(
+        pl.col("base_br").count().alias("reference_count"),
+    )
+    evidence = evidence.join(reference_population, on="feature", how="left")
+    statuses: list[dict[str, Any]] = []
+    for row in evidence.to_dicts():
+        reason = (
+            "no_normal_bins" if not row["normal_bins"]
+            else "no_observed_reference_labels" if not row["reference_count"]
+            else "no_observed_labels" if not row["current_count"]
+            else "insufficient_valid_bin_pairs" if row["pairs"] < 2
+            else "constant_reference_bad_rate" if row["reference_unique"] < 2
+            else "constant_current_bad_rate" if row["current_unique"] < 2
+            else None
+        )
+        if reason is not None:
+            statuses.append({
+                "feature": row["feature"], "target": target, "group": row[group_col],
+                "metric": "risk_corr", "status": "undefined", "reason": reason,
+            })
+    return statuses

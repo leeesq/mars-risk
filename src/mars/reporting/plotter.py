@@ -253,10 +253,10 @@ class MarsPlotter:
     @staticmethod
     def _summarize_binning_metrics(df_detail: pd.DataFrame) -> tuple[float, float, float]:
         """汇总面板 IV 与 AUC，KS 优先取已有 ks 的最大值，否则取 ks_bin。"""
-        iv_value = float(df_detail["iv_bin"].sum()) if "iv_bin" in df_detail.columns else 0.0
+        iv_value = float(df_detail["iv_bin"].sum(min_count=1)) if "iv_bin" in df_detail.columns else float("nan")
         ks_column = "ks" if "ks" in df_detail.columns else "ks_bin"
         ks_value = float(df_detail[ks_column].max()) if ks_column in df_detail.columns else 0.0
-        auc_value = float(df_detail["auc_bin"].sum()) if "auc_bin" in df_detail.columns else 0.0
+        auc_value = float(df_detail["auc_bin"].sum(min_count=1)) if "auc_bin" in df_detail.columns else float("nan")
         if auc_value < 0.5:
             auc_value = 1 - auc_value
         return iv_value, ks_value, auc_value
@@ -630,7 +630,9 @@ class MarsPlotter:
             summary_str_1 = f"{feature},  {target_name},  Total: {int(total_count)},  {time_range_label}"
             if has_observed_risk_global:
                 ks_text = f"{global_ks:.1f}" if np.isfinite(global_ks) else "n.a."
-                summary_str_2 = f"IV: {global_iv:.3f},  KS: {ks_text},  AUC: {global_auc:.2f},  Missing: {miss_str},  Trend: {trend_str}"
+                iv_text = f"{global_iv:.3f}" if np.isfinite(global_iv) else "n.a."
+                auc_text = f"{global_auc:.2f}" if np.isfinite(global_auc) else "n.a."
+                summary_str_2 = f"IV: {iv_text},  KS: {ks_text},  AUC: {auc_text},  Missing: {miss_str},  Trend: {trend_str}"
             else:
                 summary_str_2 = f"IV: n.a.,  KS: n.a.,  AUC: n.a.,  Missing: {miss_str},  Trend: n.a."
         else:
@@ -838,7 +840,7 @@ class MarsPlotter:
                 ax.text(j, max(counts) * 0.05, f"{val:.1%}", color="#333333", ha="center", va="bottom", fontsize=fs_text + 0.5)
 
             total_count_g = df_g["count"].sum() if "count" in df_g.columns else df_g["total_count"].iloc[0]
-            psi_val = df_g["psi_bin"].sum(min_count=1 if preserve_undefined else 0) if "psi_bin" in df_g.columns else float("nan") if preserve_undefined else 0.0
+            psi_val = df_g["psi_bin"].sum(min_count=1) if "psi_bin" in df_g.columns else float("nan") if preserve_undefined else 0.0
             psi_text = f"{psi_val:.2f}" if np.isfinite(psi_val) else "n.a."
 
             g_miss_row = df_g[df_g["bin_index"] == -1]
@@ -876,7 +878,9 @@ class MarsPlotter:
                 rc_color = "red" if (not np.isnan(rc_val) and rc_val < 0.7) else "#555555"
 
                 ks_text = f"{ks_val:.1f}" if np.isfinite(ks_val) else "n.a."
-                perf_text = f"IV: {iv_val:.2f},  KS: {ks_text},  AUC: {auc_val:.2f},"
+                iv_text = f"{iv_val:.2f}" if np.isfinite(iv_val) else "n.a."
+                auc_text = f"{auc_val:.2f}" if np.isfinite(auc_val) else "n.a."
+                perf_text = f"IV: {iv_text},  KS: {ks_text},  AUC: {auc_text},"
                 ax.text(0.602, 1.015, perf_text, transform=ax.transAxes, ha="right", va="bottom", fontsize=fs_title + 0.85, color="black")
                 ax.text(0.607, 1.015, f"  PSI: {psi_text},", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.85, color="red" if psi_val > 0.1 else "black")
                 ax.text(0.837, 0.945, f" {rc_str}", transform=ax.transAxes, ha="left", va="bottom", fontsize=fs_title + 0.36, color=rc_color)
@@ -1172,11 +1176,11 @@ class MarsPlotter:
                 )
                 score = 0.0
                 if sort_metric == "iv":
-                    score = float(df_calc["iv_bin"].sum())
+                    score = float(df_calc["iv_bin"].sum(min_count=1))
                 elif sort_metric == "ks":
                     score = MarsPlotter._summarize_binning_metrics(df_calc)[1]
                 elif sort_metric == "auc":
-                    score = float(df_calc["auc_bin"].sum())
+                    score = float(df_calc["auc_bin"].sum(min_count=1))
                     if score < 0.5:
                         score = 1 - score
 

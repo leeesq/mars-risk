@@ -91,22 +91,24 @@ def _fit_scope_rules(
 
 
 def _null_reference_metrics(
-    report: MarsBinningReport, reason: str, target: str | None, *, include_rc: bool = False,
-    features: list[str] | None = None,
+    report: MarsBinningReport, reason: str, target: str | None, *,
+    metrics: tuple[str, ...] = ("psi",), features: list[str] | None = None,
 ) -> None:
-    """缺失客群参考时保留分布与风险，明确擦除无法计算的 PSI。"""
+    """按独立指标的参考人口擦除不可计算值，并替换同指标已有失败状态。"""
     affected = features if features is not None else to_polars_frame(report.summary_table)["feature"].to_list()
     condition = pl.col("feature").is_in(affected)
+    columns = (["psi_max"] if "psi" in metrics else []) + (["rc_min"] if "risk_corr" in metrics else [])
     report._summary = to_polars_frame(report.summary_table).with_columns([
         pl.when(condition).then(pl.lit(None, dtype=pl.Float64)).otherwise(pl.col(c)).alias(c)
-        for c in ["psi_max"] + (["rc_min"] if include_rc else [])
+        for c in columns
     ])
-    detail = to_polars_frame(report.detail_table)
-    report._detail = detail.with_columns([
-        pl.when(condition).then(pl.lit(None, dtype=pl.Float64)).otherwise(pl.col(c)).alias(c)
-        for c in ["psi_bin", "psi", "expected_dist"] if c in detail.columns
-    ])
-    for metric in ["psi"] + (["risk_corr"] if include_rc else []):
+    if "psi" in metrics:
+        detail = to_polars_frame(report.detail_table)
+        report._detail = detail.with_columns([
+            pl.when(condition).then(pl.lit(None, dtype=pl.Float64)).otherwise(pl.col(c)).alias(c)
+            for c in ["psi_bin", "psi", "expected_dist"] if c in detail.columns
+        ])
+    for metric in metrics:
         if metric not in report._trend_dict:
             continue
         trend = to_polars_frame(report._trend_dict[metric])
@@ -115,12 +117,11 @@ def _null_reference_metrics(
             for c in trend.columns if not is_metadata_column(c)
         ])
     status = to_polars_frame(report.get_table("calculation_status"))
+    status = status.filter(~(condition & pl.col("metric").is_in(list(metrics))))
     extra = pl.DataFrame([
-        {"feature": f, "target": target, "group": None, "metric": "psi", "status": "not_computed", "reason": reason}
-        for f in affected
+        {"feature": f, "target": target, "group": None, "metric": metric, "status": "not_computed", "reason": reason}
+        for f in affected for metric in metrics
     ], schema=status.schema)
-    if include_rc:
-        extra = pl.concat([extra, extra.with_columns(pl.lit("risk_corr").alias("metric"))])
     report._calculation_status = pl.concat([status, extra], how="vertical_relaxed")
 
 

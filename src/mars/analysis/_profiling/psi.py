@@ -33,6 +33,7 @@ def get_psi_trend(
     benchmark_df: pl.DataFrame | None = None,
     binner: MarsNativeBinner | None = None,
     fit_df: pl.DataFrame | None = None,
+    fit_population_failures: dict[str, str] | None = None,
 ) -> pl.DataFrame:
     """计算各分组及当前整体相对同一基准分布的 PSI。
 
@@ -93,6 +94,7 @@ def get_psi_trend(
         benchmark_df=benchmark_df,
         binner=binner,
         fit_df=fit_df,
+        fit_population_failures=fit_population_failures,
     )
     final_long = pl.concat(result_parts)
     if context.group_col is None:
@@ -151,24 +153,30 @@ def _validate_benchmark_frame(
 def _benchmark_degenerate_failures(
     benchmark_df: pl.DataFrame,
     candidates: list[str],
-    options: ProfileComputeOptions,
+    *,
+    missing_values: list[Any],
+    special_values: list[Any],
+    categorical_features: list[str],
+    batch_size: int,
 ) -> dict[str, str]:
-    """识别显式 benchmark 中无法构造可解释 PSI 切分的特征。"""
-    excluded_values = [*options.missing_values, *options.special_values]
-    count_exprs: list[pl.Expr] = []
-    for feature in candidates:
-        invalid_condition = missing_condition_expr(
-            feature,
-            dtype=benchmark_df.schema[feature],
-            missing_values=excluded_values,
-        )
-        count_exprs.append(
-            pl.col(feature).filter(~invalid_condition).n_unique().alias(feature)
-        )
-    valid_counts = benchmark_df.select(count_exprs).row(0, named=True)
+    """分批检查实际规则拟合人口；局部参考分布不能冒充共享拟合人口。"""
+    excluded_values = [*missing_values, *special_values]
+    valid_counts: dict[str, Any] = {}
+    for start in range(0, len(candidates), batch_size):
+        count_exprs: list[pl.Expr] = []
+        for feature in candidates[start : start + batch_size]:
+            invalid_condition = missing_condition_expr(
+                feature,
+                dtype=benchmark_df.schema[feature],
+                missing_values=excluded_values,
+            )
+            count_exprs.append(
+                pl.col(feature).filter(~invalid_condition).n_unique().alias(feature)
+            )
+        valid_counts.update(benchmark_df.select(count_exprs).row(0, named=True))
 
     failures: dict[str, str] = {}
-    declared_categorical = set(options.categorical_features)
+    declared_categorical = set(categorical_features)
     for feature in candidates:
         valid_count = int(valid_counts[feature])
         if valid_count == 0:
@@ -310,16 +318,23 @@ def _binned_psi_parts(
     benchmark_df: pl.DataFrame | None,
     binner: MarsNativeBinner | None = None,
     fit_df: pl.DataFrame | None = None,
+    fit_population_failures: dict[str, str] | None = None,
 ) -> list[pl.DataFrame]:
     """基于 NativeBinner 分箱结果分批计算画像 PSI。"""
     fit_population = fit_df if fit_df is not None else (
         benchmark_df if benchmark_df is not None else context.working_df
     )
-    benchmark_failures = (
-        _benchmark_degenerate_failures(fit_population, candidates, options)
-        if benchmark_df is not None and binner is None
-        else {}
-    )
+    # 客群编排显式传入本次拟合诊断（空字典也有含义），内部首组参考不触发基准校验。
+    if fit_population_failures is not None:
+        benchmark_failures = fit_population_failures
+    elif benchmark_df is not None and binner is None:
+        benchmark_failures = _benchmark_degenerate_failures(
+            fit_population, candidates,
+            missing_values=options.missing_values, special_values=options.special_values,
+            categorical_features=options.categorical_features, batch_size=options.psi_batch_size,
+        )
+    else:
+        benchmark_failures = {}
     try:
         if binner is None:
             binner = MarsNativeBinner(

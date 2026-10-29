@@ -7,6 +7,9 @@
 > 第一批实施分支：`feat/segmented-analysis-core`。本次功能改动在新分支开发，通过 PR 审查和验收后再合入 `main`。
 >
 > 本轮仅授权本地实现与验收，不 commit、push、创建 PR、merge、发布或修改包版本。文中的提交与 PR 流程属于后续交付安排，不构成本轮远端操作授权。
+>
+> 2026-10-29 的 F01–F08 审查修复单列于[修复验收记录](segmented-analysis-implementation.md#review-fixes-f01-f08)。这次修复不扩大第一批完成范围；shared 每批联合转换及 P06–P08 继续保留未完成状态。
+> 修复验收完成后，用户另行明确授权提交并普通 push 到原功能分支；创建 PR、合并、发布及改版本仍未授权。
 
 ## 1. 目标与交付批次
 

@@ -9,7 +9,7 @@ import pandas as pd
 import polars as pl
 
 from mars.compute import to_pandas_frame
-from mars.reporting._metadata import FeatureMetadata
+from mars.reporting._metadata import FeatureMetadata, is_metadata_column
 from mars.reporting._profile_excel import _ProfileExcelWriter
 from mars.reporting._profile_html import write_profile_html
 from mars.reporting._query import ReportFrame, _ReportQuery
@@ -587,20 +587,32 @@ class MarsProfileReport(_ReportQuery):
 
         title = f"Trend Analysis: {metric}"
         if self._calculation_status is not None and not df.empty:
-            # 状态只随本次展示的特征出现，不改变趋势表的 schema 或 null 值。
-            displayed_features: list[str] = (
-                df["feature"].tolist() if "feature" in df.columns else
+            # 显式投影可能省略特征；身份查询沿用同一排序和页长，避免跨客群或截断行串状态。
+            identities: pd.DataFrame = (
+                df[[column for column in ("scope_id", "feature") if column in df.columns]]
+                if "feature" in df.columns else
                 to_pandas_frame(self.get_table(
                     table_name, features=features, columns=["feature"],
                     sort_by=sort_by, descending=not sort_ascending, limit=limit, sources=sources, segments=segments, include_all=include_all,
-                ))["feature"].tolist()
+                ))
             )
+            displayed_features: list[str] = identities["feature"].drop_duplicates().tolist()
             state: pd.DataFrame = to_pandas_frame(self.get_table(
                 "calculation_status", features=displayed_features,
-                filters={"metric": metric}, columns=["status", "reason"],
+                filters={"metric": metric}, columns=["feature", "group", "status", "reason"],
+                sources=sources, segments=segments, include_all=include_all,
             ))
-            statuses = state.drop_duplicates().itertuples(index=False, name=None)
-            details = "; ".join(escape(f"{status}/{reason}") for status, reason in statuses)
+            keys = [column for column in ("scope_id", "feature") if column in identities.columns]
+            state = state.merge(identities.drop_duplicates(), on=keys, how="inner")
+            # 宽表的状态粒度包含 group；只解释当前显示的期间，* 表示所有期间。
+            displayed_groups: set[str] = {
+                str(column) for column in df.columns if not is_metadata_column(str(column))
+            }
+            if "total" in displayed_groups:
+                displayed_groups.add("Total")
+            state = state.loc[state["group"].isin({"*", *displayed_groups})]
+            statuses = state[["status", "reason"]].drop_duplicates().to_dict("records")
+            details = "; ".join(escape(f"{row['status']}/{row['reason']}") for row in statuses)
             if details:
                 title += f" — {details}"
         return self._get_styler(

@@ -160,3 +160,147 @@ git diff --check
 `scope_id` 连接，避免 feature 同名扩行。完整表和默认人工视图的范围不同，查询可重放。
 报告文件格式仍为 1，不恢复 estimator；规则产物独立 JSON，不能互相替代。
 P06 模型分交叉、P07 规则评估、P08 缺失异常诊断和 Linear/Importance 独立客群筛选未实施。
+
+## F01–F08 审查修复验收 { #review-fixes-f01-f08 }
+
+本节记录 2026-10-29 从 `d725908ad316ee6e2f36d50c7e3f945c67e27979` 开始的独立修复。
+上文是此前实施的历史记录，不能当作本轮通过证据。
+本次起点分支为 `feat/segmented-analysis-core`，remote 为 `git@github.com:leeesq/mars-risk.git`，
+起始工作树干净。修复验收阶段未切换 main，未 commit、push、创建 PR、merge、发布或改版本。
+未改筛选阈值、候选定义、正式数据生成器或既有案例 manifest/hash。
+
+修复验收完成后，用户在本地对话中明确授权 push。本次交付据此提交并普通推送到
+`feat/segmented-analysis-core`，包含 F01–F08 的源码、回归、示例和文档。
+本地环境、测试日志、验收产物和站点构建目录继续留在忽略目录，不纳入提交。
+该授权不扩展到创建 PR、合并、发布或修改版本。
+
+### 逐项结果与回归入口
+
+| 问题 | 根因与核心修复 | 修复前实际表现 | 修复后数值与状态 | 回归入口 |
+| --- | --- | --- | --- | --- |
+| F01 | 客群单类被允许评估，但贡献与最终指标仍按两类计算。共享统计按好坏有效质量判定，保留全空聚合；图和 HTML 同步保护全空贡献 | seg2 全 0 时 IV=12.7177352905、KS=99.9999991667、AUC=1，同时状态称单类别 | 三指标及 iv_bin/ks_bin/auc_bin 为 typed null，按期记录 single_observed_class；合法坏率、金额与 PSI 保留 | `tests/test_segmented_metric_fixes.py`，既有 evaluator/raw KS/plot/Excel 回归 |
+| F02 | 预拟合 binner 绕过显式 benchmark 退化校验，且 shared 传入局部 fit 人口 | 常量基准 A/B PSI=0；全缺失基准 B≈26.93785、total≈6.56117 | 实际整体或独立拟合人口退化时 PSI 全 null，状态 failed；整体有效、局部常量时 B=26.9378479946 合法保留 | `tests/test_segmented_fit_fixes.py` |
+| F03 | All 子筛选器的参考组复制回公开实例，下一次 global fit 未清理 | reused PSI≈0.135154、名单为空；fresh PSI=0、保留 x | 公开入口先重建运行状态；reused/fresh 均保留 x，PSI=0、RC=1，参考、漏斗和相关决策相同 | `tests/test_segmented_fit_fixes.py` |
+| F04 | 一个缺参考标志同时擦除 PSI 与其他来源 RC | benchmark 缺 seg2 时 PSI 和 first_group RC 都 null | PSI null；有效 first_group/total RC=1；反向缺首组仍保留有效 benchmark PSI；无标签、零参考权重和常量坏率分别说明 | `tests/test_segmented_metric_fixes.py` |
+| F05 | 次目标无标签评估完成后，元数据再次硬投影声明但不存在的目标 | Polars ColumnNotFoundError；Pandas 缺列 KeyError | 只转换存在的目标窄列；保留声明顺序、缺失目标身份及 null 事件率；y/absent 正常返回两行整体 summary | `tests/test_profile_risk_multitarget.py` |
+| F06 | 状态查询遗漏 scope 条件，且固定两列解包包含 scope_id 的返回表 | seg1/seg2 show_trend 均 ValueError: too many values to unpack | 按字段名读状态，按实际 scope/feature 配对和显示期间筛选；seg1 无 seg2 原因，seg2 显示自身 null 与状态 | `tests/test_segmented_query_fixes.py` |
+| F07 | PSI 空人口在 scope 总量检查中遗漏具体 group；底层全空贡献 sum 再生成 0 | seg2/02 PSI=0，缺不可计算状态 | 02=null 且 no_effective_current_population，01/Total=0；开启适用缺失／特殊箱时保留有效结果，零权重另记原因 | `tests/test_segmented_metric_fixes.py` |
+| F08 | 显式 scope filter 覆盖已解析范围，忽略 include_all=False；pop 默认值混淆 null 与无键 | include_all=False + scope_id=all 返回整体一行 | 返回零行；直接指定 seg2 仍有效。None/[]、null、未知身份、业务值 All、单 scope 默认与引用重放一致 | `tests/test_segmented_query_fixes.py` |
+
+F01 覆盖 shared/per_segment、raw/binned、全 0/全 1/无表现/仅一类正权重、多目标、
+单期与有效 Total、开发两类但评估单类、正常箱与缺失箱的标签质量、监督拟合失败。
+当前统计 WOE 与正式转换映射分开；正式 JSON 恢复固定转换一致。
+Lift 使用自身分母，合法全 1 的 Lift 保留；全 0 的基准坏率为 0 时不伪造 Lift。
+未分客群评估对非法输入和单类别输入的原有入口约束继续保留。
+
+F02 诊断只在实际拟合人口按特征批次执行。shared 复用一次整体诊断，独立规则用各自人口。
+显式空诊断与未提供诊断分开，内部首组 reference 不冒充显式 benchmark。
+覆盖 mixed metrics、Null/Float32/Float64、Pandas/Polars、缺失／特殊值四种开关及无 benchmark 旧行为。
+F03 覆盖三种合法组合、策略与分组变化、benchmark 增删、成功后失败及失败后再成功。
+
+F04 的参考表和 metadata 分别保留 PSI expected 与 RC total/first_group/benchmark 来源。
+F07 从已聚合分布判断 feature/group/Total 的有效质量，不新增全宽 mask 或独立 PSI 算法。
+已用 `git archive d725908` 的本地源码副本证明：旧未分客群路径在全期无适用人口时也会输出 PSI=0。
+该数值遗漏修在共享计算层，不能归为本次客群提交首次引入。
+
+F05 新增 24 个案例，覆盖缺失／存在／全空辅助目标、缺主目标和两目标均无标签，
+同时覆盖 raw/binned、两种后端及分客群与整体。保存恢复后的 summary/detail/status 和事件率一致。
+F06/F08 新增 70 个案例，覆盖空查询、空状态、显式投影省略 feature、分页后身份、
+多客群、原始表／query_page／AI context 及保存恢复后的有效 reference。
+
+### 复现与专项证据
+
+本地忽略目录保留实际命令输出；这些产物不是包内容，也没有提交到 Git。
+
+| 证据 | 结果与位置 |
+| --- | --- |
+| F01/F04/F07 原始数值与修复数值 | `.artifacts/segmented-fixes/metrics-before.log`、`metrics-after.log`；旧底层证据 `f07-plain-before.log` |
+| F02/F03 原始失败 | `.tmp/f02-f03-before.txt`，5 failed；实际前后数值 `.tmp/f02-f03-evidence.json` |
+| F05 原始失败 | `.artifacts/segmented-fixes/f05-before.log`，1 failed、34 deselected（maxfail=1） |
+| F06/F08 原始失败 | `.artifacts/query-fixes-before-native.log`，28 failed、42 passed，exit 1 |
+| F02/F03 最终专项 | `.tmp/f02-f03-complete312.txt`、`complete38.txt`，各 59 passed，exit 0 |
+| F05 最终专项 | `.artifacts/segmented-fixes/f05-expanded.log`，58 passed，exit 0 |
+| F06/F08 最终专项与邻近 | `.artifacts/query-fixes-after-native.log`、`after38.log` 各 70 passed；`adjacent312.log` 306 passed，exit 0 |
+| 风险与消费专项 | `.artifacts/segmented-fixes/metrics-consumption312.log`、`metrics-consumption38.log` 各 65 passed；`metrics-adjacent312.log` 150 passed，exit 0 |
+
+专项完成后，交叉审查补齐正常箱仅一类时的排序区分度状态、全 Missing/Special 期间 RC 状态、
+参考箱无交集的配对不足原因，以及金额 Lift 独立分母。切换本次 fit 的 RC 策略时，前置校验读取新策略。
+另修正本轮参考检查误清空合法 feature-start RC 的回归，保留其来源，人口行数明确为 None。
+完整基础运行发生在这些末轮小修之前；其后五版本各运行 105 项最终专项，结果分开记录。
+首轮全包在修改过程中运行，结果为 1705 passed、5 failed、3 skipped、7 deselected，exit 1，
+保留在 `.artifacts/segmented-fixes/full312.log`。这些失败未计为通过。
+最初新增快照回归的默认硬链接保存在沙箱内收到 WinError 5，后续授权测试在正常权限下复验。
+未修改产品保存算法或删除既有断言。个别新增快照测试使用正式支持的 overwrite=True 保存路径。
+本次 fit 策略切换的补充复现为 `.tmp/f03-policy-before.txt`（2 failed、59 deselected），
+修复后两方向通过。新 feature-start 测试在旧版 Polars 得到 RC=0.9999999999999998，
+新增断言采用 rel=0、abs=1e-12 检查数学上的 1；未修改既有断言、业务公式或原测试容差。
+末轮扩大回归曾误写不存在的 `test_report_artifact.py`，no tests ran、exit 4，记录在 `reviewed312.log`，
+纠正后以 `reviewed-final*.log` 另行记录。示例扩展也曾因配置冲突和传入不支持参数两次 exit 1，
+保留 `snippet-first.log`、`snippet-after.log`；最终正确调用单独运行，未计失败命令为通过。
+首轮 `static-ruff.json` 因新增查询测试中的多余 Pandas 导入 exit 1；移除该导入后，
+最终全包 Ruff 通过，失败记录保留。
+
+### 完整示例与恢复消费
+
+`docs/snippets/segmented_analysis.py` 最终运行 exit 0，记录为
+`.artifacts/segmented-fixes/snippet-reviewed.log` 和同名 JSON，产物在该目录的 `acceptance/`。
+同一份 `risk.marsreport` 的新进程 seg2/x/Val 查询共 4 行，每页 2 行，next_offset=2。
+AI context 为 7,911 字符，实际 Agent 工具成功，query reference 在同一持久身份下重放一致。
+
+新增 `undefined.marsreport` 保存有效开发规则下单类别 seg2 和 Val 期 x 全缺失的统计。
+新进程仅加载快照，断言 IV/KS/AUC 及逐箱贡献全 null，Val PSI null、Train PSI 有效，
+并重放状态 reference、输出 HTML、静态 Excel、PNG 和 AI context。恢复过程不访问原表或 fit。
+`undefined-native.xlsx` 仍是原生 22 列模板；恢复后静态长表为 `undefined-snapshot.xlsx`，两者职责不同。
+正式规则为独立 `rules.json`，保存恢复后的固定转换相同，不由统计快照恢复 estimator。
+新进程还只加载正式规则和十行模拟探针，四个 scope 的固定转换均与保存前一致。
+
+PNG 已实际查看，单类期和 Total 的 IV/KS/AUC 均显示 n.a.，Val 缺失率为 100%，
+总体缺失率为 33.33%。Excel 内容回归读取实际表头、数据单元格、最终汇总及分箱 KS，
+HTML 回归检查实际数据与聚合逻辑，没有用文件存在代替数值验收。
+本次 Office 原生启动的应用审批超时；浏览器 Computer Use 因无法可靠识别当前 URL 而终止。
+Office 打开／重算和浏览器交互视觉验收本轮未完成，上文历史验收不替代本轮验收。
+
+### 最终环境、命令与边界
+
+线程在导入前设置为 POLARS_MAX_THREADS=4、OMP_NUM_THREADS=1、OPENBLAS_NUM_THREADS=1，
+同时设置 PYTHONUTF8=1 和 MPLBACKEND=Agg。现代多线程和多 chunk 的行序／标签绑定保留原回归。
+各命令实际解释器、源码路径、依赖、线程、耗时及返回码保存在
+`.artifacts/segmented-fixes/final*.json` 和同名日志，不修改现有业务／全局环境。
+完整依赖版本另存为 `environments.json`。本轮 3.11 使用 optbinning 1.0.0，
+3.12 使用 0.21.0；3.8 的 0.20.1 与 sklearn 1.3.2 配套，未强行混用现代 sklearn。
+
+完整基础命令与 CI 一致，排除 docs_ml/optional_ml，仅额外忽略本地 benchmark 产物目录。
+下表分开记录完整基础运行与末轮源码的专项，不能将两者相加视为一次完整测试。
+
+| 环境 | 解释器与实际依赖 | 完整基础结果／末轮专项 |
+| --- | --- | --- |
+| 3.8 | `.artifacts/segmented/env38-final/Scripts/python.exe`；3.8.20 / Polars 1.8.2 / Pandas 2.0.3 / NumPy 1.24.4 | 1635 passed、13 skipped、7 deselected；末轮 105 passed，均 exit 0 |
+| 3.9 | `.artifacts/segmented/env39-final/Scripts/python.exe`；3.9.20 / 1.36.1 / 2.3.3 / 2.0.2 | 1635 passed、13 skipped、7 deselected；末轮 105 passed，均 exit 0 |
+| 3.10 | `D:/my_download_program/anaconda3/envs/mars/python.exe`；3.10.19 / 1.37.1 / 2.3.3 / 2.2.6 | 1772 passed、1 skipped、7 deselected；末轮 105 passed，均 exit 0 |
+| 3.11 | `D:/Desktop/credit-risk/.artifacts/closure-20261015/envs/py311/Scripts/python.exe`；3.11.15 / 1.44.2 / 2.3.3 / 2.4.6 | 1734 passed、3 skipped、7 deselected；末轮 105 passed，均 exit 0 |
+| 3.12 | `D:/my_download_program/anaconda3/envs/mars312/python.exe`；3.12.13 / 1.42.0 / 3.0.3 / 2.4.6 | 1734 passed、3 skipped、7 deselected；末轮 105 passed，均 exit 0 |
+
+```powershell
+python -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/segmented-fixes/final312-tmp
+python -m ruff check src tests benchmarks scripts docs/snippets
+python -m mypy src/mars
+pydoclint src/mars
+python scripts/check_private_docstrings.py src/mars
+python docs/snippets/segmented_analysis.py --output-dir .artifacts/segmented-fixes/acceptance
+python -m mkdocs build --strict
+python scripts/check_case_assets.py --mode public --site-dir site
+git diff --check
+```
+
+Ruff、全包 Mypy（164 个文件）、public/private docstring 已通过，exit 0。
+扩大消费回归为 3.8/3.9 各 610 passed、5 skipped，3.10/3.11/3.12 各 615 passed，
+记录在 `reviewed-final*.log`，均 exit 0。该轮在最后 feature-start 补修前收集测试；
+末轮 105 项含其新增回归，五版本全部通过。未把两轮拼成一次更大的通过数字。
+严格 MkDocs 的实际子进程构建先通过 exit 0，但本地记录器在打印日志时遇到 GBK 编码错误，
+该外层命令 exit 1，未当作全命令通过。记录器统一 UTF-8 后另行复验。
+复验 `mkdocs-reviewed.log` 对应完整命令 exit 0。案例资产检查为 72 文件、11 快照、7 案例，
+exit 0，记录在 `case-assets-final.log`；`git diff --check` 通过。
+没有运行远端 Docs workflow；本轮没有 PR，不将缺少 Docs run 解释为失败或通过。
+Home Credit 输入、seed、模拟日期、五分区和候选定义均未修改；本次未重跑正式数据代表性复验或全宽容量测试，
+不沿用历史资源数据宣称提速或容量。没有执行 Linux/macOS 或可选 ML 专项。
+shared 每批一次联合转换仍未完成，P06–P08 未启动；三个暂停模块未新增兼容壳或功能。

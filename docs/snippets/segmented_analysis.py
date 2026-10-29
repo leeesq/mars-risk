@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 
 import polars as pl
 
-from mars.analysis import MarsRiskProfile, profile_risk, profile_stats
+from mars.analysis import MarsBinEvaluator, MarsRiskProfile, profile_risk, profile_stats
 from mars.feature import MarsStatsSelector
 from mars.reporting import load_report
 
@@ -37,6 +37,13 @@ def restore_only(output: Path) -> None:
     """只读快照执行查询、预算、静态导出和原生图；不读取原样本。"""
     from mars.agent import MarsAgentSession, MarsAgentToolCall
     from mars.agent._tools import _MarsTools
+
+    # 正式规则与报告快照分别恢复，固定转换只使用独立保存的少量模拟探针。
+    fixed = MarsRiskProfile.load_binning_rules(output / "rules.json")
+    probe = json.loads((output / "rules-probe.json").read_text(encoding="utf-8"))
+    for scope_id, rule in fixed.items():
+        transformed = rule.transform(pl.DataFrame(probe["input"]), features=["x", "category"])
+        assert transformed.to_dicts() == probe["expected"][scope_id]
 
     report = load_report(output / "risk.marsreport")
     group_col = report.describe()["parameters"]["group_col"]
@@ -69,9 +76,30 @@ def restore_only(output: Path) -> None:
     (output / "context.json").write_text(context, encoding="utf-8")
     (output / "reference.json").write_text(json.dumps(page["reference"], ensure_ascii=False), encoding="utf-8")
     (output / "agent-evidence.json").write_text(json.dumps(result.data, ensure_ascii=False), encoding="utf-8")
+
+    # 局部未定义值从同一快照恢复；此分支不读取原数据，也不重新拟合。
+    undefined = load_report(output / "undefined.marsreport")
+    selection = {"segments": ["seg2"], "include_all": False, "features": ["x"]}
+    summary = undefined.get_table("summary", **selection)
+    assert all(summary[column].item() is None for column in ["iv", "ks", "auc"])
+    detail = undefined.get_table("detail", **selection)
+    assert all(detail[column].drop_nulls().is_empty() for column in ["iv_bin", "ks_bin", "auc_bin"])
+    psi = undefined.get_table("trend.psi", **selection)
+    assert psi["Val"].item() is None and psi["Train"].item() is not None
+    status = undefined.query_page("calculation_status", **selection, limit=100)
+    assert status["data"].equals(undefined.get_table("calculation_status", **status["reference"]["query"]))
+    assert "single_observed_class" in status["data"]["reason"].to_list()
+    undefined.write_html(str(output / "undefined-restored.html"), segments=["seg2"], include_all=False)
+    undefined.write_excel(str(output / "undefined-snapshot.xlsx"))
+    undefined_context = undefined.to_ai_context(queries={"summary": selection}, max_chars=24000)
+    (output / "undefined-context.json").write_text(undefined_context, encoding="utf-8")
+    figures = undefined.build_risk_trend_figures("x", segments=["seg2"], include_all=False, max_plots=1)
+    figures[0].savefig(output / "undefined-restored.png")
+    plt.close("all")
     print(json.dumps({"fresh_process": True, "total_rows": page["total_rows"],
                       "page_rows": page["returned_rows"], "next_offset": page["next_offset"],
-                      "context_chars": len(context), "agent_success": result.success}))
+                      "context_chars": len(context), "agent_success": result.success,
+                      "undefined_snapshot_replayed": True, "fixed_rule_scopes": len(fixed)}))
 
 
 def run(output: Path) -> None:
@@ -89,6 +117,13 @@ def run(output: Path) -> None:
     independent.save_binning_rules(output / "rules.json")
     fixed = MarsRiskProfile.load_binning_rules(output / "rules.json")
     assert fixed["all"].transform(frame, features=["x"]).equals(independent.binner.transform(frame, features=["x"]))
+    probe = frame.select("x", "category").head(10)
+    (output / "rules-probe.json").write_text(json.dumps({
+        "input": probe.to_dicts(), "expected": {
+            identity: rule.transform(probe, features=["x", "category"]).to_dicts()
+            for identity, rule in independent.binners_by_scope.items()
+        },
+    }, ensure_ascii=False), encoding="utf-8")
     missing = profile_risk(frame, segment_col="segment", binning_scope="shared", **{
         **parameters, "benchmark_df": benchmark.filter(pl.col("segment") != "seg2"),
     })
@@ -111,6 +146,19 @@ def run(output: Path) -> None:
     report.save_risk_trend_images(output, "x", segments=["seg2"], include_all=False,
                                   image_format="png", max_plots=1)
     report.save(output / "risk.marsreport", overwrite=True)
+
+    # 在有效开发规则下评估单类别客群，并制造仅 Val 无适用 PSI 人口的边界。
+    edge = frame.with_columns(
+        pl.when(pl.col("segment") == "seg2").then(0).otherwise(pl.col("y")).alias("y"),
+        pl.when((pl.col("segment") == "seg2") & (pl.col("split") == "Val"))
+        .then(None).otherwise(pl.col("x")).alias("x"),
+    )
+    undefined = MarsBinEvaluator().evaluate(
+        edge, segment_col="segment", binner=shared.binner, target="y", features=["x"],
+        group_col="split", time_col="date", benchmark_df=benchmark,
+    )
+    undefined.report.save(output / "undefined.marsreport", overwrite=True)
+    undefined.report.write_excel(str(output / "undefined-native.xlsx"), segments=["seg2"], include_all=False)
     result = subprocess.run([sys.executable, __file__, "--restore-only", "--output-dir", str(output)],
                             capture_output=True, text=True, check=True)
     print(result.stdout)

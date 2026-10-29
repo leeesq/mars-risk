@@ -54,6 +54,11 @@ if TYPE_CHECKING:
 _CHART_ASSET_THRESHOLD = 50
 
 
+def _sum_defined_values(values: pd.Series) -> float:
+    """透视求和保留全空指标，避免未定义的 IV 在 HTML 中变成零。"""
+    return float(values.sum(min_count=1))
+
+
 class _BinningHtmlRenderer:
     """分箱报告 HTML 导出能力。"""
 
@@ -1231,7 +1236,7 @@ class _BinningHtmlRenderer:
             view_df["count"] = pd.to_numeric(view_df["count"], errors="coerce").fillna(0.0)
             view_df["pct"] = pd.to_numeric(view_df["pct"], errors="coerce").fillna(0.0)
             view_df["lift"] = pd.to_numeric(view_df["lift"], errors="coerce")
-            view_df["iv_bin"] = pd.to_numeric(view_df["iv_bin"], errors="coerce").fillna(0.0)
+            view_df["iv_bin"] = pd.to_numeric(view_df["iv_bin"], errors="coerce")
 
             grouped = (
                 view_df.groupby(
@@ -1242,7 +1247,7 @@ class _BinningHtmlRenderer:
                     bad_count=("bad", "sum"),
                     total_count=("count", "sum"),
                     lift=("lift", "max"),
-                    iv=("iv_bin", "sum"),
+                    iv=("iv_bin", _sum_defined_values),
                 )
                 .reset_index()
             )
@@ -1260,7 +1265,7 @@ class _BinningHtmlRenderer:
                     bad_count=("bad_count", "sum"),
                     total_count=("total_count", "sum"),
                     lift=("lift", "max"),
-                    iv=("iv", "sum"),
+                    iv=("iv", _sum_defined_values),
                 )
                 .reset_index()
             )
@@ -1271,7 +1276,7 @@ class _BinningHtmlRenderer:
             totals["_pivot_group_id"] = -1
             feature_rank = (
                 totals.groupby(["feature"], dropna=False)["iv"]
-                .sum()
+                .sum(min_count=1)
                 .reset_index()
                 .sort_values(["iv", "feature"], ascending=[False, True])
             )

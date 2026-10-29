@@ -183,7 +183,7 @@ def psi_exprs(
         actual_prob_raw.alias(actual_prob_col),
         expected_prob_raw.alias(expected_prob_col),
         (
-            pl.when(valid_condition)
+            pl.when(valid_condition & (total_count > 0) & (total_expected > 0))
             .then(
                 psi_contribution_expr(
                     actual_prob_raw,

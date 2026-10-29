@@ -264,7 +264,7 @@ def _amount_lift_value_expr(
         pl.col(total_observed_amount_col) + epsilon
     )
     return (
-        pl.when(pl.col(total_observed_amount_col) > 0)
+        pl.when((pl.col(total_observed_amount_col) > 0) & (pl.col(total_bad_amount_col) > 0))
         .then(amount_bad_rate / total_amount_bad_rate)
         .otherwise(None)
     )
@@ -802,7 +802,7 @@ def observed_sum_agg_expr(
 ) -> pl.Expr:
     """构造观察样本存在时才求和的聚合表达式。"""
     return _observed_metric_agg_expr(
-        pl.col(metric_col).sum(),
+        pl.when(pl.col(metric_col).count() > 0).then(pl.col(metric_col).sum()).otherwise(None),
         observed_count_col=observed_count_col,
         output_col=output_col or metric_col,
     )

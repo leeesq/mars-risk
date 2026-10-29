@@ -8,6 +8,7 @@ import pandas as pd
 import polars as pl
 
 from mars.compute.binning import normalize_binary_target_column
+from mars.compute.stability import normalize_risk_corr_baseline
 from mars.feature._scopes import build_scopes, resolve_scopes, scope_filter, validate_segment_roles
 from mars.feature.binning.base import MarsBinnerBase
 from mars.feature.binning.optimal import MarsOptimalBinner
@@ -104,12 +105,8 @@ def _common_rules(
     return binner
 
 
-def fit_selector(
-    selector: MarsStatsSelector, df: pl.DataFrame | pd.DataFrame, *, target: str,
-    benchmark_df: pl.DataFrame | pd.DataFrame | None, features: list[str] | None,
-    segment_col: str | None, **context: Any,
-) -> MarsStatsSelector:
-    """校验全部输入，再顺序执行客群漏斗，不保存原始宽表或基准表。"""
+def _reset_public_run(selector: MarsStatsSelector, segment_col: str | None) -> None:
+    """仅公开 fit 重建运行状态；内部子任务保留本次显式注入的参考与 scope。"""
     # 入口角色或数据校验也可能失败，必须先清除上一次运行的规则与公开决策。
     selector._reset_correlation()
     selector.selected_features_ = []
@@ -126,6 +123,25 @@ def fit_selector(
     selector._fixed_rough_binner = None
     selector._fixed_fine_binner = None
     selector._pause_after_quality = False
+    selector._scope_context = False
+    selector._reference_group = None
+    selector._fit_used_benchmark = False
+    selector._benchmark_row_count = None
+    selector._binning_fit_source = "df"
+    selector._initial_feature_count = 0
+    selector._feature_source_map = {}
+    selector._pending_candidates = []
+    selector._pending_features = []
+    selector._pending_white = []
+
+
+def fit_selector(
+    selector: MarsStatsSelector, df: pl.DataFrame | pd.DataFrame, *, target: str,
+    benchmark_df: pl.DataFrame | pd.DataFrame | None, features: list[str] | None,
+    segment_col: str | None, **context: Any,
+) -> MarsStatsSelector:
+    """校验全部输入，再顺序执行客群漏斗，不保存原始宽表或基准表。"""
+    _reset_public_run(selector, segment_col)
     if segment_col is None:
         if selector.selection_scope != "global" or selector.binning_scope != "shared":
             raise ValueError("Non-default selection/binning scope requires segment_col.")
@@ -170,6 +186,10 @@ def fit_selector(
 
     # 完整表先验证契约错误；单客群统计不足才作为局部状态发布。
     selector.target = target
+    # 前置 benchmark 校验与内部子任务必须使用同一次 fit 显式指定的 RC 策略。
+    selector.risk_corr_baseline = normalize_risk_corr_baseline(
+        context.get("risk_corr_baseline") or selector.risk_corr_baseline,
+    )
     selector._prepare_evaluation_frame(frame)
     selector._prepare_selector_benchmark(benchmark, features=candidates)
     from mars.analysis._evaluation.context import prepare_group_context

@@ -201,11 +201,15 @@ class _ReportQuery:
         if "scope_id" not in tables[name].columns:
             raise ValueError(f"Table {name!r} has no scope identity.")
         filters = dict(options.get("filters") or {})
-        existing = filters.pop("scope_id", None)
-        if existing is not None:
+        # 显式 null 也是合法条件；身份过滤只能放宽未显式选择的子客群，不能复活 All。
+        if "scope_id" in filters:
+            existing = filters.pop("scope_id")
             matched = query_table(catalog, filters={"scope_id": existing})
             allowed = matched["scope_id"].to_list()
-            ids = allowed if segments is None else [identity for identity in ids if identity in allowed]
+            if segments is None:
+                ids = [identity for identity in allowed if include_all is not False or identity != "all"]
+            else:
+                ids = [identity for identity in ids if identity in allowed]
         filters["scope_id"] = {"op": "in", "value": ids}
         options["filters"] = filters
         # 跨客群投影仍保留身份，避免相同特征成为不可区分的行。

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -10,7 +11,9 @@ import pytest
 from polars.testing import assert_frame_equal
 
 from mars.analysis import profile_risk
+from mars.compute import to_polars_frame
 from mars.feature import MarsNativeBinner
+from mars.reporting import load_report
 
 
 def _sample() -> pl.DataFrame:
@@ -173,3 +176,52 @@ def test_explicit_feature_selection_retains_existing_priority() -> None:
         _sample(), target=["bad30", "bad60"], features=["x"], n_bins=2, n_jobs=1,
     )
     assert result.metadata["features"] == ["x"]
+
+
+@pytest.mark.parametrize("pandas", [False, True])
+@pytest.mark.parametrize("segmented", [False, True])
+@pytest.mark.parametrize("ks_method", ["raw", "binned"])
+@pytest.mark.parametrize("targets", [
+    ["y", "absent", "unobserved"], ["absent", "y"], ["absent", "unobserved"],
+])
+def test_missing_declared_targets_keep_label_free_identity_after_restore(
+    pandas: bool, segmented: bool, ks_method: str, targets: list[str], tmp_path: Path,
+) -> None:
+    """缺列和全空目标保留声明身份，元数据只转换实际存在的窄列。"""
+    frame = pl.DataFrame({
+        "x": [float(i) for i in range(40)], "y": [0, 1] * 20,
+        "s": ["seg1"] * 20 + ["seg2"] * 20,
+        "unobserved": pl.Series([None] * 40, dtype=pl.Int8),
+    })
+    data = frame.to_pandas() if pandas else frame
+    run = profile_risk(
+        data, target=targets, features=["x"], segment_col="s" if segmented else None,
+        method="quantile", n_bins=3, n_jobs=1, ks_method=ks_method,
+    )
+    assert run.targets == targets
+    assert run.metadata["targets"] == targets
+    assert run.metadata["event_rate_by_target"]["absent"] is None
+    if "y" in targets:
+        assert run.metadata["event_rate_by_target"]["y"] == 0.5
+    if "unobserved" in targets:
+        assert run.metadata["event_rate_by_target"]["unobserved"] is None
+    report = run.report
+    report.save(tmp_path / "missing-target.marsreport", overwrite=True)
+    restored = load_report(tmp_path / "missing-target.marsreport")
+    for name in ["summary", "detail", "calculation_status"]:
+        original = to_polars_frame(report.get_table(name))
+        assert_frame_equal(original, to_polars_frame(restored.get_table(name)))
+    summary = to_polars_frame(report.get_table("summary"))
+    assert set(summary["target"]) == set(targets)
+    assert summary.height == len(targets) * (3 if segmented else 1)
+    assert summary.filter(pl.col("target") == "absent")["ks"].null_count() == (
+        3 if segmented else 1
+    )
+    detail = to_polars_frame(report.get_table("detail"))
+    assert set(detail["y"]) == set(targets)
+    assert detail.filter(pl.col("y") == "absent")["bad_rate"].drop_nulls().is_empty()
+    status = to_polars_frame(report.get_table("calculation_status"))
+    assert status.filter(pl.col("target") == "absent").height > 0
+    assert restored.describe()["parameters"]["event_rate_by_target"] == (
+        report.describe()["parameters"]["event_rate_by_target"]
+    )

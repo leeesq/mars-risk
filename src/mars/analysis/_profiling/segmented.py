@@ -13,7 +13,10 @@ from mars.analysis._profiling.context import (
     prepare_profile_data,
 )
 from mars.analysis._profiling.metrics import normalize_profile_metrics
-from mars.analysis._profiling.psi import _validate_benchmark_frame
+from mars.analysis._profiling.psi import (
+    _benchmark_degenerate_failures,
+    _validate_benchmark_frame,
+)
 from mars.feature import MarsNativeBinner
 from mars.feature._scopes import build_scopes, scope_filter, validate_segment_roles
 from mars.reporting import MarsProfileReport
@@ -125,15 +128,23 @@ def generate_segmented_profile(
         first_group = context.working_df.filter(condition)
     fit_population = benchmark if benchmark is not None else current
     shared_binner: MarsNativeBinner | None = None
+    shared_fit_failures: dict[str, str] = {}
     if psi_requested and not current.is_empty() and (benchmark is not None or first_group is not None):
         if profiler.binning_scope == "shared":
             shared_binner = _fit_binner(profiler, fit_population, candidates, declared)
+            if benchmark is not None:
+                shared_fit_failures = _benchmark_degenerate_failures(
+                    fit_population, candidates,
+                    missing_values=profiler.missing_values, special_values=profiler.special_values,
+                    categorical_features=declared, batch_size=profiler.psi_batch_size,
+                )
 
     overview_parts: list[pl.DataFrame] = []
     dq_parts: dict[str, list[pl.DataFrame]] = {metric: [] for metric in selection.dq_metrics}
     stats_parts: dict[str, list[pl.DataFrame]] = {metric: [] for metric in selection.stat_metrics}
     comparison_parts: dict[str, list[pl.DataFrame]] = {metric: [] for metric in selection.comparison_metrics}
     status_parts: list[pl.DataFrame] = []
+    scope_diagnostics: list[dict[str, Any]] = []
     references: list[dict[str, Any]] = []
     report_meta: dict[str, Any] = {}
     for scope_id in scopes["scope_id"].to_list():
@@ -147,21 +158,34 @@ def generate_segmented_profile(
         if psi_requested and reference is not None and reference.is_empty():
             reference_reason = "missing_segment_benchmark" if benchmark is not None else "missing_first_group"
         fixed_binner = shared_binner
+        fit_failures = shared_fit_failures
         if psi_requested and profiler.binning_scope == "per_segment" and reference_reason is None:
             if not population.is_empty() and reference is not None:
                 try:
                     fixed_binner = _fit_binner(profiler, local_fit, candidates, declared)
+                    if benchmark is not None:
+                        fit_failures = _benchmark_degenerate_failures(
+                            local_fit, candidates,
+                            missing_values=profiler.missing_values, special_values=profiler.special_values,
+                            categorical_features=declared, batch_size=profiler.psi_batch_size,
+                        )
                 except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
                     reference_reason = f"psi_binning_failed: {exc}"
 
         local_kwargs = {**kwargs, "exclude_features": excluded,
                         "benchmark_df": local_benchmark if comparisons else reference,
-                        "psi_binner": fixed_binner, "psi_fit_df": local_fit,
+                        "psi_binner": fixed_binner,
+                        "psi_fit_df": fit_population if profiler.binning_scope == "shared" else local_fit,
+                        "psi_fit_population_failures": fit_failures,
                         "psi_reference_reason": reference_reason, "allow_empty_benchmark": True}
         # 对比检查始终读取对应客群的显式基准；无 benchmark 的首组只用于 PSI。
         local_report = profiler._generate_profile(population, **local_kwargs)
         if scope_id == "all":
             report_meta = dict(local_report.report_meta)
+        scope_diagnostics.extend(
+            {**diagnostic, "scope_id": scope_id}
+            for diagnostic in local_report.report_meta.get("diagnostics", [])
+        )
         overview_parts.append(_frame(local_report.overview_table).with_columns(pl.lit(scope_id).alias("scope_id")))
         for destination, tables in (
             (dq_parts, local_report.dq_tables), (stats_parts, local_report.stats_tables),
@@ -185,6 +209,7 @@ def generate_segmented_profile(
         "binning_scope": profiler.binning_scope, "scope_semantics_version": 1,
         "benchmark_row_count": benchmark.height if benchmark is not None else None,
         "scope_references": references,
+        "diagnostics": scope_diagnostics,
     })
     profiler._determine_output_format(input_is_pandas)
     report = MarsProfileReport(

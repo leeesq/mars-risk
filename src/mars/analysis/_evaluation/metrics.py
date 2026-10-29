@@ -170,6 +170,11 @@ def calculate_metrics_from_stats(
             .with_columns(binary_metric_exprs())
             .sort([group_col, "feature", "bin_index"])
             .with_columns(ordered_binary_metric_exprs([group_col, "feature"]))
+            .with_columns([
+                pl.when((pl.col("total_bad") > 0) & (pl.col("total_good") > 0))
+                .then(pl.col(column)).otherwise(None).alias(column)
+                for column in ["cum_bad_dist", "cum_good_dist", "ks_bin", "auc_bin"]
+            ])
             .select(
                 [
                     group_col,
@@ -188,6 +193,15 @@ def calculate_metrics_from_stats(
             .join(normal_bins, on=[group_col, "feature", "bin_index"], how="left")
         )
 
+    # 两类有效质量必须同时为正；箱级贡献置空后，原生 Excel 和 raw KS
+    # 重建分箱 KS 时也会保留未定义值。这里不修改正式分箱器的已学 WOE。
+    separation_defined: pl.Expr = (pl.col("total_bad") > 0) & (pl.col("total_good") > 0)
+    ordered_df = ordered_df.with_columns([
+        pl.when(separation_defined).then(pl.col(column)).otherwise(None).alias(column)
+        for column in ["woe", "bad_dist", "good_dist", "cum_bad_dist", "cum_good_dist", "iv_bin", "ks_bin", "auc_bin"]
+    ]).with_columns(
+        pl.when(pl.col("total_bad") > 0).then(pl.col("lift")).otherwise(None).alias("lift")
+    )
     return (
         ordered_df
         .with_columns(

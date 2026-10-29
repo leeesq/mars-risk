@@ -34,6 +34,7 @@ from mars.analysis._evaluation.metrics import (
     ensure_woe_info,
 )
 from mars.analysis._evaluation.references import (
+    _risk_corr_status_rows,
     build_benchmark_risk_corr_reference,
     build_risk_corr_reference_table,
     empty_risk_corr_reference_table,
@@ -851,6 +852,9 @@ class MarsBinEvaluator(MarsBaseEstimator):
         observation = stats_long.group_by("feature", group_col, maintain_order=True).agg(
             pl.col("observed_count").sum().alias("observed"),
             pl.col("bad").sum().alias("bad"),
+            pl.col("count").sum().alias("population_mass"),
+            pl.col("observed_count").filter(pl.col("bin_index") >= 0).sum().alias("normal_observed"),
+            pl.col("bad").filter(pl.col("bin_index") >= 0).sum().alias("normal_bad"),
         )
         for row in observation.to_dicts():
             observed = row["observed"]
@@ -867,6 +871,8 @@ class MarsBinEvaluator(MarsBaseEstimator):
                     else "computed",
                     "reason": "no_target"
                     if not target_available
+                    else "zero_current_weight"
+                    if has_target and weights_col and not row["population_mass"]
                     else "no_observed_labels"
                     if not has_target or not observed
                     else None,
@@ -883,6 +889,14 @@ class MarsBinEvaluator(MarsBaseEstimator):
                         "reason": "single_observed_class",
                     }
                 )
+            elif has_target and effective_ordered_metric_sort_by == "bin_index" and (
+                not row["normal_bad"] or row["normal_bad"] == row["normal_observed"]
+            ):
+                status_rows.append({
+                    "feature": row["feature"], "target": original_target, "group": row[group_col],
+                    "metric": "ordered_class_separation", "status": "undefined",
+                    "reason": "single_observed_class_in_normal_bins" if row["normal_observed"] else "no_observed_labels_in_normal_bins",
+                })
         mono_by_feature = {row["feature"]: row for row in monotonicity_df.to_dicts()}
         for feature in target_features:
             row = mono_by_feature.get(feature, {})
@@ -928,67 +942,81 @@ class MarsBinEvaluator(MarsBaseEstimator):
             )
         )
         if self._scope_context and "risk_corr" in report.trend_tables:
-            from mars.reporting._metadata import is_metadata_column
-
-            rc_trend = to_polars_frame(report.trend_tables["risk_corr"])
-            rc_statuses = [{
-                "feature": row["feature"], "target": original_target, "group": column,
-                "metric": "risk_corr", "status": "undefined", "reason": "insufficient_or_constant_bin_rates",
-            } for row in rc_trend.to_dicts() for column in rc_trend.columns
-                if not is_metadata_column(column) and row[column] is None]
+            rc_statuses = _risk_corr_status_rows(
+                stats_long, risk_corr_reference_table, group_col=group_col,
+                target=original_target,
+            )
             if rc_statuses:
                 status = to_polars_frame(report._calculation_status)
                 report._calculation_status = self._format_output(pl.concat([
                     status, pl.DataFrame(rc_statuses, schema=status.schema),
                 ]))
         report._normalize_feature_tables()
+        # 适用人口来自当前批次已聚合统计；按 feature/group（包含 Total）记录 PSI 状态。
+        psi_statuses: list[dict[str, Any]] = []
+        for row in stats_long.group_by("feature", group_col).agg(
+            pl.col("total_count_psi").first().alias("current_mass"),
+            pl.col("count").sum().alias("all_mass"),
+        ).to_dicts():
+            if not row["current_mass"]:
+                psi_statuses.append({
+                    "feature": row["feature"], "target": original_target, "group": row[group_col],
+                    "metric": "psi", "status": "not_computed",
+                    "reason": "zero_current_weight" if weights_col and not row["all_mass"] else "no_effective_current_population",
+                })
+        if psi_statuses:
+            status = to_polars_frame(report._calculation_status)
+            report._calculation_status = self._format_output(pl.concat([
+                status, pl.DataFrame(psi_statuses, schema=status.schema),
+            ]))
         if self._scope_context:
             from mars.analysis._evaluation.segmented import _null_reference_metrics
             from mars.compute.stability import psi_valid_condition
 
-            reference_reason: str | None = None
-            if benchmark_prepared is not None:
-                if benchmark_prepared.is_empty():
-                    reference_reason = "missing_reference_population"
-                elif weights_col and benchmark_prepared[weights_col].sum() == 0:
-                    reference_reason = "zero_reference_weight"
-            elif self._reference_group is not None:
-                first_rows = working_df.filter(pl.col(group_col) == self._reference_group)
-                if first_rows.is_empty():
-                    reference_reason = "missing_reference_population"
-                elif weights_col and first_rows[weights_col].sum() == 0:
-                    reference_reason = "zero_reference_weight"
-            if reference_reason is not None:
+            # PSI expected 与 RC 的 total/first_group/benchmark 各有独立人口。
+            first_rows = working_df.filter(
+                pl.col(group_col).is_null() if self._reference_group is None
+                else pl.col(group_col) == self._reference_group
+            )
+            psi_population: pl.DataFrame = benchmark_prepared if benchmark_prepared is not None else first_rows
+            rc_population: pl.DataFrame | None = (
+                benchmark_prepared if effective_risk_corr_baseline == "benchmark"
+                else first_rows if effective_risk_corr_baseline == "first_group"
+                else working_df
+            )
+            report._report_meta.update({
+                "psi_reference_group": self._reference_group if benchmark_prepared is None else None,
+                "risk_corr_reference_group": self._reference_group if effective_risk_corr_baseline == "first_group" else None,
+                "risk_corr_reference_row_count": rc_population.height if rc_population is not None else None if risk_corr_reference_source == "feature_start_reference" else 0,
+                "risk_corr_reference_weight": rc_population[weights_col].sum() if rc_population is not None and weights_col else None,
+            })
+            for metric, population in [("psi", psi_population), ("risk_corr", rc_population)]:
+                # feature-start 的有效参考按特征构造，不存在单一 benchmark 原始人口。
+                if metric == "risk_corr" and risk_corr_reference_source == "feature_start_reference":
+                    continue
+                reason = (
+                    "missing_reference_population" if population is None or population.is_empty()
+                    else "zero_reference_weight" if weights_col and population[weights_col].sum() == 0
+                    else None
+                )
+                if reason is not None:
+                    _null_reference_metrics(report, reason, original_target, metrics=(metric,))
+            # 参考被排除的箱不构成有效 PSI 人口；这里仅处理 PSI，不传播到 RC。
+            valid = psi_valid_condition(
+                pl.col("bin_index"), include_missing=psi_include_missing,
+                include_special=psi_include_special,
+            )
+            effective_reference = expected_dist.filter(valid).group_by("feature").agg(
+                pl.col("expected_dist").sum().alias("mass")
+            ).filter(pl.col("mass") > 0)["feature"].to_list()
+            unavailable_reference = [f for f in target_features if f not in effective_reference]
+            if unavailable_reference and not psi_population.is_empty() and (
+                not weights_col or psi_population[weights_col].sum() > 0
+            ):
                 _null_reference_metrics(
-                    report, reference_reason, original_target,
-                    include_rc=effective_risk_corr_baseline in {"benchmark", "first_group"},
+                    report, "no_effective_reference_population", original_target,
+                    features=unavailable_reference,
                 )
-            if weights_col and working_df[weights_col].sum() == 0:
-                _null_reference_metrics(report, "zero_current_weight", original_target, include_rc=True)
-            # 按特征核对适用箱人口；缺失／特殊箱被排除后不能用 epsilon 伪造参考。
-            if reference_reason is None:
-                valid = psi_valid_condition(
-                    pl.col("bin_index"), include_missing=psi_include_missing,
-                    include_special=psi_include_special,
-                )
-                effective_reference = expected_dist.filter(valid).group_by("feature").agg(
-                    pl.col("expected_dist").sum().alias("mass")
-                ).filter(pl.col("mass") > 0)["feature"].to_list()
-                unavailable_reference = [f for f in target_features if f not in effective_reference]
-                if unavailable_reference:
-                    _null_reference_metrics(
-                        report, "no_effective_reference_population", original_target,
-                        features=unavailable_reference,
-                    )
-                effective_current = group_stats_raw.filter(valid).group_by("feature").agg(
-                    pl.col("count").sum().alias("mass")
-                ).filter(pl.col("mass") > 0)["feature"].to_list()
-                unavailable_current = [f for f in target_features if f not in effective_current]
-                if unavailable_current:
-                    _null_reference_metrics(
-                        report, "no_effective_current_population", original_target,
-                        features=unavailable_current,
-                    )
         run = MarsRiskProfile(
             report=report,
             binner=active_binner,
