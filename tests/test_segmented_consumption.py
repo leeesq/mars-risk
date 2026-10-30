@@ -2,15 +2,120 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
 import openpyxl
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 from mars.analysis import profile_risk, profile_stats
 from mars.reporting import load_report
+from mars.reporting._artifact import snapshot_report
+
+
+def test_shared_report_and_fixed_rules_in_fresh_processes(risk: object, tmp_path: Path) -> None:
+    """真实 shared 快照在新进程消费，正式规则独立恢复且不得重新拟合。"""
+    report = risk.report
+    report_path = tmp_path / "shared.marsreport"
+    rule_path = tmp_path / "rules.json"
+    report.save(report_path, overwrite=True)
+    risk.save_binning_rules(rule_path)
+    report.write_excel(str(tmp_path / "native.xlsx"), segments=["seg2"], include_all=False)
+    native = openpyxl.load_workbook(tmp_path / "native.xlsx", data_only=True)
+    assert any(sheet.max_column == 22 and sheet.max_row > 1 for sheet in native)
+    native.close()
+    snapshot_report(report).write_excel(str(tmp_path / "original.xlsx"))
+    original_png = tmp_path / "original.png"
+    figure = report.build_risk_trend_figures("x", segments=["seg2"], include_all=False)[0]
+    figure.savefig(original_png, dpi=150)
+    import matplotlib.pyplot as plt
+
+    plt.close(figure)
+    expected_context = report.to_ai_context(
+        tables=["summary"], segments=["seg2"], include_all=False, limit=1, max_chars=16000,
+    )
+    with pytest.raises(ValueError, match="max_chars"):
+        report.to_ai_context(tables=["summary"], segments=["seg2"], include_all=False, max_chars=512)
+    script = r'''
+import json, sys
+from pathlib import Path
+from mars.reporting import load_report
+
+root = Path(sys.argv[1])
+r = load_report(root / "shared.marsreport")
+page = r.query_page("summary", segments=["seg2"], include_all=False, limit=1)
+assert page["returned_rows"] == 1
+assert page["data"].equals(r.get_table(page["reference"]["table"], **page["reference"]["query"]))
+context = r.to_ai_context(tables=["summary"], segments=["seg2"], include_all=False, limit=1, max_chars=16000)
+assert len(context) <= 16000
+try:
+    r.to_ai_context(tables=["summary"], segments=["seg2"], include_all=False, max_chars=512)
+except ValueError as exc:
+    assert "max_chars" in str(exc)
+else:
+    raise AssertionError("budget should reject an undersized context")
+evidence = json.loads(context)["evidence"][0]
+assert r.get_table(evidence["reference"], **evidence["query"]).height == evidence["returned_rows"]
+(root / "context.json").write_text(context, encoding="utf-8")
+r.get_table("detail").write_parquet(root / "restored-detail.parquet")
+r.get_table("calculation_status").write_parquet(root / "restored-status.parquet")
+r.write_excel(str(root / "restored.xlsx"))
+r.write_html(str(root / "restored.html"), segments=["seg2"], include_all=False)
+figures = r.build_risk_trend_figures("x", segments=["seg2"], include_all=False, max_plots=1)
+assert len(figures) == 1
+figures[0].savefig(root / "restored.png", dpi=150)
+assert (root / "restored.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+'''
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads((tmp_path / "context.json").read_text(encoding="utf-8")) == json.loads(expected_context)
+    assert_frame_equal(pl.read_parquet(tmp_path / "restored-detail.parquet"), report.get_table("detail"))
+    assert_frame_equal(pl.read_parquet(tmp_path / "restored-status.parquet"), report.get_table("calculation_status"))
+    before = openpyxl.load_workbook(tmp_path / "original.xlsx", data_only=True)
+    after = openpyxl.load_workbook(tmp_path / "restored.xlsx", data_only=True)
+    assert before.sheetnames == after.sheetnames
+    for left, right in zip(before, after):
+        assert list(left.values) == list(right.values)
+    before.close()
+    after.close()
+    assert "seg2" in (tmp_path / "restored.html").read_text(encoding="utf-8")
+    restored_png = tmp_path / "restored.png"
+    from PIL import Image, ImageChops
+
+    with Image.open(original_png) as left_image, Image.open(restored_png) as right_image:
+        assert ImageChops.difference(left_image.convert("RGB"), right_image.convert("RGB")).getbbox() is None
+
+    rules_script = r'''
+import sys
+from datetime import date
+from pathlib import Path
+import polars as pl
+from polars.testing import assert_frame_equal
+from mars.analysis import MarsBinEvaluator, MarsRiskProfile
+from mars.reporting import load_report
+
+root = Path(sys.argv[1])
+rules = MarsRiskProfile.load_binning_rules(root / "rules.json")
+def forbidden(*args, **kwargs):
+    raise AssertionError("fixed rules must not fit")
+type(rules["all"]).fit = forbidden
+frame = pl.DataFrame({"s": ["seg1"] * 40 + ["seg2"] * 40 + ["seg3"] * 40,
+    "g": (["Train"] * 20 + ["Val"] * 20) * 3, "dt": [date(2026, 1, 1)] * 120,
+    "x": [float(i % 10) for i in range(120)], "y": [int(i % 10 >= 5) for i in range(120)]})
+run = MarsBinEvaluator().evaluate(frame, target="y", features=["x"], segment_col="s",
+    group_col="g", time_col="dt", benchmark_df=frame.filter(pl.col("g") == "Train"),
+    binner=rules["all"])
+original = load_report(root / "shared.marsreport")
+keys = ["scope_id", "y", "feature", "mars_group", "bin_index"]
+assert_frame_equal(run.report.get_table("detail").sort(keys), original.get_table("detail").sort(keys))
+'''
+    result = subprocess.run([sys.executable, "-c", rules_script, str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.fixture

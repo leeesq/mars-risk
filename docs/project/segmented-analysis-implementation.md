@@ -515,5 +515,119 @@ HTML／Excel 以静态内容及新进程恢复验证，浏览器和 Office 原�
 独立审查另发现真实字符串 group=`*` 的既有入口边界：该值在旧版的 PSI 列投影中也会触发
 Polars `select("*")` 展开导致的 DuplicateError。F09 未扩大修复这个分组入口问题，
 也未改变既有标签；真实 group=`Total` 的局部状态与汇总列投影冲突已在本轮覆盖。
-shared 每批一次联合转换仍未完成，权威计划保持原状态。P06–P08 未启动，
+F09 验收时 shared 每批一次联合转换仍未完成。P06–P08 未启动，
 监控、建模／Pipeline 和评分卡保持暂停功能迭代；本轮完成后停止。
+
+## Shared 分箱批内复用（进行中） { #shared-batch-reuse }
+
+本轮从 `feat/segmented-analysis-core` 的 `19670dc528debb9d5d330dada300ce664234c5a2`
+开始，起始工作树干净。独立基线由 `git archive` 建立在
+`.artifacts/segmented/shared-reuse-baseline/`，没有切换或回退开发工作树。
+默认 Python 3.12.4 无法导入 mars。实际使用的 3.8.20／Polars 1.8.2／Pandas 2.0.3
+和 3.12.13／Polars 1.42.0／Pandas 3.0.3 环境均从本仓库 `src/mars` 导入。
+
+风险画像先准备 shared 规则，再按批转换完整当前人口及显式参考人口。
+各 scope 从当前批的转换结果收集基础统计、参考和上线窗口，随后沿用原指标与报告装配。
+基础聚合目前仍逐 scope 执行。数据画像 PSI 按批聚合客群频数，继续使用 F09 的
+`calc_psi_from_stats`。联合批转换失败时，该批回到局部路径以保留失败隔离。
+非 PSI 画像及 selector 的阶段调度仍逐 scope 执行。
+
+固定规则计数测试覆盖 1、3、9 客群。每个特征批当前人口转换一次，显式参考人口转换一次。
+数据画像两个单特征批在 90 行当前人口上实际执行 180 行；显式参考为 45 行时增加 90 行。
+无显式参考时从当前频数取首组。拟合及 WOE 准备、raw KS 和相关性不计入上述转换次数。
+
+独立基线的画像 PSI 对照覆盖 benchmark 独有客群、缺首组、混合类型和缺失／特殊箱开关：
+48 张表和 8 份元数据一致，浮点容差为 1e-10。完整公开链小样本对照中，3／9 客群分别有
+103／223 项快照表、元数据和规则比较通过。证据位于 `.artifacts/segmented/` 的
+`profile-oracle-*`、`reuse-isolated-baseline/` 和 `reuse-isolated-current/`。
+
+独占顺序测量使用 1,000 行、12 特征、均衡客群、显式参考、batch 16 和线程 1。
+3／9 客群完整调用时间分别为基线 5.273／7.468 秒、当前 5.311／6.925 秒；
+固定规则风险评估分别为 0.159／0.547 秒和 0.144／0.423 秒；
+进程树采样峰值分别为 310.8／311.1 MiB 和 307.0／309.4 MiB。
+各组仅运行一次，RSS 每 10 ms 采样，不能推断稳定吞吐或全宽容量。
+
+中型对照使用 100,000 行、100 特征、3 个均衡客群、显式参考、batch 16 和线程 1。
+基线及当前调用均 exit 0，103 项快照表、元数据和规则对照通过。完整调用分别为
+138.408 秒和 113.894 秒，固定规则风险评估为 4.755 秒和 4.014 秒，进程树采样峰值
+为 2,526.3 MiB 和 2,487.9 MiB。基线前段与测试和 Mypy 并发，当前侧条件不同，
+不能计算普通提速比。固定规则评估未单独记录峰值 RSS；日志与结果在
+`reuse-medium-baseline/` 和 `reuse-medium-current/`。
+
+专项在 3.8 与 3.12 各有 205 项通过、1 项失败，失败发生于沙箱内 `os.link` 的
+Windows WinError 5。两环境的风险回归各为 132 passed、1 deselected；最后边界修改后
+各补测 9 项通过。这些窗口不能合并成一次完整通过。
+
+两次启动完整基础测试后发现画像 PSI 的内部列名碰撞，源码仍需修复。
+为避免混用运行中的源码，两套运行均主动中断，外层退出码为 1；
+分别运行至约 16%／19% 和 8%／3%，不计为完整通过。
+随后第三次完整运行期间审查发现风险画像客群列与分箱输出同名的回归，
+两套运行分别约到 16% 和 19% 时主动中断，外层退出码均为 1。
+第四次运行期间发现时间列同名回归，分别约到 8% 和 11% 时中断，外层退出码均为 1。
+独占资源测量也早于内部列名修复，测量输入没有触发该碰撞，不能作为最终源码的完整资源验收。
+合法客群列名与 PSI 内部字段冲突的修复后，3.8 和 3.12 的画像专项各为 76 passed、exit 0；
+独立基线的 48 张表及 8 份元数据再次相符。一次 3.8 测试曾因运行时类型别名不兼容而失败，
+修正后重跑通过。
+风险画像的客群列名可能与分箱输出同名，现用独立内部身份保留客群。
+两环境各 17 项专项通过，覆盖同名客群、多 chunk、权重金额和参考独有客群。
+进一步独立审查发现时间列与分箱输出同名时，新路径会覆盖原始日期，现已从原始批次读取日期。
+显式指定 `PYTHONPATH` 并核实 `mars.__file__` 后，确认目标、权重或金额列与分箱输出
+同名时，基线的普通 evaluator 也抛出 DuplicateError；本轮未扩大修复该既有入口限制。
+数字特征名与画像 PSI 内部索引冲突也已修复，两环境各 21 项专项通过。
+
+```powershell
+& .artifacts/segmented/env38-final/Scripts/python.exe -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/segmented/reuse-final4-38
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/segmented/reuse-final4-312
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m ruff check src tests scripts benchmarks docs/snippets
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m mypy src/mars
+& D:/my_download_program/anaconda3/envs/mars312/Scripts/pydoclint.exe src/mars
+& D:/my_download_program/anaconda3/envs/mars312/python.exe scripts/check_private_docstrings.py src/mars
+```
+
+最终源码的完整基础命令使用上述环境变量，分别指定 `reuse-final4-38` 和
+`reuse-final4-312` 为 basetemp。3.8 为 1,757 passed、13 skipped、7 deselected，
+556.54 秒，exit 0；3.12 为 1,856 passed、3 skipped、7 deselected，623.75 秒，exit 0。
+日志为 `.artifacts/segmented/reuse-final4-38.log` 和 `reuse-final4-312.log`。
+测试在沙箱外运行，以允许报告保存使用 Windows 硬链接。
+最终源码的 Ruff、全包 Mypy 和 public/private docstring 均 exit 0；private 检查有 6 条既有建议警告。
+最终小样本资源矩阵使用 1,000 行、12 特征，两侧使用相同风险与画像 PSI 批宽。
+每侧调用与固定规则评估连续运行，报告和规则共存。每组只运行一次。
+
+| 客群与参考 | batch／线程 | 完整调用基线 → 当前（秒） | 固定规则风险基线 → 当前（秒） | 进程树峰值基线 → 当前（MiB） |
+| --- | --- | --- | --- | --- |
+| 1 客群，首组 | 1／4 | 6.586 → 6.732 | 0.124 → 0.150 | 324.1 → 330.2 |
+| 3 客群，显式 | 16／1 | 5.072 → 5.502 | 0.180 → 0.184 | 307.5 → 309.6 |
+| 9 客群，显式 | 16／1 | 7.053 → 6.770 | 0.426 → 0.366 | 310.5 → 313.1 |
+| 9 客群不均衡，首组 | 100／4 | 8.993 → 8.754 | 0.393 → 0.450 | 329.8 → 340.4 |
+
+各侧 worker 均 exit 0，前 3 组完整对照 exit 0。最后一组首次比较器遗漏状态表的
+`group` 业务键，整条比较命令 exit 1；修正后对原快照重比 156 项通过、exit 0。
+原始失败和重比结果均保留在 `.artifacts/segmented/reuse-final-b100-current/`。
+这些结果不能推断普遍提速，固定规则阶段未单独采样 RSS。
+最终源码的中型顺序复测使用 100,000 行、100 特征、3 个均衡客群、显式参考、
+风险和画像 PSI 批宽 16、线程 1。两侧进程均 exit 0，103 项快照表、元数据和规则对照通过。
+基线 → 当前的完整调用为 114.304 → 111.661 秒，风险画像为 6.890 → 6.228 秒，
+数据画像为 4.250 → 3.345 秒，selector 为 98.323 → 97.048 秒，
+固定规则风险评估为 4.509 → 4.219 秒，10 ms 进程树采样峰值为 2,565.3 → 2,484.6 MiB。
+每侧仅一次，固定规则阶段未单独采样峰值，系统背景负载仍可能影响结果。
+原始日志和 JSON 保存在 `reuse-final-medium-baseline/` 和 `reuse-final-medium-current/`。
+P02 的优化项仍待补齐剩余验收范围，暂不勾选。
+
+执行观察另使用 300 行当前人口、180 行参考、4 特征、3 客群、batch 2 和 raw KS。
+两批合计，风险画像当前转换从 8 次／1,200 行变为 2 次／600 行，
+参考转换从 8 次／720 行变为 2 次／360 行；画像 PSI 和固定规则风险评估相同。
+风险及画像的规则拟合各为 1 次／180 行，风险规则 WOE 准备转换为 2 次／360 行，
+两侧一致。raw KS 公开入口为 1 次／300 行，底层 scope 计算为 4 次／600 行；
+selector 相关性入口为 4 次／600 输入行，两侧一致。selector 阶段转换未池化。
+观察模式不能将 LazyFrame 构造次数等同于实际执行次数；行级执行合同另由专项验证。
+原始记录位于 `reuse-counts-baseline-v3/` 和 `reuse-counts-current-v3/`。
+尚未逐项测量基础聚合及报告装配时间，固定规则评估没有独立峰值 RSS。
+没有重新运行 Home Credit 代表候选或验收全宽容量；既有数据与正式案例配置未改动。
+完整基础测试覆盖报告保存恢复、查询、静态 HTML／Excel／PNG 和规则恢复等既有用例，
+另新增同一 shared 报告的集中消费回归，两环境各 1 passed、exit 0：
+新进程验证分页、reference 重放、预算拒绝及 AI context、detail／status、静态 Excel、
+HTML 和 PNG；另起进程恢复规则 JSON 并禁止 fit 后评估。原生报告另验证单 scope 22 列。
+首次测试曾因预算不足及对快照 Excel 使用错误 API 失败；按既有合同修正测试后通过。
+本轮未验收浏览器或 Office 原生交互。
+selector 仍独立执行各 scope 的阶段编排，本轮没有实现筛选阶段池化。
+P06–P08、Linear／Importance 独立客群和暂停模块的功能迭代均未启动。

@@ -415,6 +415,7 @@ class MarsDataProfiler(MarsBaseEstimator):
         psi_fit_df: pl.DataFrame | None = None,
         psi_fit_population_failures: dict[str, str] | None = None,
         psi_reference_reason: str | None = None,
+        psi_precomputed_counts: dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]] | None = None,
         allow_empty_benchmark: bool = False,
     ) -> MarsProfileReport:
         """按明确人口计算一份画像，客群编排只传规则和参考，不留存输入宽表。"""
@@ -539,6 +540,7 @@ class MarsDataProfiler(MarsBaseEstimator):
                     binner=psi_binner,
                     fit_df=psi_fit_df,
                     fit_population_failures=psi_fit_population_failures,
+                    precomputed_counts=psi_precomputed_counts,
                 )
             else:
                 stat_tables["psi"] = unavailable_pivot_report(context)

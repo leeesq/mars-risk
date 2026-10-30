@@ -34,6 +34,7 @@ def get_psi_trend(
     binner: MarsNativeBinner | None = None,
     fit_df: pl.DataFrame | None = None,
     fit_population_failures: dict[str, str] | None = None,
+    precomputed_counts: dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]] | None = None,
 ) -> pl.DataFrame:
     """计算各分组及当前整体相对同一基准分布的 PSI。
 
@@ -95,6 +96,7 @@ def get_psi_trend(
         binner=binner,
         fit_df=fit_df,
         fit_population_failures=fit_population_failures,
+        precomputed_counts=precomputed_counts,
     )
     final_long = pl.concat(result_parts)
     if context.group_col is None:
@@ -279,6 +281,7 @@ def _binned_psi_parts(
     binner: MarsNativeBinner | None = None,
     fit_df: pl.DataFrame | None = None,
     fit_population_failures: dict[str, str] | None = None,
+    precomputed_counts: dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]] | None = None,
 ) -> list[pl.DataFrame]:
     """基于 NativeBinner 分箱结果分批计算画像 PSI。"""
     fit_population = fit_df if fit_df is not None else (
@@ -366,6 +369,7 @@ def _binned_psi_parts(
                 batch_cols,
                 baseline_group,
                 benchmark_df=benchmark_df,
+                precomputed_counts=precomputed_counts,
             )
         except (ValueError, TypeError, pl.exceptions.PolarsError) as exc:
             for feature in batch_cols:
@@ -397,31 +401,39 @@ def _binned_psi_batch(
     baseline_group: Any,
     *,
     benchmark_df: pl.DataFrame | None,
+    precomputed_counts: dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]] | None = None,
 ) -> pl.DataFrame:
     """计算一个分箱特征批次的 PSI。"""
     group_col = context.group_col or INTERNAL_PSI_GROUP_COL
-    if context.group_col is None:
+    if precomputed_counts is not None and tuple(batch_cols) not in precomputed_counts:
+        precomputed_counts = None
+    if precomputed_counts is not None:
+        current_counts, expected_counts = precomputed_counts[tuple(batch_cols)]
+        lf_stats = current_counts.lazy()
+    elif context.group_col is None:
         df_batch = context.working_df.select(batch_cols).with_columns(
             pl.lit("Total").alias(group_col)
         )
     else:
         df_batch = context.working_df.select([*batch_cols, context.group_col])
-    lf_binned = cast(
-        pl.LazyFrame,
-        binner.transform(
-            df_batch,
-            features=batch_cols,
-            return_type="index",
-            lazy=True,
-        ),
-    )
+    if precomputed_counts is None:
+        lf_binned = cast(
+            pl.LazyFrame,
+            binner.transform(
+                df_batch,
+                features=batch_cols,
+                return_type="index",
+                lazy=True,
+            ),
+        )
 
     feat_map = {idx: name for idx, name in enumerate(batch_cols)}
     rename_map = {f"{name}_bin": str(idx) for idx, name in enumerate(batch_cols)}
     # 仅物化本批频数，避免人口判断和 PSI 分支重复执行行级转换。
-    lf_stats = collect_streaming(
-        _aggregate_binned_stats(lf_binned, group_col=group_col, rename_map=rename_map)
-    ).lazy()
+    if precomputed_counts is None:
+        lf_stats = collect_streaming(
+            _aggregate_binned_stats(lf_binned, group_col=group_col, rename_map=rename_map)
+        ).lazy()
 
     lf_skeleton = lf_stats.select(["feat_idx", "bin_id"]).unique()
     if benchmark_df is None:
@@ -432,6 +444,14 @@ def _binned_psi_batch(
             baseline_group=baseline_group,
             include_missing=options.psi_include_missing,
             include_special=options.psi_include_special,
+        )
+    elif precomputed_counts is not None:
+        benchmark_stats = expected_counts.lazy()
+        lf_skeleton = pl.concat([lf_skeleton, benchmark_stats.select(["feat_idx", "bin_id"])]).unique()
+        lf_psi = calc_psi_from_stats(
+            stats_df=lf_stats, unique_bins_skel=lf_skeleton, group_col=group_col,
+            baseline_group=None, include_missing=options.psi_include_missing,
+            include_special=options.psi_include_special, expected_stats_df=benchmark_stats,
         )
     else:
         benchmark_batch = benchmark_df.select(batch_cols).with_columns(

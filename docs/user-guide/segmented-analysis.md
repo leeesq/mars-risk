@@ -137,7 +137,8 @@ HTML 各人口复用原离线页面，通过客群选择器切换；来源、中
 --8<-- "docs/snippets/segmented_analysis.py"
 ```
 
-当前资源实现仍逐 scope 转换共享规则；未承诺新增客群没有计算成本。
+shared 风险画像按特征批复用当前和参考的分箱转换；数据画像 PSI 复用批内频数。
+各 scope 的风险基础聚合和统计筛选阶段仍分别执行，新增客群会增加计算和报告成本。
 资源与环境证据、未完成项见[本地实施记录](../project/segmented-analysis-implementation.md)。
 模型分交叉、规则评估和缺失异常诊断保留在后续批次。
 

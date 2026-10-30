@@ -6,6 +6,10 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- shared 风险画像复用每批当前与参考人口的分箱转换，数据画像 PSI 复用批内频数。
+  公共参数与指标口径不变。风险基础聚合和统计筛选仍按 scope 执行；
+  资源验收及限制见[实施记录](segmented-analysis-implementation.md#shared-batch-reuse)。
+
 - 修复数据画像 PSI 的 F09 批次依赖。按 scope、特征、期间及 Total 分别判断适用人口，
   缺观测保留 Float64 null 与局部 `not_computed` 原因，不再由同批其他特征生成有效 PSI。
   首组参考无适用人口时保留原参考身份；有效 Total 继续使用合并计数。

@@ -245,6 +245,10 @@ class MarsBinEvaluator(MarsBaseEstimator):
         self._scope_context = False
         self._reference_group: str | None = None
         self._scope_fit_failures: dict[str, str] = {}
+        self._precomputed_batch_statistics: tuple[
+            list[pl.DataFrame], list[pl.DataFrame], list[pl.DataFrame],
+            list[pl.DataFrame], list[dict[str, Any]],
+        ] | None = None
 
     @time_it
     def evaluate(
@@ -514,70 +518,20 @@ class MarsBinEvaluator(MarsBaseEstimator):
             else:
                 use_feature_start_reference = True
 
-        # 转换、当前聚合、显式基准及上线窗口全部受同一个特征批次控制。
-        stats_frames: list[pl.DataFrame] = []
-        expected_frames: list[pl.DataFrame] = []
-        reference_frames: list[pl.DataFrame] = []
-        missing_frames: list[pl.DataFrame] = []
-        start_references: list[dict[str, Any]] = []
-        context_cols = [group_col, effective_target, weights_col, amount_col, dt_col]
-        for start in range(0, len(target_features), batch_size):
-            batch_features = target_features[start : start + batch_size]
-            projection = list(dict.fromkeys(batch_features + [c for c in context_cols if c]))
-            batch_df = working_df.select(projection)
-            df_binned = active_binner.transform(batch_df, features=batch_features, return_type="index")
-            benchmark_binned = None
-            if benchmark_prepared is not None:
-                benchmark_cols = list(dict.fromkeys(
-                    batch_features + [c for c in [weights_col, original_target] if c in benchmark_prepared.columns]
-                ))
-                benchmark_binned = active_binner.transform(
-                    benchmark_prepared.select(benchmark_cols), features=batch_features, return_type="index",
-                )
-                missing_bin_cols = sorted(
-                    {f"{f}_bin" for f in batch_features} - set(benchmark_binned.columns)
-                )
-                if missing_bin_cols:
-                    failed_features = [remove_suffix(col, "_bin") for col in missing_bin_cols]
-                    raise ValueError(
-                        "`benchmark_df` could not produce bins for active features "
-                        f"{failed_features}. Fit failures: {getattr(active_binner, 'fit_failures_', {})}."
-                    )
-            if any(f"{f}_bin" in df_binned.columns for f in batch_features):
-                batch_stats = aggregate_basic_stats(
-                    df_binned, group_col=group_col, features=batch_features,
-                    target_col=effective_target, weights_col=weights_col,
-                    amount_col=amount_col, batch_size=batch_size,
-                )
-                stats_frames.append(batch_stats)
-                expected_frames.append(get_benchmark_dist(
-                    group_stats_raw=batch_stats, benchmark_binned=benchmark_binned,
-                    group_col=group_col, features=batch_features, weights_col=weights_col,
-                    reference_group=self._reference_group,
-                    allow_null_reference=self._scope_context,
-                ))
-                if benchmark_binned is not None and needs_benchmark_risk_corr:
-                    reference_frames.append(build_benchmark_risk_corr_reference(
-                        benchmark_binned, has_target=has_target, features=batch_features,
-                        weights_col=weights_col, target_name=effective_target,
-                        mars_group_col=self.MARS_GROUP_COL,
-                    ))
-                if use_feature_start_reference:
-                    reference = self._build_feature_start_reference(
-                        df_binned=df_binned, features=batch_features, dt_col=dt_col,
-                        profile_by=profile_by, group_col=group_col, weights_col=weights_col,
-                        target=effective_target, has_target=has_target, amount_col=amount_col,
-                    )
-                    if reference is not None:
-                        start_references.append(reference)
-            missing = build_missing_by_day_table(
-                df=batch_df, features=batch_features, dt_col=dt_col,
-                output_kind="polars", missing_values=missing_values,
+        precomputed = self._precomputed_batch_statistics
+        self._precomputed_batch_statistics = None
+        stats_frames, expected_frames, reference_frames, missing_frames, start_references = (
+            precomputed if precomputed is not None else self._collect_batch_statistics(
+                working_df=working_df, benchmark_prepared=benchmark_prepared,
+                active_binner=active_binner, target_features=target_features,
+                group_col=group_col, effective_target=effective_target,
+                original_target=original_target, weights_col=weights_col,
+                amount_col=amount_col, dt_col=dt_col, batch_size=batch_size,
+                needs_benchmark_risk_corr=needs_benchmark_risk_corr,
+                use_feature_start_reference=use_feature_start_reference,
+                has_target=has_target, profile_by=profile_by, missing_values=missing_values,
             )
-            if isinstance(missing, pl.DataFrame):
-                missing_frames.append(missing)
-            # 只跨批次保留小统计表；避免下一批转换时仍持有上一批分箱宽表。
-            del df_binned, benchmark_binned, batch_df
+        )
         if not stats_frames:
             raise ValueError("No valid binned columns found in dataframe. Check your binner fit results.")
         group_stats_raw = pl.concat(stats_frames)
@@ -1024,6 +978,91 @@ class MarsBinEvaluator(MarsBaseEstimator):
             metadata=dict(report.report_meta or {}),
         )
         return run
+
+    def _collect_batch_statistics(
+        self, *, working_df: pl.DataFrame, benchmark_prepared: pl.DataFrame | None,
+        active_binner: MarsBinnerBase, target_features: list[str], group_col: str,
+        effective_target: str, original_target: str | None, weights_col: str | None,
+        amount_col: str | None, dt_col: str | None, batch_size: int,
+        needs_benchmark_risk_corr: bool, use_feature_start_reference: bool,
+        has_target: bool, profile_by: str | None, missing_values: Any,
+        current_binned: pl.DataFrame | None = None,
+        reference_binned: pl.DataFrame | None = None,
+    ) -> tuple[
+        list[pl.DataFrame], list[pl.DataFrame], list[pl.DataFrame],
+        list[pl.DataFrame], list[dict[str, Any]],
+    ]:
+        """按特征批收集当前统计及独立参考，只返回跨批所需的小表。"""
+        # 转换、当前聚合、显式基准及上线窗口全部受同一个特征批次控制。
+        stats_frames: list[pl.DataFrame] = []
+        expected_frames: list[pl.DataFrame] = []
+        reference_frames: list[pl.DataFrame] = []
+        missing_frames: list[pl.DataFrame] = []
+        start_references: list[dict[str, Any]] = []
+        context_cols = [group_col, effective_target, weights_col, amount_col, dt_col]
+        for start in range(0, len(target_features), batch_size):
+            batch_features = target_features[start : start + batch_size]
+            projection = list(dict.fromkeys(batch_features + [c for c in context_cols if c]))
+            batch_df = working_df.select(projection)
+            df_binned = (
+                current_binned if current_binned is not None else
+                active_binner.transform(batch_df, features=batch_features, return_type="index")
+            )
+            benchmark_binned = None
+            if benchmark_prepared is not None:
+                benchmark_cols = list(dict.fromkeys(
+                    batch_features + [c for c in [weights_col, original_target] if c in benchmark_prepared.columns]
+                ))
+                benchmark_binned = (
+                    reference_binned if reference_binned is not None else active_binner.transform(
+                        benchmark_prepared.select(benchmark_cols), features=batch_features, return_type="index",
+                    )
+                )
+                missing_bin_cols = sorted(
+                    {f"{f}_bin" for f in batch_features} - set(benchmark_binned.columns)
+                )
+                if missing_bin_cols:
+                    failed_features = [remove_suffix(col, "_bin") for col in missing_bin_cols]
+                    raise ValueError(
+                        "`benchmark_df` could not produce bins for active features "
+                        f"{failed_features}. Fit failures: {getattr(active_binner, 'fit_failures_', {})}."
+                    )
+            if any(f"{f}_bin" in df_binned.columns for f in batch_features):
+                batch_stats = aggregate_basic_stats(
+                    df_binned, group_col=group_col, features=batch_features,
+                    target_col=effective_target, weights_col=weights_col,
+                    amount_col=amount_col, batch_size=batch_size,
+                )
+                stats_frames.append(batch_stats)
+                expected_frames.append(get_benchmark_dist(
+                    group_stats_raw=batch_stats, benchmark_binned=benchmark_binned,
+                    group_col=group_col, features=batch_features, weights_col=weights_col,
+                    reference_group=self._reference_group,
+                    allow_null_reference=self._scope_context,
+                ))
+                if benchmark_binned is not None and needs_benchmark_risk_corr:
+                    reference_frames.append(build_benchmark_risk_corr_reference(
+                        benchmark_binned, has_target=has_target, features=batch_features,
+                        weights_col=weights_col, target_name=effective_target,
+                        mars_group_col=self.MARS_GROUP_COL,
+                    ))
+                if use_feature_start_reference:
+                    reference = self._build_feature_start_reference(
+                        df_binned=df_binned, features=batch_features, dt_col=dt_col,
+                        profile_by=profile_by, group_col=group_col, weights_col=weights_col,
+                        target=effective_target, has_target=has_target, amount_col=amount_col,
+                    )
+                    if reference is not None:
+                        start_references.append(reference)
+            missing = build_missing_by_day_table(
+                df=batch_df, features=batch_features, dt_col=dt_col,
+                output_kind="polars", missing_values=missing_values,
+            )
+            if isinstance(missing, pl.DataFrame):
+                missing_frames.append(missing)
+            # 只跨批次保留小统计表；避免下一批转换时仍持有上一批分箱宽表。
+            del df_binned, benchmark_binned, batch_df
+        return stats_frames, expected_frames, reference_frames, missing_frames, start_references
 
     def _build_feature_start_reference(self, **kwargs: Any) -> dict[str, Any] | None:
         """复用 feature-start 构造逻辑，返回特征级 PSI、RC 与监控窗口上下文。"""

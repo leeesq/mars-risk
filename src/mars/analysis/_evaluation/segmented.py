@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import pandas as pd
 import polars as pl
@@ -18,9 +18,15 @@ from mars.analysis._evaluation.context import (
     normalize_binary_target_column,
     prepare_group_context,
     resolve_date_bounds,
+    resolve_profile_by,
 )
 from mars.analysis._evaluation.metrics import ensure_woe_info
-from mars.compute import OrderedMetricSortBy, RiskCorrBaseline, to_polars_frame
+from mars.compute import (
+    OrderedMetricSortBy,
+    RiskCorrBaseline,
+    normalize_risk_corr_baseline,
+    to_polars_frame,
+)
 from mars.feature._scopes import build_scopes, scope_filter, validate_segment_roles
 from mars.feature.binning._json_codec import read_json_artifact, write_json_artifact
 from mars.feature.binning.base import MarsBinnerBase
@@ -29,6 +35,11 @@ from mars.reporting._metadata import FeatureMetadata, is_metadata_column
 
 if TYPE_CHECKING:
     from mars.analysis.evaluator import MarsBinEvaluator, MarsRiskProfile
+
+_BatchStatistics = Tuple[
+    List[pl.DataFrame], List[pl.DataFrame], List[pl.DataFrame],
+    List[pl.DataFrame], List[Dict[str, Any]],
+]
 
 
 def _validate_population(frame: pl.DataFrame, target: str | None, weights: str | None) -> pl.DataFrame:
@@ -125,6 +136,85 @@ def _null_reference_metrics(
     report._calculation_status = pl.concat([status, extra], how="vertical_relaxed")
 
 
+def _collect_shared_statistics(
+    evaluator: MarsBinEvaluator, grouped: pl.DataFrame, benchmark: pl.DataFrame | None,
+    scopes: pl.DataFrame, rules: MarsBinnerBase, features: list[str], *,
+    target: str | None, group_col: str, input_group_col: str | None,
+    time_col: str | None, time_grain: str | None, weights_col: str | None,
+    amount_col: str | None, first_group: str | None, batch_size: int,
+    feature_start_aware_reference: bool | None, risk_corr_baseline: RiskCorrBaseline | None,
+) -> dict[str, _BatchStatistics]:
+    """逐批转换完整人口，并只跨批保留各 scope 的可加统计和参考。"""
+    from mars.analysis.evaluator import MarsBinEvaluator
+
+    identities = [s for s in scopes["scope_id"].to_list() if s not in evaluator._scope_fit_failures]
+    result: dict[str, _BatchStatistics] = {
+        identity: ([], [], [], [], []) for identity in identities
+    }
+    effective_target = target or "dummy_target"
+    has_labels: dict[str, bool] = {}
+    segment_name = scopes["segment_col"][0]
+    label_columns = [segment_name] + ([target] if target and target in grouped.columns else [])
+    labels = grouped.select(label_columns)
+    for identity in identities:
+        local = scope_filter(labels, scopes, identity)
+        has_labels[identity] = bool(
+            target is not None and target in local.columns
+            and count_observed_target_classes(local, target) > 0
+        )
+        del local
+    del labels
+    if effective_target not in grouped.columns:
+        grouped = grouped.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
+    collector = MarsBinEvaluator()
+    collector._scope_context = True
+    collector._reference_group = first_group
+    profile_by = resolve_profile_by(group_col=input_group_col, time_col=time_col, time_grain=time_grain)
+    use_start = (
+        evaluator.feature_start_aware_reference if feature_start_aware_reference is None
+        else bool(feature_start_aware_reference)
+    ) and benchmark is None and time_col is not None and time_col in grouped.columns
+    rc_baseline = normalize_risk_corr_baseline(risk_corr_baseline or evaluator.risk_corr_baseline)
+    missing_values = getattr(rules, "missing_values", None)
+    if missing_values is None:
+        missing_values = evaluator.binner_params.get("missing_values")
+    for start in range(0, len(features), batch_size):
+        batch = features[start:start + batch_size]
+        cols = list(dict.fromkeys(batch + [c for c in [
+            segment_name, group_col, effective_target, weights_col, amount_col, time_col,
+        ] if c]))
+        batch_raw = grouped.select(cols)
+        current = rules.transform(batch_raw, features=batch, return_type="index")
+        reference = None
+        if benchmark is not None:
+            ref_cols = list(dict.fromkeys(batch + [c for c in [
+                segment_name, weights_col, target,
+            ] if c and c in benchmark.columns]))
+            reference = rules.transform(benchmark.select(ref_cols), features=batch, return_type="index")
+        for identity in identities:
+            local = scope_filter(current, scopes, identity)
+            local_raw = scope_filter(batch_raw, scopes, identity)
+            if not has_labels[identity]:
+                local = local.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
+                local_raw = local_raw.with_columns(pl.lit(0).cast(pl.Int32).alias(effective_target))
+            local_reference = scope_filter(reference, scopes, identity) if reference is not None else None
+            parts = collector._collect_batch_statistics(
+                working_df=local_raw, benchmark_prepared=local_reference, active_binner=rules,
+                target_features=batch, group_col=group_col, effective_target=effective_target,
+                original_target=target, weights_col=weights_col, amount_col=amount_col,
+                dt_col=time_col, batch_size=batch_size,
+                needs_benchmark_risk_corr=has_labels[identity] and rc_baseline == "benchmark",
+                use_feature_start_reference=use_start, has_target=has_labels[identity],
+                profile_by=profile_by, missing_values=missing_values,
+                current_binned=local, reference_binned=local_reference,
+            )
+            for destination, source in zip(result[identity], parts):
+                destination.extend(source)
+            del local, local_raw, local_reference, parts
+        del batch_raw, current, reference
+    return result
+
+
 def evaluate_segmented(
     evaluator: MarsBinEvaluator, df: pl.DataFrame | pd.DataFrame, *, segment_col: str,
     target: str | None, features: list[str] | None, group_col: str | None,
@@ -186,8 +276,21 @@ def evaluate_segmented(
     frame = frame.select(projection)
     if benchmark is not None:
         benchmark = benchmark.select([c for c in projection if c in benchmark.columns])
+    # 客群列可能与内部分组列或分箱输出列同名，必须在转换前保留身份。
+    segment_identity_col = "__mars_segment_identity"
+    reserved = set(frame.columns) | {f"{f}_bin" for f in features}
+    if benchmark is not None:
+        reserved.update(benchmark.columns)
+    while segment_identity_col in reserved:
+        segment_identity_col += "_"
+    grouping_frame = frame.with_columns(pl.col(segment_col).alias(segment_identity_col))
+    collector_scopes = scopes.with_columns(pl.lit(segment_identity_col).alias("segment_col"))
+    collector_benchmark = (
+        benchmark.with_columns(pl.col(segment_col).alias(segment_identity_col))
+        if benchmark is not None else None
+    )
     grouped, internal_group = prepare_group_context(
-        frame, group_col=group_col, time_col=time_col, time_grain=time_grain,
+        grouping_frame, group_col=group_col, time_col=time_col, time_grain=time_grain,
         mars_group_col=evaluator.MARS_GROUP_COL,
     )
     first_group = grouped.select(pl.col(internal_group).min()).item()
@@ -195,6 +298,28 @@ def evaluate_segmented(
         absent = set(scopes["scope_id"].to_list()) - set(segment_binners) - set(evaluator._scope_fit_failures)
         if absent:
             raise ValueError(f"Fixed segment_binners is missing current scope rules: {sorted(absent)}.")
+
+    shared_rules = binner
+    shared_statistics = None
+    if evaluator.binning_scope == "shared":
+        if shared_rules is None:
+            shared_rules = _fit_scope_rules(
+                evaluator, benchmark if benchmark is not None else frame,
+                features, target, weights_col, batch_size,
+            )
+        active = [
+            f for f in features if f != amount_col and f in shared_rules._usable_rule_features()
+        ]
+        if not active:
+            raise ValueError("No usable overall binning rules are available.")
+        shared_statistics = _collect_shared_statistics(
+            evaluator, grouped, collector_benchmark, collector_scopes, shared_rules, active,
+            target=target, group_col=internal_group, input_group_col=group_col,
+            time_col=time_col, time_grain=time_grain, weights_col=weights_col,
+            amount_col=amount_col, first_group=first_group, batch_size=batch_size,
+            feature_start_aware_reference=feature_start_aware_reference,
+            risk_corr_baseline=risk_corr_baseline,
+        )
 
     rules: dict[str, MarsBinnerBase] = {}
     reports: dict[str, MarsBinningReport] = {}
@@ -214,8 +339,8 @@ def evaluate_segmented(
         reference = scope_filter(benchmark, scopes, scope_id) if benchmark is not None else None
         fit_population = reference if reference is not None else current
         fixed = segment_binners.get(scope_id) if segment_binners is not None else binner
-        if evaluator.binning_scope == "shared" and scope_id != "all":
-            fixed = rules["all"]
+        if evaluator.binning_scope == "shared":
+            fixed = shared_rules
         if fixed is None:
             try:
                 fixed = _fit_scope_rules(evaluator, fit_population, features, target, weights_col, batch_size)
@@ -252,6 +377,8 @@ def evaluate_segmented(
         )
         child._scope_context = True
         child._reference_group = first_group
+        if shared_statistics is not None:
+            child._precomputed_batch_statistics = shared_statistics.pop(scope_id)
         run = child.evaluate(
             current, target=target, features=active_features, group_col=group_col, time_col=time_col,
             time_grain=time_grain, feature_data_source=feature_data_source,

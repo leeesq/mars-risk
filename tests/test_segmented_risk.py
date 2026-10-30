@@ -10,6 +10,7 @@ import pytest
 from polars.testing import assert_frame_equal
 
 from mars.analysis import MarsBinEvaluator, MarsRiskProfile, profile_risk
+from mars.compute import to_polars_frame
 from mars.feature._scopes import resolve_scopes, scope_filter
 from mars.feature.binning.base import MarsBinnerBase
 
@@ -23,6 +24,119 @@ def population() -> pl.DataFrame:
         "y": [0, 1, 1, 0] * 18, "w": [1.0, 2.0, 0.0, 1.0] * 18,
         "amt": [10.0, 20.0, 30.0, 40.0] * 18,
     })
+
+
+@pytest.mark.parametrize("segments", [1, 3, 9])
+@pytest.mark.parametrize("with_benchmark", [False, True])
+@pytest.mark.parametrize("segment_name", ["s", "x_bin"])
+def test_shared_fixed_rules_transform_each_population_once_per_batch(
+    segments: int, with_benchmark: bool, segment_name: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """统计真实物化转换的人口和行数，而不计规则准备阶段。"""
+    frame = population().with_columns(
+        (pl.int_range(pl.len()) % segments).alias("s")
+    ).rename({"s": segment_name})
+    fitted = profile_risk(frame, target="y", features=["x", "c"], group_col="g", n_jobs=1)
+    benchmark = frame.filter(pl.col("g") == "01") if with_benchmark else None
+    calls: list[tuple[int, tuple[str, ...]]] = []
+    original = MarsBinnerBase.transform
+
+    def counted(self: MarsBinnerBase, data: Any, **kwargs: Any) -> Any:
+        calls.append((data.height, tuple(kwargs["features"])))
+        return original(self, data, **kwargs)
+
+    monkeypatch.setattr(MarsBinnerBase, "transform", counted)
+    MarsBinEvaluator().evaluate(
+        frame, target="y", features=["x", "c"], segment_col=segment_name, group_col="g",
+        benchmark_df=benchmark, binner=fitted.binner, batch_size=1,
+    )
+    for feature in ("x", "c"):
+        counts = [rows for rows, batch in calls if batch == (feature,)]
+        assert counts == ([frame.height, benchmark.height] if benchmark is not None else [frame.height])
+
+
+@pytest.mark.parametrize("backend", ["polars", "pandas"])
+@pytest.mark.parametrize("segment_name", ["s", "x_bin"])
+def test_shared_multichunk_row_binding_and_benchmark_only_segment(
+    backend: str, segment_name: str,
+) -> None:
+    """类别转换后标签、权重和金额仍绑定原行，整体参考包含仅基准客群。"""
+    frame = population()
+    frame = pl.concat([frame.slice(0, 24), frame.slice(24, 48)], rechunk=False)
+    benchmark = frame.slice(0, 36).with_columns(
+        pl.when(pl.int_range(pl.len()) < 6).then(pl.lit("benchmark-only"))
+        .otherwise(pl.col("s")).alias("s")
+    )
+    frame = frame.rename({"s": segment_name})
+    benchmark = benchmark.rename({"s": segment_name})
+    current_input: Any = frame
+    reference_input: Any = benchmark
+    if backend == "pandas":
+        current_input = frame.to_pandas()
+        current_input.index = [i % 11 for i in reversed(range(len(current_input)))]
+        reference_input = benchmark.to_pandas()
+        reference_input.index = [i % 7 for i in reversed(range(len(reference_input)))]
+    run = profile_risk(
+        current_input, target="y", features=["x", "c"], segment_col=segment_name, group_col="g",
+        benchmark_df=reference_input, weights_col="w", amount_col="amt", n_jobs=1,
+        batch_size=1,
+    )
+    assert run.scopes is not None
+    assert "benchmark-only" not in run.scopes["display_name"].to_list()
+    for identity in run.scopes["scope_id"].to_list():
+        expected = MarsBinEvaluator().evaluate(
+            scope_filter(frame, run.scopes, identity), target="y", features=["x", "c"],
+            group_col="g", weights_col="w", amount_col="amt", batch_size=1,
+            benchmark_df=scope_filter(benchmark, run.scopes, identity),
+            binner=MarsBinnerBase.from_dict(run.binner.to_dict()),
+        ).report
+        actual = to_polars_frame(run.report.detail_table).filter(
+            pl.col("scope_id") == identity
+        ).drop("scope_id")
+        expected_detail = expected.detail_table
+        if backend == "pandas":
+            expected_detail = to_polars_frame(expected_detail.to_pandas())
+        assert_frame_equal(actual, expected_detail, check_row_order=False)
+
+
+def test_shared_internal_group_name_and_unavailable_target() -> None:
+    """内部趋势列与客群列重名时保留客群身份，缺失目标不影响分布。"""
+    frame = population().rename({"s": "mars_group"}).drop("y")
+    run = profile_risk(
+        frame, target="y", features=["x"], segment_col="mars_group", group_col="g",
+        method="quantile", n_bins=3, n_jobs=1, batch_size=1,
+    )
+    assert run.scopes is not None
+    for identity in run.scopes["scope_id"].to_list():
+        detail = run.report.detail_table.filter(
+            (pl.col("scope_id") == identity) & (pl.col("mars_group") == "Total")
+            & (pl.col("bin_index") != 9999)
+        )
+        assert detail["count"].sum() == scope_filter(frame, run.scopes, identity).height
+
+
+def test_shared_missing_by_day_preserves_raw_time_with_bin_name() -> None:
+    """原始日期与箱索引同名时，缺失趋势仍按原始日期构造。"""
+    frame = population().rename({"dt": "x_bin"})
+    run = profile_risk(
+        frame, target="y", features=["x"], segment_col="s", group_col="g",
+        time_col="x_bin", method="quantile", n_bins=3, n_jobs=1, batch_size=1,
+    )
+    assert run.scopes is not None
+    actual = run.report.missing_by_day_table
+    assert actual is not None
+    for identity in run.scopes["scope_id"].to_list():
+        child = MarsBinEvaluator().evaluate(
+            scope_filter(frame, run.scopes, identity), target="y", features=["x"],
+            group_col="g", time_col="x_bin", batch_size=1,
+            binner=MarsBinnerBase.from_dict(run.binner.to_dict()),
+        )
+        expected = child.report.missing_by_day_table
+        assert expected is not None
+        assert_frame_equal(
+            to_polars_frame(actual).filter(pl.col("scope_id") == identity).drop("scope_id"),
+            to_polars_frame(expected), check_row_order=False,
+        )
 
 
 @pytest.mark.parametrize("mode", ["shared", "per_segment"])

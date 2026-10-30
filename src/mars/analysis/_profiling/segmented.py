@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import pandas as pd
 import polars as pl
 
+from mars._compat import collect_streaming
 from mars.analysis._profiling.context import (
     build_run_context,
     prepare_benchmark_data,
@@ -20,9 +21,12 @@ from mars.analysis._profiling.psi import (
 from mars.feature import MarsNativeBinner
 from mars.feature._scopes import build_scopes, scope_filter, validate_segment_roles
 from mars.reporting import MarsProfileReport
+from mars.reporting._metadata import _null_group_label
 
 if TYPE_CHECKING:
     from mars.analysis.profiler import MarsDataProfiler
+
+_PsiCounts = Tuple[List[str], pl.DataFrame, Optional[pl.DataFrame], str, str]
 
 
 def _frame(value: pl.DataFrame | pd.DataFrame) -> pl.DataFrame:
@@ -58,6 +62,90 @@ def _fit_binner(
     binner._cache_X = None
     binner._cache_y = None
     return binner
+
+
+def _shared_psi_counts(
+    current: pl.DataFrame,
+    benchmark: pl.DataFrame | None,
+    binner: MarsNativeBinner,
+    features: list[str],
+    segment_col: str,
+    group_col: str | None,
+    batch_size: int,
+) -> list[_PsiCounts]:
+    """逐批物化客群与期间频数；不保留行级分箱结果。"""
+    occupied = {
+        *current.columns, *(benchmark.columns if benchmark is not None else []),
+        *(f"{name}_bin" for name in features),
+        *(str(i) for i in range(min(batch_size, len(features)))),
+        "feat_idx", "bin_id", "len",
+    }
+    segment_key = "_mars_profile_segment_key"
+    while segment_key in occupied:
+        segment_key += "_"
+    occupied.add(segment_key)
+    group = "_mars_profile_group_key"
+    while group in occupied:
+        group += "_"
+    results: list[_PsiCounts] = []
+
+    def collect_counts(frame: pl.DataFrame, cols: list[str], with_group: bool) -> pl.DataFrame:
+        roles = [segment_col, *([group_col] if with_group and group_col else [])]
+        projected = frame.select([*cols, *roles]).rename({segment_col: segment_key})
+        if with_group and group_col is not None:
+            projected = projected.rename({group_col: group})
+        else:
+            projected = projected.with_columns(pl.lit("Total").alias(group))
+        transformed = binner.transform(projected, features=cols, return_type="index", lazy=True)
+        names = {f"{name}_bin": str(i) for i, name in enumerate(cols)}
+        query = (
+            transformed.select([segment_key, group, *names])
+            .rename(names)
+            .unpivot(index=[segment_key, group], on=list(names.values()),
+                     variable_name="feat_idx", value_name="bin_id")
+            .with_columns(pl.col("feat_idx").cast(pl.Int16), pl.col("bin_id").cast(pl.Int16))
+            .group_by([segment_key, group, "feat_idx", "bin_id"]).len()
+        )
+        return collect_streaming(query)
+
+    for start in range(0, len(features), batch_size):
+        cols = features[start:start + batch_size]
+        try:
+            current_counts = collect_counts(current, cols, True)
+            reference_counts = collect_counts(benchmark, cols, False) if benchmark is not None else None
+            results.append((cols, current_counts, reference_counts, segment_key, group))
+        except (ValueError, TypeError, pl.exceptions.PolarsError):
+            # 异常批次交回原局部路径，使单客群错误不会污染其他客群状态。
+            continue
+    return results
+
+
+def _scope_psi_counts(
+    batches: list[_PsiCounts],
+    scopes: pl.DataFrame,
+    scope_id: str,
+    group_col: str | None,
+    baseline_group: Any,
+    local_population: pl.DataFrame,
+) -> dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]]:
+    """从可加频数构造单客群及完整 All 的当前和固定参考。"""
+    result: dict[tuple[str, ...], tuple[pl.DataFrame, pl.DataFrame]] = {}
+    for cols, current, reference, segment_key, group in batches:
+        internal_scopes = scopes.with_columns(pl.lit(segment_key).alias("segment_col"))
+        local = scope_filter(current, internal_scopes, scope_id)
+        if reference is None:
+            condition = pl.col(group).is_null() if baseline_group is None else pl.col(group) == pl.lit(baseline_group)
+            expected = local.filter(condition)
+        else:
+            expected = scope_filter(reference, internal_scopes, scope_id)
+        expected = expected.group_by(["feat_idx", "bin_id"]).agg(pl.col("len").sum())
+        if group_col is not None:
+            null_label = _null_group_label(local_population[group_col].unique().to_list())
+            local = local.with_columns(pl.col(group).cast(pl.String).fill_null(null_label))
+        local = local.group_by([group, "feat_idx", "bin_id"]).agg(pl.col("len").sum())
+        local = local.rename({group: group_col or "_mars_profile_psi_group"})
+        result[tuple(cols)] = (local, expected)
+    return result
 
 
 def generate_segmented_profile(
@@ -139,6 +227,17 @@ def generate_segmented_profile(
                     categorical_features=declared, batch_size=profiler.psi_batch_size,
                 )
 
+    shared_counts: list[_PsiCounts] | None = None
+    if shared_binner is not None:
+        failures = {**shared_fit_failures, **getattr(shared_binner, "fit_failures_", {})}
+        cuts = getattr(shared_binner, "bin_cuts_", {})
+        cat_cuts = getattr(shared_binner, "cat_cuts_", {})
+        fitted = [c for c in candidates if (c in cuts or c in cat_cuts) and c not in failures]
+        shared_counts = _shared_psi_counts(
+            context.working_df, benchmark, shared_binner, fitted, segment_col,
+            context.group_col, profiler.psi_batch_size,
+        )
+
     overview_parts: list[pl.DataFrame] = []
     dq_parts: dict[str, list[pl.DataFrame]] = {metric: [] for metric in selection.dq_metrics}
     stats_parts: dict[str, list[pl.DataFrame]] = {metric: [] for metric in selection.stat_metrics}
@@ -178,6 +277,11 @@ def generate_segmented_profile(
                         "psi_fit_df": fit_population if profiler.binning_scope == "shared" else local_fit,
                         "psi_fit_population_failures": fit_failures,
                         "psi_reference_reason": reference_reason, "allow_empty_benchmark": True}
+        if shared_counts is not None and reference_reason is None:
+            local_working = scope_filter(context.working_df, scopes, scope_id)
+            local_kwargs["psi_precomputed_counts"] = _scope_psi_counts(
+                shared_counts, scopes, scope_id, context.group_col, baseline_group, local_working,
+            )
         # 对比检查始终读取对应客群的显式基准；无 benchmark 的首组只用于 PSI。
         local_report = profiler._generate_profile(population, **local_kwargs)
         if scope_id == "all":

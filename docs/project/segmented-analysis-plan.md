@@ -8,7 +8,7 @@
 >
 > 本轮仅授权本地实现与验收，不 commit、push、创建 PR、merge、发布或修改包版本。文中的提交与 PR 流程属于后续交付安排，不构成本轮远端操作授权。
 >
-> 2026-10-29 的 F01–F08 审查修复单列于[修复验收记录](segmented-analysis-implementation.md#review-fixes-f01-f08)。这次修复不扩大第一批完成范围；shared 每批联合转换及 P06–P08 继续保留未完成状态。
+> 2026-10-29 的 F01–F08 审查修复单列于[修复验收记录](segmented-analysis-implementation.md#review-fixes-f01-f08)。后续 shared 批内复用的进度与限制见[实施记录](segmented-analysis-implementation.md#shared-batch-reuse)；P06–P08 保持未完成。
 > 修复验收完成后，用户另行明确授权提交并普通 push 到原功能分支；创建 PR、合并、发布及改版本仍未授权。
 
 ## 1. 目标与交付批次
@@ -208,7 +208,8 @@ All 表示未限制客群的完整输入人口；Total 表示某个分析范围�
 
 完成条件：All 与三个客群两种模式均与独立参考一致；未传 segment 的结果与基线一致。
 
-未完成的优化：shared 只拟合一次，但仍逐 scope 固定转换并聚合，尚未实现每批一次转换后的
+当前实现已按批复用 shared 风险画像转换，基础聚合仍逐 scope 执行。资源与完整验收尚未结束，
+未完成的优化：尚未实现每批一次转换后的
 联合 scope／group／bin 聚合。per_segment 已顺序执行并释放计算缓存，没有叠加客群并行。
 真实资源记录覆盖小型 1／3／9 客群及 Home Credit 完整人口的 20 个代表候选，
 不代表全宽候选容量。具体耗时、RSS、同输入语义核对和测量限制见[实施记录](segmented-analysis-implementation.md#real-data-resources)。
@@ -311,7 +312,7 @@ All 表示未限制客群的完整输入人口；Total 表示某个分析范围�
 客群会增加统计和报告规模，不能承诺增加维度没有成本。结果规模通常随特征 × 客群 × 分组 × 箱数增长；完整相关性还有各 scope 的候选平方项，模型分交叉还涉及两轴格子。
 
 以下保留为资源目标与验收要求，不表示已全部满足。当前已测小型客群矩阵和真实完整人口的代表候选，
-尚未完成 shared 联合转换优化、全部参数交叉组合及 Home Credit 全宽候选容量验收。
+尚未完成 shared 联合基础聚合、全部参数交叉组合及 Home Credit 全宽候选容量验收。
 最终环境全包结果、适用增量复验、失败修复和测量限制单列于[实施记录](segmented-analysis-implementation.md)。
 
 1. 先投影特征批和必要角色列，再转换和物化。shared 模式复用本批分箱结果，All 与客群尽量共享基础聚合；不通过复制一份 All 人口再 concat 所有客群实现多层统计。
