@@ -208,6 +208,7 @@ All 表示未限制客群的完整输入人口；Total 表示某个分析范围�
 
 完成条件：All 与三个客群两种模式均与独立参考一致；未传 segment 的结果与基线一致。
 
+基准工具的源码选择、进程结果和阶段采样修复见[复测记录](segmented-analysis-implementation.md#shared-benchmark-recheck)。
 当前实现已按批复用 shared 风险画像转换，基础聚合仍逐 scope 执行。资源与完整验收尚未结束，
 未完成的优化：尚未实现每批一次转换后的
 联合 scope／group／bin 聚合。per_segment 已顺序执行并释放计算缓存，没有叠加客群并行。

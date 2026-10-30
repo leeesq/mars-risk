@@ -27,6 +27,17 @@ THREAD_KEYS = (
 )
 
 
+def _check_mars_location(source_root: Path, module_file: str) -> str:
+    """核对导入位置属于请求源码树，返回规范化位置。"""
+    actual = Path(module_file).resolve()
+    expected = (source_root / "src" / "mars").resolve()
+    try:
+        actual.relative_to(expected)
+    except ValueError as exc:
+        raise RuntimeError(f"Requested MARS location {expected}; imported {actual}") from exc
+    return str(actual)
+
+
 def _write(path: Path, value: dict[str, Any]) -> None:
     """将有限统计证据写入调用方指定目录，不序列化原始宽表。"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +104,7 @@ def _worker(args: argparse.Namespace) -> int:
     from threadpoolctl import threadpool_info
 
     import mars
+    mars_module = _check_mars_location(Path(args.source_root), mars.__file__)
     from mars.analysis import (
         MarsBinEvaluator,
         MarsDataProfiler,
@@ -111,7 +123,32 @@ def _worker(args: argparse.Namespace) -> int:
 
     phase = ["setup"]
     observations: list[dict[str, Any]] = []
+    diagnostic_seconds: dict[str, dict[str, float]] = {}
     if args.execution_counts:
+        from mars.analysis import evaluator as evaluator_module
+        from mars.analysis._evaluation import segmented as segmented_module
+
+        def time_calls(owner: Any, name: str, label: str) -> None:
+            """按调用阶段累计耗时；不同函数可能相互包含。"""
+            original = getattr(owner, name)
+
+            @wraps(original)
+            def timed(*values: Any, **kwargs: Any) -> Any:
+                started = time.perf_counter()
+                try:
+                    return original(*values, **kwargs)
+                finally:
+                    timings = diagnostic_seconds.setdefault(phase[0], {})
+                    timings[label] = timings.get(label, 0.0) + time.perf_counter() - started
+
+            setattr(owner, name, timed)
+
+        time_calls(segmented_module, "_fit_scope_rules", "fit_rules_including_woe")
+        time_calls(MarsBinnerBase, "transform", "bin_transform")
+        time_calls(segmented_module, "_collect_shared_statistics", "shared_collection_including_transform")
+        time_calls(MarsBinEvaluator, "_collect_batch_statistics", "batch_statistics")
+        time_calls(evaluator_module, "calculate_metrics_from_stats", "calculate_metrics")
+        time_calls(MarsBinEvaluator, "_format_report", "format_report")
         def observe(owner: Any, name: str, kind: str) -> None:
             """观察公开链调用；LazyFrame 的后续执行次数不能由调用次数推导。"""
             original = getattr(owner, name)
@@ -163,24 +200,35 @@ def _worker(args: argparse.Namespace) -> int:
     start_rss = process.memory_info().rss
     peaks = [start_rss, start_rss]
     done = threading.Event()
+    stage_active = threading.Event()
+    stage_lock = threading.Lock()
+    stage_peaks = [0, 0]
+
+    def memory_sample() -> tuple[int, int]:
+        rss = process.memory_info().rss
+        tree_rss = rss
+        for child in process.children(recursive=True):
+            try:
+                tree_rss += child.memory_info().rss
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        return rss, tree_rss
 
     def sample() -> None:
         """10 ms 采样包含原生内存；共享页在树 RSS 中可能重复计数。"""
         while not done.wait(0.01):
-            rss = process.memory_info().rss
-            tree_rss = rss
-            for child in process.children(recursive=True):
-                try:
-                    tree_rss += child.memory_info().rss
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-            peaks[0] = max(peaks[0], rss)
-            peaks[1] = max(peaks[1], tree_rss)
+            with stage_lock:
+                rss, tree_rss = memory_sample()
+                peaks[0] = max(peaks[0], rss)
+                peaks[1] = max(peaks[1], tree_rss)
+                if stage_active.is_set():
+                    stage_peaks[0] = max(stage_peaks[0], rss)
+                    stage_peaks[1] = max(stage_peaks[1], tree_rss)
 
     result: dict[str, Any] = {
         "status": "running", "python": sys.version, "executable": sys.executable,
-        "platform": platform.platform(), "source_root": str(Path(mars.__file__).resolve().parents[2]),
-        "mars_module": mars.__file__, "mars_version": mars.__version__,
+        "platform": platform.platform(), "source_root": args.source_root,
+        "mars_module": mars_module, "mars_version": mars.__version__,
         "machine": {"logical_cpus": psutil.cpu_count(), "physical_cpus": psutil.cpu_count(logical=False),
                     "total_memory_bytes": psutil.virtual_memory().total},
         "versions": {name: importlib.metadata.version(name) for name in (
@@ -275,8 +323,13 @@ def _worker(args: argparse.Namespace) -> int:
         fixed_seconds = None
         fixed_summary = None
         fixed_detail = None
+        fixed_memory = None
         if args.binning_scope == "shared":
             phase[0] = "fixed_rule_risk"
+            with stage_lock:
+                fixed_start_rss, fixed_start_tree = memory_sample()
+                stage_peaks[:] = [fixed_start_rss, fixed_start_tree]
+                stage_active.set()
             stage_start = time.perf_counter()
             fixed = MarsBinEvaluator().evaluate(
                 frame, target="target", features=features, segment_col="customer_segment",
@@ -284,6 +337,19 @@ def _worker(args: argparse.Namespace) -> int:
                 batch_size=args.batch_size,
             )
             fixed_seconds = time.perf_counter() - stage_start
+            with stage_lock:
+                fixed_end_rss, fixed_end_tree = memory_sample()
+                stage_active.clear()
+                stage_peaks[0] = max(stage_peaks[0], fixed_end_rss)
+                stage_peaks[1] = max(stage_peaks[1], fixed_end_tree)
+                fixed_memory = {
+                    "start_rss_bytes": fixed_start_rss, "start_tree_rss_bytes": fixed_start_tree,
+                    "end_rss_bytes": fixed_end_rss, "end_tree_rss_bytes": fixed_end_tree,
+                    "sampled_peak_rss_bytes": stage_peaks[0], "sampled_tree_peak_rss_bytes": stage_peaks[1],
+                    "peak_increment_bytes": stage_peaks[0] - fixed_start_rss,
+                    "tree_peak_increment_bytes": stage_peaks[1] - fixed_start_tree,
+                    "interval_seconds": 0.01,
+                }
             fixed_summary = _signature(fixed.report.summary_table)
             fixed_detail = _signature(fixed.report.detail_table)
             retained_reports.append(fixed.report)
@@ -292,6 +358,7 @@ def _worker(args: argparse.Namespace) -> int:
             "risk_seconds": risk_seconds, "stats_seconds": stats_seconds,
             "selector_seconds": selector_seconds, "fixed_rule_risk_seconds": fixed_seconds,
             "fixed_rule_risk_summary": fixed_summary, "fixed_rule_risk_detail": fixed_detail,
+            "fixed_rule_memory": fixed_memory,
             "rss_end_bytes": end_rss, "sampled_peak_rss_bytes": public_peaks[0],
             "sampled_peak_increment_bytes": public_peaks[0] - start_rss, "sampled_tree_peak_rss_bytes": public_peaks[1],
             "windows_lifetime_peak_wset_bytes": getattr(process.memory_info(), "peak_wset", None),
@@ -311,6 +378,11 @@ def _worker(args: argparse.Namespace) -> int:
         done.set()
         monitor.join()
         if args.execution_counts:
+            result["diagnostic_seconds"] = diagnostic_seconds
+            result["diagnostic_timing_limit"] = (
+                "Instrumented cumulative wall times by phase; nested timings overlap and must not be summed. "
+                "Report format excludes other assembly and saving; public-chain time includes both."
+            )
             result["execution_observations"] = observations
             result["execution_observation_limit"] = (
                 "Calls and eager input rows only; a LazyFrame can be collected multiple times. "
@@ -340,6 +412,8 @@ def _compare_saved_reports(left: Path, right: Path) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     left_files = sorted(left.glob("report-*.marsreport"))
     right_files = sorted(right.glob("report-*.marsreport"))
+    if not left_files or not right_files:
+        return [{"status": "failed", "reason": "report inventory is empty"}]
     if [p.name for p in left_files] != [p.name for p in right_files]:
         return [{"status": "failed", "reason": "report inventory differs"}]
     for left_path, right_path in zip(left_files, right_files):
@@ -405,6 +479,10 @@ def _main() -> int:
     parser.add_argument("--distribution", default="balanced", help=argparse.SUPPRESS)
     parser.add_argument("--binning-scope", default="shared", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    source_root = Path(args.source_root).expanduser().resolve()
+    if not source_root.is_dir() or not (source_root / "src" / "mars" / "__init__.py").is_file():
+        parser.error(f"source-root must contain src/mars/__init__.py: {source_root}")
+    args.source_root = str(source_root)
     if min(args.rows, args.features, args.threads, args.batch_size, *args.segments) < 1 or (
         args.psi_batch_size is not None and args.psi_batch_size < 1
     ):
@@ -412,10 +490,61 @@ def _main() -> int:
     if args.worker:
         return _worker(args)
     destination = Path(args.output).resolve()
+    case_names = [
+        f"segments-{segment_count}-{distribution}-{mode}"
+        for segment_count in args.segments
+        for distribution in args.distributions
+        for mode in args.binning_scopes
+    ]
+    if len(case_names) != len(set(case_names)):
+        parser.error("duplicate case names would overwrite results")
+    case_paths = [destination.parent / f"{name}.json" for name in case_names]
+    if destination in case_paths or destination in [path.with_suffix(".log") for path in case_paths]:
+        parser.error(f"summary and case output collide: {destination}")
+    for path in case_paths:
+        artifact_dir = path.with_suffix("")
+        if destination.parent == artifact_dir and (
+            destination.name == "risk-rules.json" or destination.match("report-*.marsreport")
+        ):
+            parser.error(f"summary and case artifact collide: {destination}")
+    reference = None
+    if args.compare_to:
+        reference_path = Path(args.compare_to).resolve()
+        try:
+            reference = json.loads(reference_path.read_text(encoding="utf-8"))
+            if not isinstance(reference, dict) or not isinstance(reference.get("cases"), list):
+                raise ValueError("expected a summary object with cases")
+            protected = {reference_path}
+            for previous in reference["cases"]:
+                evidence = Path(previous["evidence"]).resolve()
+                protected.add(evidence)
+                protected.add(Path(previous.get("log", evidence.with_suffix(".log"))).resolve())
+                artifact_dir = evidence.with_suffix("")
+                protected.update(path.resolve() for path in artifact_dir.glob("report-*.marsreport"))
+                protected.add((artifact_dir / "risk-rules.json").resolve())
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            parser.error(f"invalid comparison summary {reference_path}: {exc}")
+        outputs = {destination}
+        for segment_count in args.segments:
+            for distribution in args.distributions:
+                for mode in args.binning_scopes:
+                    case_path = destination.parent / f"segments-{segment_count}-{distribution}-{mode}.json"
+                    outputs.add(case_path)
+                    outputs.add(case_path.with_suffix(".log"))
+                    artifact_dir = case_path.with_suffix("")
+                    outputs.add(artifact_dir / "risk-rules.json")
+                    outputs.update(artifact_dir.glob("report-*.marsreport"))
+                    # 新报告名也可能覆盖基线中的报告。
+                    for path in protected:
+                        if path.parent == artifact_dir and path.match("report-*.marsreport"):
+                            outputs.add(path)
+        conflict = protected.intersection(path.resolve() for path in outputs)
+        if conflict:
+            parser.error(f"output would overwrite comparison evidence: {sorted(map(str, conflict))}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
     environment.update({name: str(args.threads) for name in THREAD_KEYS})
-    environment["PYTHONPATH"] = str(Path(args.source_root).resolve() / "src")
+    environment["PYTHONPATH"] = str(source_root / "src")
     environment["PYTHONIOENCODING"] = "utf-8"
     cases: list[dict[str, Any]] = []
     for segment_count in args.segments:
@@ -423,11 +552,16 @@ def _main() -> int:
             for mode in args.binning_scopes:
                 name = f"segments-{segment_count}-{distribution}-{mode}"
                 output = destination.parent / f"{name}.json"
+                output.unlink(missing_ok=True)
+                artifact_dir = output.with_suffix("")
+                for old_report in artifact_dir.glob("report-*.marsreport"):
+                    old_report.unlink()
+                (artifact_dir / "risk-rules.json").unlink(missing_ok=True)
                 command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--rows", str(args.rows),
                            "--features", str(args.features), "--segment-count", str(segment_count),
                            "--distribution", distribution, "--binning-scope", mode,
                            "--batch-size", str(args.batch_size), "--reference", args.reference,
-                           "--output", str(output)]
+                           "--output", str(output), "--source-root", str(source_root)]
                 if args.psi_batch_size is not None:
                     command.extend(["--psi-batch-size", str(args.psi_batch_size)])
                 if args.execution_counts:
@@ -435,37 +569,91 @@ def _main() -> int:
                 command.extend(["--ks-method", args.ks_method])
                 with output.with_suffix(".log").open("w", encoding="utf-8") as stream:
                     completed = subprocess.run(command, cwd=ROOT, env=environment, stdout=stream, stderr=subprocess.STDOUT, check=False)
-                case = json.loads(output.read_text(encoding="utf-8")) if output.exists() else {"status": "failed"}
-                cases.append({"case": name, "exit_code": completed.returncode, "evidence": str(output), **case})
+                case: dict[str, Any] = {}
+                reason = None
+                if completed.returncode != 0:
+                    reason = f"worker exited with code {completed.returncode}"
+                else:
+                    try:
+                        loaded = json.loads(output.read_text(encoding="utf-8"))
+                        if not isinstance(loaded, dict):
+                            raise ValueError("worker result must be an object")
+                        case = loaded
+                        if case.get("status") != "passed":
+                            raise ValueError(f"worker status is {case.get('status')!r}")
+                        for field in ("input", "all_evidence"):
+                            if not isinstance(case.get(field), dict) or not case[field]:
+                                raise ValueError(f"worker result requires a nonempty {field} object")
+                        if not isinstance(case["input"].get("identity"), dict) or not case["input"]["identity"]:
+                            raise ValueError("worker result requires input identity")
+                        for field in ("risk_summary", "stats_overview", "selected_features"):
+                            if not isinstance(case["all_evidence"].get(field), list):
+                                raise ValueError(f"worker result requires all_evidence.{field} list")
+                        seconds = case.get("seconds")
+                        if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                                or not math.isfinite(seconds) or seconds < 0):
+                            raise ValueError("worker result requires finite nonnegative seconds")
+                        count = case.get("retained_report_count")
+                        if isinstance(count, bool) or not isinstance(count, int):
+                            raise ValueError("worker result requires retained_report_count")
+                        saved_count = count - (1 if mode == "shared" else 0)
+                        expected_reports = {f"report-{index}.marsreport" for index in range(saved_count)}
+                        actual_reports = {path.name for path in artifact_dir.glob("report-*.marsreport")}
+                        if (saved_count < 1 or expected_reports != actual_reports
+                                or not (artifact_dir / "risk-rules.json").is_file()):
+                            raise ValueError("worker report inventory or risk rules are incomplete")
+                    except (OSError, ValueError) as exc:
+                        reason = f"invalid worker result: {exc}"
+                case.update(case=name, exit_code=completed.returncode, evidence=str(output),
+                            log=str(output.with_suffix(".log")), status="failed" if reason else "passed")
+                if reason:
+                    case["failure_reason"] = reason
+                cases.append(case)
                 print(f"{name}: {case['status']}", flush=True)
     comparisons: list[dict[str, Any]] = []
     for left_index, left in enumerate(cases):
+        if left["status"] != "passed":
+            continue
         for right in cases[left_index + 1:]:
+            if right["status"] != "passed":
+                continue
             if left.get("input", {}).get("identity") != right.get("input", {}).get("identity"):
                 continue
             if "all_evidence" in left and "all_evidence" in right:
                 comparisons.append({"left": left["case"], "right": right["case"],
                                     "same_all_evidence": _equivalent(left["all_evidence"], right["all_evidence"])})
     report_comparisons: list[dict[str, Any]] = []
+    comparison_module = None
     if args.compare_to:
-        reference = json.loads(Path(args.compare_to).read_text(encoding="utf-8"))
-        reference_cases = {case["case"]: case for case in reference["cases"]}
-        for case in cases:
-            previous = reference_cases.get(case["case"])
-            if (previous is None or previous.get("status") != "passed" or case.get("status") != "passed"
-                    or case.get("input") != previous.get("input")):
-                report_comparisons.append({"case": case["case"], "status": "incomparable",
-                                           "reason": "input differs or a worker failed"})
-                continue
-            tables = _compare_saved_reports(Path(previous["evidence"]).with_suffix(""), Path(case["evidence"]).with_suffix(""))
-            report_comparisons.append({"case": case["case"], "status": "passed" if tables and all(
-                table["status"] == "passed" for table in tables
-            ) else "failed", "tables": tables})
+        assert reference is not None
+        sys.path.insert(0, str(source_root / "src"))
+        try:
+            import mars
+
+            comparison_module = _check_mars_location(source_root, mars.__file__)
+            reference_cases = {case["case"]: case for case in reference["cases"]}
+            for case in cases:
+                previous = reference_cases.get(case["case"])
+                if (reference.get("status") != "passed" or previous is None or previous.get("status") != "passed"
+                        or previous.get("exit_code") != 0 or case.get("status") != "passed"
+                        or case.get("input") != previous.get("input")):
+                    report_comparisons.append({"case": case["case"], "status": "incomparable",
+                                               "reason": "input differs or a worker failed"})
+                    continue
+                tables = _compare_saved_reports(Path(previous["evidence"]).with_suffix(""), Path(case["evidence"]).with_suffix(""))
+                report_comparisons.append({"case": case["case"], "status": "passed" if tables and all(
+                    table["status"] == "passed" for table in tables
+                ) else "failed", "tables": tables})
+        except Exception as exc:
+            report_comparisons.append({"status": "failed", "reason": f"{type(exc).__name__}: {exc}",
+                                       "traceback": traceback.format_exc()})
     passed = (all(case["status"] == "passed" for case in cases)
               and all(item["same_all_evidence"] for item in comparisons)
               and all(item["status"] == "passed" for item in report_comparisons))
     _write(destination, {"status": "passed" if passed else "failed", "cases": cases,
                          "same_input_comparisons": comparisons, "report_comparisons": report_comparisons,
+                         "source_root": str(source_root),
+                         "comparison_mars_module": comparison_module,
                          "large_data_validated": False})
     return 0 if passed else 1
 

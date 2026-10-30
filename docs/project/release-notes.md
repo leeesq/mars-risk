@@ -6,6 +6,10 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 分客群基准脚本校验指定源码和 worker 导入位置，按本次退出码及结果判断成功，
+  复用输出目录时保护比较基线并清理本 case 的旧产物。固定规则阶段增加独立 RSS 采样，
+  诊断模式增加分项计时；范围和限制见[测量记录](segmented-analysis-implementation.md#shared-benchmark-recheck)。
+
 - shared 风险画像复用每批当前与参考人口的分箱转换，数据画像 PSI 复用批内频数。
   公共参数与指标口径不变。风险基础聚合和统计筛选仍按 scope 执行；
   资源验收及限制见[实施记录](segmented-analysis-implementation.md#shared-batch-reuse)。

@@ -631,3 +631,134 @@ HTML 和 PNG；另起进程恢复规则 JSON 并禁止 fit 后评估。原生报
 本轮未验收浏览器或 Office 原生交互。
 selector 仍独立执行各 scope 的阶段编排，本轮没有实现筛选阶段池化。
 P06–P08、Linear／Importance 独立客群和暂停模块的功能迭代均未启动。
+
+
+## Shared 基准工具修复与复测 { #shared-benchmark-recheck }
+
+本次审查基线为 `88c626db10796f03062bf095883029e5d9b3d82f`，开发分支为
+`feat/segmented-analysis-core`。以下记录基准工具的行为；源码目录和导入位置用于核对本次测量，
+不作为 MARS 产品的构建身份门槛。
+
+### 源码位置与进程结果
+
+B01 的根因是父进程只设置 `PYTHONPATH`，既未检查请求目录，也未向 worker 传递同一目录。
+审查时使用不存在的目录，环境中的另一份 editable 安装使 200 行、2 特征、1 客群的命令
+仍以 `passed`、exit 0 结束。依赖环境没有可回退安装时，原命令也可能直接失败。
+修复后，入口要求源码目录包含 `src/mars/__init__.py`，将规范化路径传给 worker，
+并在导入后检查真实模块路径。指定不存在目录或缺少入口时，命令以非零码退出；
+模块路径不在指定目录内时也失败。请求路径和实际导入位置写入测量记录。
+需要比较报告时，比较进程同样使用并检查指定源码。
+
+B02 的根因是父进程读取固定名称的旧 JSON，最终状态只看 JSON 的 `status`。
+审查复现先生成成功结果，再在相同目录使用导入时抛错的源码：worker exit 1，
+父进程却读取旧的 `passed` 文件并 exit 0。修复后，启动前只清理本 case 的旧结果和报告，
+并以真实退出码、本次结果对象及必要报告共同判断成功；失败保留日志和退出码。
+比较基线与本次输出存在真实路径冲突时，命令在清理前拒绝，保留基线证据。
+正常输出目录可以复用，无关文件不删除。
+
+修复后的 CLI 测试覆盖成功结果、非零退出但 JSON 为 `passed`、缺失或损坏结果、
+错误类型、`running`、多 case、旧文件、源码目录及导入路径。真实小 case 后复用目录，
+用抛出 `ImportError` 的源码复现失败，检查非零退出和日志。含空格的独立源码副本也实际运行。
+Python 3.8 和 3.12 的首次各 16 项测试均 exit 0；后续新增用例及最终结果见本节后续记录。
+
+### 基准用法与测量范围
+
+```powershell
+python benchmarks/benchmark_segmented_analysis.py --rows 1000 --features 12 --segments 3 `
+  --distributions balanced --binning-scopes shared --reference benchmark `
+  --batch-size 16 --threads 1 --source-root "path/to/source copy" `
+  --output .artifacts/segmented/example/summary.json
+```
+
+省略 `--source-root` 时使用脚本所在仓库。外部源码副本和 detached worktree 均可使用，
+无需满足特定提交。`--compare-to` 指向已有 summary，比较各报告表、元数据和规则；
+比较输入或任一侧状态不满足条件时，整次执行失败。各 case 的 JSON 和日志与 summary
+位于同一目录，报告位于同名子目录。
+
+`seconds` 包含风险画像、数据画像、selector、报告获取与保存；
+合成数据和导入在计时之前。`risk_seconds`、`stats_seconds` 和 `selector_seconds`
+是各公开调用的耗时，后续报告获取和保存包含在完整调用内。
+`fixed_rule_risk_seconds` 只覆盖固定规则 `evaluate`，不包括签名和后续序列化。
+固定规则窗口开始时输入、selector、规则及已有报告仍驻留。`fixed_rule_memory`
+记录进程及进程树的起点、终点、采样峰值和相对起点增量，采样间隔为 10 ms。
+起点和终点同步读取，采样仍可能漏过瞬时峰值；进程树 RSS 可能重复计入共享页。
+阶段增量不等于功能独立运行所需的全部内存，Windows 生命周期峰值也不是阶段峰值。
+
+`--execution-counts` 同时启用调用观察和局部计时包装，只适合当前实现的诊断。
+`diagnostic_seconds` 按风险、画像、筛选或固定规则阶段累计各包装函数的墙钟时间：
+`fit_rules_including_woe` 包含规则拟合与 WOE 准备，`bin_transform` 是分箱转换，
+`shared_collection_including_transform` 包含 shared 收集及其内部转换，
+`batch_statistics` 是批次统计，`calculate_metrics` 是指标计算，
+`format_report` 是报告格式化。参考、状态和其他报告装配无法从这些包装中完全拆分；
+保存仍在完整调用中。各项为累计时间，嵌套范围可能重叠，不能相加作为总时间。
+包装和调用观察有额外开销，应关闭后另跑干净性能测量，不能跨模式计算提速。
+
+P02 的联合 scope／group／bin 聚合仍未完成，计划保持未勾选。
+
+### 交替重复测量
+
+使用 Windows 11、Python 3.12.13、Polars 1.42.0、Pandas 3.0.3、NumPy 2.4.6，
+机器为 24 逻辑核、63.7 GiB 内存。每组线程数为 1，风险与画像 PSI 的 batch 均为 16。
+基线源码由 `19670dc` 的独立副本提供；当前源码来自本工作树。每组按基线、当前交替运行
+3 次，关闭执行观察，使用相同 seed、均衡客群和显式参考。小场景为 1,000 行、12 特征；
+中型为 100,000 行、100 特征；两者均为 3 客群。12 次父进程和 worker 均 exit 0，
+各当前侧与对应基线的 103 项报告表、元数据及规则比较均通过。
+原始 JSON、报告和日志保存在 `.artifacts/segmented/shared-review-repeats/`；
+各 summary 记录源码请求路径、实际导入路径、依赖、线程和真实退出码。
+
+下表为中位数（最小值～最大值）。时间单位为秒，RSS 单位为 MiB，RSS 使用进程树采样值。
+
+| 场景 | 源码 | 完整调用 | risk | stats | selector | 固定规则 | 完整调用峰值 RSS |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 小 | 基线 | 5.138（5.046～5.429） | 0.225 | 0.130 | 4.516 | 0.186（0.158～0.207） | 309.95（309.51～310.29） |
+| 小 | 当前 | 5.161（5.062～5.593） | 0.212 | 0.099 | 4.531 | 0.152（0.151～0.180） | 308.93（307.95～309.46） |
+| 中 | 基线 | 119.032（115.654～123.025） | 7.372 | 4.160 | 101.776 | 4.657（4.471～4.956） | 2,497.23（2,310.81～2,511.65） |
+| 中 | 当前 | 114.583（113.848～115.274） | 6.546 | 3.500 | 99.442 | 4.254（4.221～4.341） | 2,490.96（2,483.29～2,496.20） |
+
+| 场景 | 源码 | 固定规则开始 RSS | 阶段峰值 RSS | 结束 RSS | 峰值增量 |
+| --- | --- | --- | --- | --- | --- |
+| 小 | 基线 | 303.42（301.90～303.75） | 308.12（306.81～308.64） | 308.12（306.81～308.64） | 4.89（4.70～4.91） |
+| 小 | 当前 | 301.95（300.97～305.59） | 306.70（305.58～309.07） | 306.70（305.58～309.07） | 4.61（3.48～4.75） |
+| 中 | 基线 | 1,187.65（1,169.12～1,191.64） | 1,246.13（1,214.51～1,263.01） | 785.41（775.61～786.13） | 54.49（45.39～75.36） |
+| 中 | 当前 | 905.56（611.32～1,201.91） | 968.60（948.62～1,236.29） | 743.64（654.08～751.78） | 63.04（34.37～337.30） |
+
+中型阶段起点和增量波动较大，不能用三次样本断言稳定内存差异。固定规则前后可能发生
+内存释放，阶段增量依赖起点。完整调用中 selector 约占 99～102 秒，尚未跨 scope 池化；
+因此完整调用差值不能全部归因于 shared 转换复用。
+
+单独的当前源码中型诊断 exit 0，103 项比较通过，原始数据位于
+`.artifacts/segmented/shared-review-diagnostic/`。风险阶段累计拟合及 WOE 2.022 秒、
+转换 0.712 秒、批次统计 2.986 秒、包含转换的 shared 收集 3.627 秒、指标 0.041 秒、
+报告格式化 0.110 秒。固定规则阶段对应转换 0.537 秒、批次统计 3.067 秒、
+shared 收集 3.719 秒、指标 0.043 秒和格式化 0.109 秒。统计位于收集内部，转换也可能
+与其他计时重叠；这些数字不能相加。诊断完整调用为 116.535 秒，包含包装开销，
+不与干净运行计算提速。
+
+建议暂保留当前转换复用，不启动联合基础聚合。批次统计在固定规则阶段占比较高，
+但本次尚未证明联合聚合能消除多少实际扫描，也未量化维护 scope、参考和状态语义所需的结构。
+中型完整调用主要受未池化的 selector 支配，现有证据不足以证明联合聚合的整体收益值得改动。
+若后续单独优化固定规则评估，应先在 `_collect_shared_statistics` 和
+`_collect_batch_statistics` 之间核对实际执行计划及 scope／group／bin 聚合边界，再决定实现。
+
+### 本轮验证
+
+修复前实际复现使用 Python 3.12.13：不存在的源码目录返回 exit 0；复用成功结果后，
+导入失败的 worker 返回 exit 1，而旧脚本仍将 summary 标为 `passed` 并返回 exit 0。
+修复后的真实小 case 返回 exit 0；同目录下改用抛出 `ImportError` 的源码，worker 和
+父进程均返回 exit 1，summary 标记失败并保留日志。不存在的源码目录在入口返回非零码。
+
+```powershell
+& .artifacts/segmented/env38-final/Scripts/python.exe -m pytest -q tests/test_segmented_benchmark_cli.py --basetemp .artifacts/segmented/cli-final2-38
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m pytest -q tests/test_segmented_benchmark_cli.py --basetemp .artifacts/segmented/cli-final2-312
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m ruff check src tests scripts benchmarks docs/snippets
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m mypy src/mars
+& D:/my_download_program/anaconda3/envs/mars312/Scripts/pydoclint.exe src/mars
+& D:/my_download_program/anaconda3/envs/mars312/python.exe scripts/check_private_docstrings.py src/mars
+& D:/my_download_program/anaconda3/envs/mars312/python.exe -m mkdocs build --strict
+git diff --check
+```
+
+Python 3.8.20 和 3.12.13 的 CLI 测试均为 20 passed、exit 0。Ruff、Mypy 和公开
+docstring 检查均 exit 0；私有 docstring 检查 exit 0，保留 6 条既有建议警告。
+默认 pytest 临时目录创建失败，测试改用上述仓库内独立 basetemp。未重跑完整业务套件、
+Home Credit 全宽分析或资源矩阵，也未修改原始数据及正式案例配置。
