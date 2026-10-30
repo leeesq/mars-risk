@@ -49,7 +49,11 @@ class ProfileRunContext:
 
 @dataclass(frozen=True)
 class ProfileComputeOptions:
-    """画像计算底层策略参数。"""
+    """画像计算底层策略参数。
+
+    diagnostics 沿用特征级诊断；局部 PSI 例外附带 group 和 status，
+    由报告装配统一转为 calculation_status，不保存原始人口。
+    """
 
     missing_values: list[Any]
     special_values: list[Any]

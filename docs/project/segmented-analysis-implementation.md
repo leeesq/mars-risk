@@ -304,3 +304,216 @@ exit 0，记录在 `case-assets-final.log`；`git diff --check` 通过。
 Home Credit 输入、seed、模拟日期、五分区和候选定义均未修改；本次未重跑正式数据代表性复验或全宽容量测试，
 不沿用历史资源数据宣称提速或容量。没有执行 Linux/macOS 或可选 ML 专项。
 shared 每批一次联合转换仍未完成，P06–P08 未启动；三个暂停模块未新增兼容壳或功能。
+
+## F09 数据画像 PSI 适用人口修复 { #review-fix-f09 }
+
+本节记录 2026-10-30 的独立修复。起始分支为 `feat/segmented-analysis-core`，
+HEAD 为 `63c29be76a82c92c3714fe83e7a47ebb165c4a04`，工作树干净。
+修复验收阶段保留该分支，未 commit、push、创建 PR、合并、发布或修改版本号。
+此前 F01–F08 的 push 授权不适用于本轮。
+
+验收完成后，用户在本地对话中明确授权提交并普通 push 到 `feat/segmented-analysis-core`。
+本次据此提交 F09 的源码、回归、示例与文档；本地验收产物继续留在忽略目录。
+该授权不包含创建 PR、合并、发布或修改版本号。
+
+### 根因与计算合同
+
+该问题在 `d725908ad316ee6e2f36d50c7e3f945c67e27979` 和 `63c29be` 均可复现，
+属于既有数据画像路径的覆盖缺口。F01–F08 的回归没有覆盖这条路径。
+本地只向 `.artifacts/f09/` 提取两个提交的历史 `src/`，通过独立进程导入历史源码复现，
+没有切换或回退当前工作树。远端 CI 成功不替代本缺口的业务回归。
+
+`_profiling/psi.py::calc_psi_from_stats` 原先从同批所有特征取得 group 集合，
+再与分箱骨架做笛卡尔积。z 在 02 有观测时，会替没有有效观测的 x/02 生成骨架；
+概率空值随后填为 epsilon，得到看似有效的 PSI。
+原 feature 级检查和诊断去重也无法解释一个特征的多个不可计算期间。
+无显式 benchmark 时，首组某特征为空参考的情况同样会误算。
+
+修复从每批已聚合频数表保留过滤前业务身份，再按箱策略分别计算当前期间、固定参考与 Total 的适用人口。
+只有两侧分布适用时，才将该键与箱骨架关联，并沿用原公式、平滑常量和分母。
+每批只物化小频数表，不复制每组原始宽表，不增加拟合次数；shared 仍只拟合一次。
+有效 Total 按全部当前期的合并计数计算，不平均各期 PSI。
+
+当前期间无适用人口时，仅该 scope/feature/group 返回 Float64 null，
+状态为 `not_computed / no_effective_current_population`。
+固定参考无适用人口时，该特征各比较期间及 Total 均为 null，
+状态为 `not_computed / no_effective_reference_population`。
+原因优先解释不可用参考；局部状态使用原 group 标签，Total 沿用 `Total` 状态到 `total` 列的映射。
+`metrics.py::build_profile_status` 接收局部 group/status，并保留原有全局拟合失败的 `* / failed` 语义。
+合法常量局部参考、数值 0、纳入缺失／特殊箱后有效的人口继续计算。
+
+Pandas 输出在 PSI 缺失数值列使用 nullable Float64，保证 JSON 为正式 null。
+查询、分页、AI、趋势和静态导出读取保存的同一份统计与状态，不另行计算。
+旧快照按磁盘已保存统计读取；加载时不重算、不改写历史 PSI。
+
+源码修改位置如下。
+
+| 文件 | 本轮职责 |
+| --- | --- |
+| `analysis/_profiling/psi.py` | 从批内频数判定三侧人口，保留完整业务键和内部原因列，按特征／期间收集局部诊断 |
+| `analysis/_profiling/metrics.py`、`types.py` | 装配局部 group/status，保留全局失败形状，按业务身份去重 |
+| `analysis/profiler.py`、`_profiling/segmented.py` | 原生及客群合并 PSI 的 Pandas nullable 输出，诊断与状态沿原报告装配 |
+| `reporting/profile_report.py`、`_query.py` | 趋势与 AI 的局部原因只解释最终可见 null 单元格，保留 scope／特征／期间身份 |
+| `reporting/_semantics.py` | 在既有 describe 语义中解释两个正式原因码 |
+
+### 修复前后证据
+
+以下值来自同一 80 行确定性输入、默认固定规则和 `psi_include_missing=False`。
+两个历史提交的 shared／per_segment 均表现相同。
+
+| seg2/x | 历史 batch=1 | 历史 batch=2、8 | 修复后 batch=1、2、8 |
+| --- | --- | --- | --- |
+| 01 | 0 | 0 | 0 |
+| 02 | null，无原因 | ≈11.538983029798928，无原因 | Float64 null，局部 `not_computed` |
+| total | 约 0 | 约 0 | 约 0，仍为有效合并人口 |
+
+未分客群、无显式 benchmark 的首组全缺失示例，排除缺失箱时，历史结果为
+01=0、02≈10.8458327809、total≈10.8458327809；修复后全部为 null，并明确参考无适用人口。
+纳入缺失箱时，首组缺失箱是合法参考。01=0、02=24.66133052261688、
+total=5.422869866992135，沿用原公式保留。
+
+最小回归先在基线运行，`population-before.log` 为 6 failed、exit 1，
+同时暴露 batch=1 缺状态与 batch=2／16 错误数值。该失败输出先于源码修改保留。
+历史源码复现为 `baseline-d725908.log` 和 `baseline-63c29be.log`，两命令均 exit 0；
+这里的 exit 0 表示复现脚本执行完成，不表示历史错误通过新合同。
+新示例 `docs/snippets/profile_psi_population.py` 在 3.8／3.12 均 exit 0，
+逐项断言局部 null、状态和有效 Total，原始输出为 `snippet38.log`、`snippet312.log`。
+最终源码另在 Polars 1.44.2 执行同一复现脚本，`repro-after.log`、exit 0，
+确认两模式 batch=1／2／8 的 02 均为 null，Total=0，状态只指向 seg2/x/02。
+
+### 专项与持久消费
+
+`tests/test_profile_psi_population.py` 用 42 项业务回归覆盖批次、特征顺序、同批邻居、
+未分客群与两种规则策略、首组空参考、整体空人口、多个空期间、缺失／特殊箱开关，
+以及数值 0、类别、null／数值／日期分组、多 chunk 与拟合次数。
+有效 PSI 的 oracle 使用固定箱小频数，先判断人口，再独立按正式公式计算；
+Total 使用合并计数核对，另验证它与期间 PSI 平均值不同。
+
+`tests/test_profile_psi_population_consumption.py` 的 35 项回归覆盖两后端的原生与恢复报告。
+逐表比较 `stats.psi`、`calculation_status` 的数值、dtype、元数据和稳定 scope 身份，
+验证分页计数、字符预算、reference 重放和 AI 的正式 JSON null。
+01 投影、z 和其他客群不带 02 的局部原因；显式省略 feature 的投影继续有效。
+AI description 中的局部 diagnostics 也收窄到最终证据，不影响旧全局拟合诊断。
+真实字符串 group=`Total` 的 null 与有效汇总 `total=0` 分开解释。
+
+导出检查读取实际 HTML 表头、单元格和 `data-sort-*` 属性：02 的类型为 missing，
+排序值为空，显示为缺失符号；01 和 total 仍保存数值 0。
+openpyxl 读取原生和快照 Excel，确认 02 单元格为 None，01／total 为零，
+CalculationStatus 中只有准确的局部状态行。
+新进程只加载 `.marsreport`，随后执行查询、AI、reference 重放、趋势和静态 HTML／Excel，
+不访问原表或分箱器。另构造历史错误数值快照，加载后原值仍保留，不自动套用新结果合同。
+可审阅产物保存在 `.artifacts/f09/acceptance/`，包含 `standalone.marsreport`、
+`standalone.html` 和 `standalone.xlsx`。它们复制自实际通过测试的新进程输出目录
+`consumption312-verified-tmp/test_population_snapshot_new_p0/`，逐文件 SHA256 与源文件相同。
+另在匹配现代隔离环境执行 `python .artifacts/f09/acceptance/consume.py`，
+只读该快照生成 `ai-context.json` 和 `describe.json`；`acceptance-json.log` 为 exit 0，
+再次断言 JSON 的局部 null、有效 01／total、准确状态及 reference 重放。
+
+| 实际命令窗口 | 结果与日志 |
+| --- | --- |
+| 3.8／3.12 业务环境各执行 `python -m pytest -q tests/test_profile_psi_population.py`，使用 pytest 默认临时目录 | 各 42 passed，无失败／跳过，exit 0；`population-legacy-final.log`、`population-modern-final.log`，返回码另存同名 `.exit` |
+| 3.8 `python -m pytest -q tests/test_profile_psi_population_consumption.py --basetemp=.artifacts/f09/consumption38-verified-tmp` | 35 passed、31 warnings，43.93 秒，exit 0；`consumption38-verified.log` |
+| 3.12 业务环境 `python -m pytest -q tests/test_profile_psi_population_consumption.py --basetemp=.artifacts/f09/consumption312-verified-tmp` | 35 passed、47 warnings，64.19 秒，exit 0；`consumption312-verified.log` |
+
+42 项专项只显式设置 `POLARS_MAX_THREADS=4` 和 `PYTHONUTF8=1`。
+两端解释器分别为下表的 3.8 与 3.12 业务环境，运行早于最后的 Total 消费修复。
+35 项消费专项另设置 Agg 和 BLAS／OMP 单线程，运行于最终消费源码。
+这些专项分开运行，不相加声称为一次完整通过。最终完整基础运行另外覆盖最终文件。
+警告来自既有 Arrow／Pandas／依赖弃用提示，未通过跳过断言规避结果。
+
+### 本地环境与实际命令
+
+所有证据放在忽略目录 `.artifacts/f09/`。`run.py` 只在子进程真正退出后，
+才将 JSON 的 `state` 改为 finished，并写入实际 `exit_code`、命令、耗时及日志路径。
+通过 `run.py` 执行的命令在导入前固定 `PYTHONUTF8=1`、`MPLBACKEND=Agg`、`POLARS_MAX_THREADS=4`、
+`OMP_NUM_THREADS=1` 和 `OPENBLAS_NUM_THREADS=1`。
+
+| 环境 | 实际解释器与依赖 | 导入来源 |
+| --- | --- | --- |
+| 3.8 | `.artifacts/segmented/env38-final/Scripts/python.exe`；Python 3.8.20、Polars 1.8.2、Pandas 2.0.3、NumPy 1.24.4、Arrow 17.0.0、sklearn 1.3.2、optbinning 0.20.1、pytest 7.4.4 | mars 从当前仓库 `src/mars`；依赖从既有 mars38 环境 |
+| 3.12 | `D:/my_download_program/anaconda3/envs/mars312/python.exe`；Python 3.12.13、Polars 1.42.0、Pandas 3.0.3、NumPy 2.4.6、Arrow 24.0.0、sklearn 1.9.0、optbinning 0.21.0、pytest 9.1.1 | mars 从当前仓库 `src/mars`；依赖从既有 mars312 环境 |
+| 3.12 现代隔离栈 | `D:/Desktop/credit-risk/.artifacts/closure-20261015/envs/py312/Scripts/python.exe`；Python 3.12.13、Polars 1.44.2、Pandas 3.0.6、NumPy 2.4.6、Arrow 26.0.0、sklearn 1.9.1、optbinning 1.0.0、pytest 9.1.1 | mars 从当前仓库 `src/mars`；依赖从既有 py312 隔离环境 |
+
+实际导入位置见 `environment38.log`、`environment312.log` 和 `environment312-isolated.log`，均 exit 0。
+本轮使用现成环境，没有重建五版本环境，没有重跑全宽容量或正式案例生成。
+
+```powershell
+python .artifacts/f09/environment.py
+python .artifacts/f09/baseline_repro.py .artifacts/f09/d725908/src
+python .artifacts/f09/baseline_repro.py .artifacts/f09/63c29be/src
+python -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/f09/full-final312-tmp
+python -m ruff check src tests benchmarks scripts docs/snippets
+python -m mypy src/mars
+pydoclint src/mars
+python scripts/check_private_docstrings.py src/mars
+python docs/snippets/profile_psi_population.py
+python -m mkdocs build --strict --site-dir .artifacts/f09/site
+git diff --check
+```
+
+首轮 full312／full38 在最后 Pandas null 输出修复前启动，不能作为最终源码的完整通过证据。
+同一轮中，下一 worker 对已记录 pytest PID 的 `Get-Process`／`Stop-Process` 查询报告不存在，
+exec session 却仍为 running。未将这个可见性限制写成测试断言失败或已终止。
+随后向这两个 session 发送 Ctrl+C，得到两个外层 exit 1；子进程退出码未知，
+另存 `full312-interrupted.json` 和 `full38-interrupted.json`，未计为完整通过。
+首次 public docstring 子进程 exit 0，但外层记录器打印 emoji 时遇到 GBK 编码异常，外层 exit 1；
+修正记录器 UTF-8 输出后，`public-docstring-final` 整条命令 exit 0。
+这些初轮记录保留，不与最后通过数拼接。
+
+首轮完整运行出现快照保存失败。单独探针 `snapshot-sandbox-probe.log` 为
+1 failed、2 passed、exit 1，栈定位到既有 `os.link` 原子保存受到沙箱 WinError 5 拒绝。
+未更改产品保存算法或正式测试。按同一路径在沙箱外复验，
+`snapshot-outside-sandbox.log` 为 4 passed、11 deselected、exit 0；
+匹配现代隔离栈的 `snapshot-elevated-probe.log` 也为 4 passed、exit 0。
+最终完整基础测试据此在沙箱外运行，仅将验收产物写入本仓库专属临时目录。
+
+最终 Ruff、public docstring 和 private docstring 均 exit 0，分别见
+`ruff-final.log`、`public-docstring-last.log` 和 `private-docstring-final.log`。
+private 检查保留 6 条既有简单 helper 的建议警告，复杂私有函数检查通过。
+全包 Mypy 为 164 个源文件通过、exit 0，见 `mypy-final.log`。
+严格 MkDocs 首轮 `mkdocs-first.log` 为 exit 0；补齐最终完整验收数字后，
+末次 `mkdocs-last.log`／`.json` 再次 exit 0，整命令 12.172 秒。
+构建输出位于 `.artifacts/f09/site/`，未重建案例资产或正式网站数据。
+
+跳过原因另用 `-rs` 小范围复核，不重复完整套件。
+`skips38.log` 为 1 passed、13 skipped、exit 0：3 个建模测试模块缺少 xgboost，
+规则属性模块缺少 hypothesis，SHAP 案例缺少 shap，另 8 个 Agent 案例要求 Python 3.10+。
+`skips312.log` 为 1 passed、3 skipped、exit 0，3 项均为建模模块缺少 xgboost。
+确切 node ID、命令和原因保存在同名 JSON／日志；这些结果不与完整套件相加。
+
+最终源码的两套完整基础命令均真正退出，没有中断、挂起或只打印 passed 的情况。
+每套包含全部源测试，并按 CI 排除 `docs_ml`／`optional_ml`，仅额外忽略本地已有 benchmark 产物目录。
+关联回归包括 `test_profiler.py`、`test_profile_empty_psi.py`、`test_analysis_batching.py`，
+既有客群 profiler／fit／query／consumption 文件，以及 F01–F08 的 metric、fit、query 和多目标回归。
+新增 42 项人口与 35 项消费测试也均由最终完整运行收集，覆盖最后一次源码修改。
+
+| 最终完整环境 | 结果 | 实际退出与日志 |
+| --- | --- | --- |
+| Python 3.8.20／Polars 1.8.2／Pandas 2.0.3 | 1718 passed、13 skipped、7 deselected、435 warnings；无失败 | pytest 716.21 秒，整命令 718.093 秒；exit 0；`full-final38.log`／`.json` |
+| Python 3.12.13／Polars 1.44.2／Pandas 3.0.6，匹配隔离栈 | 1817 passed、3 skipped、7 deselected、1051 warnings；无失败 | pytest 740.51 秒，整命令 742.766 秒；exit 0；`full-final312.log`／`.json` |
+
+两个完整命令的实际解释器与 basetemp 分别如下；完整参数、环境和耗时另存同名 JSON。
+
+```powershell
+& .artifacts/segmented/env38-final/Scripts/python.exe -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/f09/full-final38-tmp
+& D:/Desktop/credit-risk/.artifacts/closure-20261015/envs/py312/Scripts/python.exe -m pytest -q -m "not docs_ml and not optional_ml" --ignore=benchmarks/_artifacts --basetemp=.artifacts/f09/full-final312-tmp
+```
+
+完整运行中的跳过数与上述 `-rs` 原因审计一致。7 项 deselected 来自 CI 的明确 marker 排除。
+警告主要为 Pandas／Arrow 及分箱依赖的弃用提示、openpyxl 对模板扩展的提示、
+图形回归中备用字体缺少部分中文字形，以及旧断言参数名称的弃用提示。
+没有将环境失败误写为业务回归，也未静默跳过本轮专项。
+两套最终源码完整运行独立记录，不与早期专项或中断运行拼接。
+
+验收完成时的工作树为 12 个已跟踪文件修改和 3 个新文件，当时保持未提交、未推送。
+本地日志、基线副本、快照、导出和站点产物留在忽略目录，不纳入源码交付。
+
+### 边界与后续
+
+本轮不修改 Home Credit 原始 CSV、预处理、模拟日期、五分区、候选、正式案例配置或分箱参数。
+HTML／Excel 以静态内容及新进程恢复验证，浏览器和 Office 原生交互未作为本轮已完成验收。
+独立审查另发现真实字符串 group=`*` 的既有入口边界：该值在旧版的 PSI 列投影中也会触发
+Polars `select("*")` 展开导致的 DuplicateError。F09 未扩大修复这个分组入口问题，
+也未改变既有标签；真实 group=`Total` 的局部状态与汇总列投影冲突已在本轮覆盖。
+shared 每批一次联合转换仍未完成，权威计划保持原状态。P06–P08 未启动，
+监控、建模／Pipeline 和评分卡保持暂停功能迭代；本轮完成后停止。

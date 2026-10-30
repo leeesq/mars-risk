@@ -216,7 +216,10 @@ def generate_segmented_profile(
         overview=profiler._format_output(pl.concat(overview_parts, how="diagonal_relaxed")),
         dq_tables={metric: profiler._format_output(pl.concat(parts, how="diagonal_relaxed"))
                    for metric, parts in dq_parts.items()},
-        stats_tables={metric: profiler._format_output(pl.concat(parts, how="diagonal_relaxed"))
+        stats_tables={metric: (
+            profiler._format_psi_output(pl.concat(parts, how="diagonal_relaxed"))
+            if metric == "psi" else profiler._format_output(pl.concat(parts, how="diagonal_relaxed"))
+        )
                       for metric, parts in stats_parts.items()},
         comparison_tables={metric: profiler._format_output(pl.concat(parts, how="diagonal_relaxed"))
                            for metric, parts in comparison_parts.items()},

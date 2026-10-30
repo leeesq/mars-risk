@@ -602,10 +602,14 @@ class MarsDataProfiler(MarsBaseEstimator):
             "diagnostics": list(options.diagnostics),
         }
 
+        formatted_stats: dict[str, pl.DataFrame | pd.DataFrame] = {
+            metric: self._format_psi_output(table) if metric == "psi" else self._format_output(table)
+            for metric, table in stat_tables.items()
+        }
         report = MarsProfileReport(
             overview=self._format_output(overview_df),
             dq_tables=self._format_output(dq_tables),
-            stats_tables=self._format_output(stat_tables),
+            stats_tables=formatted_stats,
             comparison_tables=self._format_output(comparison_tables),
             report_meta=report_meta,
             feature_metadata=feature_metadata,
@@ -632,3 +636,12 @@ class MarsDataProfiler(MarsBaseEstimator):
         report._normalize_feature_tables()
         report.source = {"kind": "analysis", "producer": "mars", "input_provenance": "caller_provided_dataframe"}
         return report
+
+    def _format_psi_output(self, table: pl.DataFrame) -> pl.DataFrame | pd.DataFrame:
+        """新报告的 Pandas PSI 保留可空浮点列，使未计算人口序列化为正式 null。"""
+        result: pl.DataFrame | pd.DataFrame = self._format_output(table)
+        if isinstance(result, pd.DataFrame):
+            for column, dtype in table.schema.items():
+                if dtype in (pl.Float32, pl.Float64) and table[column].null_count():
+                    result[column] = result[column].astype("Float64")
+        return result

@@ -38,6 +38,18 @@ IV、KS、AUC 及对应逐箱贡献为 null；零有效权重、无标签和单�
 数据画像 PSI 的退化诊断检查实际规则拟合人口。显式 benchmark 整体为常量或全缺失时，
 shared 模式也保留失败状态；整体拟合有效时，某个客群局部 benchmark 为常量仍允许使用共享规则。
 
+数据画像在平滑之前，按当前 scope、feature 和 group 检查适用人口。
+某期排除缺失／特殊箱后没有观测，只将该特征、该期设为 Float64 null，
+并记录 `not_computed / no_effective_current_population`。原期间列保留，Total 使用跨期合并计数重算。
+参考分布无适用人口时，该特征的各期和 Total 均为 null，原因为
+`no_effective_reference_population`。无显式 benchmark 时，参考仍是整体首组对应的客群人口，
+不会换成后续有数据的期间。批次大小、同批特征和特征顺序不改变这些结果与状态。
+
+`psi_include_missing` 和 `psi_include_special` 是 `generate_profile()`／`profile_stats()` 的运行参数。
+纳入对应箱后，只要分布获得适用人口，就按原 PSI 公式计算；规则拟合失败仍单独解释。
+`get_table("calculation_status")` 可按 scope、特征和具体 group 查询原因，
+`show_trend()` 只显示当前投影涉及的状态。旧快照按已保存统计读取，加载时不重算历史数值。
+
 分布与缺失使用完整人口。风险表现使用当前目标已观察标签，保留权重和金额的现有定义。
 多目标仍由首目标拟合；当前趋势只覆盖首目标。均值、缺失率等数据统计不受 binning_scope 影响，
 数据画像的 binning_scope 只用于 PSI。没有请求 PSI 却传独立分箱模式会报错。
@@ -128,3 +140,10 @@ HTML 各人口复用原离线页面，通过客群选择器切换；来源、中
 当前资源实现仍逐 scope 转换共享规则；未承诺新增客群没有计算成本。
 资源与环境证据、未完成项见[本地实施记录](../project/segmented-analysis-implementation.md)。
 模型分交叉、规则评估和缺失异常诊断保留在后续批次。
+
+下面的短例子只构造 80 行模拟数据。seg2 的 x 在 02 期全缺失，01 和 Total 保持有效，
+并比较 shared／per_segment 在 batch=1、2、8 下的统计与局部状态。
+
+```python
+--8<-- "docs/snippets/profile_psi_population.py"
+```

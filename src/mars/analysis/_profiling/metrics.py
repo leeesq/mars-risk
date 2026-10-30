@@ -265,7 +265,7 @@ def build_profile_status(
     has_psi_reference: bool,
     psi_features: list[str] | None = None,
 ) -> pl.DataFrame:
-    """记录画像全量统计的未计算例外；趋势仍保留原值和既有诊断，不重复计算。"""
+    """合并全量统计与按期间记录的例外，保留既有全局拟合失败诊断。"""
     rows: list[dict[str, Any]] = []
     active_psi_features = set(context.features if psi_features is None else psi_features)
     if context.group_col is not None:
@@ -305,9 +305,9 @@ def build_profile_status(
             rows.append(
                 {
                     "feature": feature,
-                    "group": "*",
+                    "group": diagnostic.get("group", "*"),
                     "metric": diagnostic.get("component"),
-                    "status": "failed",
+                    "status": diagnostic.get("status", "failed"),
                     "reason": diagnostic.get("reason"),
                 }
             )
@@ -320,4 +320,6 @@ def build_profile_status(
             "status": pl.String,
             "reason": pl.String,
         },
+    ).unique(subset=["feature", "group", "metric"], maintain_order=True).sort(
+        ["feature", "metric", "group"],
     )

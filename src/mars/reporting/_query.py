@@ -31,6 +31,74 @@ from mars.reporting._serialization import json_safe as _json_safe
 ReportFrame = Union[pl.DataFrame, pd.DataFrame]
 
 
+def _psi_population_null_cells(
+    rows: list[dict[str, Any]],
+    identities: list[dict[str, Any]],
+    *,
+    default_scope_id: Any = None,
+) -> set[tuple[Any, str, str]]:
+    """从有限展示结果识别局部 PSI 空单元格，区分真实 Total 组与有效 total 汇总。"""
+    cells: set[tuple[Any, str, str]] = set()
+    for index, row in enumerate(rows):
+        identity = identities[index] if identities else {}
+        actual: dict[str, Any] = {**identity, **row}
+        feature = actual.get("feature")
+        if not isinstance(feature, str):
+            continue
+        scope_id = actual.get("scope_id", default_scope_id)
+        cells.update(
+            (scope_id, feature, "Total" if column == "total" else column)
+            for column, value in row.items()
+            if not is_metadata_column(column) and pd.isna(value)
+        )
+    return cells
+
+
+def _project_psi_population_diagnostics(payload: dict[str, Any]) -> None:
+    """局部 PSI 人口诊断只解释实际证据中的客群、特征和期间，保留历史全局诊断。"""
+    description: dict[str, Any] = payload["description"]
+    if description.get("report_type") != "MarsProfileReport":
+        return
+    parameters: dict[str, Any] = description.get("parameters", {})
+    diagnostics = parameters.get("diagnostics")
+    if not isinstance(diagnostics, list):
+        return
+
+    displayed: set[tuple[Any, str, str]] = set()
+    for evidence in payload["evidence"]:
+        name = evidence["reference"]
+        if name not in {"stats.psi", "calculation_status"}:
+            continue
+        identities: list[dict[str, Any]] = evidence.get("identities", [])
+        default_scope_id = parameters.get("selected_scope", {}).get("scope_id")
+        if name == "stats.psi":
+            displayed.update(_psi_population_null_cells(
+                evidence["rows"], identities, default_scope_id=default_scope_id,
+            ))
+            continue
+        for index, row in enumerate(evidence["rows"]):
+            identity = identities[index] if identities else {}
+            actual: dict[str, Any] = {**identity, **row}
+            feature = actual.get("feature")
+            if not isinstance(feature, str):
+                continue
+            groups = [actual["group"]] if actual.get("metric") == "psi" and "group" in actual else []
+            scope_id = actual.get("scope_id", default_scope_id)
+            displayed.update((scope_id, feature, group) for group in groups)
+
+    parameters["diagnostics"] = [
+        diagnostic for diagnostic in diagnostics
+        if not (
+            diagnostic.get("component") == "psi"
+            and diagnostic.get("status") == "not_computed"
+            and "group" in diagnostic
+        ) or any(
+            (diagnostic.get("scope_id"), feature, diagnostic["group"]) in displayed
+            for feature in diagnostic.get("features", [])
+        )
+    ]
+
+
 def _filter_value(frame: ReportFrame, column: str, value: Any) -> Any:
     """按真实字段类型解析 ISO 日期引用；普通字符串列不做转换。"""
     if isinstance(value, list):
@@ -1044,6 +1112,7 @@ class _ReportQuery:
             else:
                 omitted.append({"reference": "scopes", "reason": "description_budget",
                                 "count": len(scope_rows), "continue_at": {"table": "scopes", "limit": 10}})
+        _project_psi_population_diagnostics(payload)
         # 大型说明块独立裁剪；每次省略完整参数值并保留 describe 定位。
         for key, value in list(description["parameters"].items()):
             if len(_encode(value)) > max_chars // 8:
@@ -1255,6 +1324,8 @@ class _ReportQuery:
             omitted.append(
                 {"reference": f"describe.{block}", "count": count, "reason": "description_budget"}
             )
+        # 预算可能进一步裁剪特征行或期间列，局部诊断同步收窄到最终证据。
+        _project_psi_population_diagnostics(payload)
         return _encode(payload)
 
     def get_feature(self, feature: str, *, limit: int = 100) -> dict[str, Any]:

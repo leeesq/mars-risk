@@ -6,6 +6,12 @@ description: MARS 0.0.28 的用户可见变化、兼容性说明和升级检查�
 
 ## Unreleased
 
+- 修复数据画像 PSI 的 F09 批次依赖。按 scope、特征、期间及 Total 分别判断适用人口，
+  缺观测保留 Float64 null 与局部 `not_computed` 原因，不再由同批其他特征生成有效 PSI。
+  首组参考无适用人口时保留原参考身份；有效 Total 继续使用合并计数。
+  查询、趋势、AI、HTML／Excel 和新快照消费同一份统计与状态，旧快照加载时不重算。
+  该缺口在 `d725908` 和 `63c29be` 已存在，详见 [F09 验收记录](segmented-analysis-implementation.md#review-fix-f09)。
+
 - 修复分客群分析第一批审查的 F01–F08。单类别或仅一类有效权重的 IV／KS／AUC 保留 null，
   图表、HTML 和 Excel 不再从全空贡献生成 0／100／1；坏率、分布和已学规则按各自口径保留。
   PSI 按实际拟合人口诊断退化，按具体分组判断适用人口；PSI 与 RC 分别判断参考有效性。

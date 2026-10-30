@@ -215,69 +215,29 @@ def _aggregate_binned_stats(
     )
 
 
-def _valid_feature_indices(
-    stats_df: pl.LazyFrame,
-    options: ProfileComputeOptions,
-) -> set[int]:
-    """返回在当前 PSI 箱口径下至少有一条观测的特征索引。"""
-    valid_condition = psi_valid_condition(
-        pl.col("bin_id"),
-        include_missing=options.psi_include_missing,
-        include_special=options.psi_include_special,
-    )
-    valid_features = collect_streaming(
-        stats_df.filter(valid_condition).select("feat_idx").unique()
-    )
-    return set(valid_features.get_column("feat_idx").to_list())
-
-
 def _record_psi_failure(
     options: ProfileComputeOptions,
     feature: str,
     reason: str,
+    *,
+    group: str = "*",
+    status: str = "failed",
 ) -> None:
-    """按特征记录 PSI 降级原因，并避免同一特征重复记录。"""
+    """按特征和期间记录 PSI 例外；全局拟合失败仍沿用原诊断形状。"""
     already_recorded = any(
         diagnostic.get("component") == "psi"
         and feature in diagnostic.get("features", [])
+        and diagnostic.get("group", "*") == group
         for diagnostic in options.diagnostics
     )
     if already_recorded:
         return
-    options.diagnostics.append(
-        {
-            "component": "psi",
-            "features": [feature],
-            "reason": reason,
-        }
-    )
-
-
-def _usable_benchmark_feature_indices(
-    *,
-    current_stats: pl.LazyFrame,
-    benchmark_stats: pl.LazyFrame,
-    feat_map: dict[int, str],
-    options: ProfileComputeOptions,
-) -> set[int]:
-    """返回显式基准两侧都含有效 PSI 观测的特征索引。"""
-    current_valid = _valid_feature_indices(current_stats, options)
-    benchmark_valid = _valid_feature_indices(benchmark_stats, options)
-    expected_indices = set(feat_map)
-    usable_indices = current_valid & benchmark_valid
-
-    for index in sorted(expected_indices - usable_indices):
-        invalid_sides: list[str] = []
-        if index not in current_valid:
-            invalid_sides.append("current_df")
-        if index not in benchmark_valid:
-            invalid_sides.append("benchmark_df")
-        _record_psi_failure(
-            options,
-            feat_map[index],
-            "PSI has no included observations in " + " and ".join(invalid_sides) + ".",
-        )
-    return usable_indices
+    diagnostic: dict[str, Any] = {
+        "component": "psi", "features": [feature], "reason": reason,
+    }
+    if group != "*" or status != "failed":
+        diagnostic.update(group=group, status=status)
+    options.diagnostics.append(diagnostic)
 
 
 def _null_psi_part(
@@ -458,7 +418,10 @@ def _binned_psi_batch(
 
     feat_map = {idx: name for idx, name in enumerate(batch_cols)}
     rename_map = {f"{name}_bin": str(idx) for idx, name in enumerate(batch_cols)}
-    lf_stats = _aggregate_binned_stats(lf_binned, group_col=group_col, rename_map=rename_map)
+    # 仅物化本批频数，避免人口判断和 PSI 分支重复执行行级转换。
+    lf_stats = collect_streaming(
+        _aggregate_binned_stats(lf_binned, group_col=group_col, rename_map=rename_map)
+    ).lazy()
 
     lf_skeleton = lf_stats.select(["feat_idx", "bin_id"]).unique()
     if benchmark_df is None:
@@ -488,31 +451,16 @@ def _binned_psi_batch(
             group_col=group_col,
             rename_map=rename_map,
         )
-        benchmark_stats = (
+        benchmark_stats = collect_streaming(
             benchmark_stats_grouped.group_by(["feat_idx", "bin_id"])
             .agg(pl.col("len").sum().alias("len"))
-        )
+        ).lazy()
         lf_skeleton = pl.concat(
             [
                 lf_skeleton,
                 benchmark_stats.select(["feat_idx", "bin_id"]),
             ]
         ).unique()
-        usable_indices = _usable_benchmark_feature_indices(
-            current_stats=lf_stats,
-            benchmark_stats=benchmark_stats,
-            feat_map=feat_map,
-            options=options,
-        )
-        if not usable_indices:
-            return pl.DataFrame()
-
-        # 只将两侧都有有效观测的特征送入 PSI 计算，其余特征由上层补空行。
-        usable_index_values = sorted(usable_indices)
-        usable_filter = pl.col("feat_idx").is_in(usable_index_values)
-        lf_stats = lf_stats.filter(usable_filter)
-        benchmark_stats = benchmark_stats.filter(usable_filter)
-        lf_skeleton = lf_skeleton.filter(usable_filter)
         lf_psi = calc_psi_from_stats(
             stats_df=lf_stats,
             unique_bins_skel=lf_skeleton,
@@ -529,9 +477,36 @@ def _binned_psi_batch(
     )
     result_query = (
         lf_psi.join(mapping_df, on="feat_idx", how="left")
-        .select([group_col, "feature", "total", "psi"])
+        .select([group_col, "feature", "total", "psi", "psi_reason", "total_reason"])
     )
-    return collect_streaming(result_query)
+    result: pl.DataFrame = collect_streaming(result_query)
+    for reason_col, group_expr in (
+        ("psi_reason", pl.col(group_col)), ("total_reason", pl.lit("Total")),
+    ):
+        # Total 在长表中逐期重复，收集原因时只保留一次实际业务身份。
+        failures: pl.DataFrame = (
+            result.select(
+                "feature", group_expr.alias("group"), pl.col(reason_col).alias("reason"),
+            )
+            .filter(pl.col("reason").is_not_null()).unique().sort(["feature", "group"])
+        )
+        for row in failures.iter_rows(named=True):
+            _record_psi_failure(
+                options, row["feature"], row["reason"],
+                group=row["group"], status="not_computed",
+            )
+    return result.select([group_col, "feature", "total", "psi"])
+
+
+def _psi_population_reason(current_col: str) -> pl.Expr:
+    """平滑前按固定参考及当前有效计数判断适用性，优先解释不可用参考。"""
+    return (
+        pl.when(pl.col("reference_population").fill_null(0) <= 0)
+        .then(pl.lit("no_effective_reference_population"))
+        .when(pl.col(current_col).fill_null(0) <= 0)
+        .then(pl.lit("no_effective_current_population"))
+        .otherwise(pl.lit(None, dtype=pl.String))
+    )
 
 
 def calc_psi_from_stats(
@@ -547,7 +522,8 @@ def calc_psi_from_stats(
     """按聚合频次计算各组和整体的 PSI。
 
     先排除未纳入计算的缺失值箱和特殊值箱，再分别归一化当前分布与参考分布。
-    整体 PSI 使用各箱跨组加总后的频次，不平均各组 PSI。
+    整体 PSI 使用各箱跨组加总后的频次，不平均各组 PSI。平滑前分别判断当前期间、
+    固定参考和整体人口；零人口保留 typed null，并返回期间与整体的内部原因列。
     """
     feat_col = "feat_idx" if "feat_idx" in stats_df.collect_schema().names() else "feature"
     filter_cond = psi_valid_condition(
@@ -557,12 +533,40 @@ def calc_psi_from_stats(
     )
     filtered_stats = stats_df.filter(filter_cond)
     filtered_skel = unique_bins_skel.filter(filter_cond)
-    full_skeleton = filtered_skel.join(filtered_stats.select(group_col).unique(), how="cross")
 
     if expected_stats_df is None:
         expected_source = filtered_stats.filter(pl.col(group_col) == baseline_group)
     else:
         expected_source = expected_stats_df.filter(filter_cond)
+
+    # 业务身份取自过滤前频数；人口为零不能由其他特征或 epsilon 补造。
+    identities: pl.LazyFrame = stats_df.select([group_col, feat_col]).unique()
+    current_population: pl.LazyFrame = filtered_stats.group_by([group_col, feat_col]).agg(
+        pl.col("len").sum().alias("current_population"),
+    )
+    reference_population: pl.LazyFrame = expected_source.group_by(feat_col).agg(
+        pl.col("len").sum().alias("reference_population"),
+    )
+    total_population: pl.LazyFrame = filtered_stats.group_by(feat_col).agg(
+        pl.col("len").sum().alias("total_population"),
+    )
+    applicability: pl.LazyFrame = (
+        identities.join(current_population, on=[group_col, feat_col], how="left")
+        .join(reference_population, on=feat_col, how="left")
+        .join(total_population, on=feat_col, how="left")
+        .with_columns(
+            _psi_population_reason("current_population").alias("psi_reason"),
+            _psi_population_reason("total_population").alias("total_reason"),
+        )
+    )
+    full_skeleton: pl.LazyFrame = filtered_skel.join(
+        applicability.filter(pl.col("psi_reason").is_null()).select([group_col, feat_col]),
+        on=feat_col, how="inner",
+    )
+    total_skeleton: pl.LazyFrame = filtered_skel.join(
+        applicability.filter(pl.col("total_reason").is_null()).select(feat_col).unique(),
+        on=feat_col, how="inner",
+    )
 
     expected = (
         expected_source
@@ -597,7 +601,7 @@ def calc_psi_from_stats(
         .agg(pl.col("psi_contrib").sum().alias("psi"))
     )
     psi_total = (
-        filtered_skel.join(global_actual, on=[feat_col, "bin_id"], how="left")
+        total_skeleton.join(global_actual, on=[feat_col, "bin_id"], how="left")
         .join(expected, on=[feat_col, "bin_id"], how="left")
         .with_columns(
             [
@@ -611,4 +615,8 @@ def calc_psi_from_stats(
         .group_by(feat_col)
         .agg(pl.col("psi_contrib_total").sum().alias("total"))
     )
-    return psi_group.join(psi_total, on=feat_col, how="left")
+    return (
+        applicability.join(psi_group, on=[group_col, feat_col], how="left")
+        .join(psi_total, on=feat_col, how="left")
+        .select([group_col, feat_col, "psi", "total", "psi_reason", "total_reason"])
+    )

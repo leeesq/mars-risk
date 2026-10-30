@@ -535,6 +535,8 @@ def test_profiler_categorical_psi_uses_native_binner_bins(
             [
                 pl.lit(0.0).alias("total"),
                 pl.lit(0.0).alias("psi"),
+                pl.lit(None, dtype=pl.String).alias("psi_reason"),
+                pl.lit(None, dtype=pl.String).alias("total_reason"),
             ]
         )
 
@@ -797,6 +799,8 @@ def test_profiler_psi_uses_observed_bins_for_numeric_skeleton(
             [
                 pl.lit(0.0).alias("total"),
                 pl.lit(0.0).alias("psi"),
+                pl.lit(None, dtype=pl.String).alias("psi_reason"),
+                pl.lit(None, dtype=pl.String).alias("total_reason"),
             ]
         )
 

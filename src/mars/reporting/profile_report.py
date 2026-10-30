@@ -12,7 +12,7 @@ from mars.compute import to_pandas_frame
 from mars.reporting._metadata import FeatureMetadata, is_metadata_column
 from mars.reporting._profile_excel import _ProfileExcelWriter
 from mars.reporting._profile_html import write_profile_html
-from mars.reporting._query import ReportFrame, _ReportQuery
+from mars.reporting._query import ReportFrame, _psi_population_null_cells, _ReportQuery
 
 
 class ProfileData(NamedTuple):
@@ -611,6 +611,20 @@ class MarsProfileReport(_ReportQuery):
             if "total" in displayed_groups:
                 displayed_groups.add("Total")
             state = state.loc[state["group"].isin({"*", *displayed_groups})]
+            if metric == "psi":
+                # 真实期间可名为 Total；局部人口原因只解释该视图中的实际空单元格。
+                null_cells = _psi_population_null_cells(
+                    df.to_dict("records"), identities.to_dict("records"),
+                )
+                local_population = (state["status"] == "not_computed") & state["reason"].isin({
+                    "no_effective_current_population", "no_effective_reference_population",
+                })
+                visible_population = pd.Series(
+                    [(row.get("scope_id"), row["feature"], row["group"]) in null_cells
+                     for row in state.to_dict("records")],
+                    index=state.index, dtype=bool,
+                )
+                state = state.loc[~local_population | visible_population]
             statuses = state[["status", "reason"]].drop_duplicates().to_dict("records")
             details = "; ".join(escape(f"{row['status']}/{row['reason']}") for row in statuses)
             if details:

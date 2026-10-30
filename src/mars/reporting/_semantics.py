@@ -75,7 +75,12 @@ _DEFINITIONS: dict[str, tuple[str, str]] = {
         "state",
         "computed 已计算（有效零仍为零）；not_computed 未计算；unobserved 无观测标签；undefined 无法定义；insufficient_samples 样本不足；failed 计算失败；skipped 跳过；结合 reason",
     ),
-    "reason": ("state_reason", "计算失败、跳过、无法定义或尚未表现的具体原因"),
+    "reason": (
+        "state_reason",
+        "计算失败、跳过、无法定义或尚未表现的具体原因；"
+        "no_effective_current_population 表示当前期间或 Total 无纳入计算的观测；"
+        "no_effective_reference_population 表示固定参考无纳入计算的观测",
+    ),
     "group": ("dimension", "状态所属分组；Total 为全量"),
 }
 for _metric, _meaning in {
